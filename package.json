@@ -7,13 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:seed": "node --env-file=.env.local --import tsx scripts/seed.ts"
+    "db:seed": "node --env-file=.env.local --import tsx scripts/seed.ts",
+    "smoke:rls": "node --env-file=.env.local --import tsx scripts/smoke-rls.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.45.4",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -9,26 +9,18 @@
 
 ## Текущее состояние
 
-_Снимок на 2026-05-27._
+_Снимок на 2026-05-27 (вторая сессия)._
 
-- **Шаг:** 1 — Схема БД + RLS — **ЗАВЕРШЁН** ✓
-- **Следующий шаг:** 2 — Auth и роли (см. `kickoff-prompt.md` Шаг 2)
-- **Последний коммит:** см. `git log --oneline -1` (commit Шага 1)
-- **Следующее действие:** показать пользователю план Шага 2 (Supabase Auth, ролевые маршруты
-  для owner/admin vs specialist/assistant, server/browser клиенты, middleware для refresh-сессий,
-  страница /login, защита от прямого доступа к чужим разделам — строго через клиент с сессией
-  пользователя, НЕ service_role), дождаться «ок», затем выполнять.
+- **Шаг:** 2 — Auth и роли — **ЗАВЕРШЁН** ✓
+- **Следующий шаг:** 3 — Визуальная система (см. `kickoff-prompt.md` Шаг 3 — `/design-consultation`, дизайн-токены, светлая/тёмная тема, типографика, базовые компоненты поверх shadcn/ui).
+- **Последний коммит:** см. `git log --oneline -1` (commit Шага 2).
+- **Следующее действие:** в новой сессии — прочитать §11 «Дизайн интерфейса» в `CLAUDE.md` (refined-minimal, уровень Linear/Vercel/Stripe; запреты на Inter/Roboto/Arial/фиолетовые градиенты; светлая+тёмная темы; одна acentная цвет-пара; типографическая пара serif+grotesk; табличные цифры), запустить `/design-consultation`, зафиксировать визуальную систему, показать пользователю. Только после — устанавливать shadcn/ui и кастомизировать под токены.
 
 ### Открытые решения
 - **Git remote:** всё ещё отложен. Подключим по запросу.
-- **Локальный Supabase** поднят (Docker Desktop 29.5.2, WSL2 2.6.3, виртуализация AMD-V включена в
-  BIOS Pavilion 15-ec0xxx). Порты 54321 (API), 54322 (Postgres), 54323 (Studio), 54324 (Mailpit).
-  Конфиг: `supabase/config.toml` — `project_id = "yur-crm"`, встроенный `[db.seed]` отключён
-  (мы используем TS-скрипт `scripts/seed.ts`).
-- **Зависимости добавлены:** `@supabase/supabase-js ^2.45.4`, `tsx ^4.19.2`.
-- **Деактивация сотрудника в Шаге 2:** обязательно вызывать `supabase.auth.admin.signOut(userId)`
-  параллельно с `is_active = false`. RLS уже отрезает доступ, но активная JWT-сессия живёт до
-  истечения (до 1 часа по дефолту).
+- **Локальный Supabase** поднят. Порты 54321/54322/54323/54324. Конфиг: `supabase/config.toml` — `project_id = "yur-crm"`.
+- **Зависимости добавлены в Шаге 2:** `@supabase/ssr ^0.10.3`, `server-only ^0.0.1`.
+- **Деактивация сотрудника (Шаг 4):** при `is_active = false` обязательно вызывать `supabase.auth.admin.signOut(userId)`. Иначе у деактивированного пользователя с ещё валидным JWT proxy будет пропускать запросы, и getCurrentUser (фильтр по is_active) будет редиректить на /login. Цикл редиректов сейчас разорван на уровне страницы /login (там вызывается getCurrentUser), но это компенсация — корректный путь это signOut.
 
 ---
 
@@ -88,6 +80,78 @@ _Снимок на 2026-05-27._
 ## Лог сессий
 
 <!-- Новые записи добавляются СВЕРХУ (новейшая первой). Append-only — историю не переписывать. -->
+
+## Сессия 2026-05-27 (Шаг 2)
+
+**Шаг(и):** 2 — Auth и роли — завершён
+**Длительность:** ~1.5 часа (автономный режим — пользователь отсутствовал)
+**Модель:** Claude Opus 4.7 (1M context)
+
+### Сделано
+- **Зависимости:** `@supabase/ssr ^0.10.3` + `server-only ^0.0.1`.
+- **Типы** (`src/lib/types/db.ts`): `Role`, `SpecialistType`, `UserProfile`, `STAFF_ROLES`, `isStaffRole`.
+- **Supabase-клиенты** (`src/lib/supabase/{server,client,admin}.ts`):
+  - `createSupabaseServerClient()` — для SC/SA/Route, через async `cookies()` из `next/headers`, с сессией пользователя.
+  - `createSupabaseBrowserClient()` — для `'use client'`, мемоизированный.
+  - `createSupabaseAdminClient()` — `service_role`, помечен `server-only`, ТОЛЬКО для системных задач.
+- **Proxy** (`src/proxy.ts`): Next.js 16 переименовал middleware → Proxy, файл лежит в `src/`. Рефреш сессии через `@supabase/ssr` + `getUser()` (валидация с Auth-сервером, не `getSession()` который доверяет cookie). Логика: не залогинен + не публичный путь → редирект на `/login?next=<path>`.
+- **Auth-хелперы** (`src/lib/auth/{current-user,require-role}.ts`):
+  - `getCurrentUser()` — мемоизирован через React `cache()`, проверяет JWT + читает `public.users` под RLS + фильтрует `is_active`.
+  - `requireUser()` → `redirect('/login')`; `requireRole(allowed)` → `redirect('/forbidden')`.
+- **Маршруты:**
+  - `/login` (`src/app/login/page.tsx` + `login-form.tsx` + `actions.ts`): Server Action `loginAction`, `useActionState`, RU-сообщения об ошибках, защита от open-redirect через `safeNext`, дополнительный страж `is_active`+`signOut()`.
+  - `/logout` (`src/app/logout/route.ts`): POST-only (GET prefetch не убивает сессию), SameSite=Lax + Server Action protection через 303 redirect.
+  - `/forbidden` (`src/app/forbidden/page.tsx`): статическая страница 403.
+  - `/` (`src/app/page.tsx`): переписан, использует `requireUser()`, показывает имя/роль/специализацию/email/supervisor.
+- **Кнопка выхода** (`src/components/logout-button.tsx`): `<form method="post" action="/logout">`.
+- **Скрипт smoke-test:** `npm run smoke:rls` в `package.json`. 8/8 RLS-проверок зелёные (lawyer/jurist изолированы, assistant видит дела супервайзера, owner/admin видят всё, попытки угона/правки чужого молча отвергнуты).
+- **Production build** (`npm run build`) — компилируется чисто (Next.js 16.2.6 + Turbopack): 4 dynamic роута (`/`, `/login`, `/logout`, `/_not-found`) + 1 static (`/forbidden`) + Proxy active.
+- **HTTP smoke на dev-сервере:** `/` без сессии → 307 → `/login?next=%2F` ✓; `/login` → 200 ✓; `/forbidden` → 200 ✓; форма содержит `name="email|password|next"` ✓.
+
+### Решения и почему
+- **Next.js 16 → `proxy.ts`, не `middleware.ts`.** В Next.js 16 middleware официально переименован в Proxy (файл-конвенция). Прочёл `node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md` и `03-file-conventions/proxy.md` — `middleware.ts` помечен как deprecated, новый стандарт `proxy.ts`.
+- **`getUser()` вместо `getSession()`.** Per `@supabase/ssr` README: `getSession()` читает cookie без проверки и может вернуть подделанные данные; `getUser()` ходит на Auth-сервер и валидирует токен. Используем `getUser()` везде где принимаем решения о доступе.
+- **`is_active` гард на 3 слоях:** RLS (private.active_uid фильтрует is_active=true), `loginAction` (после signInWithPassword читает users.is_active, при false вызывает signOut), `getCurrentUser` (фильтр is_active=true в TS). Defense-in-depth.
+- **Редирект `/login → /` НЕ в proxy, а в `login/page.tsx`.** Изначально хотел сделать в proxy для скорости, но обнаружил баг: если у деактивированного юзера остался валидный JWT, proxy его пропускал (он не знает про is_active), главная редиректила на /login (через requireUser → getCurrentUser=null), proxy редиректил обратно — цикл. Перенёс проверку на /login страницу, где есть доступ к getCurrentUser. Корректный долгосрочный путь — `auth.admin.signOut()` при деактивации (TODO Шага 4).
+- **`/logout` через Route Handler + POST, а не Server Action.** Простой и явный. POST + SameSite=Lax cookies блокирует CSRF (cross-site POST не отправляет Lax-cookies). Не использую GET — link prefetch и роботы не должны выкидывать пользователя.
+- **shadcn/ui НЕ ставил** в Шаге 2. По плану — в Шаге 3 после `/design-consultation`, чтобы кастомизировать под финальные токены, а не переписывать дефолты.
+- **server-only пакет добавлен** — стандартная Next.js-практика помечать модули как «серверный бандл». Если случайно импортнём из клиентского компонента — сборка упадёт с понятной ошибкой.
+
+### Незакрытые вопросы / TODO
+- [ ] **Шаг 4 (управление сотрудниками)** — при `is_active=false` обязательно вызывать `createSupabaseAdminClient().auth.admin.signOut(userId)` ПАРАЛЛЕЛЬНО с обновлением строки в public.users. Иначе orphan JWT.
+- [ ] **/logout → Server Action**: можно перевести с Route Handler на Server Action для встроенной CSRF-защиты Next.js. Сейчас SameSite=Lax достаточно, но Server Action идиоматичнее.
+- [ ] **/codex review пропущен** — Codex CLI у пользователя не установлен. Self-review выполнен (нашёл и пофиксил redirect loop).
+- [ ] **2 moderate npm vulnerabilities** — остались с Шага 0, не блокирующие. `/cso` review позже.
+- [ ] **Storage buckets** — для документов в Шаге 8.
+- [ ] **Git remote** — подключим по запросу.
+
+### Handoff для следующей сессии
+- **Стартовать с:** прочитать `CLAUDE.md` §11 «Дизайн интерфейса» (refined-minimal, уровень Linear/Vercel/Stripe; жёсткие запреты — Inter/Roboto/Arial, фиолетовые градиенты, дефолтный shadcn-look; светлая+тёмная темы; пара serif+grotesk; табличные цифры; командная палитра).
+- **Файлы открыть в первую очередь:** `CLAUDE.md` §11, `kickoff-prompt.md` Шаг 3, `src/app/globals.css` (туда лягут CSS-переменные/токены), `src/app/layout.tsx` (туда подключим шрифты).
+- **Команды для проверки текущего состояния:**
+  - `git log --oneline -3` — последний коммит Шага 2.
+  - `docker ps --format "{{.Names}}"` — Supabase контейнеры подняты. Если нет — `npx supabase start`.
+  - `npm run smoke:rls` — все 8 RLS-проверок зелёные.
+  - `npm run dev` → http://localhost:3000 → редирект на /login. После логина (например `owner@yur.local` / `test12345!`) — главная с приветствием и ролью.
+  - `npm run lint && npx tsc --noEmit && npm run build` — всё чисто.
+- **Подводные камни:**
+  - **shadcn/ui ставим только в Шаге 3 после `/design-consultation`** — иначе будем переделывать токены.
+  - **Дизайн строго refined-minimal** — никаких градиентов, generic-шрифтов, фиолетового. См. §11 CLAUDE.md.
+  - **Тёмная тема сразу** — не на потом. Все цвета через CSS-переменные.
+  - **Перед Шагом 3 показать пользователю визуальное направление (палитра, шрифты, токены)** и дождаться «ок» — это явное требование kickoff Шага 3.
+- **Первая задача следующей сессии (Шаг 3):**
+  - Запустить `/design-consultation` через gstack (proactive-режим).
+  - Зафиксировать дизайн-токены в `globals.css` (Tailwind 4 через `@theme`).
+  - Подключить пару шрифтов (через `next/font/google` или локально). Geist уже в layout — заменить на финальную пару.
+  - Поставить shadcn/ui и кастомизировать базовые компоненты под токены.
+  - Заготовить состояния (empty/skeleton/error).
+  - Командная палитра (Cmd/Ctrl-K) — заготовка.
+  - После — показать пользователю + `/design-review`.
+
+### Коммиты
+- Будет добавлен этим коммитом (см. `git log --oneline` после фиксации).
+
+---
 
 ## Сессия 2026-05-27 (Шаг 1)
 
