@@ -2,7 +2,7 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = ""
+project_id = "yur-crm"
 
 [api]
 enabled = true
@@ -58,11 +58,11 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# If enabled, seeds the database after migrations during a db reset.
-enabled = true
-# Specifies an ordered list of seed files to load during db reset.
-# Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# Отключаем встроенный seed.sql — мы используем TS-скрипт scripts/seed.ts
+# (создаёт пользователей через supabase.auth.admin API, в чистом SQL это сделать аккуратно нельзя).
+# Запускается отдельно через `npm run db:seed` после `npx supabase db reset`.
+enabled = false
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.
