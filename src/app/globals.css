@@ -1,27 +1,215 @@
 @import "tailwindcss";
 
+/* ============================================================
+   ДИЗАЙН-ТОКЕНЫ — источник правды DESIGN.md
+   Light only (Phase 1)
+   ============================================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --bg:             #F5F7FA;
+  --surface:        #FFFFFF;
+  --surface-muted:  #F1F4F9;
+  --surface-sunken: #E7ECF3;
+  --border:         #E2E8F0;
+  --border-strong:  #CBD5E1;
+
+  /* Text */
+  --text:           #1E293B;
+  --text-muted:     #64748B;
+  --text-subtle:    #94A3B8;
+
+  /* Primary — индиго */
+  --primary:        #4F46E5;
+  --primary-hover:  #4338CA;
+  --primary-pressed:#3730A3;
+  --primary-fg:     #FFFFFF;
+  --primary-subtle: #EEF2FF;
+  --primary-border: #C7D2FE;
+
+  /* Градиенты — только для hero-шапок карточек */
+  --grad-indigo: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+  --grad-rose:   linear-gradient(135deg, #EC4899 0%, #F472B6 100%);
+  --grad-amber:  linear-gradient(135deg, #F59E0B 0%, #FB923C 100%);
+
+  /* Semantic */
+  --success:    #10B981;
+  --success-bg: #ECFDF5;
+  --warning:    #F59E0B;
+  --warning-bg: #FFFBEB;
+  --error:      #EF4444;
+  --error-bg:   #FEF2F2;
+  --info:       #3B82F6;
+  --info-bg:    #EFF6FF;
+
+  /* Priority */
+  --prio-low:     #10B981;
+  --prio-low-bg:  #ECFDF5;
+  --prio-mid:     #F59E0B;
+  --prio-mid-bg:  #FFFBEB;
+  --prio-high:    #F43F5E;
+  --prio-high-bg: #FFF1F2;
+
+  /* Stage colors (8 этапов воронки) */
+  --stage-new:             #3B82F6; --stage-new-bg:             #EFF6FF;
+  --stage-consultation:    #06B6D4; --stage-consultation-bg:    #ECFEFF;
+  --stage-in-progress:     #6366F1; --stage-in-progress-bg:     #EEF2FF;
+  --stage-pretrial:        #F59E0B; --stage-pretrial-bg:        #FFFBEB;
+  --stage-litigation:      #F97316; --stage-litigation-bg:      #FFF7ED;
+  --stage-awaiting:        #A855F7; --stage-awaiting-bg:        #FAF5FF;
+  --stage-enforcement:     #EC4899; --stage-enforcement-bg:     #FDF2F8;
+  --stage-closed:          #64748B; --stage-closed-bg:          #F1F5F9;
+
+  /* Brand integrations */
+  --brand-gmail:    #EA4335;
+  --brand-telegram: #26A5E4;
+  --brand-whatsapp: #25D366;
+  --brand-viber:    #7360F2;
+
+  /* Радиусы */
+  --r-sm:   6px;
+  --r-md:   8px;
+  --r-lg:  12px;
+  --r-xl:  16px;
+  --r-full: 9999px;
+
+  /* Тени — с лёгким blue/indigo-tint */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 32px rgba(79, 70, 229, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05);
+
+  /* Motion */
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:    cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro:   80ms;
+  --dur-short:  180ms;
+  --dur-medium: 320ms;
 }
+
+/* ============================================================
+   Tailwind 4 theme: мапим переменные в utility-классы
+   ============================================================ */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Шрифты */
+  --font-sans: var(--font-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-mono), "JetBrains Mono", "Courier New", monospace;
+
+  /* Поверхности и текст */
+  --color-bg:             var(--bg);
+  --color-surface:        var(--surface);
+  --color-surface-muted:  var(--surface-muted);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-border:         var(--border);
+  --color-border-strong:  var(--border-strong);
+  --color-text:           var(--text);
+  --color-text-muted:     var(--text-muted);
+  --color-text-subtle:    var(--text-subtle);
+
+  /* Primary */
+  --color-primary:         var(--primary);
+  --color-primary-hover:   var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
+  --color-primary-fg:      var(--primary-fg);
+  --color-primary-subtle:  var(--primary-subtle);
+  --color-primary-border:  var(--primary-border);
+
+  /* Semantic */
+  --color-success:    var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning:    var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-error:      var(--error);
+  --color-error-bg:   var(--error-bg);
+  --color-info:       var(--info);
+  --color-info-bg:    var(--info-bg);
+
+  /* Priority */
+  --color-prio-low:     var(--prio-low);
+  --color-prio-low-bg:  var(--prio-low-bg);
+  --color-prio-mid:     var(--prio-mid);
+  --color-prio-mid-bg:  var(--prio-mid-bg);
+  --color-prio-high:    var(--prio-high);
+  --color-prio-high-bg: var(--prio-high-bg);
+
+  /* Stage */
+  --color-stage-new:             var(--stage-new);
+  --color-stage-new-bg:          var(--stage-new-bg);
+  --color-stage-consultation:    var(--stage-consultation);
+  --color-stage-consultation-bg: var(--stage-consultation-bg);
+  --color-stage-in-progress:     var(--stage-in-progress);
+  --color-stage-in-progress-bg:  var(--stage-in-progress-bg);
+  --color-stage-pretrial:        var(--stage-pretrial);
+  --color-stage-pretrial-bg:     var(--stage-pretrial-bg);
+  --color-stage-litigation:      var(--stage-litigation);
+  --color-stage-litigation-bg:   var(--stage-litigation-bg);
+  --color-stage-awaiting:        var(--stage-awaiting);
+  --color-stage-awaiting-bg:     var(--stage-awaiting-bg);
+  --color-stage-enforcement:     var(--stage-enforcement);
+  --color-stage-enforcement-bg:  var(--stage-enforcement-bg);
+  --color-stage-closed:          var(--stage-closed);
+  --color-stage-closed-bg:       var(--stage-closed-bg);
+
+  /* Brand */
+  --color-brand-gmail:    var(--brand-gmail);
+  --color-brand-telegram: var(--brand-telegram);
+  --color-brand-whatsapp: var(--brand-whatsapp);
+  --color-brand-viber:    var(--brand-viber);
+
+  /* Радиусы */
+  --radius-sm:   var(--r-sm);
+  --radius-md:   var(--r-md);
+  --radius-lg:   var(--r-lg);
+  --radius-xl:   var(--r-xl);
+  --radius-full: var(--r-full);
+
+  /* Тени */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ============================================================
+   Базовые стили
+   ============================================================ */
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
   font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+::selection {
+  background: var(--primary-subtle);
+  color: var(--primary-pressed);
+}
+
+/* Focus baseline */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Скроллбары */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--r-full);
+  border: 2px solid var(--bg);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }

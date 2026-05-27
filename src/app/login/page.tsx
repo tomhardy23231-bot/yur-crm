@@ -25,20 +25,28 @@ export default async function LoginPage({
   const next = pickNext(sp.next);
 
   // Если пользователь уже залогинен и активен — пускаем дальше.
-  // Проверка делается здесь (а не в proxy.ts), потому что только getCurrentUser
-  // фильтрует по is_active. Иначе деактивированный пользователь с валидным
-  // JWT попал бы в цикл редиректов / ↔ /login.
   const user = await getCurrentUser();
   if (user) redirect(next);
 
   return (
     <div className="flex flex-1 items-center justify-center px-6 py-16">
-      <div className="flex w-full max-w-sm flex-col gap-8">
-        <header className="flex flex-col gap-1.5">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-            Вход в Юр CRM
+      <div className="w-full max-w-sm flex flex-col gap-8">
+        <header className="flex flex-col gap-3">
+          <span
+            className="inline-flex items-center gap-2 self-start font-mono text-[11px] uppercase tracking-[0.06em] text-primary bg-primary-subtle px-2.5 py-1 rounded-full font-semibold"
+          >
+            ▲ Юр CRM
+          </span>
+          <h1 className="text-[36px] leading-[1.1] tracking-[-0.02em] font-bold text-text">
+            Вход в{' '}
+            <span
+              className="bg-clip-text text-transparent"
+              style={{ backgroundImage: 'var(--grad-indigo)' }}
+            >
+              систему
+            </span>
           </h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-[14px] text-text-muted leading-[1.55]">
             Внутренний инструмент. Доступ только для сотрудников компании.
           </p>
         </header>

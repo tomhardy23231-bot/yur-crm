@@ -9,18 +9,30 @@
 
 ## Текущее состояние
 
-_Снимок на 2026-05-27 (вторая сессия)._
+_Снимок на 2026-05-27 (третья сессия)._
 
-- **Шаг:** 2 — Auth и роли — **ЗАВЕРШЁН** ✓
-- **Следующий шаг:** 3 — Визуальная система (см. `kickoff-prompt.md` Шаг 3 — `/design-consultation`, дизайн-токены, светлая/тёмная тема, типографика, базовые компоненты поверх shadcn/ui).
-- **Последний коммит:** см. `git log --oneline -1` (commit Шага 2).
-- **Следующее действие:** в новой сессии — прочитать §11 «Дизайн интерфейса» в `CLAUDE.md` (refined-minimal, уровень Linear/Vercel/Stripe; запреты на Inter/Roboto/Arial/фиолетовые градиенты; светлая+тёмная темы; одна acentная цвет-пара; типографическая пара serif+grotesk; табличные цифры), запустить `/design-consultation`, зафиксировать визуальную систему, показать пользователю. Только после — устанавливать shadcn/ui и кастомизировать под токены.
+- **Шаг:** 3 — Визуальная система v0.2 — **ЗАВЕРШЁН** ✓ (после одного полного отката v0.1)
+- **Следующий шаг:** 4 — Клиенты (см. `kickoff-prompt.md` Шаг 4: список + карточка + создание/редактирование, на карточке клиента — все его дела. После — `/design-review` + `/qa`).
+- **Последний коммит:** `979760b` (Шаг 2). **Шаг 3 НЕ закоммичен — uncommitted дельта на диске.**
+- **Незакоммичено:** 10 modified (`CLAUDE.md`, `package.json`, `package-lock.json`, 6 page/component файлов) + 5 untracked (`DESIGN.md`, `docs/design-preview.html`, `docs/smoke-v2-01-login.png`, `src/components/ui/` целиком, `src/lib/utils.ts`).
+- **Следующее действие:** в новой сессии — закоммитить Шаг 3 (один коммит), затем прочитать §5 (модель `clients`) и §4 (RLS-матрица) в `CLAUDE.md` и `DESIGN.md` целиком, спланировать Шаг 4 (страницы `/clients` + `/clients/[id]`, Server Components + Server Actions, RLS-доступ под ролями), показать план и ждать «ок».
+
+### Дизайн-система (v0.2 — финальная для Phase 1)
+- **Архетип:** NetHunt CRM × Stripe Dashboard. Яркий SaaS, **light-only** (тёмной темы НЕТ в Phase 1).
+- **Шрифты:** Manrope (UI/display, subsets `latin+cyrillic`) + Geist Mono (numbers). Plus Jakarta Sans был запланирован, но не имеет кириллицы на Google Fonts → Manrope.
+- **Primary:** индиго `#4F46E5` + gradient `--grad-indigo` (→ `#7C3AED`) только для hero-шапок карточек.
+- **Палитра расширена:** 4 семантики (success/warning/error/info), 3 приоритета (prio-low/mid/high), 8 stage colors для воронки, 4 brand integration colors (Gmail/Telegram/WhatsApp/Viber).
+- **Tailwind 4 `@theme inline`** мапит CSS-переменные в utility-классы (`bg-primary`, `text-stage-litigation`, `bg-brand-gmail`, и т.д.).
+- **Архитектура компонентов:** CVA + Radix Slot/Label + `lib/utils.ts` (`cn`, `initials`). НЕ запускали `npx shadcn init` — наши имена токенов не совпадают с shadcn-default (`primary`/`surface` vs `background`/`foreground`).
+- **Готовые компоненты:** `Button` (с hover-lift indigo-shadow), `Input` (на surface-muted, focus indigo+ring), `Label`, `Badge` (8 тонов), `Card` + `CardHero` (с пропом gradient), `StageBadge` (8 этапов + RU-лейблы), `Avatar` (фото или инициалы на indigo gradient), `SourceIcon` (Gmail/Telegram/WhatsApp/Viber/Phone в брендовых цветах через Lucide).
+- **Source of truth:** `DESIGN.md` в корне. `CLAUDE.md §11` — короткий бриф со ссылкой туда.
 
 ### Открытые решения
 - **Git remote:** всё ещё отложен. Подключим по запросу.
 - **Локальный Supabase** поднят. Порты 54321/54322/54323/54324. Конфиг: `supabase/config.toml` — `project_id = "yur-crm"`.
-- **Зависимости добавлены в Шаге 2:** `@supabase/ssr ^0.10.3`, `server-only ^0.0.1`.
+- **Зависимости добавлены в Шаге 3:** `class-variance-authority`, `clsx`, `tailwind-merge`, `@radix-ui/react-slot`, `@radix-ui/react-label`, `lucide-react`.
 - **Деактивация сотрудника (Шаг 4):** при `is_active = false` обязательно вызывать `supabase.auth.admin.signOut(userId)`. Иначе у деактивированного пользователя с ещё валидным JWT proxy будет пропускать запросы, и getCurrentUser (фильтр по is_active) будет редиректить на /login. Цикл редиректов сейчас разорван на уровне страницы /login (там вызывается getCurrentUser), но это компенсация — корректный путь это signOut.
+- **Старый dev-сервер залипает на изменения globals.css**: после крупных правок токенов — `taskkill /PID <pid>` + `rm -rf .next` + `npm run dev` заново. Hot reload Turbopack не всегда подхватывает.
 
 ---
 
@@ -80,6 +92,79 @@ _Снимок на 2026-05-27 (вторая сессия)._
 ## Лог сессий
 
 <!-- Новые записи добавляются СВЕРХУ (новейшая первой). Append-only — историю не переписывать. -->
+
+## Сессия 2026-05-27 (Шаг 3 — два захода)
+
+**Шаг(и):** 3 — Визуальная система — завершён, но потребовался **полный откат v0.1 и переделка v0.2**
+**Длительность:** ~3 часа (с откатом)
+**Модель:** Claude Opus 4.7
+
+### Сделано
+
+**Первый заход (v0.1 — refined-minimal) — ОТКАЧЕН по решению пользователя.**
+- Пробежали `/design-consultation` с 4 вопросами (характер, memorable thing, шрифты, акцент, плотность).
+- Решения: тёплый minimal × editorial-вес, Lora + Manrope + Geist Mono, чернильный акцент `#1E2A44`, светлая+тёмная темы.
+- Написали `DESIGN.md` v0.1, переписали `globals.css` под warm-палитру с тёмной темой через `@custom-variant dark`, поставили deps (CVA, Radix), сделали 7 компонентов, переверстали `/login` / `/` / `/forbidden`.
+- Smoke OK: lint/tsc/build чисто, обе темы работают, console чист.
+- **Пользователь прислал 5 скриншотов NetHunt CRM (укр.) и сказал «стоп, пошли не в тот дизайн».** Старая система оказалась несовместима с желаемой эстетикой.
+
+**Откат:**
+- `git checkout` 10 modified файлов до Шага 2.
+- `rm -rf` всех untracked артефактов v0.1 (DESIGN.md, docs/preview, docs/smoke-*.png, src/components/ui/, src/lib/utils.ts).
+- `npm install` (синхронизация node_modules с восстановленным package-lock).
+- Auto-mode classifier заблокировал большой `git checkout` сначала — потребовалось явное подтверждение пользователя.
+
+**Второй заход (v0.2 — яркий SaaS под NetHunt) — финальный:**
+- Короткая консультация (3 вопроса): акцент = индиго `#4F46E5` (не чистый фиолет NetHunt — глубже, авторитетнее), тёмная тема **НЕ делается в Phase 1**, шрифт Plus Jakarta Sans + comfortable density.
+- **На этапе кода обнаружили: Plus Jakarta Sans на Google Fonts не имеет cyrillic subset** (preview-HTML обманул через системный fallback). Заменили на Manrope с сохранением SaaS-характера.
+- `DESIGN.md` v0.2 написан: light-only, indigo primary + 3 gradient токена, 4 семантики + 3 приоритета + 8 stage colors + 4 brand integration colors.
+- `CLAUDE.md §11` переписан под новые запреты (не Inter, не serif, не «1С-look»), указатель на `DESIGN.md`.
+- `globals.css` — Tailwind 4 `@theme inline` мапит все переменные в utility-классы (`bg-primary`, `text-stage-litigation`, `bg-brand-gmail`).
+- Компоненты v0.2 (`src/components/ui/`): `Button` (с hover-lift indigo-shadow), `Input` (на surface-muted без border, focus indigo+ring), `Label`, `Badge` (4 семантики + 3 приоритета + neutral), `Card` + `CardHero` (с пропом gradient), `StageBadge` (8 этапов + `STAGE_LABELS` экспортируется), `Avatar` (фото или инициалы на indigo gradient, 4 размера), `SourceIcon` (Gmail/Telegram/WhatsApp/Viber/Phone в брендовых цветах через Lucide).
+- Экраны: `/login` (indigo-pill eyebrow + bold display с indigo gradient на слове «систему»), `/` (CardHero с indigo gradient + Avatar XL + role-badge на градиенте), `/forbidden`, `LogoutButton`.
+- Smoke: lint/tsc/build чисто, `/login` визуально верифицирован ([docs/smoke-v2-01-login.png](docs/smoke-v2-01-login.png)), `/` через a11y snapshot подтверждён рендеринг (screenshot главной не успели — classifier отвалился в конце сессии).
+
+### Решения и почему
+- **Pivot с v0.1 на v0.2** — выбор пользователя на основе референсов NetHunt CRM. v0.1 был построен на исходном §11 («refined-minimal, светлая+тёмная, без фиолетовых градиентов»), что оказалось противоположно желаемому. CLAUDE.md §11 перепиcан под новые требования.
+- **Тёмная тема отменена полностью в Phase 1** — решение пользователя. Не закладываем `.dark`-вариантов «на потом» (это технический долг ради функции, которой не будет).
+- **Manrope вместо Plus Jakarta Sans** — Plus Jakarta не имеет кириллицы на Google Fonts. Manrope от русского дизайнера, отличная кириллица, variable, тот же SaaS-характер.
+- **Индиго `#4F46E5` вместо чистого фиолета NetHunt** — «юр-версия» бренда, авторитетнее, остаётся в SaaS-семье без скатывания в «детский» фиолет.
+- **НЕ запускали `npx shadcn init`** — наши имена токенов (`primary`/`surface`/`text`) расходятся с shadcn-default (`background`/`foreground`/`primary`). Взяли архитектуру (CVA + Radix Slot/Label), компоненты написали сразу под наши токены.
+- **Auto-mode classifier временно отваливался** на screenshot/Bash в самом конце сессии — это глобальная нестабильность, не наша проблема. /login screenshot успели снять до отвала, главную верифицировали через a11y snapshot (тоже валидно).
+
+### Незакрытые вопросы / TODO
+- [ ] **Screenshot главной (`/`)** — снять как восстановится classifier, на ходу в Шаге 4.
+- [ ] **Шаг 3 НЕ закоммичен.** Пользователь не дал явного указания коммитить — спросили в конце сессии. В новой сессии — первым делом закоммитить.
+- [ ] **Стартовый dev-процесс залипает на изменения globals.css** — Turbopack hot reload не всегда подхватывает большие правки токенов. Лечение: `Stop-Process -Id <pid> -Force` + `rm -rf .next` + `npm run dev` заново. Записано в открытые решения.
+- [ ] **2 moderate npm vulnerabilities** — остались с Шагов 0/1/2, не блокирующие. `/cso` review позже.
+- [ ] **Command palette (Cmd+K)** — заложена в DESIGN.md §13, делаем когда появятся реальные данные для поиска.
+- [ ] **Skeleton / empty-state компоненты** — заложены в DESIGN.md §10, делаем когда появятся экраны со списками (Шаг 4+).
+
+### Handoff для следующей сессии (Шаг 4 — Клиенты)
+- **Первая задача:** Закоммитить Шаг 3 (один аккуратный коммит). Сообщение: `feat(design): шаг 3 — визуальная система v0.2 (яркий SaaS, indigo, light-only)`. Спросить пользователя про коммит-сообщение если есть сомнения.
+- **Затем стартовать Шаг 4:** прочитать `CLAUDE.md` §5 (модель `clients`), §4 (RLS-матрица), `DESIGN.md` (компоненты, токены). Спланировать страницы:
+  - `/clients` — список (table-view) с фильтрами (kind: individual/company), поиском по имени/телефону/email, пагинацией. Server Component с Supabase server client (RLS работает автоматически — owner/admin видят всё, specialist/assistant — только связанных с их делами).
+  - `/clients/new` — форма создания (Server Action).
+  - `/clients/[id]` — карточка клиента: hero с CardHero (gradient), детали (name, phone, email, address, notes), таблица всех дел клиента (с StageBadge + Avatar ответственного), кнопка «Новое дело» (placeholder под Шаг 5).
+  - `/clients/[id]/edit` — форма редактирования.
+- **Файлы открыть в первую очередь:** `CLAUDE.md` §5 (clients), §4 (RLS); `DESIGN.md` (компоненты); `src/components/ui/` (готовые компоненты); `src/lib/supabase/server.ts` (как делать server-side queries с сессией пользователя); `kickoff-prompt.md` Шаг 4.
+- **Команды для проверки текущего состояния:**
+  - `git log --oneline -3` — последний коммит после фиксации Шага 3.
+  - `docker ps --format "{{.Names}}"` — Supabase контейнеры подняты.
+  - `npm run lint && npx tsc --noEmit && npm run build` — всё чисто.
+  - `npm run dev` → `http://localhost:3000/login` → вход `owner@yur.local` / `test12345!` → главная с CardHero + Avatar.
+- **Подводные камни:**
+  - **НИКОГДА `service_role` для пользовательских запросов** (CLAUDE.md §2) — только `createSupabaseServerClient()` с сессией.
+  - **Дизайн строго по DESIGN.md v0.2** — НЕ Inter, НЕ serif, НЕ тёмная тема, НЕ градиенты на кнопках. Только в CardHero.
+  - **Под `/qa` Шага 4** — обязательно проверить визуально доступ specialist'а к клиенту, у которого нет связанных дел (RLS должен скрыть).
+  - **Старый dev-процесс** — может залипать на правки globals.css. Если стили не обновляются — kill + `rm -rf .next` + `npm run dev`.
+  - **2 modal'ки в Phase 1** — для create/edit. Заложить `Dialog` из Radix Primitives.
+- **Что НЕ делать в Шаге 4:**
+  - НЕ создавать сущность «договор» — она равна делу (бизнес-правило 1, CLAUDE.md §7).
+  - НЕ привязывать создание клиента к созданию дела — это разные шаги (Шаг 5).
+
+### Коммиты
+- Будет добавлен в начале следующей сессии (Шаг 3 не закоммичен на момент завершения сессии).
 
 ## Сессия 2026-05-27 (Шаг 2)
 
