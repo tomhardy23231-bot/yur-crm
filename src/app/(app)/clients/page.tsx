@@ -14,11 +14,24 @@ import { Avatar } from '@/components/ui/avatar';
 import { ClientKindBadge } from '@/components/clients/client-kind-badge';
 import { ClientsSearch } from '@/components/clients/clients-search';
 import { cn } from '@/lib/utils';
-import { listClients, CLIENTS_PAGE_SIZE } from '@/lib/clients/queries';
+import { SortableHeader, type SortDir } from '@/components/ui/sortable-header';
+import {
+  CLIENTS_DEFAULT_SORT,
+  CLIENTS_PAGE_SIZE,
+  CLIENTS_SORTABLE_COLUMNS,
+  type ClientsSortColumn,
+  listClients,
+} from '@/lib/clients/queries';
 import { CLIENT_KIND_LABEL, type ClientKind } from '@/lib/types/db';
 
 function isClientKind(value: string): value is ClientKind {
   return value === 'individual' || value === 'company';
+}
+function isClientsSortColumn(value: string): value is ClientsSortColumn {
+  return (CLIENTS_SORTABLE_COLUMNS as readonly string[]).includes(value);
+}
+function isSortDir(value: string): value is SortDir {
+  return value === 'asc' || value === 'desc';
 }
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
@@ -30,15 +43,26 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; kind?: string; page?: string; deleted?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    kind?: string;
+    page?: string;
+    deleted?: string;
+    sort?: string;
+    dir?: string;
+  }>;
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim() ?? '';
   const kind = sp.kind && isClientKind(sp.kind) ? sp.kind : undefined;
   const page = sp.page ? Math.max(1, Number(sp.page) || 1) : 1;
   const deleted = sp.deleted === '1';
+  const sort: ClientsSortColumn =
+    sp.sort && isClientsSortColumn(sp.sort) ? sp.sort : CLIENTS_DEFAULT_SORT.sort;
+  const dir: SortDir =
+    sp.dir && isSortDir(sp.dir) ? sp.dir : CLIENTS_DEFAULT_SORT.dir;
 
-  const result = await listClients({ q, kind, page });
+  const result = await listClients({ q, kind, page, sort, dir });
   const { items, total, pageCount } = result;
 
   const KIND_OPTIONS: ReadonlyArray<{ value: ClientKind | 'all'; label: string }> = [
@@ -51,6 +75,10 @@ export default async function ClientsPage({
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (next !== 'all') params.set('kind', next);
+    if (sort !== CLIENTS_DEFAULT_SORT.sort || dir !== CLIENTS_DEFAULT_SORT.dir) {
+      params.set('sort', sort);
+      params.set('dir', dir);
+    }
     const s = params.toString();
     return s ? `/clients?${s}` : '/clients';
   }
@@ -60,6 +88,22 @@ export default async function ClientsPage({
     if (q) params.set('q', q);
     if (kind) params.set('kind', kind);
     if (p > 1) params.set('page', String(p));
+    if (sort !== CLIENTS_DEFAULT_SORT.sort || dir !== CLIENTS_DEFAULT_SORT.dir) {
+      params.set('sort', sort);
+      params.set('dir', dir);
+    }
+    const s = params.toString();
+    return s ? `/clients?${s}` : '/clients';
+  }
+
+  function sortHref(nextSort: string, nextDir: SortDir): string {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (kind) params.set('kind', kind);
+    if (nextSort !== CLIENTS_DEFAULT_SORT.sort || nextDir !== CLIENTS_DEFAULT_SORT.dir) {
+      params.set('sort', nextSort);
+      params.set('dir', nextDir);
+    }
     const s = params.toString();
     return s ? `/clients?${s}` : '/clients';
   }
@@ -120,16 +164,30 @@ export default async function ClientsPage({
       {items.length === 0 ? (
         <EmptyState hasFilters={Boolean(q || kind)} />
       ) : (
-        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-x-auto">
+        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-auto max-h-[calc(100vh-16rem)]">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
-                <TableHead>Клиент</TableHead>
+                <SortableHeader
+                  column="name"
+                  currentSort={sort}
+                  currentDir={dir}
+                  hrefFor={sortHref}
+                >
+                  Клиент
+                </SortableHeader>
                 <TableHead>Тип</TableHead>
                 <TableHead>Телефон</TableHead>
                 <TableHead>E-mail</TableHead>
                 <TableHead className="text-right">Дел</TableHead>
-                <TableHead>Создан</TableHead>
+                <SortableHeader
+                  column="created_at"
+                  currentSort={sort}
+                  currentDir={dir}
+                  hrefFor={sortHref}
+                >
+                  Создан
+                </SortableHeader>
               </TableRow>
             </TableHeader>
             <TableBody>

@@ -16,8 +16,12 @@ import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { requireUser } from '@/lib/auth/require-role';
+import { SortableHeader, type SortDir } from '@/components/ui/sortable-header';
 import {
+  CASES_DEFAULT_SORT,
   CASES_PAGE_SIZE,
+  CASES_SORTABLE_COLUMNS,
+  type CasesSortColumn,
   listCases,
   listSpecialistsForAssignment,
 } from '@/lib/cases/queries';
@@ -52,6 +56,13 @@ function isCaseType(value: string): value is CaseType {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function isCasesSortColumn(value: string): value is CasesSortColumn {
+  return (CASES_SORTABLE_COLUMNS as readonly string[]).includes(value);
+}
+function isSortDir(value: string): value is SortDir {
+  return value === 'asc' || value === 'desc';
+}
+
 export default async function CasesPage({
   searchParams,
 }: {
@@ -62,6 +73,8 @@ export default async function CasesPage({
     responsible?: string;
     page?: string;
     deleted?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -74,6 +87,10 @@ export default async function CasesPage({
     sp.responsible && UUID_RE.test(sp.responsible) ? sp.responsible : undefined;
   const page = sp.page ? Math.max(1, Number(sp.page) || 1) : 1;
   const deleted = sp.deleted === '1';
+  const sort: CasesSortColumn =
+    sp.sort && isCasesSortColumn(sp.sort) ? sp.sort : CASES_DEFAULT_SORT.sort;
+  const dir: SortDir =
+    sp.dir && isSortDir(sp.dir) ? sp.dir : CASES_DEFAULT_SORT.dir;
 
   const isStaff =
     user.profile.role === 'owner' || user.profile.role === 'admin';
@@ -82,7 +99,7 @@ export default async function CasesPage({
   // они и так видят только свои дела).
   const specialists = isStaff ? await listSpecialistsForAssignment() : [];
 
-  const result = await listCases({ q, stage, caseType, responsibleId, page });
+  const result = await listCases({ q, stage, caseType, responsibleId, page, sort, dir });
   const { items, total, pageCount } = result;
 
   function buildHref(
@@ -92,6 +109,8 @@ export default async function CasesPage({
       type: string;
       responsible: string;
       page: number;
+      sort: string;
+      dir: string;
     }>,
   ): string {
     const params = new URLSearchParams();
@@ -100,13 +119,25 @@ export default async function CasesPage({
     const nextType = overrides.type ?? caseType ?? '';
     const nextResp = overrides.responsible ?? responsibleId ?? '';
     const nextPage = overrides.page ?? page;
+    const nextSort = overrides.sort ?? sort;
+    const nextDir = overrides.dir ?? dir;
     if (nextQ) params.set('q', nextQ);
     if (nextStage) params.set('stage', nextStage);
     if (nextType) params.set('type', nextType);
     if (nextResp) params.set('responsible', nextResp);
     if (nextPage > 1) params.set('page', String(nextPage));
+    // Не шумим в URL дефолтным sort'ом — храним только когда отличается.
+    if (nextSort !== CASES_DEFAULT_SORT.sort || nextDir !== CASES_DEFAULT_SORT.dir) {
+      params.set('sort', nextSort);
+      params.set('dir', nextDir);
+    }
     const s = params.toString();
     return s ? `/cases?${s}` : '/cases';
+  }
+
+  function sortHref(nextSort: string, nextDir: SortDir): string {
+    // При смене sort'a возвращаемся на первую страницу.
+    return buildHref({ sort: nextSort, dir: nextDir, page: 1 });
   }
 
   return (
@@ -198,19 +229,49 @@ export default async function CasesPage({
           isStaff={isStaff}
         />
       ) : (
-        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-x-auto">
+        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-auto max-h-[calc(100vh-16rem)]">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
-                <TableHead>Номер / название</TableHead>
+                <SortableHeader
+                  column="number_title"
+                  currentSort={sort}
+                  currentDir={dir}
+                  hrefFor={sortHref}
+                >
+                  Номер / название
+                </SortableHeader>
                 <TableHead>Клиент</TableHead>
                 <TableHead>Этап</TableHead>
                 <TableHead>Тип</TableHead>
                 <TableHead>Приоритет</TableHead>
                 <TableHead>Ответственный</TableHead>
-                <TableHead>Открыто</TableHead>
-                <TableHead className="text-right">Сумма</TableHead>
-                <TableHead className="text-right">Долг</TableHead>
+                <SortableHeader
+                  column="opened_at"
+                  currentSort={sort}
+                  currentDir={dir}
+                  hrefFor={sortHref}
+                >
+                  Открыто
+                </SortableHeader>
+                <SortableHeader
+                  column="contract_sum"
+                  currentSort={sort}
+                  currentDir={dir}
+                  hrefFor={sortHref}
+                  align="right"
+                >
+                  Сумма
+                </SortableHeader>
+                <SortableHeader
+                  column="debt"
+                  currentSort={sort}
+                  currentDir={dir}
+                  hrefFor={sortHref}
+                  align="right"
+                >
+                  Долг
+                </SortableHeader>
               </TableRow>
             </TableHeader>
             <TableBody>

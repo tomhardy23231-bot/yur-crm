@@ -8,6 +8,7 @@ import {
   type CasePaletteItem,
   type ClientPaletteItem,
   type TaskPaletteItem,
+  type DocumentPaletteItem,
 } from '@/lib/search/types';
 
 // PostgREST .or() — экранируем `,()*'"\%` от operator-injection
@@ -32,7 +33,8 @@ export async function searchEverything(q: string): Promise<PaletteResults> {
   // client.name + tags[] — иначе палитра не находит CRM-2026-001 по «Иванов»
   // (клиент) или по «imushestvo» (тег), а /cases?q= находит. Двух-этап:
   // (1) RPC для id'ов и порядка, (2) embedded join для number_title + client.name.
-  const [matchRowsRes, clientsRes, tasksRes] = await Promise.all([
+  // Documents (Phase 1.1 gap fix) — ilike по file_name, RLS наследует от case.
+  const [matchRowsRes, clientsRes, tasksRes, documentsRes] = await Promise.all([
     supabase.rpc('search_case_ids', {
       p_q: query,
       p_limit: MAX_RESULTS_PER_GROUP,
@@ -49,6 +51,12 @@ export async function searchEverything(q: string): Promise<PaletteResults> {
       .select('id, title, case_id, status, case:case_id(number_title)')
       .ilike('title', pattern)
       .order('created_at', { ascending: false })
+      .limit(MAX_RESULTS_PER_GROUP),
+    supabase
+      .from('documents')
+      .select('id, file_name, doc_type, case_id, case:case_id(number_title)')
+      .ilike('file_name', pattern)
+      .order('uploaded_at', { ascending: false })
       .limit(MAX_RESULTS_PER_GROUP),
   ]);
 
@@ -123,5 +131,28 @@ export async function searchEverything(q: string): Promise<PaletteResults> {
     };
   });
 
-  return { cases, clients, tasks };
+  type DocumentRow = {
+    id: string;
+    file_name: string;
+    doc_type: DocumentPaletteItem['doc_type'];
+    case_id: string;
+    case:
+      | ReadonlyArray<{ number_title: string }>
+      | { number_title: string }
+      | null;
+  };
+
+  const documents: DocumentPaletteItem[] = (documentsRes.data ?? []).map((row) => {
+    const r = row as unknown as DocumentRow;
+    const caseRef = Array.isArray(r.case) ? (r.case[0] ?? null) : r.case;
+    return {
+      id: r.id,
+      file_name: r.file_name,
+      doc_type: r.doc_type,
+      case_id: r.case_id,
+      case_number: caseRef?.number_title ?? null,
+    };
+  });
+
+  return { cases, clients, tasks, documents };
 }

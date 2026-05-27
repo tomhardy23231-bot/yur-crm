@@ -23,16 +23,26 @@ export type TaskPaletteItem = {
   status: 'open' | 'done';
 };
 
+export type DocumentPaletteItem = {
+  id: string;
+  file_name: string;
+  doc_type: 'contract' | 'claim' | 'power_of_attorney' | 'correspondence' | 'other';
+  case_id: string;
+  case_number: string | null;
+};
+
 export type PaletteResults = {
   cases: CasePaletteItem[];
   clients: ClientPaletteItem[];
   tasks: TaskPaletteItem[];
+  documents: DocumentPaletteItem[];
 };
 
 export const EMPTY_RESULTS: PaletteResults = {
   cases: [],
   clients: [],
   tasks: [],
+  documents: [],
 };
 
 export const MAX_RESULTS_PER_GROUP = 5;

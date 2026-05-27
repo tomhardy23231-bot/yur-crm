@@ -193,6 +193,7 @@ export default async function ClientDetailPage({
             </p>
           </div>
         ) : (
+          <div className="overflow-auto max-h-[60vh]">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
@@ -234,6 +235,7 @@ export default async function ClientDetailPage({
               ))}
             </TableBody>
           </Table>
+          </div>
         )}
       </Card>
     </main>

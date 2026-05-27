@@ -32,12 +32,29 @@ export type CaseListItem = {
   responsible: { id: string; full_name: string } | null;
 };
 
+// Whitelisted sortable columns (защита от инжекта неизвестного имени в .order()).
+export const CASES_SORTABLE_COLUMNS = [
+  'number_title',
+  'opened_at',
+  'contract_sum',
+  'debt',
+] as const;
+export type CasesSortColumn = (typeof CASES_SORTABLE_COLUMNS)[number];
+export type SortDir = 'asc' | 'desc';
+
+export const CASES_DEFAULT_SORT: { sort: CasesSortColumn; dir: SortDir } = {
+  sort: 'opened_at',
+  dir: 'desc',
+};
+
 export type ListCasesParams = {
   q?: string;
   stage?: CaseStage;
   caseType?: CaseType;
   responsibleId?: string;
   page?: number;
+  sort?: CasesSortColumn;
+  dir?: SortDir;
 };
 
 export type ListCasesResult = {
@@ -66,6 +83,9 @@ export async function listCases(
   const page = Math.max(1, params.page ?? 1);
   const offset = (page - 1) * CASES_PAGE_SIZE;
   const q = params.q ? sanitizeSearch(params.q) : '';
+  const sortColumn: CasesSortColumn = params.sort ?? CASES_DEFAULT_SORT.sort;
+  const sortDir: SortDir = params.dir ?? CASES_DEFAULT_SORT.dir;
+  const ascending = sortDir === 'asc';
 
   type RawRow = {
     id: string;
@@ -141,15 +161,22 @@ export async function listCases(
           (indexById.get(a.id) ?? 0) - (indexById.get(b.id) ?? 0),
       );
 
+    // q-путь: RPC возвращает свой порядок (по relevance/created_at),
+    // поверх — пользовательская сортировка клиентским sort'ом.
+    // limit=20 → стоимость пренебрежимо мала.
+    sortItemsByColumn(items, sortColumn, ascending);
+
     const pageCount = Math.max(1, Math.ceil(total / CASES_PAGE_SIZE));
     return { items, total, page, pageSize: CASES_PAGE_SIZE, pageCount };
   }
 
   // Без q — обычный listCases с .eq фильтрами и count:'exact'.
+  // Tie-breaker: id desc — стабильный порядок если в sortColumn одинаковые значения.
   let query = supabase
     .from('cases')
     .select(SELECT, { count: 'exact' })
-    .order('opened_at', { ascending: false })
+    .order(sortColumn, { ascending })
+    .order('id', { ascending: false })
     .range(offset, offset + CASES_PAGE_SIZE - 1);
 
   if (params.stage) query = query.eq('stage', params.stage);
@@ -170,6 +197,25 @@ export async function listCases(
   const pageCount = Math.max(1, Math.ceil(total / CASES_PAGE_SIZE));
 
   return { items, total, page, pageSize: CASES_PAGE_SIZE, pageCount };
+}
+
+// Клиентская сортировка для q-пути (RPC). Только whitelisted колонки.
+function sortItemsByColumn(
+  items: CaseListItem[],
+  column: CasesSortColumn,
+  ascending: boolean,
+): void {
+  const dir = ascending ? 1 : -1;
+  items.sort((a, b) => {
+    const av = a[column];
+    const bv = b[column];
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return (av - bv) * dir;
+    }
+    const as = String(av ?? '');
+    const bs = String(bv ?? '');
+    return as.localeCompare(bs, 'ru') * dir;
+  });
 }
 
 // Сворачивает PostgREST-массив-join в одиночный объект.

@@ -20,10 +20,21 @@ export type ClientListItem = Client & {
   cases_count: number;
 };
 
+export const CLIENTS_SORTABLE_COLUMNS = ['name', 'created_at'] as const;
+export type ClientsSortColumn = (typeof CLIENTS_SORTABLE_COLUMNS)[number];
+export type SortDir = 'asc' | 'desc';
+
+export const CLIENTS_DEFAULT_SORT: { sort: ClientsSortColumn; dir: SortDir } = {
+  sort: 'created_at',
+  dir: 'desc',
+};
+
 export type ListClientsParams = {
   q?: string;
   kind?: ClientKind;
   page?: number;
+  sort?: ClientsSortColumn;
+  dir?: SortDir;
 };
 
 export type ListClientsResult = {
@@ -44,6 +55,9 @@ export async function listClients(
   const supabase = await createSupabaseServerClient();
   const page = Math.max(1, params.page ?? 1);
   const offset = (page - 1) * CLIENTS_PAGE_SIZE;
+  const sortColumn: ClientsSortColumn = params.sort ?? CLIENTS_DEFAULT_SORT.sort;
+  const sortDir: SortDir = params.dir ?? CLIENTS_DEFAULT_SORT.dir;
+  const ascending = sortDir === 'asc';
 
   let query = supabase
     .from('clients')
@@ -51,7 +65,8 @@ export async function listClients(
       'id, name, client_kind, phone, email, address, notes, created_by, created_at, cases(count)',
       { count: 'exact' },
     )
-    .order('created_at', { ascending: false })
+    .order(sortColumn, { ascending })
+    .order('id', { ascending: false })
     .range(offset, offset + CLIENTS_PAGE_SIZE - 1);
 
   const q = params.q ? sanitizeSearch(params.q) : '';

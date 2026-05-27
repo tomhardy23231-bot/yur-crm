@@ -17,6 +17,7 @@ import {
   Calendar,
   CheckSquare,
   FilePlus,
+  FileText,
   Home,
   Search,
   UserPlus,
@@ -167,7 +168,8 @@ export function CommandPaletteProvider({
   const hasAnyResults =
     displayResults.cases.length > 0 ||
     displayResults.clients.length > 0 ||
-    displayResults.tasks.length > 0;
+    displayResults.tasks.length > 0 ||
+    displayResults.documents.length > 0;
 
   const showEmpty =
     !isShortQuery && !loading && !hasAnyResults;
@@ -193,7 +195,7 @@ export function CommandPaletteProvider({
           <Command.Input
             value={query}
             onValueChange={setQuery}
-            placeholder="Поиск дел, клиентов, задач или команда…"
+            placeholder="Поиск дел, клиентов, задач, документов или команда…"
             className={cn(
               'flex-1 bg-transparent outline-none text-[14px] text-text',
               'placeholder:text-text-subtle',
@@ -305,6 +307,21 @@ export function CommandPaletteProvider({
                   label={t.title}
                   hint={t.case_number ?? undefined}
                   strikethrough={t.status === 'done'}
+                />
+              ))}
+            </PaletteGroup>
+          )}
+
+          {displayResults.documents.length > 0 && (
+            <PaletteGroup heading="Документы">
+              {displayResults.documents.map((d) => (
+                <PaletteItem
+                  key={d.id}
+                  value={`document-${d.id}`}
+                  onSelect={() => go(`/cases/${d.case_id}`)}
+                  icon={<FileText size={15} strokeWidth={1.75} />}
+                  label={d.file_name}
+                  hint={d.case_number ?? undefined}
                 />
               ))}
             </PaletteGroup>

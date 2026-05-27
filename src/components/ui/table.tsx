@@ -3,16 +3,19 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 // Плотная таблица — 44px ряд, sticky header, hover row (DESIGN.md §7).
+//
+// Sticky-thead требует, чтобы единственным скролл-контейнером был ВНЕШНИЙ
+// враппер (с overflow-auto + max-height). Если обернуть Table ещё одним
+// overflow-* div'ом, sticky сломается — будет нестед-скролл-контекст
+// без констрейнта высоты. Так что Table сам не оборачивается.
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="w-full overflow-auto">
-      <table
-        ref={ref}
-        className={cn('w-full border-collapse text-sm', className)}
-        {...props}
-      />
-    </div>
+    <table
+      ref={ref}
+      className={cn('w-full border-collapse text-sm', className)}
+      {...props}
+    />
   ),
 );
 Table.displayName = 'Table';
