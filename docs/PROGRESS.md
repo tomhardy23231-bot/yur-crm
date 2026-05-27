@@ -9,42 +9,61 @@
 
 ## Текущее состояние
 
-_Снимок на 2026-05-27 (четвёртая сессия)._
+_Снимок на 2026-05-27 (пятая сессия)._
 
-- **Шаг:** 4 — Клиенты (CRUD + RLS + app-shell) — **ЗАВЕРШЁН** ✓ (визуально + QA-прогон под двумя ролями).
-- **Следующий шаг:** 5 — Дела (см. `kickoff-prompt.md` Шаг 5: страницы `/cases`, `/cases/new`, `/cases/[id]`, `/cases/[id]/edit`. Центральная сущность; интегрировать со страницей клиента — кнопка «Новое дело» с пред-заполненным client_id. После — `/design-review` + `/qa`).
-- **Последний коммит:** `6656949` (Шаг 3). **Шаг 4 НЕ закоммичен — uncommitted дельта на диске.**
-- **Незакоммичено:** 3 modified (`.gitignore` +`.gstack/`, `src/lib/types/db.ts` +Client/CaseSummary типы, удалён `src/app/page.tsx` — переехал в `(app)/`) + 9 новых QA-скриншотов + новые папки `src/app/(app)/`, `src/components/app/`, `src/components/clients/`, `src/lib/clients/` + 3 UI-примитива (`textarea.tsx`, `select.tsx`, `table.tsx`).
-- **Следующее действие:** в новой сессии — закоммитить Шаг 4 одним коммитом, затем прочитать `CLAUDE.md §5` (модель `cases` — там много полей: stage, priority, billing_types, contract_sum, opponent, court_*) и §6 (воронка из 8 этапов, движение «только вперёд» в Шаге 6 — пока в Шаге 5 произвольное), спланировать страницы дел, показать план и ждать «ок».
+- **Шаг:** 5 — Дела (CRUD + интеграция с клиентами + RLS-проверки) — **ЗАВЕРШЁН** ✓ (12 QA-скриншотов под admin и lawyer).
+- **Следующий шаг:** 6 — Воронка / валидация «только вперёд» на смену `stage` (CLAUDE.md §7 п.2). В Шаге 5 сейчас — любой переход разрешён, это намеренно. Нужны: SQL-триггер `cases_validate_stage_forward` + UI-фильтр доступных опций в Select (скрыть «назад») + ручное исправление через owner/admin с `activity_log`.
+- **Последний коммит:** `ef1685d` feat(cases): шаг 5 — CRUD дел + интеграция с клиентами + RLS-проверки.
+- **Незакоммичено:** PROGRESS.md (этот update сессии).
+- **Следующее действие:** в новой сессии — прочитать `CLAUDE.md §6` (8 этапов, порядок) и `§7 п.2` (правило «только вперёд», исключение для staff с записью в `activity_log`), `kickoff-prompt.md` Шаг 6 если он есть; спланировать миграцию + UI-фильтрацию stage-Select на /cases/[id]/edit; план показать и ждать «ок».
 
-### Реализовано в Шаге 4
-- **App-shell:** `src/app/(app)/layout.tsx` + `src/components/app/sidebar.tsx` + `src/components/app/sidebar-nav.tsx` (client, usePathname для active). Sidebar 240px light, brand «▲ Юр CRM», nav (Главная + Клиенты активны, 5 disabled «скоро» с грифом), user-pill md Avatar + имя + роль/специализация + LogoutButton внизу. `/page.tsx` переехал в `(app)/page.tsx`.
-- **Типы:** `ClientKind`, `CLIENT_KIND_LABEL`, `Client`, `CaseStage`, `CaseSummary` в `src/lib/types/db.ts`.
-- **Данные:** `src/lib/clients/queries.ts` (`listClients` с поиском ILIKE + filter + count + range pagination + cases-count subselect; `getClient`; `getClientCases` с join `responsible:responsible_id(id, full_name)` + сворачивание массива в один объект) + `src/lib/clients/actions.ts` (`createClientAction`/`updateClientAction`/`deleteClientAction` — Server Actions, ручная валидация, FK-23503 ловится отдельно → `?error=has_cases`).
-- **UI-примитивы (общие):** `Textarea` (зеркало Input), `Select` (нативный с ChevronDown через `appearance-none`), `Table` (44px row, sticky thead, hover-row).
-- **UI-компоненты (клиенты):** `ClientKindBadge` (info/neutral tones), `ClientForm` (`'use client'` + useActionState + useFormStatus — переиспользуется в /new и /edit), `ClientsSearch` (router.replace + useTransition, сбрасывает page=1 при новом запросе), `DeleteClientForm` (window.confirm перед submit).
-- **Страницы:**
-  - `/clients` — header «Клиенты» + русский плюрализатор счётчика + CTA «Добавить клиента»; ClientsSearch + 3 filter pills; Table с 6 колонками (Avatar+name link, kind Badge, phone mono, email mono, дел, дата mono); empty-state с разделением hasFilters/нет; пагинация если pageCount > 1 (по 20 на стр).
-  - `/clients/new` — Card с ClientForm + breadcrumb «К списку».
-  - `/clients/[id]` — `CardHero` indigo с XL Avatar + name (display-md) + subtitle «kind · клиент с дата» + кнопки «Редактировать» (видна только staff ИЛИ автору записи) / «Удалить» (только staff). Под hero — 4 секции (Тип/Телефон с tel:/E-mail с mailto:/Адрес) + Заметки если есть + Card «Дела клиента» с compact-table (StageBadge, responsible Avatar+имя, opened_at mono, contract_sum mono, debt mono красный если >0). Empty-state с «Шаг 5 · скоро».
-  - `/clients/[id]/edit` — `updateClientAction.bind(null, id)` → передаётся в ClientForm как валидный Server Action.
+### Реализовано в Шаге 5
+- **Типы (`src/lib/types/db.ts`):** `CaseType`/`CASE_TYPES`/`CASE_TYPE_LABEL`, `CasePriority`/`CASE_PRIORITIES`/`CASE_PRIORITY_LABEL`, `BillingType`/`BILLING_TYPES`/`BILLING_TYPE_LABEL`, `CASE_STAGES`/`CASE_STAGE_LABEL`, полная `Case` и `CaseWithRefs` (с join client+responsible).
+- **Данные (`src/lib/cases/`):**
+  - `queries.ts`: `listCases({q, stage, caseType, responsibleId, page})` с поиском `ilike` по `number_title` + 3 фильтра + count:exact + range pagination + join `client:client_id(...)` / `responsible:responsible_id(...)` со сворачиванием массивов. `getCase(id)` — карточка с теми же join'ами + `client_kind`/`specialist_type`. `listSpecialistsForAssignment` (`role='specialist'`+`is_active=true`). `listClientsForSelect` — все видимые клиенты (RLS отфильтрует).
+  - `actions.ts`: `createCaseAction`/`updateCaseAction` с ручной валидацией (UUID regex, `^\d{4}-\d{2}-\d{2}$` для даты, `contract_sum >= 0`, `billing_types` через `formData.getAll`); авто-`closed_at = today` при `stage='closed'` (иначе CHECK constraint `cases_closed_consistency` упадёт) и `null` иначе; `tags` — comma-separated через split+trim. `deleteCaseAction` ловит 23503 (FK от documents/payments — ON DELETE RESTRICT) → `?error=has_links`.
+- **UI-компоненты (`src/components/cases/`):**
+  - `case-form.tsx` — большая форма: 4 секции (Основное / Финансы / Судебное / Дополнительно), 16 полей, `lockedClient` пропс для prefill через hidden input + read-only Avatar-pill. Билинг — 4 чекбокса, `defaultChecked` берётся из `state.selectedBillingTypes ?? caseRow?.billing_types`. Reused в /new и /edit.
+  - `priority-badge.tsx` — Badge prio-high для urgent, neutral для normal.
+  - `billing-types-badges.tsx` — ряд info-Badge'ей или dash.
+  - `cases-search.tsx` — клиентский search-input (router.replace + useTransition, сброс page=1).
+  - `cases-filter-select.tsx` — нативный Select с onChange→router.replace (не в форме!). Изначально был внутри outer `<form>` — это вызывало hydration error (`<form>` inside `<form>` от nested CasesSearch). Переделал: каждый филтер сам диспатчит URL.
+  - `delete-case-form.tsx` — `<form action={deleteCaseAction}>` + window.confirm + hover на error-токен.
+- **Страницы (`src/app/(app)/cases/`):**
+  - `/cases` — header «Дела» + русский плюрализатор + CTA «Новое дело» (только staff); CasesSearch + 3 фильтра (stage / type / responsible — последний только staff) + ссылка «Сбросить»; таблица 9 колонок (Номер→link, Клиент→link на /clients, StageBadge, тип, PriorityBadge, Avatar+имя, opened_at mono, sum mono, debt mono red); empty-state с разделением hasFilters/нет; пагинация.
+  - `/cases/new` — `requireRole(['owner','admin'])` (Phase 1 — дела заводит staff, RLS-INSERT тоже staff-only). Читает `?client=<id>`; если есть — prefill через `lockedClient`, breadcrumb «К клиенту «<name>»», cancelHref→карточка клиента. Иначе — селект всех клиентов.
+  - `/cases/[id]` — `CardHero` indigo с хэш-иконкой + `number_title` (display-md) + строка «тип · открыто DATE · завершено DATE» если closed. Pills (StageBadge + PriorityBadge + tags); 4 секции (Клиент→link с Avatar+kind, Ответственный с Avatar+specialist_type, Опонент/Суд/Номер суд.дела если есть); KPI-блок 3-x (contract_sum/paid_total/debt с tone success/error); BillingTypesBadges; 3 soon-cards Документы/Задачи/Платежи; error-banner по `?error=has_links/...`.
+  - `/cases/[id]/edit` — `updateCaseAction.bind(null, id)`, передаёт `caseRow` в форму. Доступна specialist'у на свои дела (RLS-UPDATE staff OR responsible).
+- **Интеграции:**
+  - `src/components/app/sidebar-nav.tsx`: «Дела» → `enabled: true`.
+  - `/clients/[id]`: «Новое дело» CTA → `/cases/new?client=<id>` (только staff); гриф «Шаг 5 · скоро» снят; empty-state переписан под текущее состояние.
 
-### QA-прогон под двумя ролями (через `gstack /browse`)
-- **admin (Анна Админ):** create Петровой с заметкой → edit адреса → search «Петр» → filter «Компания» → delete Иванова (FK-блок «Нельзя удалить») → delete Петровой (✓ banner «Клиент удалён»). Всё работает.
-- **lawyer (Лев Адвокатов, specialist):** list показал 1 клиента (Иванов, его case CRM-2026-001); прямой URL Петровой → 404 (RLS); кнопок Edit/Delete на Иванове НЕТ (lawyer не staff и не creator).
-- Скриншоты: `docs/qa-04-*.png` (9 шт.).
+### QA-прогон под двумя ролями (`gstack /browse`)
+- **admin (Анна Админ):**
+  1. `/cases` — список из 2-х seed-дел (CRM-2026-001/002) с фильтрами и CTA.
+  2. `/clients/[id]` (Акме) — кнопка «Новое дело» появилась.
+  3. `/cases/new?client=<id>` — клиент Акме прибит read-only; заполнил CRM-2026-003 «Иск ООО Ромашка», Лев Адвокатов, Корпоративное, Срочный, 200000, Предоплата+За результат, оппонент АО «Подрядчик», теги vip+корпорат.
+  4. Создание → редирект на `/cases/<uuid>` — карточка отрисовалась со всеми данными.
+  5. Edit → stage=Судебное → сохранилось; stage=Завершено → `closed_at` подставился автоматом в карточке.
+  6. Delete → confirm → success-banner «Дело удалено.» на /cases?deleted=1, список вернулся к 2-м.
+- **lawyer (Лев Адвокатов, specialist):**
+  1. `/cases` — 1 строка (CRM-2026-001, где он responsible). CTA «Новое дело» и фильтр «Ответственный» отсутствуют. RLS-изоляция доказана.
+  2. `/cases/new` → редирект на `/forbidden` (requireRole).
+  3. Прямой URL CRM-2026-002 (UUID Юрия Юристова) → 404 (`getCase` вернул null из-за RLS).
+  4. `/cases/<свой UUID>` — Edit виден (RLS UPDATE: responsible OR staff), Delete скрыт (UI-canDelete=isStaff).
+- Скриншоты: `docs/qa-05-01..12.png` (12 шт.).
 
 ### Найденные и закрытые в сессии баги
-1. **`/clients/[id]/edit` падал 500** — `boundAction` как inline async-функция: «Functions cannot be passed directly to Client Components». Фикс: `updateClientAction.bind(null, id)` — bind на Server Action сохраняет server-action-маркировку.
-2. **«Редактировать» виден всем** на детальной — но RLS UPDATE = staff OR creator. Замаскировал по `isStaff || created_by === user.id` (`canEdit`).
+1. **Hydration error** `<form>` inside `<form>` на `/cases`. CasesSearch — это `<form role="search">` (для нормального Enter-сабмита), снаружи я обернул фильтры в `<form method="get" action="/cases">` чтобы Select-onChange сабмитил всё разом. Nested forms — невалидный HTML. Фикс: убрал outer form, `CasesFilterSelect` теперь сам строит URL и зовёт `router.replace` через `useTransition`. Каждый фильтр действует независимо, page сбрасывается.
+2. **`onChange={(e) => e.currentTarget.form?.requestSubmit()}`** изначально был в server component — это вообще не работает (event handler в SC). Поймал на компиляции, вынес в client component `CasesFilterSelect` (теперь там и onChange, и router.replace).
 
 ### Открытые решения
 - **Git remote:** всё ещё отложен. Подключим по запросу.
-- **Локальный Supabase** поднят. Порты 54321/54322/54323/54324.
-- **Дизайн-система v0.2** — заморожена, не трогаем без явной правки DESIGN.md.
-- **Старый dev-сервер залипает** на сильные правки — лечение: `Stop-Process -Id <pid> -Force` + `rm -rf .next` + `npm run dev` заново.
-- **Turbopack не подхватил новые папки сразу** — пришлось touch `[id]/edit/page.tsx` чтобы fast-refresh добавил роут. Если будут аналогичные 404 после создания файлов под `(app)/` — touch + перезагрузка страницы (или kill+rm -rf .next).
-- **Деактивация сотрудника** — TODO с Шага 2: `auth.admin.signOut(userId)` при `is_active=false`. Не реализовали — будет в админ-странице сотрудников (не сейчас).
+- **Локальный Supabase** поднят (контейнер `supabase_vector_yur-crm` периодически рестартится — не критично, остальное healthy).
+- **`/design-review` НЕ запускали** — это интерактивный скилл с AskUserQuestion-гейтами, не подходит под текущий auto-mode. Вручную сверил все экраны с DESIGN.md, цветовая система использует только токены (`text-stage-*`, `bg-primary-subtle`, `text-error`), хардкодов нет, никаких градиентов на кнопках, только на CardHero.
+- **2 moderate npm vulnerabilities** — тащим с Шага 0-3, не блокирующие. `/cso` review когда-нибудь.
+- **Turbopack компилирует страницы лениво** — при первом клике на «Новое дело» страница не была собрана, в UI индикатор «Compiling…», ссылка не редиректила сразу. Если в Шаге 6 будут аналогичные «Compiling…» залипания — direct navigate через адресную строку (gone после прогрева).
+- **`scripts/seed.ts` не трогали** — seed-дела (CRM-2026-001/002) остались.
 
 ---
 
@@ -104,6 +123,104 @@ _Снимок на 2026-05-27 (четвёртая сессия)._
 ## Лог сессий
 
 <!-- Новые записи добавляются СВЕРХУ (новейшая первой). Append-only — историю не переписывать. -->
+
+## Сессия 2026-05-27 (Шаг 5 — Дела)
+
+**Шаг(и):** 5 — Дела (CRUD + интеграция с клиентами + RLS-проверки) — завершён
+**Длительность:** ~2 часа
+**Модель:** Claude Opus 4.7 (1M context)
+
+### Сделано
+
+**Закоммитили Шаг 4** в начале сессии: `ff6c239 feat(clients): шаг 4 — CRUD клиентов + app-shell + RLS-проверки`.
+
+**Типы (`src/lib/types/db.ts`):**
+- `CaseType`/`CASE_TYPES`/`CASE_TYPE_LABEL` (7 типов с RU-лейблами).
+- `CasePriority`/`CASE_PRIORITIES`/`CASE_PRIORITY_LABEL`.
+- `BillingType`/`BILLING_TYPES`/`BILLING_TYPE_LABEL` (4 типа оплаты).
+- `CASE_STAGES`/`CASE_STAGE_LABEL` (8 этапов).
+- Полная сущность `Case` (16 полей включая `tags: string[]`, `billing_types: BillingType[]`) и `CaseWithRefs` (с join client+responsible).
+
+**Данные (`src/lib/cases/`):**
+- `queries.ts`: `listCases({q, stage, caseType, responsibleId, page})` — `count:'exact'` + range pagination 20/стр + ILIKE по `number_title` + 3 eq-фильтра + join `client(...)` и `responsible(...)` со сворачиванием массивов. `getCase(id)` — все 16 полей + join'ы с `client_kind`/`specialist_type`. `listSpecialistsForAssignment()` — `role='specialist' AND is_active`. `listClientsForSelect()` — все видимые клиенты (RLS отфильтрует).
+- `actions.ts`: `createCaseAction`/`updateCaseAction` Server Actions с ручной валидацией (UUID regex, `^\d{4}-\d{2}-\d{2}$` для opened_at, contract_sum через replace `,`→`.` + isFinite, billing_types через `formData.getAll('billing_types')` с filter+isBillingType). **Авто-`closed_at = todayIso()` при `stage='closed'`, иначе `null`** — иначе CHECK constraint `cases_closed_consistency` падает. `tags` — split по comma + trim + non-empty. revalidatePath для `/cases`, `/cases/<id>`, `/clients/<client_id>`. `deleteCaseAction` ловит 23503 (FK от documents/payments — `ON DELETE RESTRICT`) → `?error=has_links`.
+
+**UI-компоненты (`src/components/cases/`):**
+- `case-form.tsx` (`'use client'`): большая форма, 4 секции (Основное/Финансы/Судебное/Дополнительно), 16 полей. `lockedClient` пропс — рендерит read-only Avatar-pill + hidden input вместо Select. `billing_types` — grid 2×2/4 чекбоксов; `defaultChecked` берётся из `state.selectedBillingTypes ?? caseRow?.billing_types ?? []`. `defaultResponsibleId` пропс для будущего prefill (сейчас не используется). useActionState + useFormStatus как в ClientForm.
+- `priority-badge.tsx`: Badge `prio-high` для urgent, `neutral` для normal.
+- `billing-types-badges.tsx`: ряд info-Badge'ей или dash.
+- `cases-search.tsx`: клиентский search-input (router.replace + useTransition, сброс page=1) — копия `clients-search`.
+- `cases-filter-select.tsx`: нативный Select, onChange→URLSearchParams.set/delete→router.replace через useTransition. **НЕ в форме** (иначе hydration error).
+- `delete-case-form.tsx`: `<form action={deleteCaseAction}>` + window.confirm.
+
+**Страницы (`src/app/(app)/cases/`):**
+- `/cases/page.tsx` — header «Дела» + RU-плюрализатор + CTA «Новое дело» (только staff); CasesSearch + CasesFilterSelect ×3 (stage/type + responsible-staff-only) + ссылка «Сбросить»; таблица 9 колонок: Номер→Link, Клиент→Link на /clients, StageBadge, тип, PriorityBadge, Avatar+имя, opened_at mono, sum mono, debt mono red если >0; empty-state с разделением hasFilters/нет + role-specific текст; пагинация Назад/Вперёд.
+- `/cases/new/page.tsx` — `requireRole(['owner','admin'])`. Параллельные fetch `listClientsForSelect` + `listSpecialistsForAssignment` + `getClient(sp.client)`. lockedClient передаётся если есть `?client=<id>`. Breadcrumb «К клиенту «<name>»» если locked, иначе «К списку». Submit→redirect на `/cases/<new_id>`.
+- `/cases/[id]/page.tsx` — `requireUser`. CardHero (indigo, Hash-icon в круге, number_title display-md + «тип · открыто DATE · завершено DATE» если closed); pills bar (StageBadge + PriorityBadge + tags-Badges); grid 2×2 секций (Клиент→Link с Avatar+kind / Ответственный с Avatar+specialist_type / Opponent / Court / Court Case Number — последние три только если заполнены, с lucide-иконками); KPI Card 3-x (contract_sum / paid_total tone=success / debt tone=error если >0 else muted) + BillingTypesBadges под; 3 soon-cards (Документы/Задачи/Платежи) — заглушки под Шаги 7-8.
+- `/cases/[id]/edit/page.tsx` — `updateCaseAction.bind(null, id)`; параллельные fetch формы и списков.
+
+**Интеграции:**
+- `src/components/app/sidebar-nav.tsx`: `cases` → `enabled: true`.
+- `src/app/(app)/clients/[id]/page.tsx`: «Новое дело» CTA → `/cases/new?client=<id>` (только staff); гриф «Шаг 5 · скоро» снят; empty-state переписан под текущее.
+
+**QA-прогон (`$B = gstack /browse`):**
+- Admin: создал CRM-2026-003 через карточку клиента, отредактировал stage → Судебное, закрыл (closed_at автоматом проставился), удалил (success-banner). 9 admin-скриншотов.
+- Lawyer: видит только своё дело (CRM-2026-001), `/cases/new` → /forbidden, прямой URL чужого дела → 404, Edit виден (=responsible), Delete скрыт. 3 lawyer-скриншота.
+- Итого 12 файлов `docs/qa-05-*.png`.
+- Console clean после фикса hydration error.
+
+### Решения и почему
+
+- **`closed_at` синхронизируется в Server Action, а не триггером БД** — мог бы быть `BEFORE UPDATE OF stage` триггер, но: (а) логика простая, (б) хочется управлять датой закрытия из приложения (явно today, не «когда сработал триггер»), (в) меньше магии в БД. CHECK constraint в БД остаётся как защита от ошибок.
+- **`/cases/new` под `requireRole(['owner','admin'])`** — соответствует RLS `cases_insert_staff` (только owner/admin). Specialist'у показывать форму смысла нет — INSERT всё равно откажет. Для assistant — тоже редирект.
+- **`CasesFilterSelect` навигирует через `router.replace`, не через form-submit** — изначально обернул в outer `<form method="get">` для авто-сабмита по onChange. Это привело к hydration error (CasesSearch внутри — тоже `<form>`, nested forms = invalid HTML). Лучшее решение: каждый фильтр сам диспатчит URL через router. Server-side rerender случается, фильтры независимы.
+- **Поиск только по `number_title`** — пытался ещё по client.name (PostgREST `clients.name.ilike` через embed), но `.or()` на embedded resource — нетривиально и хрупко. Имя клиента видно в таблице, по нему ищем через /clients или фильтр responsible.
+- **Tags — простой comma-separated input** — по CLAUDE.md §9 теги «вернёмся позже», полноценный chip-input делать рано. Текущая UX: «через запятую: vip, hot, recurring», split+trim в action.
+- **Билинг — чекбоксы, не Radix Select multi** — нативный multi-select UX страшный (Ctrl+click), Radix-multi усложняет. 4 чекбокса в grid — explicit и без зависимостей.
+- **opened_at default = today** — клиент почти всегда заводит дело сегодня. Для бэк-датирования можно поменять руками.
+- **DeleteCaseForm стилизован под кнопку на CardHero (`!bg-white/15 hover:!bg-error/80`)** — на детальной кнопка живёт прямо в indigo-шапке, обычный destructive выглядел бы конфликтно. На индекс-странице удаления нет (только из карточки).
+
+### Незакрытые вопросы / TODO
+
+- [ ] **Шаг 6 — валидация «только вперёд»** — главное TODO. Сейчас можно (специалисту тоже) поменять stage назад. Нужен SQL-триггер на UPDATE OF stage + UI-фильтрация доступных опций в Select + `activity_log` для исправлений staff. См. CLAUDE.md §7 п.2.
+- [ ] **`/design-review` НЕ запускали** — auto-mode классификатор отрезает AskUserQuestion-гейты. Вручную сверил с DESIGN.md, всё через токены, серьёзных отклонений нет. Если будет важно — отдельная сессия.
+- [ ] **`contract_sum` принимает `,` как разделитель** — Replace в action работает, но `<input type="number">` в Firefox не даёт ввести запятую. ОК для текущего UX.
+- [ ] **Tags chip-input** — отложено. Сейчас comma-separated работает.
+- [ ] **`paid_total` редактировать нельзя из UI** — это автотриггер от платежей, появится в Шаге 7. Сейчас остаётся `0` для новых дел (или то, что в seed).
+- [ ] **Сортировка списка дел** — только `opened_at desc`. Добавить переключатель сортировки (debt, sum, stage) — можно в Шаге 6+.
+- [ ] **Поиск по клиенту** — отложено. Сейчас фильтр через карточку клиента (там видны все его дела).
+- [ ] **`/cso` review Шага 5** — пока пропустил, RLS-проверки и так зелёные. При первой возможности.
+
+### Handoff для следующей сессии (Шаг 6 — Воронка)
+
+- **Первая задача:** прочитать `CLAUDE.md §6` (8 этапов воронки) и `§7 п.2` (правило «только вперёд», исключение для owner/admin с записью в activity_log); `kickoff-prompt.md` Шаг 6 если есть.
+- **Спланировать:**
+  - **БД-триггер** `private.cases_validate_stage_forward()` BEFORE UPDATE OF stage — сверяет position в enum старого vs нового; если новый < старого → raise unless текущий пользователь staff (через `private.is_staff()`). При staff-fallback — обязательно запись в `public.activity_log` (entity_type='case', action='stage_corrected', changes={from, to}). Миграция `supabase/migrations/<ts>_stage_forward.sql`.
+  - **UI на /cases/[id]/edit** — отфильтровать опции Select «Этап» так, чтобы для не-staff было видно только текущий этап и все «вперёд». Staff видит все 8, но при «назад» — confirm-prompt с пометкой «это исправление» (можно через отдельный route-handler с `?correct=1`).
+  - **Тестирование триггера** — `npm run smoke:rls` дополнить кейсом «specialist пытается откатить stage».
+- **Файлы открыть в первую очередь:**
+  - `CLAUDE.md §6/§7`, `kickoff-prompt.md` Шаг 6.
+  - `supabase/migrations/20260526100150_helpers.sql` (`private.is_staff()`, `private.active_uid()`).
+  - `supabase/migrations/20260526100100_core_tables.sql` (модель cases, CHECK constraints).
+  - `src/lib/cases/actions.ts` — `updateCaseAction` будет ловить новую ошибку триггера.
+  - `src/components/cases/case-form.tsx` — фильтрация stage-Select.
+- **Команды для проверки текущего состояния:**
+  - `git log --oneline -7` — последние коммиты: ef1685d (Шаг 5), ff6c239 (Шаг 4), 6656949 (Шаг 3).
+  - `docker ps --format "{{.Names}}"` — Supabase контейнеры подняты (vector может рестартиться, остальное healthy).
+  - `npm run lint && npx tsc --noEmit && npm run build` — чисто.
+  - `npm run dev` → http://localhost:3000/login → admin/lawyer → /cases работает, RLS зелёный.
+- **Подводные камни:**
+  - **`closed_at` синхронизируется только из Server Action**, не триггером — если бы был триггер на stage, нужно либо его расширить, либо оставить только Server Action источником истины. Без аккуратной координации можно нарушить CHECK.
+  - **Триггер с `private.is_staff()` на UPDATE OF stage** должен прочитать активного юзера через `active_uid()` — учесть, что это работает только под authenticated с настоящей сессией (service_role-миграции обойдут).
+  - **NEXT.JS 16 redirect()** в Server Action — бросает throw'ом, после него код не выполняется. Учитывать в обработке staff-fallback.
+  - **`activity_log` INSERT** — RLS политика только service_role (anti-forge). В Server Action нужен `createSupabaseAdminClient()` для лога — единственное место в Шаге 6, где админ-клиент допустим. Документировать в комментарии.
+  - **Turbopack компилирует роуты лениво** — после `cases` стало нормально, но если новые роуты под `(app)/` появятся — touch + перезагрузка вкладки.
+
+### Коммиты
+- `ff6c239` feat(clients): шаг 4 — CRUD клиентов + app-shell + RLS-проверки
+- `ef1685d` feat(cases): шаг 5 — CRUD дел + интеграция с клиентами + RLS-проверки
+
+---
 
 ## Сессия 2026-05-27 (Шаг 4 — Клиенты)
 
