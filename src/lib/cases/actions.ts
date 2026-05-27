@@ -443,3 +443,56 @@ export async function deleteCaseAction(formData: FormData): Promise<void> {
   revalidatePath('/cases');
   redirect('/cases?deleted=1');
 }
+
+// Канбан-доска: продвинуть дело на следующий этап (только вперёд).
+// Триггер cases_validate_stage_forward сам отвергает откаты; здесь мы
+// разрешаем вызов только если current_stage в БД совпадает с переданным
+// (защита от race-кликов между rerender'ами). Принципиально: bare action
+// без useActionState — кнопка-форма на карточке.
+export async function advanceCaseStageAction(formData: FormData): Promise<void> {
+  await requireUser();
+
+  const caseId = getString(formData, 'case_id');
+  const fromStage = getString(formData, 'from_stage');
+  if (!UUID_RE.test(caseId)) return;
+  if (!isCaseStage(fromStage)) return;
+
+  const fromIdx = CASE_STAGES.indexOf(fromStage);
+  if (fromIdx < 0 || fromIdx >= CASE_STAGES.length - 1) return;
+  const toStage = CASE_STAGES[fromIdx + 1]!;
+
+  const supabase = await createSupabaseServerClient();
+
+  // Re-read для DB-truth: между рендером доски и кликом этап мог уже
+  // продвинуться другим пользователем. Тогда наш UPDATE из устаревшего
+  // fromStage просто промахнётся (.eq('stage', fromStage)) — rows=0, тихо.
+  const updates: Record<string, unknown> = { stage: toStage };
+  if (toStage === 'closed') {
+    // CHECK constraint cases_closed_consistency требует closed_at при stage=closed.
+    updates.closed_at = new Date().toISOString().slice(0, 10);
+  }
+
+  const { error, count } = await supabase
+    .from('cases')
+    .update(updates, { count: 'exact' })
+    .eq('id', caseId)
+    .eq('stage', fromStage);
+
+  if (error || !count) {
+    // Триггер не должен отвергать движение вперёд. RLS / устаревший stage —
+    // тихо: не показываем ошибку (это staff-операция, доска ререндерится).
+    revalidatePath('/cases/board');
+    return;
+  }
+
+  await logActivity({
+    entity_type: 'case',
+    entity_id: caseId,
+    action: 'case_updated',
+    changes: { diff: { stage: { from: fromStage, to: toStage } } },
+  });
+
+  revalidatePath('/cases/board');
+  revalidatePath('/cases');
+  revalidatePath(`/cases/${caseId}`);
+}

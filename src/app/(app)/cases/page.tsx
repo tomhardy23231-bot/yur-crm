@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Briefcase, Plus } from 'lucide-react';
+import { Briefcase, LayoutGrid, Plus } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -140,6 +140,15 @@ export default async function CasesPage({
     return buildHref({ sort: nextSort, dir: nextDir, page: 1 });
   }
 
+  // Переход на канбан-доску с сохранением совместимых фильтров (тип, ответственный).
+  function boardHref(): string {
+    const params = new URLSearchParams();
+    if (caseType) params.set('type', caseType);
+    if (responsibleId) params.set('responsible', responsibleId);
+    const s = params.toString();
+    return s ? `/cases/board?${s}` : '/cases/board';
+  }
+
   return (
     <main className="flex flex-col gap-6 px-8 py-10 sm:px-12">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -153,14 +162,22 @@ export default async function CasesPage({
               : `Всего: ${total} ${plural(total, ['дело', 'дела', 'дел'])}`}
           </p>
         </div>
-        {isStaff && (
-          <Button asChild>
-            <Link href="/cases/new">
-              <Plus size={16} strokeWidth={2} />
-              Новое дело
+        <div className="flex items-center gap-2">
+          <Button asChild variant="secondary">
+            <Link href={boardHref()}>
+              <LayoutGrid size={16} strokeWidth={1.75} />
+              Доска
             </Link>
           </Button>
-        )}
+          {isStaff && (
+            <Button asChild>
+              <Link href="/cases/new">
+                <Plus size={16} strokeWidth={2} />
+                Новое дело
+              </Link>
+            </Button>
+          )}
+        </div>
       </header>
 
       {deleted && (

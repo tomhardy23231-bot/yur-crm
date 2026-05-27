@@ -324,6 +324,94 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
   };
 }
 
+// ============================================================================
+// Kanban board (Шаг 6 — «доска или список»)
+// ============================================================================
+
+export type BoardCaseItem = {
+  id: string;
+  number_title: string;
+  stage: CaseStage;
+  priority: CasePriority;
+  case_type: CaseType;
+  opened_at: string;
+  contract_sum: number;
+  debt: number;
+  client: { id: string; name: string } | null;
+  responsible: { id: string; full_name: string } | null;
+};
+
+// На колонку — мягкий cap: больше 100 карточек в одну стадию не нужно показывать.
+// При превышении страница покажет «+N ещё» в подвале колонки.
+export const BOARD_COLUMN_CAP = 100;
+
+// Все RLS-видимые дела для доски. Сортировка по приоритету (urgent сверху),
+// затем по opened_at desc. Группировка — на клиенте.
+export async function listCasesForBoard(params: {
+  responsibleId?: string;
+  caseType?: CaseType;
+} = {}): Promise<BoardCaseItem[]> {
+  const supabase = await createSupabaseServerClient();
+
+  let query = supabase
+    .from('cases')
+    .select(
+      'id, number_title, stage, priority, case_type, opened_at, contract_sum, debt, ' +
+        'client:client_id(id, name), responsible:responsible_id(id, full_name)',
+    )
+    // urgent сверху (priority='urgent' < 'normal' в алфавите → ascending=true)
+    .order('priority', { ascending: true })
+    .order('opened_at', { ascending: false })
+    .order('id', { ascending: false });
+
+  if (params.responsibleId) query = query.eq('responsible_id', params.responsibleId);
+  if (params.caseType) query = query.eq('case_type', params.caseType);
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(`listCasesForBoard failed: ${error.message}`);
+  }
+
+  type Row = {
+    id: string;
+    number_title: string;
+    stage: CaseStage;
+    priority: CasePriority;
+    case_type: CaseType;
+    opened_at: string;
+    contract_sum: number | string;
+    debt: number | string;
+    client:
+      | ReadonlyArray<{ id: string; name: string }>
+      | { id: string; name: string }
+      | null;
+    responsible:
+      | ReadonlyArray<{ id: string; full_name: string }>
+      | { id: string; full_name: string }
+      | null;
+  };
+
+  return (data ?? []).map((row) => {
+    const r = row as unknown as Row;
+    const client = Array.isArray(r.client) ? (r.client[0] ?? null) : r.client;
+    const responsible = Array.isArray(r.responsible)
+      ? (r.responsible[0] ?? null)
+      : r.responsible;
+    return {
+      id: r.id,
+      number_title: r.number_title,
+      stage: r.stage,
+      priority: r.priority,
+      case_type: r.case_type,
+      opened_at: r.opened_at,
+      contract_sum: Number(r.contract_sum),
+      debt: Number(r.debt),
+      client,
+      responsible,
+    };
+  });
+}
+
 export type SpecialistOption = {
   id: string;
   full_name: string;
