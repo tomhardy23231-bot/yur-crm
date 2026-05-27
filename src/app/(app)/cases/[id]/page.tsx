@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   Building2,
-  CheckSquare,
   ChevronLeft,
   FileText,
   Gavel,
@@ -21,6 +20,7 @@ import { StageBadge, STAGE_LABELS } from '@/components/ui/stage-badge';
 import { BillingTypesBadges } from '@/components/cases/billing-types-badges';
 import { DeleteCaseForm } from '@/components/cases/delete-case-form';
 import { PriorityBadge } from '@/components/cases/priority-badge';
+import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { requireUser } from '@/lib/auth/require-role';
 import { getCase } from '@/lib/cases/queries';
 import {
@@ -231,22 +231,24 @@ export default async function CaseDetailPage({
         </div>
       </Card>
 
-      {/* Заглушки под Шаги 7-8 */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+      {/* Задачи и заседания (Шаг 7) */}
+      <CaseTasksBlock
+        caseId={c.id}
+        canWrite={canEdit}
+        currentUserId={user.profile.id}
+      />
+
+      {/* Заглушки под Шаги 8-9 */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <SoonCard
           icon={FileText}
           title="Документы"
           hint="Договор, доверенности, претензии — загрузка появится на Шаге 8."
         />
         <SoonCard
-          icon={CheckSquare}
-          title="Задачи и заседания"
-          hint="Календарь, дедлайны, ответственные — Шаг 7."
-        />
-        <SoonCard
           icon={Wallet}
           title="Платежи"
-          hint="История платежей по делу — Шаг 7."
+          hint="История платежей по делу — Шаг 9."
         />
       </div>
     </main>

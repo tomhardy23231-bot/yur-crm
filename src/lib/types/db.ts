@@ -186,3 +186,44 @@ export type CaseWithRefs = Case & {
     specialist_type: SpecialistType | null;
   } | null;
 };
+
+// =====================================================================
+// Tasks — задачи, заседания, дедлайны (CLAUDE.md §5, §7-5, §8 Phase 1).
+// =====================================================================
+
+export type TaskKind = 'task' | 'hearing' | 'deadline';
+
+export const TASK_KINDS: ReadonlyArray<TaskKind> = ['task', 'hearing', 'deadline'];
+
+export const TASK_KIND_LABEL: Record<TaskKind, string> = {
+  task: 'Задача',
+  hearing: 'Заседание',
+  deadline: 'Дедлайн',
+};
+
+export type TaskStatus = 'open' | 'done';
+
+export const TASK_STATUSES: ReadonlyArray<TaskStatus> = ['open', 'done'];
+
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  open: 'Открыта',
+  done: 'Завершена',
+};
+
+export type Task = {
+  id: string;
+  case_id: string;
+  title: string;
+  description: string | null;
+  kind: TaskKind;
+  assignee_id: string;
+  created_by: string;
+  due_at: string | null;
+  status: TaskStatus;
+  created_at: string;
+};
+
+export type TaskWithRefs = Task & {
+  assignee: { id: string; full_name: string } | null;
+  case: { id: string; number_title: string } | null;
+};

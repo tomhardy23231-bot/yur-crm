@@ -5,7 +5,7 @@ import { LogoutButton } from '@/components/logout-button';
 import type { CurrentUser } from '@/lib/auth/current-user';
 import type { Role, SpecialistType } from '@/lib/types/db';
 
-import { SidebarNav } from './sidebar-nav';
+import { SidebarNav, type SidebarCounts } from './sidebar-nav';
 
 const ROLE_LABEL: Record<Role, string> = {
   owner: 'Владелец',
@@ -19,7 +19,13 @@ const SPECIALIST_TYPE_LABEL: Record<SpecialistType, string> = {
   jurist: 'Юрист',
 };
 
-export function Sidebar({ user }: { user: CurrentUser }) {
+export function Sidebar({
+  user,
+  counts,
+}: {
+  user: CurrentUser;
+  counts: SidebarCounts;
+}) {
   const { profile } = user;
   const subtitle = profile.specialist_type
     ? SPECIALIST_TYPE_LABEL[profile.specialist_type]
@@ -41,7 +47,7 @@ export function Sidebar({ user }: { user: CurrentUser }) {
         <span className="font-semibold text-[15px] text-text">Юр CRM</span>
       </Link>
 
-      <SidebarNav />
+      <SidebarNav counts={counts} />
 
       <div className="mt-auto p-3 border-t border-border flex items-center gap-3">
         <Avatar name={profile.full_name} size="md" />

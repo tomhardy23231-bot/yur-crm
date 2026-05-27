@@ -231,6 +231,106 @@ async function main() {
   if (cleanupErr) fail(`cleanup не удался: ${cleanupErr.message}`);
   ok(`cleanup: CRM-2026-001 возвращён в ${originalStage}`);
 
+  console.log('\n10. Шаг 7 — tasks RLS (через дело):');
+  // ids тех, кто нам нужен
+  const { data: lawyerProfile } = await admin
+    .from('users').select('id').eq('email', 'lawyer@yur.local').single();
+  const { data: juristProfile } = await admin
+    .from('users').select('id').eq('email', 'jurist@yur.local').single();
+  const lawyerUid = lawyerProfile!.id as string;
+  const juristUid = juristProfile!.id as string;
+
+  const { data: lawyerCaseRow } = await admin
+    .from('cases').select('id').eq('number_title', 'CRM-2026-001').single();
+  const { data: juristCaseRow } = await admin
+    .from('cases').select('id').eq('number_title', 'CRM-2026-002').single();
+  const lawyerCaseId = lawyerCaseRow!.id as string;
+  const juristCaseId = juristCaseRow!.id as string;
+
+  // 10.1 — lawyer видит ровно свои task'и (seed: 1 task на CRM-2026-001).
+  const { data: lawyerTasks } = await lawyer
+    .from('tasks')
+    .select('id, title, case_id');
+  if (!lawyerTasks || lawyerTasks.length !== 1) {
+    fail(`lawyer должен видеть 1 task (seed), видит ${lawyerTasks?.length}`);
+  }
+  if (lawyerTasks[0]!.case_id !== lawyerCaseId) {
+    fail(`lawyer видит task с чужим case_id: ${lawyerTasks[0]!.case_id}`);
+  }
+  ok('lawyer видит только task свого дела');
+
+  // 10.2 — jurist НЕ видит task lawyer.
+  const { data: juristTasks } = await jurist
+    .from('tasks').select('id').eq('case_id', lawyerCaseId);
+  if (juristTasks?.length !== 0) {
+    fail(`jurist не должен видеть task на CRM-2026-001, видит ${juristTasks?.length}`);
+  }
+  ok('jurist изолирован от task чужого дела');
+
+  // 10.3 — lawyer создаёт task на своё дело с правильным created_by.
+  const { data: created, error: createErr } = await lawyer
+    .from('tasks')
+    .insert({
+      case_id: lawyerCaseId,
+      title: 'smoke: проверка создания',
+      kind: 'task',
+      assignee_id: lawyerUid,
+      created_by: lawyerUid,
+    })
+    .select('id')
+    .single();
+  if (createErr || !created) {
+    fail(`lawyer не смог создать task на своё дело: ${createErr?.message}`);
+  }
+  const newTaskId = created.id as string;
+  ok('lawyer создал task на своё дело');
+
+  // 10.4 — lawyer пробует создать task с created_by=juristUid → WITH CHECK fail.
+  const { error: forgedErr } = await lawyer
+    .from('tasks')
+    .insert({
+      case_id: lawyerCaseId,
+      title: 'smoke: forged created_by',
+      kind: 'task',
+      assignee_id: lawyerUid,
+      created_by: juristUid,
+    });
+  if (!forgedErr) {
+    fail('lawyer смог приписать created_by чужому юзеру — RLS дыра');
+  }
+  ok('lawyer не может приписать created_by чужому юзеру (WITH CHECK отверг)');
+
+  // 10.5 — lawyer пробует создать task на ЧУЖОЕ дело → can_write_case fail.
+  const { error: foreignCaseErr } = await lawyer
+    .from('tasks')
+    .insert({
+      case_id: juristCaseId,
+      title: 'smoke: foreign case',
+      kind: 'task',
+      assignee_id: lawyerUid,
+      created_by: lawyerUid,
+    });
+  if (!foreignCaseErr) {
+    fail('lawyer смог создать task на дело jurist — RLS дыра');
+  }
+  ok('lawyer не может создать task на чужое дело (can_write_case отверг)');
+
+  // 10.6 — lawyer toggle статус новой task open → done.
+  const { error: toggleErr } = await lawyer
+    .from('tasks').update({ status: 'done' }).eq('id', newTaskId);
+  if (toggleErr) fail(`lawyer не смог обновить status своей task: ${toggleErr.message}`);
+  const { data: afterToggle } = await admin
+    .from('tasks').select('status').eq('id', newTaskId).single();
+  if (afterToggle?.status !== 'done') {
+    fail(`status должен был стать done, факт: ${afterToggle?.status}`);
+  }
+  ok('lawyer переключил status своей task (open → done)');
+
+  // 10.7 — cleanup: удалить созданную task.
+  const { error: cleanupTaskErr } = await admin.from('tasks').delete().eq('id', newTaskId);
+  if (cleanupTaskErr) fail(`cleanup task не удался: ${cleanupTaskErr.message}`);
+  ok('cleanup: smoke-task удалена');
+
   console.log('\n✓ Все RLS-проверки пройдены.');
 }
 
