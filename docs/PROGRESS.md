@@ -9,13 +9,65 @@
 
 ## Текущее состояние
 
-_Снимок на 2026-05-27 (шестая сессия)._
+_Снимок на 2026-05-27 (седьмая сессия)._
 
-- **Шаг:** 6 — Воронка / валидация «только вперёд» — **ЗАВЕРШЁН** ✓ (миграция `20260527090000_stage_forward.sql`, триггер `cases_validate_stage_forward`, UI-фильтр опций Select для не-staff, маппинг ошибки в Server Action, smoke-test блок 9, 4 QA-скриншота).
-- **Следующий шаг:** 7 — Задачи и календарь (CLAUDE.md §5 модель `tasks`, §8 Phase 1 — задачи + общий календарь). Модель и RLS-политики `tasks_*_via_case` уже есть в `20260526100100`/`20260526100200` — новых миграций не нужно. UI: блок задач на карточке дела + общая страница `/tasks` (или `/calendar`).
-- **Последний коммит:** `fe29164` feat(cases): шаг 6 — воронка только вперёд + activity_log. Осталось закоммитить только этот docs-блок.
-- **Незакоммичено:** `docs/PROGRESS.md` (этот файл — запись Шага 6 + handoff to Шаг 7).
-- **Следующее действие:** закоммитить `docs: log Шаг 6 completion + handoff to Шаг 7`, затем стартовать Шаг 7.
+- **Шаг:** 7 — Задачи и календарь — **ЗАВЕРШЁН** ✓ (`src/lib/tasks/{queries,actions}`, 5 UI-компонентов, блок задач на карточке дела, страницы `/tasks` (группировка по дням) и `/calendar` (месячный grid 7×6), sidebar-counter, smoke-test блок 10, 8 QA-скриншотов).
+- **Следующий шаг:** 8 — Документы (CLAUDE.md §5 модель `documents`, §8 Phase 1 — загрузка/хранение/скачивание в приватный бакет Supabase Storage с RLS-доступом через `can_write_case`). На карточке дела остались soon-cards «Документы» (Шаг 8) и «Платежи» (Шаг 9).
+- **Последние коммиты (восьмая сессия — старт со сбора долга Шага 6+7):**
+  - `b4eb2c1` feat(tasks): шаг 7 — задачи, общий список и календарь
+  - `db77c44` docs: log Шаг 6 completion + handoff to Шаг 7
+  - `fe29164` feat(cases): шаг 6 — воронка только вперёд + activity_log
+- **Следующее действие:** прочитать `CLAUDE.md §5` (модель `documents`), `§8` (Phase 1 — документы), `kickoff-prompt.md` Шаг 8; миграция приватного бакета `case-documents` + RLS-политики на `storage.objects`; data layer в `src/lib/documents/` (queries + actions с upload/download/delete); UI `CaseDocumentsBlock` на карточке дела вместо SoonCard; smoke-блок 11; `/cso` review обязателен.
+
+### Реализовано в Шаге 7
+
+**Типы (`src/lib/types/db.ts`):**
+- `TaskKind` (`task|hearing|deadline`) + `TASK_KINDS` + `TASK_KIND_LABEL` ({task:'Задача', hearing:'Заседание', deadline:'Дедлайн'}).
+- `TaskStatus` (`open|done`) + `TASK_STATUSES` + `TASK_STATUS_LABEL`.
+- `Task` (10 полей точно из БД) и `TaskWithRefs` (с join assignee+case).
+
+**Data layer (`src/lib/tasks/`):**
+- `queries.ts`: `listTasksByCase(caseId)` (для блока на карточке дела, сортировка status asc + due_at asc nulls last), `listTasksForUser({userId,status,assigneeMode,page})` (page=30, count:exact, mode='mine'|'all'), `listTasksInRange({from,to})` (для календаря), `countOpenTasksAssignedTo(userId)` (sidebar counter, `head:true`), `listAssignableUsers()` (все active users), `getTask(id)`. Все нормализуют PostgREST-массив-join в одиночный объект через `normalizeTasks`.
+- `actions.ts`: `createTaskAction` — валидация UUID/title/kind/assignee, `due_at` из `<input type="datetime-local">` через `new Date(local).toISOString()`. Если `kind='hearing'` → требуется `due_at`. RLS WITH CHECK требует `created_by = active_uid()` — проставляем явно из `requireUser().profile.id`. `updateTaskAction` — без изменения `case_id/status/created_by`. `toggleTaskStatusAction` (bare) — переключает open ⇄ done, форма передаёт `task_id/current_status/case_id`. `deleteTaskAction` (bare). Все revalidate'ят `/cases/<id>`, `/tasks`, `/calendar` + `revalidatePath('/', 'layout')` для обновления sidebar-счётчика.
+
+**UI (`src/components/tasks/`):**
+- `task-kind-badge.tsx` (SC) — Badge: `task` neutral, `hearing` info (синий), `deadline` warning (оранжевый).
+- `task-form.tsx` (CC, `useActionState`+`useFormStatus`) — поля: title, description (опц.), kind, assignee_id, due_at; `lockedCaseId` (hidden input) + `compact` режим (скрывает description) для inline-формы; `defaultAssigneeId` ставит текущего юзера; ISO ⇄ local-input конверсия через `isoToLocalInput`.
+- `task-row.tsx` (SC) — чекбокс-кнопка (`form action={toggleTaskStatusAction}`), title (line-through при done), kind-badge, due_at (mono, красный при просрочке для open), assignee Avatar+имя, опциональная ссылка на дело (`showCase`), trash-кнопка в `group-hover`. `canManage=false` → чекбокс read-only, без кнопок.
+- `case-tasks-block.tsx` (SC) — Card с хедером «Задачи и заседания · N открытая(ых) · M завершено». `<details><summary>+ Добавить задачу</summary>` раскрывает inline `TaskForm compact`. Список open вверху, `<details>Завершённые (M)</details>` свёрнут по умолчанию. Empty-state по `canWrite`.
+- `tasks-filter-select.tsx` (CC) — клон `CasesFilterSelect` с `basePath` prop'ом (используется на `/tasks`).
+
+**Страницы (`src/app/(app)/`):**
+- `~ cases/[id]/page.tsx` — заменил SoonCard «Задачи и заседания» на `<CaseTasksBlock caseId canWrite={canEdit} currentUserId={user.profile.id} />`. Оставшиеся soon-cards: «Документы» (Шаг 8) и «Платежи» (Шаг 9).
+- `+ tasks/page.tsx` — header «Задачи» с плюрализатором + ссылка на /calendar; пилл-tabs «Мои/Все» только для staff (RLS-видимость и так = всё для не-staff); фильтр статуса; группировка задач по дням («Просрочено / Сегодня / Завтра / На этой неделе / Позже / Без срока») через `groupByDay`. Пагинация 30/стр.
+- `+ calendar/page.tsx` — header с capitalize'ом месяца («Май 2026»); navigation Prev/Сегодня/Next через `?month=YYYY-MM`; легенда (Задача/Заседание/Дедлайн с цветными точками); grid 7×6 — 42 клетки, выровненные с понедельника; `?day=YYYY-MM-DD` раскрывает список под grid через TaskRow с `showCase`. Клетки вне месяца — `bg-surface-muted/40`, сегодня — точка в `bg-primary`. До 3 task-точек в клетке + «+N».
+
+**App-shell:**
+- `~ src/app/(app)/layout.tsx` — `await countOpenTasksAssignedTo(user.profile.id)` и передаём в `<Sidebar counts={{tasksOpen}} />`.
+- `~ src/components/app/sidebar.tsx` — добавил пропс `counts: SidebarCounts`, прокидывает в `SidebarNav`.
+- `~ src/components/app/sidebar-nav.tsx` — `tasks: enabled:true, counterKey:'tasksOpen'`; `calendar: enabled:true`; пилл с counter (primary при active, surface-muted при неактивном).
+
+**RLS (без новых миграций — модель `tasks` и политики `tasks_*_via_case` уже в `20260526100100`/`20260526100200`):**
+- INSERT: `can_write_case(case_id) AND created_by = active_uid()`. Подтверждено в smoke-блоке 10.
+- UPDATE/DELETE: `can_write_case(case_id)`.
+- SELECT: `can_see_case(case_id)`.
+
+**Smoke-test (`scripts/smoke-rls.ts`):** новый блок 10 с 7 проверками — lawyer видит ровно 1 свою seed-task; jurist изолирован от чужой task; lawyer создаёт task на своё дело; lawyer пробует приписать `created_by=juristUid` → WITH CHECK fail; lawyer пробует создать task на чужое дело → can_write_case fail; lawyer toggle status open→done; cleanup. Все 10 блоков зелёные.
+
+### QA-прогон под двумя ролями (`chrome-devtools` через explicit grant)
+- **lawyer (Лев Адвокатов):**
+  1. `/tasks` — группа «Позже · 1», seed-task «Подготовить иск», без переключателя Мои/Все (он только у staff). `qa-07-01-lawyer-tasks-list.png`.
+  2. `/calendar` (май 2026) — today (27.05) выделен primary, dot «Подготовить иск» на 5 июня (день за пределами месяца — серый bg). `qa-07-02-lawyer-calendar.png`.
+  3. Клик на 5 июня → раскрылся список под grid через TaskRow. `qa-07-03-lawyer-calendar-day-detail.png`.
+  4. `/cases/<lawyer-case>` — блок «Задачи и заседания · 1 открытая», disclosure «Добавить задачу». `qa-07-04-lawyer-case-tasks-block.png`.
+  5. Создание hearing «Заседание по делу Иванова» 5 июня 09:00, kind='Заседание' через inline-форму. Counter sidebar 1→2, новый ряд в блоке. `qa-07-05-lawyer-task-created.png`.
+  6. Toggle «Подготовить иск» open→done. Counter 2→1, перешла в свёрнутую секцию «ЗАВЕРШЁННЫЕ (1)» с перечёркиванием title. `qa-07-06-lawyer-task-toggled.png`.
+- **admin (Анна Админ):**
+  7. `/tasks?mode=all` — все 3 видимые задачи: 2 на CRM-2026-001 (заседание+перечёркнутая задача), 1 на CRM-2026-002 (заседание ООО Акме). Группа «Позже · 3». Перечёркнутая «Подготовить иск» с кнопкой «Открыть задачу заново» (aria-label меняется). `qa-07-07-admin-tasks-all.png`.
+  8. `/calendar?month=2026-06` — июнь, dot на 5 июня (там 2 task — отрисованы стопкой), dot на 10 июня. `qa-07-08-admin-calendar-june.png`.
+- Console clean во всех состояниях.
+
+**Проверки:** `npm run lint` ✓, `npx tsc --noEmit` ✓, `npm run build` ✓ (15 роутов: добавились `/calendar` и `/tasks`), `npm run smoke:rls` ✓ (10 блоков).
 
 ### Реализовано в Шаге 6
 - **Миграция (`supabase/migrations/20260527090000_stage_forward.sql`):**
@@ -160,6 +212,87 @@ _Снимок на 2026-05-27 (шестая сессия)._
 ## Лог сессий
 
 <!-- Новые записи добавляются СВЕРХУ (новейшая первой). Append-only — историю не переписывать. -->
+
+## Сессия 2026-05-27 (Шаг 7 — Задачи и календарь)
+
+**Шаг(и):** 7 — Задачи + общий список + календарь — завершён
+**Длительность:** ~2 часа
+**Модель:** Claude Opus 4.7 (1M context)
+
+### Сделано
+
+**Решения о scope в начале:**
+- Коммит Шага 6 отложен (пользователь предпочёл сразу начать Шаг 7; коммиты в начале следующей сессии).
+- Делаем `/tasks` (список) И `/calendar` (grid) сразу — пользователь выбрал «оба».
+- QA через chrome-devtools — explicit grant в чате.
+
+**Файлы и компоненты:** см. раздел «Реализовано в Шаге 7» в Текущем состоянии.
+
+**RLS:** новых миграций не требовалось — модель `tasks` и политики `tasks_*_via_case` уже были созданы в Шаге 1 (`20260526100100_core_tables.sql` + `20260526100200_rls_policies.sql`).
+
+**Smoke-test:** добавил блок 10 (7 проверок). Все 10 блоков (`payments_recalc` + 7 RLS-проверок + блок 9 stage_forward + блок 10 tasks) зелёные.
+
+**QA-прогон (chrome-devtools):** 8 скриншотов `docs/qa-07-01..08.png` под lawyer и admin. Проверены: видимость по RLS, inline-форма создания, toggle status, sidebar-counter обновляется через revalidate, переключатель Мои/Все (staff-only), календарь с навигацией и drill-down.
+
+### Решения и почему
+
+- **`created_by` ставится явно из Server Action**, не через DB-default. RLS `WITH CHECK (created_by = active_uid())` ловит подделку — DB-default не помог бы (insert проходит до того, как DEFAULT вычисляется в контексте current_setting). Альтернативно можно `default auth.uid()` в core_tables, но это размывает контракт «Server Action — источник истины об актере».
+- **`datetime-local` без TZ → ISO**: `new Date(localStr).toISOString()` — берёт локальный TZ браузера и пишет ISO в UTC. Это разумно для Phase 1 (одна компания, один регион). Multi-TZ — потом.
+- **`<details>` вместо client-state collapse** — нативный HTML, без `'use client'`. Минус — состояние теряется при revalidate (revalidate ремоунтит DOM). Достаточно для Phase 1.
+- **Bare action для toggle, а не useActionState** — нужен submit без сообщения/состояния. `form.requestSubmit()` через onChange был бы client-component'ом, а так — обычный `<form action={...}>` с кнопкой-чекбоксом.
+- **`revalidatePath('/', 'layout')`** для обновления sidebar-counter. Это широкий revalidate, но layout всё равно дёргает `countOpenTasksAssignedTo` на каждом запросе — фактически просто инвалидируем кэш роута.
+- **Группировка по дням в page.tsx, не в queries** — данные нужны только в /tasks, в /calendar другая группировка (по дате). Чистый dumb-рендер компонентов, бизнес-логика рядом с использованием.
+- **Счётчик задач у admin = 0** — у admin'а нет назначенных task'ов (seed только lawyer/jurist). Это правильно: admin видит чужие task в режиме «Все», но «свои» — действительно ноль. Counter в sidebar показывает только assignee-задачи, не все видимые.
+- **`canManageTask` упразднил** — RLS UPDATE на tasks = `can_write_case`, которая в Phase 1 = `can_see_case`. Если видишь task — можешь модифицировать. Нет смысла дополнительно фильтровать на UI; RLS защитит.
+
+### Незакрытые вопросы / TODO
+
+- [ ] **Шаги 6 и 7 НЕ закоммичены** — в новой сессии 4 коммита (см. «Текущее состояние»).
+- [ ] **Форма создания task не очищается после успеха** — `<details>` остаётся открыт, поля остаются заполнены. Можно через `key={revalidationCount}` сбросить, но тогда `<details>` свернётся. Не критично, пользователь руками сворачивает.
+- [ ] **Inline-форма раскрывается с фокусом на title** — не делал autoFocus, чтобы details/summary не «прыгало» при первом рендере. Можно добавить `autoFocus` на title с client-side guard.
+- [ ] **`assigneeMode='all'` для не-staff** — UI скрыт, но если кто-то пришлёт `?mode=all` — query пропустит. RLS отрежет невидимые task. Не дыра, но можно явно игнорить на server.
+- [ ] **Pagination на /calendar** — нет (один месяц = весь grid). Если в одном месяце сотни task'ов — будет лагать; для Phase 1 нормально.
+- [ ] **Test-task «Заседание по делу Иванова» 5.06.2026 09:00** осталась в БД — не критично, seed её не пересоздаст и не сломает.
+- [ ] **`/design-review`** — опять не запускали (AskUserQuestion-гейты в auto-mode). Вручную сверял с DESIGN.md, всё через токены, ничего нового не выбивается.
+- [ ] **`/cso` review Шага 7** — формально стоило (новые INSERT/UPDATE actions с `created_by` контрактом). Smoke-блок 10 покрыл основное (forged created_by, foreign case).
+- [ ] **Auto-mode classifier vs chrome-devtools** — снова требовалось два «разрешаю» от пользователя. На постоянку — allow-rule через `/update-config`.
+- [ ] **2 moderate npm vulnerabilities** — тащим с Шага 0.
+
+### Handoff для следующей сессии (Шаг 8 — Документы)
+
+- **Первая задача:** закоммитить Шаги 6 + 7 (4 коммита, см. список в «Текущее состояние»).
+- **Затем стартовать Шаг 8:**
+  - Прочитать `CLAUDE.md §5` (модель `documents`: `id, case_id, file_name, storage_key, doc_type, uploaded_by, uploaded_at`), `§8` (Phase 1 — документы: загрузка/хранение/скачивание).
+  - Прочитать `kickoff-prompt.md` Шаг 8 (Storage bucket + `/cso` обязательно).
+  - Spike: создание приватного бакета `case-documents` через миграцию, RLS на bucket-объектах (по convention `case_id/<id>/<filename>`), Server Action upload через `supabase.storage.from('case-documents').upload(...)`.
+  - DB-row → storage-object — два этапа. Order: upload первым (получаем key), потом INSERT documents row. На ошибке INSERT — delete storage object (transactional rollback вручную).
+  - UI: заменить SoonCard «Документы» на `CaseDocumentsBlock` с upload-формой + список доков с doc_type-badge'ями и download-кнопкой (signed URL).
+  - `/cso` review критичен: RLS на storage отличается от RLS на public — отдельные политики на `storage.objects`.
+- **Файлы открыть в первую очередь:**
+  - `CLAUDE.md §5/§8`, `kickoff-prompt.md` Шаг 8.
+  - `supabase/migrations/20260526100100_core_tables.sql` (модель `documents`, `ON DELETE RESTRICT` на case_id).
+  - `supabase/migrations/20260526100200_rls_policies.sql` (политики `documents_*_via_case`).
+  - `src/lib/tasks/{queries,actions}.ts` как образец data layer + блок-компонент `case-tasks-block.tsx` как шаблон для `case-documents-block.tsx`.
+  - `src/components/cases/case-form.tsx` — паттерн больших форм; для upload форма будет проще, но нужна обработка `<input type="file">` в Server Action.
+- **Команды для проверки текущего состояния:**
+  - `git log --oneline -10` — после 4 коммитов Шага 6+7 должно быть +4 коммита.
+  - `docker ps --format "{{.Names}}"` — supabase подняты.
+  - `npm run lint && npx tsc --noEmit && npm run build` — чисто (15 роутов).
+  - `npm run smoke:rls` — 10 блоков ✓.
+  - `npm run dev` → /login → admin/lawyer → /cases/<id> — блок задач работает.
+- **Подводные камни:**
+  - **Supabase Storage RLS** — отдельная штука от public-RLS. Политики на `storage.objects` пишутся через `(bucket_id = '...' AND ...)`. Доступ к файлу = read on `storage.objects` + signed-URL.
+  - **`documents.uploaded_by`** требует `= active_uid()` (документация RLS) — то же что для tasks/clients/payments.
+  - **FK `documents.case_id` ON DELETE RESTRICT** — Шаг 5 `deleteCaseAction` уже ловит 23503 и возвращает `?error=has_links`. Не нужно менять.
+  - **`<input type="file">` в Server Action** — FormData содержит File object; нужно прочитать как ArrayBuffer и передать в `supabase.storage.upload()`. Stream через Node не сработает в App Router без edge runtime.
+  - **Signed URL TTL** — короткий (минуты-часы), для скачивания. Для preview/inline-render можно отдельный signed URL.
+  - **Filename sanitization** — спецсимволы и кириллица в `file_name` хранить можно, в `storage_key` — лучше slugify (или UUID + сохранить оригинал в `file_name`).
+  - **MIME type validation** — для Phase 1 хотя бы блокируем `*.exe` и подобное; полная защита от исполняемых — отдельная задача.
+
+### Коммиты
+- (пока нет) — будут после `git commit` в начале следующей сессии (Шаг 6 + Шаг 7, 4 коммита).
+
+---
 
 ## Сессия 2026-05-27 (Шаг 6 — Воронка только вперёд)
 
