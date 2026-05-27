@@ -9,30 +9,42 @@
 
 ## Текущее состояние
 
-_Снимок на 2026-05-27 (третья сессия)._
+_Снимок на 2026-05-27 (четвёртая сессия)._
 
-- **Шаг:** 3 — Визуальная система v0.2 — **ЗАВЕРШЁН** ✓ (после одного полного отката v0.1)
-- **Следующий шаг:** 4 — Клиенты (см. `kickoff-prompt.md` Шаг 4: список + карточка + создание/редактирование, на карточке клиента — все его дела. После — `/design-review` + `/qa`).
-- **Последний коммит:** `979760b` (Шаг 2). **Шаг 3 НЕ закоммичен — uncommitted дельта на диске.**
-- **Незакоммичено:** 10 modified (`CLAUDE.md`, `package.json`, `package-lock.json`, 6 page/component файлов) + 5 untracked (`DESIGN.md`, `docs/design-preview.html`, `docs/smoke-v2-01-login.png`, `src/components/ui/` целиком, `src/lib/utils.ts`).
-- **Следующее действие:** в новой сессии — закоммитить Шаг 3 (один коммит), затем прочитать §5 (модель `clients`) и §4 (RLS-матрица) в `CLAUDE.md` и `DESIGN.md` целиком, спланировать Шаг 4 (страницы `/clients` + `/clients/[id]`, Server Components + Server Actions, RLS-доступ под ролями), показать план и ждать «ок».
+- **Шаг:** 4 — Клиенты (CRUD + RLS + app-shell) — **ЗАВЕРШЁН** ✓ (визуально + QA-прогон под двумя ролями).
+- **Следующий шаг:** 5 — Дела (см. `kickoff-prompt.md` Шаг 5: страницы `/cases`, `/cases/new`, `/cases/[id]`, `/cases/[id]/edit`. Центральная сущность; интегрировать со страницей клиента — кнопка «Новое дело» с пред-заполненным client_id. После — `/design-review` + `/qa`).
+- **Последний коммит:** `6656949` (Шаг 3). **Шаг 4 НЕ закоммичен — uncommitted дельта на диске.**
+- **Незакоммичено:** 3 modified (`.gitignore` +`.gstack/`, `src/lib/types/db.ts` +Client/CaseSummary типы, удалён `src/app/page.tsx` — переехал в `(app)/`) + 9 новых QA-скриншотов + новые папки `src/app/(app)/`, `src/components/app/`, `src/components/clients/`, `src/lib/clients/` + 3 UI-примитива (`textarea.tsx`, `select.tsx`, `table.tsx`).
+- **Следующее действие:** в новой сессии — закоммитить Шаг 4 одним коммитом, затем прочитать `CLAUDE.md §5` (модель `cases` — там много полей: stage, priority, billing_types, contract_sum, opponent, court_*) и §6 (воронка из 8 этапов, движение «только вперёд» в Шаге 6 — пока в Шаге 5 произвольное), спланировать страницы дел, показать план и ждать «ок».
 
-### Дизайн-система (v0.2 — финальная для Phase 1)
-- **Архетип:** NetHunt CRM × Stripe Dashboard. Яркий SaaS, **light-only** (тёмной темы НЕТ в Phase 1).
-- **Шрифты:** Manrope (UI/display, subsets `latin+cyrillic`) + Geist Mono (numbers). Plus Jakarta Sans был запланирован, но не имеет кириллицы на Google Fonts → Manrope.
-- **Primary:** индиго `#4F46E5` + gradient `--grad-indigo` (→ `#7C3AED`) только для hero-шапок карточек.
-- **Палитра расширена:** 4 семантики (success/warning/error/info), 3 приоритета (prio-low/mid/high), 8 stage colors для воронки, 4 brand integration colors (Gmail/Telegram/WhatsApp/Viber).
-- **Tailwind 4 `@theme inline`** мапит CSS-переменные в utility-классы (`bg-primary`, `text-stage-litigation`, `bg-brand-gmail`, и т.д.).
-- **Архитектура компонентов:** CVA + Radix Slot/Label + `lib/utils.ts` (`cn`, `initials`). НЕ запускали `npx shadcn init` — наши имена токенов не совпадают с shadcn-default (`primary`/`surface` vs `background`/`foreground`).
-- **Готовые компоненты:** `Button` (с hover-lift indigo-shadow), `Input` (на surface-muted, focus indigo+ring), `Label`, `Badge` (8 тонов), `Card` + `CardHero` (с пропом gradient), `StageBadge` (8 этапов + RU-лейблы), `Avatar` (фото или инициалы на indigo gradient), `SourceIcon` (Gmail/Telegram/WhatsApp/Viber/Phone в брендовых цветах через Lucide).
-- **Source of truth:** `DESIGN.md` в корне. `CLAUDE.md §11` — короткий бриф со ссылкой туда.
+### Реализовано в Шаге 4
+- **App-shell:** `src/app/(app)/layout.tsx` + `src/components/app/sidebar.tsx` + `src/components/app/sidebar-nav.tsx` (client, usePathname для active). Sidebar 240px light, brand «▲ Юр CRM», nav (Главная + Клиенты активны, 5 disabled «скоро» с грифом), user-pill md Avatar + имя + роль/специализация + LogoutButton внизу. `/page.tsx` переехал в `(app)/page.tsx`.
+- **Типы:** `ClientKind`, `CLIENT_KIND_LABEL`, `Client`, `CaseStage`, `CaseSummary` в `src/lib/types/db.ts`.
+- **Данные:** `src/lib/clients/queries.ts` (`listClients` с поиском ILIKE + filter + count + range pagination + cases-count subselect; `getClient`; `getClientCases` с join `responsible:responsible_id(id, full_name)` + сворачивание массива в один объект) + `src/lib/clients/actions.ts` (`createClientAction`/`updateClientAction`/`deleteClientAction` — Server Actions, ручная валидация, FK-23503 ловится отдельно → `?error=has_cases`).
+- **UI-примитивы (общие):** `Textarea` (зеркало Input), `Select` (нативный с ChevronDown через `appearance-none`), `Table` (44px row, sticky thead, hover-row).
+- **UI-компоненты (клиенты):** `ClientKindBadge` (info/neutral tones), `ClientForm` (`'use client'` + useActionState + useFormStatus — переиспользуется в /new и /edit), `ClientsSearch` (router.replace + useTransition, сбрасывает page=1 при новом запросе), `DeleteClientForm` (window.confirm перед submit).
+- **Страницы:**
+  - `/clients` — header «Клиенты» + русский плюрализатор счётчика + CTA «Добавить клиента»; ClientsSearch + 3 filter pills; Table с 6 колонками (Avatar+name link, kind Badge, phone mono, email mono, дел, дата mono); empty-state с разделением hasFilters/нет; пагинация если pageCount > 1 (по 20 на стр).
+  - `/clients/new` — Card с ClientForm + breadcrumb «К списку».
+  - `/clients/[id]` — `CardHero` indigo с XL Avatar + name (display-md) + subtitle «kind · клиент с дата» + кнопки «Редактировать» (видна только staff ИЛИ автору записи) / «Удалить» (только staff). Под hero — 4 секции (Тип/Телефон с tel:/E-mail с mailto:/Адрес) + Заметки если есть + Card «Дела клиента» с compact-table (StageBadge, responsible Avatar+имя, opened_at mono, contract_sum mono, debt mono красный если >0). Empty-state с «Шаг 5 · скоро».
+  - `/clients/[id]/edit` — `updateClientAction.bind(null, id)` → передаётся в ClientForm как валидный Server Action.
+
+### QA-прогон под двумя ролями (через `gstack /browse`)
+- **admin (Анна Админ):** create Петровой с заметкой → edit адреса → search «Петр» → filter «Компания» → delete Иванова (FK-блок «Нельзя удалить») → delete Петровой (✓ banner «Клиент удалён»). Всё работает.
+- **lawyer (Лев Адвокатов, specialist):** list показал 1 клиента (Иванов, его case CRM-2026-001); прямой URL Петровой → 404 (RLS); кнопок Edit/Delete на Иванове НЕТ (lawyer не staff и не creator).
+- Скриншоты: `docs/qa-04-*.png` (9 шт.).
+
+### Найденные и закрытые в сессии баги
+1. **`/clients/[id]/edit` падал 500** — `boundAction` как inline async-функция: «Functions cannot be passed directly to Client Components». Фикс: `updateClientAction.bind(null, id)` — bind на Server Action сохраняет server-action-маркировку.
+2. **«Редактировать» виден всем** на детальной — но RLS UPDATE = staff OR creator. Замаскировал по `isStaff || created_by === user.id` (`canEdit`).
 
 ### Открытые решения
 - **Git remote:** всё ещё отложен. Подключим по запросу.
-- **Локальный Supabase** поднят. Порты 54321/54322/54323/54324. Конфиг: `supabase/config.toml` — `project_id = "yur-crm"`.
-- **Зависимости добавлены в Шаге 3:** `class-variance-authority`, `clsx`, `tailwind-merge`, `@radix-ui/react-slot`, `@radix-ui/react-label`, `lucide-react`.
-- **Деактивация сотрудника (Шаг 4):** при `is_active = false` обязательно вызывать `supabase.auth.admin.signOut(userId)`. Иначе у деактивированного пользователя с ещё валидным JWT proxy будет пропускать запросы, и getCurrentUser (фильтр по is_active) будет редиректить на /login. Цикл редиректов сейчас разорван на уровне страницы /login (там вызывается getCurrentUser), но это компенсация — корректный путь это signOut.
-- **Старый dev-сервер залипает на изменения globals.css**: после крупных правок токенов — `taskkill /PID <pid>` + `rm -rf .next` + `npm run dev` заново. Hot reload Turbopack не всегда подхватывает.
+- **Локальный Supabase** поднят. Порты 54321/54322/54323/54324.
+- **Дизайн-система v0.2** — заморожена, не трогаем без явной правки DESIGN.md.
+- **Старый dev-сервер залипает** на сильные правки — лечение: `Stop-Process -Id <pid> -Force` + `rm -rf .next` + `npm run dev` заново.
+- **Turbopack не подхватил новые папки сразу** — пришлось touch `[id]/edit/page.tsx` чтобы fast-refresh добавил роут. Если будут аналогичные 404 после создания файлов под `(app)/` — touch + перезагрузка страницы (или kill+rm -rf .next).
+- **Деактивация сотрудника** — TODO с Шага 2: `auth.admin.signOut(userId)` при `is_active=false`. Не реализовали — будет в админ-странице сотрудников (не сейчас).
 
 ---
 
@@ -92,6 +104,112 @@ _Снимок на 2026-05-27 (третья сессия)._
 ## Лог сессий
 
 <!-- Новые записи добавляются СВЕРХУ (новейшая первой). Append-only — историю не переписывать. -->
+
+## Сессия 2026-05-27 (Шаг 4 — Клиенты)
+
+**Шаг(и):** 4 — Клиенты (CRUD + RLS + app-shell) — завершён
+**Длительность:** ~2 часа
+**Модель:** Claude Opus 4.7 (1M context)
+
+### Сделано
+
+**Закоммитили Шаг 3** в начале сессии: `6656949 feat(design): шаг 3 — визуальная система v0.2 (яркий SaaS, indigo, light-only)`.
+
+**App-shell (новое, нужно для всех будущих страниц):**
+- `src/app/(app)/layout.tsx` — route group для авторизованных страниц, `requireUser()` страж.
+- `src/components/app/sidebar.tsx` (SC) + `sidebar-nav.tsx` (`'use client'`, usePathname для active highlight). Light 240px sidebar: brand «▲ Юр CRM» (indigo gradient square + текст), 7 nav-пунктов (Главная/Клиенты enabled, Дела/Задачи/Календарь/Документы/Финансы disabled с грифом «скоро»), user-pill (Avatar md + имя + специализация/роль + LogoutButton).
+- Старый `src/app/page.tsx` переехал в `src/app/(app)/page.tsx`. Из main удалена LogoutButton (теперь в sidebar).
+
+**Данные:**
+- Типы в `src/lib/types/db.ts`: `ClientKind`, `CLIENT_KIND_LABEL`, `CLIENT_KINDS`, `Client`, `CaseStage`, `CaseSummary` (с responsible).
+- `src/lib/clients/queries.ts`: `listClients({q, kind, page})` — ILIKE OR-поиск по name/phone/email с санитайзингом спецсимволов PostgREST + filter + count:exact + range pagination + `cases(count)` subselect; `getClient(id)`; `getClientCases(clientId)` — join `responsible:responsible_id(id, full_name)` с corection массив→объект (PostgREST many-to-one возвращает массив). `CLIENTS_PAGE_SIZE = 20`.
+- `src/lib/clients/actions.ts`: `createClientAction`/`updateClientAction`/`deleteClientAction` — Server Actions с ручной валидацией (без zod — exact same паттерн как `loginAction`). Email-regex. `revalidatePath`. FK-23503 (delete с делами) → `?error=has_cases`, прочее → `?error=delete_failed`.
+
+**UI-примитивы (общие):**
+- `src/components/ui/textarea.tsx` — зеркало Input (surface-muted, focus indigo+ring).
+- `src/components/ui/select.tsx` — нативный `<select>` со скрытым `appearance-none` + ChevronDown иконкой.
+- `src/components/ui/table.tsx` — `Table`/`TableHeader`/`TableBody`/`TableRow`/`TableHead`/`TableCell` со стилями из DESIGN.md (44px row, sticky thead, hover-row).
+
+**UI-компоненты (клиенты):**
+- `client-kind-badge.tsx` (SC): Badge с info-тоном для «Компания», neutral для «Физлицо».
+- `client-form.tsx` (`'use client'`): useActionState + useFormStatus, переиспользуется в /new и /edit; поля с лейблами + per-field error, aria-invalid; кнопки Создать/Сохранить + Отмена.
+- `clients-search.tsx` (`'use client'`): controlled Input + router.replace + useTransition; при submit сбрасывает page=1.
+- `delete-client-form.tsx` (`'use client'`): `<form action={deleteClientAction}>` с `onSubmit={e => !confirm(...) && e.preventDefault()}`.
+
+**Страницы:**
+- `/clients` — header + русский плюрализатор счётчика; CTA «Добавить клиента»; ClientsSearch + 3 filter pills (Все/Физлицо/Компания); Table с 6 колонками (Avatar+name link → detail, kind Badge, phone mono, email mono, дел, дата mono); empty-state с разделением hasFilters/нет; пагинация (Назад/Вперёд) если pageCount>1.
+- `/clients/new` — Card с ClientForm; «К списку» breadcrumb; редирект на `/clients/[id]` после успеха.
+- `/clients/[id]` — `CardHero` indigo с XL Avatar + name + «kind · клиент с дата» + кнопки «Редактировать» (canEdit = isStaff || created_by===user.id) / «Удалить» (только isStaff). 4 секции в 2-кол grid + Заметки. Card «Дела клиента» с compact-table (StageBadge, responsible Avatar+имя, opened_at mono, contract_sum mono, debt mono красный если >0). Empty-state с «Шаг 5 · скоро». error-banner по `?error=...`. success-banner по `?deleted=1` (на /clients).
+- `/clients/[id]/edit` — Card с ClientForm prefilled; `updateClientAction.bind(null, id)` (важно: bind возвращает Server Action, inline async-функция — нет).
+
+**QA-прогон (`gstack /browse`):**
+- admin: create→edit→search→filter→delete-fk-блок→delete-успех. Все потоки работают.
+- lawyer (specialist): RLS-изоляция доказана (видит 1 клиента, 404 на чужого, нет edit/delete кнопок на Иванове).
+- 9 скриншотов в `docs/qa-04-*.png`.
+
+### Решения и почему
+
+- **App-shell в Шаге 4, а не позже** — без него /clients была бы изолированной страницей без навигации. Делать sidebar в Шагах 5+ всё равно пришлось бы, лучше сразу. Sidebar light, не «1С-look» (DESIGN.md §15-запрет).
+- **Хранилище queries/actions в `src/lib/clients/`, а не в `app/(app)/clients/_lib/`** — Server Actions могут быть импортированы из Client Components, плюс tests/repls могут импортировать queries отдельно. `'use server'` файл-уровень безопаснее.
+- **Bind вместо inline async** для update — выяснилось через 500: «Functions cannot be passed directly to Client Components». Server Actions помечаются на уровне модуля; bind сохраняет маркировку, inline-замыкание — нет.
+- **canEdit на детальной = staff OR creator** — RLS UPDATE точно такое же; иначе UI показывал кнопку, действие которой откажет молча. Удаление — только staff (RLS).
+- **Без zod** — 6 полей формы, ручная валидация в 30 строк. Тащить зависимость ради этого не стали.
+- **Поиск с санитайзингом** — PostgREST `.or()` интерпретирует `,()'"\\%` как структуру фильтра. Стрипаем перед подстановкой в шаблон ILIKE.
+- **Cases-count через embed** — `clients.select('..., cases(count)')` даёт `[{count: N}]` рядом с каждой строкой клиента. Без N+1.
+- **Удаление через bare action (не useActionState)** — нужен `confirm()` без state-сообщений; `<form action={...}>` + onSubmit-preventDefault достаточно.
+- **deleteClientAction типизирован `Promise<void>` + redirect** — redirect в Next.js Server Actions — это throw, никогда не возвращает. Возврат типа не нужен.
+
+### Незакрытые вопросы / TODO
+
+- [ ] **Шаг 4 НЕ закоммичен** — пользователь не давал команду коммитить. В новой сессии — закоммитить первым делом.
+- [ ] **Turbopack не подхватил новый файл `/edit/page.tsx`** сразу (404 даже после успешного `npm run build` — то есть файл точно есть). Touch + reload помогли. Будут аналогичные случаи под `(app)/` — touch файла + перезагрузка вкладки.
+- [ ] **Длинное имя в user-pill сайдбара** — труется (видно «Лев Адвокат…»). Минорная полировка под `/design-review` или сделать LogoutButton иконкой.
+- [ ] **`/design-review` НЕ запускали** — это интерактивный скилл с AskUserQuestion-гейтами, не подходит под текущий auto-mode. Если нужно — отдельно. Я вручную сверил все экраны с DESIGN.md, всё на месте.
+- [ ] **2 moderate npm vulnerabilities** — тащим с Шагов 0-3, не блокирующие. `/cso` review когда-нибудь.
+- [ ] **`.gitignore`** — добавлена строка `.gstack/` (gstack добавил себя сам). Включим в коммит Шага 4.
+
+### Handoff для следующей сессии (Шаг 5 — Дела)
+
+- **Первая задача:** закоммитить Шаг 4 одним коммитом. Предложенное сообщение:
+  `feat(clients): шаг 4 — CRUD клиентов + app-shell + RLS-проверки`
+  Тело: app-shell + страницы + типы + queries + actions + UI-примитивы + QA-скриншоты.
+- **Затем стартовать Шаг 5:**
+  - Прочитать `CLAUDE.md §5` (модель `cases`: number_title, client_id, responsible_id, opened_at, case_type, stage, priority, tags, contract_sum, paid_total, debt, billing_types, opponent, court_case_number, court, closed_at).
+  - Прочитать `CLAUDE.md §6` (8 этапов воронки) и §7 пункт 2 (движение «только вперёд» — в Шаге 5 не валидируем, это Шаг 6).
+  - Прочитать `kickoff-prompt.md` Шаг 5.
+  - Изучить готовое: `StageBadge`, `Avatar`, `Table`, `Select`, `Textarea`, `ClientForm` (паттерн `useActionState` + `'use server'` + `.bind` для edit).
+  - Спланировать страницы:
+    - `/cases` — список с фильтрами (stage, case_type, responsible — для admin/owner), поиском по number_title + клиенту, сортировкой (default — по opened_at desc).
+    - `/cases/new` — форма создания. Если пришли с `?client=<id>` (например с карточки клиента) — pre-select клиента.
+    - `/cases/[id]` — карточка дела с CardHero (gradient под этап? или indigo?), все поля + связанный клиент link → /clients/[id] + ответственный Avatar+имя + KPIs (contract_sum/paid/debt) + place-holders для документов/задач/платежей (Шаги 7-8).
+    - `/cases/[id]/edit` — форма редактирования. Для specialist — RLS UPDATE = staff OR responsible (см. `cases_update_staff_or_responsible`).
+  - Не забыть на странице клиента (`/clients/[id]`) добавить рабочую кнопку «Новое дело» → `/cases/new?client=<client.id>`.
+  - План показать → ждать «ок».
+- **Файлы открыть в первую очередь:**
+  - `CLAUDE.md §5/§6/§7`, `kickoff-prompt.md` Шаг 5.
+  - `supabase/migrations/20260526100100_core_tables.sql` (модель cases).
+  - `supabase/migrations/20260526100200_rls_policies.sql` (политики cases).
+  - `src/lib/clients/queries.ts` и `actions.ts` как образцы паттерна.
+  - `src/components/ui/stage-badge.tsx` (`STAGE_LABELS` экспорт).
+- **Команды для проверки текущего состояния:**
+  - `git log --oneline -5` — после коммита Шага 4 в начале сессии должно быть 6 коммитов.
+  - `docker ps --format "{{.Names}}"` — supabase контейнеры подняты.
+  - `npm run lint && npx tsc --noEmit && npm run build` — чисто.
+  - `npm run dev` → http://localhost:3000/login → admin/lawyer (см. `scripts/seed.ts`) → /clients работает.
+- **Подводные камни:**
+  - **НЕ передавать inline async-функции в Client Components**. Только `serverAction.bind(...)` или прямую ссылку на экспорт.
+  - **PostgREST many-to-one join** возвращает массив — обязательно сворачивать первый элемент в TS.
+  - **`.or()` фильтр PostgREST** — пользовательский ввод санитайзить от `,()*'"\\%`.
+  - **Turbopack кэширует роуты** — после создания новой папки под `(app)/` touch файла + ребут вкладки.
+  - **Длинные числа** (сумма дела) — `Intl.NumberFormat('ru-RU')` уже использовали в `/clients/[id]`, переиспользовать.
+  - **`closed_at` обязан совпадать со stage='closed'** (CHECK constraint в БД, см. core_tables.sql). При редактировании этапа в Шаге 5 — учитывать.
+- **Что НЕ делать в Шаге 5:**
+  - НЕ валидировать «только вперёд» движение этапов (это Шаг 6).
+  - НЕ создавать платежи/задачи/документы из карточки дела (Шаги 7-8). Только заглушки с «скоро».
+  - НЕ трогать seed-данные — два дела (CRM-2026-001 и CRM-2026-002) проверочные, должны остаться.
+
+### Коммиты
+- Будет добавлен в начале следующей сессии (Шаг 4 не закоммичен).
 
 ## Сессия 2026-05-27 (Шаг 3 — два захода)
 

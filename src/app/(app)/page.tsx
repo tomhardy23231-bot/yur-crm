@@ -1,5 +1,4 @@
 import { requireUser } from '@/lib/auth/require-role';
-import { LogoutButton } from '@/components/logout-button';
 import { Card, CardHero } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -35,11 +34,8 @@ export default async function HomePage() {
     : null;
 
   return (
-    <main className="flex flex-1 flex-col items-start gap-10 px-8 py-12 sm:px-16">
-      <header className="flex w-full max-w-3xl flex-col gap-3">
-        <span className="inline-flex items-center gap-2 self-start font-mono text-[11px] uppercase tracking-[0.06em] text-primary bg-primary-subtle px-2.5 py-1 rounded-full font-semibold">
-          ▲ Юр CRM
-        </span>
+    <main className="flex flex-col gap-10 px-8 py-12 sm:px-12">
+      <header className="flex flex-col gap-3 max-w-3xl">
         <h1 className="text-[36px] leading-[1.1] tracking-[-0.02em] font-bold text-text">
           Добрый день, {profile.full_name.split(' ')[0]}.
         </h1>
@@ -48,10 +44,14 @@ export default async function HomePage() {
         </p>
       </header>
 
-      <Card className="w-full max-w-3xl">
+      <Card className="max-w-3xl">
         <CardHero>
-          <Avatar name={profile.full_name} size="xl" className="border-2 border-white/40" />
-          <div className="flex-1">
+          <Avatar
+            name={profile.full_name}
+            size="xl"
+            className="border-2 border-white/40"
+          />
+          <div className="flex-1 min-w-0">
             <p className="text-[20px] font-bold leading-tight">{profile.full_name}</p>
             <p className="text-[13px] opacity-90 mt-0.5">
               {specialistLabel ? `${roleLabel} · ${specialistLabel}` : roleLabel}
@@ -78,8 +78,6 @@ export default async function HomePage() {
           )}
         </dl>
       </Card>
-
-      <LogoutButton />
     </main>
   );
 }
@@ -98,7 +96,11 @@ function Row({
       <dt className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
         {label}
       </dt>
-      <dd className={mono ? 'font-mono text-[13px] text-text' : 'text-[14px] text-text font-medium'}>
+      <dd
+        className={
+          mono ? 'font-mono text-[13px] text-text' : 'text-[14px] text-text font-medium'
+        }
+      >
         {children}
       </dd>
     </div>

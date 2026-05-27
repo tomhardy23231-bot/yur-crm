@@ -1,0 +1,178 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+
+import { requireUser } from '@/lib/auth/require-role';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { CLIENT_KINDS, type ClientKind } from '@/lib/types/db';
+
+export type ClientFormFields =
+  | 'name'
+  | 'client_kind'
+  | 'phone'
+  | 'email'
+  | 'address'
+  | 'notes';
+
+export type ClientActionState = {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Partial<Record<ClientFormFields, string>>;
+  values?: Partial<Record<ClientFormFields, string>>;
+};
+
+function getString(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isClientKind(value: string): value is ClientKind {
+  return (CLIENT_KINDS as readonly string[]).includes(value);
+}
+
+// Базовая валидация e-mail без RFC-крайностей — пользовательских e-mail тут немного.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type Validated = {
+  name: string;
+  client_kind: ClientKind;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+};
+
+function validate(formData: FormData):
+  | { ok: true; data: Validated; values: Record<ClientFormFields, string> }
+  | { ok: false; state: ClientActionState } {
+  const name = getString(formData, 'name');
+  const kindRaw = getString(formData, 'client_kind');
+  const phone = getString(formData, 'phone');
+  const email = getString(formData, 'email');
+  const address = getString(formData, 'address');
+  const notes = getString(formData, 'notes');
+
+  const values: Record<ClientFormFields, string> = {
+    name,
+    client_kind: kindRaw,
+    phone,
+    email,
+    address,
+    notes,
+  };
+
+  const fieldErrors: ClientActionState['fieldErrors'] = {};
+  if (!name) fieldErrors.name = 'Укажите имя клиента';
+  else if (name.length > 200) fieldErrors.name = 'Слишком длинное (макс 200)';
+
+  if (!kindRaw) fieldErrors.client_kind = 'Выберите тип';
+  else if (!isClientKind(kindRaw)) fieldErrors.client_kind = 'Недопустимый тип';
+
+  if (email && !EMAIL_RE.test(email)) {
+    fieldErrors.email = 'Похоже на ошибку в e-mail';
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      state: { ok: false, fieldErrors, values, message: 'Проверьте поля формы' },
+    };
+  }
+
+  // isClientKind проверен выше — но TS этого не знает после union narrowing
+  // через объект, поэтому утверждаем тип явно.
+  return {
+    ok: true,
+    data: {
+      name,
+      client_kind: kindRaw as ClientKind,
+      phone: phone || null,
+      email: email || null,
+      address: address || null,
+      notes: notes || null,
+    },
+    values,
+  };
+}
+
+export async function createClientAction(
+  _prev: ClientActionState,
+  formData: FormData,
+): Promise<ClientActionState> {
+  const user = await requireUser();
+  const result = validate(formData);
+  if (!result.ok) return result.state;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({
+      ...result.data,
+      created_by: user.profile.id,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    return {
+      ok: false,
+      values: result.values,
+      message: error?.message ?? 'Не удалось создать клиента',
+    };
+  }
+
+  revalidatePath('/clients');
+  redirect(`/clients/${data.id}`);
+}
+
+export async function updateClientAction(
+  clientId: string,
+  _prev: ClientActionState,
+  formData: FormData,
+): Promise<ClientActionState> {
+  await requireUser();
+  const result = validate(formData);
+  if (!result.ok) return result.state;
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from('clients')
+    .update(result.data)
+    .eq('id', clientId);
+
+  if (error) {
+    return {
+      ok: false,
+      values: result.values,
+      message: error.message,
+    };
+  }
+
+  revalidatePath('/clients');
+  revalidatePath(`/clients/${clientId}`);
+  redirect(`/clients/${clientId}`);
+}
+
+export async function deleteClientAction(formData: FormData): Promise<void> {
+  await requireUser();
+
+  const clientId = getString(formData, 'client_id');
+  if (!clientId) {
+    redirect('/clients?error=missing_id');
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from('clients').delete().eq('id', clientId);
+
+  if (error) {
+    // Самая частая причина — FK от cases (RESTRICT). RLS-отказ (нет прав)
+    // молчаливо вернёт 0 строк, без ошибки — поэтому ловим только реальный SQL-error.
+    const isFkViolation = error.code === '23503';
+    const param = isFkViolation ? 'has_cases' : 'delete_failed';
+    redirect(`/clients/${clientId}?error=${param}`);
+  }
+
+  revalidatePath('/clients');
+  redirect('/clients?deleted=1');
+}
