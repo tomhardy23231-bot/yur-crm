@@ -274,7 +274,7 @@ This project's Baseline target is Baseline 2026.
 - НЕ «1С-look»: тёмная панель навигации, плотные модалки с табами сверху, серый dashboard.
 
 ### Типографика
-- **Plus Jakarta Sans** (UI/display) + **Geist Mono** (numbers). Кириллица обязательна.
+- **Manrope** (UI/display, variable) + **Geist Mono** (numbers). Кириллица обязательна.
 - `font-variant-numeric: tabular-nums` глобально.
 
 ### Цвет и токены

@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import {
   Building2,
   ChevronLeft,
-  FileText,
   Gavel,
   Hash,
   Landmark,
@@ -20,6 +19,9 @@ import { StageBadge, STAGE_LABELS } from '@/components/ui/stage-badge';
 import { BillingTypesBadges } from '@/components/cases/billing-types-badges';
 import { DeleteCaseForm } from '@/components/cases/delete-case-form';
 import { PriorityBadge } from '@/components/cases/priority-badge';
+import { CaseActivityBlock } from '@/components/activity/case-activity-block';
+import { CaseDocumentsBlock } from '@/components/documents/case-documents-block';
+import { CasePaymentsBlock } from '@/components/payments/case-payments-block';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { requireUser } from '@/lib/auth/require-role';
 import { getCase } from '@/lib/cases/queries';
@@ -215,11 +217,11 @@ export default async function CaseDetailPage({
           <h2 className="text-[16px] font-semibold text-text">Финансы</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
-          <KPI label="Сумма договора" value={MONEY_FMT.format(c.contract_sum)} />
-          <KPI label="Оплачено" value={MONEY_FMT.format(c.paid_total)} tone="success" />
+          <KPI label="Сумма договора" value={`${MONEY_FMT.format(c.contract_sum)} ₴`} />
+          <KPI label="Оплачено" value={`${MONEY_FMT.format(c.paid_total)} ₴`} tone="success" />
           <KPI
             label="Долг"
-            value={MONEY_FMT.format(c.debt)}
+            value={`${MONEY_FMT.format(c.debt)} ₴`}
             tone={c.debt > 0 ? 'error' : 'muted'}
           />
         </div>
@@ -238,19 +240,22 @@ export default async function CaseDetailPage({
         currentUserId={user.profile.id}
       />
 
-      {/* Заглушки под Шаги 8-9 */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <SoonCard
-          icon={FileText}
-          title="Документы"
-          hint="Договор, доверенности, претензии — загрузка появится на Шаге 8."
-        />
-        <SoonCard
-          icon={Wallet}
-          title="Платежи"
-          hint="История платежей по делу — Шаг 9."
-        />
-      </div>
+      {/* Документы (Шаг 8) */}
+      <CaseDocumentsBlock
+        caseId={c.id}
+        canWrite={canEdit}
+        canDelete={isStaff}
+      />
+
+      {/* Платежи (Шаг 9) */}
+      <CasePaymentsBlock
+        caseId={c.id}
+        canWrite={canEdit}
+        canManage={isStaff}
+      />
+
+      {/* История (Шаг 10) */}
+      <CaseActivityBlock caseId={c.id} />
     </main>
   );
 }
@@ -299,29 +304,6 @@ function KPI({
       </p>
       <p className={`text-[22px] font-bold font-mono ${valueClass}`}>{value}</p>
     </div>
-  );
-}
-
-function SoonCard({
-  icon: Icon,
-  title,
-  hint,
-}: {
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
-  title: string;
-  hint: string;
-}) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h3 className="text-[14px] font-semibold text-text">{title}</h3>
-        <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
-          скоро
-        </span>
-      </div>
-      <p className="text-[12.5px] text-text-muted leading-[1.5]">{hint}</p>
-    </Card>
   );
 }
 

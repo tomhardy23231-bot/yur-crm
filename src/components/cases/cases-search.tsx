@@ -42,7 +42,7 @@ export function CasesSearch({ initial }: { initial: string }) {
         name="q"
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        placeholder="Поиск по номеру/названию…"
+        placeholder="Поиск: номер, клиент, оппонент, № суддела, тег…"
         className="pl-9"
         aria-label="Поиск дел"
       />

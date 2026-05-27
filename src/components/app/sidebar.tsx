@@ -5,6 +5,7 @@ import { LogoutButton } from '@/components/logout-button';
 import type { CurrentUser } from '@/lib/auth/current-user';
 import type { Role, SpecialistType } from '@/lib/types/db';
 
+import { CommandPaletteTrigger } from './command-palette';
 import { SidebarNav, type SidebarCounts } from './sidebar-nav';
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -46,6 +47,8 @@ export function Sidebar({
         </span>
         <span className="font-semibold text-[15px] text-text">Юр CRM</span>
       </Link>
+
+      <CommandPaletteTrigger />
 
       <SidebarNav counts={counts} />
 

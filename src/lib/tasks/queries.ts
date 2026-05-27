@@ -139,6 +139,45 @@ export async function countOpenTasksAssignedTo(userId: string): Promise<number> 
 }
 
 // =====================================================================
+// listUpcomingTasks — приближающиеся сроки (Шаг 10, напоминания).
+// RLS отрежет невидимые: specialist видит только свои дела;
+// admin — все. Поэтому мы НЕ фильтруем по assignee — admin'у полезно видеть
+// приближающиеся дедлайны всей команды.
+// Параметры:
+//   - hoursAhead: окно (по умолчанию 72ч ≈ «ближайшие 3 дня»);
+//   - limit: сколько ближайших показать.
+// Возвращает только open-task с непустым due_at, отсортированные asc.
+// =====================================================================
+export async function listUpcomingTasks(params: {
+  hoursAhead?: number;
+  limit?: number;
+} = {}): Promise<TaskWithRefs[]> {
+  const hoursAhead = params.hoursAhead ?? 72;
+  const limit = Math.max(1, params.limit ?? 10);
+
+  const now = new Date();
+  const horizon = new Date(now.getTime() + hoursAhead * 3600 * 1000);
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('tasks')
+    .select(
+      'id, case_id, title, description, kind, assignee_id, created_by, due_at, status, created_at, ' +
+        'assignee:assignee_id(id, full_name), case:case_id(id, number_title)',
+    )
+    .eq('status', 'open')
+    .not('due_at', 'is', null)
+    .lte('due_at', horizon.toISOString())
+    .order('due_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`listUpcomingTasks failed: ${error.message}`);
+  }
+  return normalizeTasks(data ?? []);
+}
+
+// =====================================================================
 // listAssignableUsers — для Select assignee при создании/редактировании задачи.
 // Любой active user (CLAUDE.md §7-5: специалист может ставить себе И коллегам).
 // =====================================================================

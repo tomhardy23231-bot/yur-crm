@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { requireUser } from '@/lib/auth/require-role';
+import { logActivity } from '@/lib/activity-log/log';
+import { diffChanges } from '@/lib/activity-log/diff';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   BILLING_TYPES,
@@ -234,10 +236,55 @@ export async function createCaseAction(
     };
   }
 
+  await logActivity({
+    entity_type: 'case',
+    entity_id: data.id,
+    action: 'case_created',
+    changes: {
+      after: {
+        number_title: result.data.number_title,
+        case_type: result.data.case_type,
+        stage: result.data.stage,
+        priority: result.data.priority,
+        contract_sum: result.data.contract_sum,
+      },
+    },
+  });
+
   revalidatePath('/cases');
   revalidatePath(`/clients/${result.data.client_id}`);
   redirect(`/cases/${data.id}`);
 }
+
+const CASE_DIFF_FIELDS = [
+  'number_title',
+  'client_id',
+  'responsible_id',
+  'opened_at',
+  'case_type',
+  'priority',
+  'contract_sum',
+  'billing_types',
+  'opponent',
+  'court_case_number',
+  'court',
+  'tags',
+] as const;
+
+type CaseDiffShape = {
+  number_title: string;
+  client_id: string;
+  responsible_id: string;
+  opened_at: string;
+  case_type: CaseType;
+  priority: CasePriority;
+  contract_sum: number;
+  billing_types: BillingType[];
+  opponent: string | null;
+  court_case_number: string | null;
+  court: string | null;
+  tags: string[];
+};
 
 export async function updateCaseAction(
   caseId: string,
@@ -249,6 +296,34 @@ export async function updateCaseAction(
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
+
+  // Снапшот до правки — для diff'а в activity_log. RLS отрежет невидимое →
+  // before=null → лог не запишется (это ок, тогда и update упадёт).
+  // PostgREST не выводит row-type из строкового select — поэтому ручной cast.
+  type CaseBeforeRow = {
+    number_title: string;
+    client_id: string;
+    responsible_id: string;
+    opened_at: string;
+    case_type: string;
+    priority: string;
+    contract_sum: number | string;
+    billing_types: string[] | null;
+    opponent: string | null;
+    court_case_number: string | null;
+    court: string | null;
+    tags: string[] | null;
+  };
+  const { data: beforeRaw } = await supabase
+    .from('cases')
+    .select(
+      'number_title, client_id, responsible_id, opened_at, case_type, ' +
+        'priority, contract_sum, billing_types, opponent, court_case_number, court, tags',
+    )
+    .eq('id', caseId)
+    .maybeSingle();
+  const before = beforeRaw as CaseBeforeRow | null;
+
   // При смене этапа на/с 'closed' триггеров для closed_at нет — обновляем сами.
   // (CHECK constraint cases_closed_consistency требует синхронности.)
   const { error } = await supabase
@@ -272,6 +347,49 @@ export async function updateCaseAction(
     };
   }
 
+  // Diff'им только реально пользовательские поля. stage пропускаем —
+  // у него собственный action 'stage_corrected' (триггер) и движение вперёд
+  // лог не интересует (UI и так показывает текущий этап).
+  if (before) {
+    const beforeShape: CaseDiffShape = {
+      number_title: String(before.number_title ?? ''),
+      client_id: String(before.client_id ?? ''),
+      responsible_id: String(before.responsible_id ?? ''),
+      opened_at: String(before.opened_at ?? ''),
+      case_type: before.case_type as CaseType,
+      priority: before.priority as CasePriority,
+      contract_sum: Number(before.contract_sum ?? 0),
+      billing_types: (before.billing_types ?? []) as BillingType[],
+      opponent: (before.opponent as string | null) ?? null,
+      court_case_number: (before.court_case_number as string | null) ?? null,
+      court: (before.court as string | null) ?? null,
+      tags: (before.tags ?? []) as string[],
+    };
+    const afterShape: Partial<CaseDiffShape> = {
+      number_title: result.data.number_title,
+      client_id: result.data.client_id,
+      responsible_id: result.data.responsible_id,
+      opened_at: result.data.opened_at,
+      case_type: result.data.case_type,
+      priority: result.data.priority,
+      contract_sum: result.data.contract_sum,
+      billing_types: result.data.billing_types,
+      opponent: result.data.opponent,
+      court_case_number: result.data.court_case_number,
+      court: result.data.court,
+      tags: result.data.tags,
+    };
+    const diff = diffChanges(beforeShape, afterShape, CASE_DIFF_FIELDS);
+    if (diff) {
+      await logActivity({
+        entity_type: 'case',
+        entity_id: caseId,
+        action: 'case_updated',
+        changes: { diff },
+      });
+    }
+  }
+
   revalidatePath('/cases');
   revalidatePath(`/cases/${caseId}`);
   revalidatePath(`/clients/${result.data.client_id}`);
@@ -287,6 +405,31 @@ export async function deleteCaseAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Снапшот до удаления — нужен и для логирования, и потому что после DELETE
+  // private.can_see_case(case_id) = false → лог не запишется.
+  // Поэтому логируем ДО delete; при FK-ошибке журнал получит спорадическую
+  // «попытку удаления» — приемлемая цена, FK-violations редки.
+  const { data: before } = await supabase
+    .from('cases')
+    .select('number_title, stage, client_id')
+    .eq('id', caseId)
+    .maybeSingle();
+
+  if (before) {
+    await logActivity({
+      entity_type: 'case',
+      entity_id: caseId,
+      action: 'case_deleted',
+      changes: {
+        before: {
+          number_title: before.number_title,
+          stage: before.stage,
+        },
+      },
+    });
+  }
+
   const { error } = await supabase.from('cases').delete().eq('id', caseId);
 
   if (error) {

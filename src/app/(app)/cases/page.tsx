@@ -198,7 +198,7 @@ export default async function CasesPage({
           isStaff={isStaff}
         />
       ) : (
-        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
@@ -260,13 +260,13 @@ export default async function CasesPage({
                   <TableCell className="font-mono text-[12.5px] text-text-muted">
                     {DATE_FMT.format(new Date(c.opened_at))}
                   </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {MONEY_FMT.format(c.contract_sum)}
+                  <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
+                    {MONEY_FMT.format(c.contract_sum)} ₴
                   </TableCell>
                   <TableCell
-                    className={`text-right font-mono ${c.debt > 0 ? 'text-error' : 'text-text-muted'}`}
+                    className={`text-right font-mono tabular-nums whitespace-nowrap ${c.debt > 0 ? 'text-error' : 'text-text-muted'}`}
                   >
-                    {MONEY_FMT.format(c.debt)}
+                    {MONEY_FMT.format(c.debt)} ₴
                   </TableCell>
                 </TableRow>
               ))}

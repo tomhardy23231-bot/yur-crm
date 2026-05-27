@@ -120,7 +120,7 @@ export default async function ClientsPage({
       {items.length === 0 ? (
         <EmptyState hasFilters={Boolean(q || kind)} />
       ) : (
-        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">

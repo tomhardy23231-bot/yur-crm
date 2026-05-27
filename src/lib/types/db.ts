@@ -227,3 +227,66 @@ export type TaskWithRefs = Task & {
   assignee: { id: string; full_name: string } | null;
   case: { id: string; number_title: string } | null;
 };
+
+// =====================================================================
+// Documents — файлы по делу (CLAUDE.md §5, §8 Phase 1).
+// =====================================================================
+
+export type DocType =
+  | 'contract'
+  | 'claim'
+  | 'power_of_attorney'
+  | 'correspondence'
+  | 'other';
+
+export const DOC_TYPES: ReadonlyArray<DocType> = [
+  'contract',
+  'claim',
+  'power_of_attorney',
+  'correspondence',
+  'other',
+];
+
+export const DOC_TYPE_LABEL: Record<DocType, string> = {
+  contract: 'Договор',
+  claim: 'Претензия',
+  power_of_attorney: 'Доверенность',
+  correspondence: 'Переписка',
+  other: 'Прочее',
+};
+
+export type DocumentRow = {
+  id: string;
+  case_id: string;
+  file_name: string;
+  storage_key: string;
+  doc_type: DocType;
+  uploaded_by: string;
+  uploaded_at: string;
+};
+
+export type DocumentWithUploader = DocumentRow & {
+  uploader: { id: string; full_name: string } | null;
+};
+
+// =====================================================================
+// Payments — оплаты по делу (CLAUDE.md §5, §8 Phase 1).
+// paid_total и debt пересчитываются триггерами в БД — UI читает их из cases.
+// =====================================================================
+
+export type PaymentRow = {
+  id: string;
+  case_id: string;
+  // numeric(14,2): PostgREST отдаёт строкой, нормализуем в number при чтении.
+  amount: number;
+  // date (не timestamptz) — YYYY-MM-DD.
+  paid_at: string;
+  method: string | null;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export type PaymentWithCreator = PaymentRow & {
+  creator: { id: string; full_name: string } | null;
+};

@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth/require-role';
 import { Card, CardHero } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { UpcomingDeadlinesBlock } from '@/components/tasks/upcoming-deadlines-block';
 import type { Role, SpecialistType } from '@/lib/types/db';
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -78,6 +79,8 @@ export default async function HomePage() {
           )}
         </dl>
       </Card>
+
+      <UpcomingDeadlinesBlock />
     </main>
   );
 }

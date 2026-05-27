@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { requireUser } from '@/lib/auth/require-role';
+import { logActivity } from '@/lib/activity-log/log';
+import { diffChanges } from '@/lib/activity-log/diff';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CLIENT_KINDS, type ClientKind } from '@/lib/types/db';
 
@@ -122,9 +124,34 @@ export async function createClientAction(
     };
   }
 
+  await logActivity({
+    entity_type: 'client',
+    entity_id: data.id,
+    action: 'client_created',
+    changes: {
+      after: { name: result.data.name, client_kind: result.data.client_kind },
+    },
+  });
+
   revalidatePath('/clients');
   redirect(`/clients/${data.id}`);
 }
+
+const CLIENT_DIFF_FIELDS = [
+  'name',
+  'client_kind',
+  'phone',
+  'email',
+  'address',
+] as const;
+
+type ClientDiffShape = {
+  name: string;
+  client_kind: ClientKind;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+};
 
 export async function updateClientAction(
   clientId: string,
@@ -136,6 +163,14 @@ export async function updateClientAction(
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
+
+  // Снапшот до правки — для diff'а. Поле notes намеренно не логируем.
+  const { data: before } = await supabase
+    .from('clients')
+    .select('name, client_kind, phone, email, address')
+    .eq('id', clientId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('clients')
     .update(result.data)
@@ -147,6 +182,32 @@ export async function updateClientAction(
       values: result.values,
       message: error.message,
     };
+  }
+
+  if (before) {
+    const beforeShape: ClientDiffShape = {
+      name: String(before.name ?? ''),
+      client_kind: before.client_kind as ClientKind,
+      phone: (before.phone as string | null) ?? null,
+      email: (before.email as string | null) ?? null,
+      address: (before.address as string | null) ?? null,
+    };
+    const afterShape: Partial<ClientDiffShape> = {
+      name: result.data.name,
+      client_kind: result.data.client_kind,
+      phone: result.data.phone,
+      email: result.data.email,
+      address: result.data.address,
+    };
+    const diff = diffChanges(beforeShape, afterShape, CLIENT_DIFF_FIELDS);
+    if (diff) {
+      await logActivity({
+        entity_type: 'client',
+        entity_id: clientId,
+        action: 'client_updated',
+        changes: { diff },
+      });
+    }
   }
 
   revalidatePath('/clients');
@@ -163,6 +224,25 @@ export async function deleteClientAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Логируем ДО delete (client-журнал staff-only, после delete RLS на activity
+  // даст is_staff()=true для admin'a — но клиента уже не существует, так что
+  // before-snapshot важен для UI).
+  const { data: clientBefore } = await supabase
+    .from('clients')
+    .select('name, client_kind')
+    .eq('id', clientId)
+    .maybeSingle();
+
+  if (clientBefore) {
+    await logActivity({
+      entity_type: 'client',
+      entity_id: clientId,
+      action: 'client_deleted',
+      changes: { before: { name: clientBefore.name, client_kind: clientBefore.client_kind } },
+    });
+  }
+
   const { error } = await supabase.from('clients').delete().eq('id', clientId);
 
   if (error) {

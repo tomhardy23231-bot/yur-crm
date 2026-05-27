@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { requireUser } from '@/lib/auth/require-role';
+import { logActivity } from '@/lib/activity-log/log';
+import { diffChanges } from '@/lib/activity-log/diff';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   TASK_KINDS,
@@ -145,20 +147,37 @@ export async function createTaskAction(
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('tasks').insert({
-    ...result.data,
-    // RLS WITH CHECK требует created_by = active_uid(); ставим явно из сессии.
-    created_by: user.profile.id,
-    status: 'open' as TaskStatus,
-  });
+  const { data: insertedTask, error } = await supabase
+    .from('tasks')
+    .insert({
+      ...result.data,
+      // RLS WITH CHECK требует created_by = active_uid(); ставим явно из сессии.
+      created_by: user.profile.id,
+      status: 'open' as TaskStatus,
+    })
+    .select('id')
+    .single();
 
-  if (error) {
+  if (error || !insertedTask) {
     return {
       ok: false,
       values: result.values,
-      message: error.message,
+      message: error?.message ?? 'Не удалось создать задачу',
     };
   }
+
+  await logActivity({
+    entity_type: 'case',
+    entity_id: result.data.case_id,
+    action: 'task_created',
+    changes: {
+      task_id: insertedTask.id,
+      title: result.data.title,
+      kind: result.data.kind,
+      assignee_id: result.data.assignee_id,
+      due_at: result.data.due_at,
+    },
+  });
 
   revalidatePath(`/cases/${result.data.case_id}`);
   revalidatePath('/tasks');
@@ -166,6 +185,20 @@ export async function createTaskAction(
   revalidatePath('/', 'layout'); // обновить sidebar counter
   return { ok: true };
 }
+
+const TASK_DIFF_FIELDS = [
+  'title',
+  'kind',
+  'assignee_id',
+  'due_at',
+] as const;
+
+type TaskDiffShape = {
+  title: string;
+  kind: TaskKind;
+  assignee_id: string;
+  due_at: string | null;
+};
 
 export async function updateTaskAction(
   taskId: string,
@@ -177,6 +210,13 @@ export async function updateTaskAction(
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
+
+  const { data: before } = await supabase
+    .from('tasks')
+    .select('title, kind, assignee_id, due_at, case_id')
+    .eq('id', taskId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('tasks')
     .update({
@@ -194,6 +234,30 @@ export async function updateTaskAction(
       values: result.values,
       message: error.message,
     };
+  }
+
+  if (before) {
+    const beforeShape: TaskDiffShape = {
+      title: String(before.title ?? ''),
+      kind: before.kind as TaskKind,
+      assignee_id: String(before.assignee_id ?? ''),
+      due_at: (before.due_at as string | null) ?? null,
+    };
+    const afterShape: Partial<TaskDiffShape> = {
+      title: result.data.title,
+      kind: result.data.kind,
+      assignee_id: result.data.assignee_id,
+      due_at: result.data.due_at,
+    };
+    const diff = diffChanges(beforeShape, afterShape, TASK_DIFF_FIELDS);
+    if (diff) {
+      await logActivity({
+        entity_type: 'case',
+        entity_id: result.data.case_id,
+        action: 'task_updated',
+        changes: { task_id: taskId, title: result.data.title, diff },
+      });
+    }
   }
 
   revalidatePath(`/cases/${result.data.case_id}`);
@@ -216,6 +280,14 @@ export async function toggleTaskStatusAction(formData: FormData): Promise<void> 
 
   const next: TaskStatus = current === 'open' ? 'done' : 'open';
   const supabase = await createSupabaseServerClient();
+
+  // Берём title до апдейта — для удобства лог-чтения.
+  const { data: taskRow } = await supabase
+    .from('tasks')
+    .select('title, case_id')
+    .eq('id', task_id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('tasks')
     .update({ status: next })
@@ -226,7 +298,17 @@ export async function toggleTaskStatusAction(formData: FormData): Promise<void> 
     return;
   }
 
-  if (case_id && UUID_RE.test(case_id)) {
+  // CSO #2: case_id для лога берём из taskRow (DB-truth), не из formData.
+  if (taskRow?.case_id && UUID_RE.test(taskRow.case_id)) {
+    const trueCid = taskRow.case_id;
+    await logActivity({
+      entity_type: 'case',
+      entity_id: trueCid,
+      action: 'task_toggled',
+      changes: { task_id, title: taskRow.title, status: next },
+    });
+    revalidatePath(`/cases/${trueCid}`);
+  } else if (case_id && UUID_RE.test(case_id)) {
     revalidatePath(`/cases/${case_id}`);
   }
   revalidatePath('/tasks');
@@ -244,6 +326,16 @@ export async function deleteTaskAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Снапшот для лога. Можно логировать ПОСЛЕ delete (tasks → case_id жив, RLS
+  // can_see_case продолжит работать). Но title после delete не достанем — поэтому
+  // читаем заранее.
+  const { data: taskBefore } = await supabase
+    .from('tasks')
+    .select('title, case_id')
+    .eq('id', task_id)
+    .maybeSingle();
+
   const { error } = await supabase.from('tasks').delete().eq('id', task_id);
 
   if (error) {
@@ -253,7 +345,19 @@ export async function deleteTaskAction(formData: FormData): Promise<void> {
     redirect('/tasks?error=delete_failed');
   }
 
-  if (case_id) revalidatePath(`/cases/${case_id}`);
+  // CSO #2: case_id для лога берём из taskBefore (DB-truth), не из formData.
+  if (taskBefore?.case_id && UUID_RE.test(taskBefore.case_id)) {
+    const trueCid = taskBefore.case_id;
+    await logActivity({
+      entity_type: 'case',
+      entity_id: trueCid,
+      action: 'task_deleted',
+      changes: { task_id, title: taskBefore.title },
+    });
+    revalidatePath(`/cases/${trueCid}`);
+  } else if (case_id && UUID_RE.test(case_id)) {
+    revalidatePath(`/cases/${case_id}`);
+  }
   revalidatePath('/tasks');
   revalidatePath('/calendar');
   revalidatePath('/', 'layout');

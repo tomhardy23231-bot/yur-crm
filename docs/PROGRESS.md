@@ -9,15 +9,302 @@
 
 ## Текущее состояние
 
-_Снимок на 2026-05-27 (седьмая сессия)._
+_Снимок на 2026-05-27 (одиннадцатая сессия — финал фазы шлифовки)._
 
-- **Шаг:** 7 — Задачи и календарь — **ЗАВЕРШЁН** ✓ (`src/lib/tasks/{queries,actions}`, 5 UI-компонентов, блок задач на карточке дела, страницы `/tasks` (группировка по дням) и `/calendar` (месячный grid 7×6), sidebar-counter, smoke-test блок 10, 8 QA-скриншотов).
-- **Следующий шаг:** 8 — Документы (CLAUDE.md §5 модель `documents`, §8 Phase 1 — загрузка/хранение/скачивание в приватный бакет Supabase Storage с RLS-доступом через `can_write_case`). На карточке дела остались soon-cards «Документы» (Шаг 8) и «Платежи» (Шаг 9).
-- **Последние коммиты (восьмая сессия — старт со сбора долга Шага 6+7):**
-  - `b4eb2c1` feat(tasks): шаг 7 — задачи, общий список и календарь
-  - `db77c44` docs: log Шаг 6 completion + handoff to Шаг 7
-  - `fe29164` feat(cases): шаг 6 — воронка только вперёд + activity_log
-- **Следующее действие:** прочитать `CLAUDE.md §5` (модель `documents`), `§8` (Phase 1 — документы), `kickoff-prompt.md` Шаг 8; миграция приватного бакета `case-documents` + RLS-политики на `storage.objects`; data layer в `src/lib/documents/` (queries + actions с upload/download/delete); UI `CaseDocumentsBlock` на карточке дела вместо SoonCard; smoke-блок 11; `/cso` review обязателен.
+- **Phase 1 MVP + фаза шлифовки ЗАВЕРШЕНЫ** 🎉 — кодовая база готова к batch-коммиту.
+- **Следующий шаг (Шаг 8 плана шлифовки):** batch commit + финальная запись в PROGRESS + опционально `/document-release`.
+- **Все проверки зелёные** на момент закрытия сессии:
+  - `npm run lint` ✓
+  - `npx tsc --noEmit` ✓
+  - `npm run build` ✓ (17 routes — добавился `/api/search`)
+  - `npm run db:seed` ✓ (clean state: 5 users + 2 cases + 1 task + 1 payment)
+  - `npm run smoke:rls` ✓ (13 блоков, **9 проверок** в блоке 13 — Шаг 10 + CSO #1)
+- **Стек уже поднят** на момент закрытия: dev-server :3000 (PID 19064), Docker Supabase healthy, БД свежепосеяна.
+
+### Что осталось ДО batch-коммита (Шаг 8 плана шлифовки)
+
+**Пользователь не определился со стратегией коммитов** — на выбор:
+- **A)** 4 атомарных коммита: `feat(documents)` (Шаг 8), `feat(payments)` (Шаг 9), `feat(activity-log)` (Шаг 10), `feat(polish)` (вся шлифовка). Рекомендую — лучше для ревью, понятная git-история.
+- **B)** Один большой коммит: `feat: Phase 1 MVP завершение`. Проще, но теряется атомарность.
+
+Под каждый из вариантов уже понятно какие файлы куда идут (см. «Незакоммичено» ниже + «Реализовано в фазе шлифовки» секцию).
+
+После commit'ов:
+1. Добавить новый handoff-блок в этот PROGRESS.md (фиксировать что Phase 1 ушло в master).
+2. Опционально `/document-release` для CHANGELOG + README sync.
+3. Если есть GitHub remote — opt-in PR через `/ship` или ручной.
+
+### Прежние долги шлифовки (все закрыты в этой сессии)
+
+- ~~`/cso` review~~ ✅ — даём 3 MEDIUM, все исправлены: `log_activity` allowlist+size cap, bare actions cid-spoof в 4 файлах, UUID-guard в download route.
+- ~~Косметика `₸`~~ ✅ — оказался багом валюты, не косметика. Заменено на `₴` (гривна, U+20B4) в 6 файлах + добавлен суффикс ` ₴` в KPI «Финансы» и таблицы /cases /clients где не было.
+- ~~Cmd+K палитра~~ ✅ — `cmdk@1.1.1`, `CommandPaletteProvider` в app-layout, `CommandPaletteTrigger` в сайдбаре, поиск через RPC `search_case_ids`, role-gated действия.
+- ~~Поиск по `client.name` + `tags`~~ ✅ — RPC `public.search_case_ids(p_q, ...)` SECURITY INVOKER через 20260527130000-миграцию, `listCases` использует RPC при `q`, плейсхолдер обновлён.
+- ~~QA-state cleanup~~ ✅ — `db reset` дважды за сессию, БД чистая.
+
+### Незакоммичено (накоплено за Шаги 8+9+10 + фаза шлифовки)
+
+**Структурные группы (для атомарных коммитов вариант A):**
+
+**Шаг 8 (documents + Storage RLS):**
+- `supabase/migrations/20260527100000_documents_storage.sql` (new)
+- `src/lib/documents/queries.ts` + `actions.ts` (new)
+- `src/app/api/documents/[id]/download/route.ts` (new) — **позже изменён CSO #3-фиксом**
+- `src/components/documents/{doc-type-badge,document-upload-form,document-row,case-documents-block}.tsx` (new)
+- `src/app/(app)/cases/[id]/page.tsx` (M) — заменил Документы-SoonCard
+- `src/lib/types/db.ts` (M) — добавлены `DocType`, `DocumentRow`, `DocumentWithUploader`
+- `scripts/smoke-rls.ts` (M) — блок 11
+- `docs/qa-08-{01..04}*.png` (new)
+
+**Шаг 9 (payments + триггеры пересчёта):**
+- `src/lib/payments/queries.ts` + `actions.ts` (new) — **позже изменён CSO #2-фиксом**
+- `src/components/payments/{payment-row,payment-form,case-payments-block}.tsx` (new) — **позже изменён ₴-фиксом**
+- `src/lib/types/db.ts` (M) — добавлены `PaymentRow`, `PaymentWithCreator`
+- `src/app/(app)/cases/[id]/page.tsx` (M) — Платежи-SoonCard заменена + удалена helper-функция `SoonCard`
+- `scripts/smoke-rls.ts` (M) — блок 12
+- `docs/qa-09-{01..04}*.png` (new)
+
+**Шаг 10 (activity_log + поиск + напоминания):**
+- `supabase/migrations/20260527110000_activity_log_writer.sql` (new)
+- `src/lib/activity-log/{log,diff,queries,format}.ts` (new) — **format.ts позже изменён ₴-фиксом**
+- `src/components/activity/case-activity-block.tsx` (new)
+- `src/components/tasks/upcoming-deadlines-block.tsx` (new)
+- `src/lib/{cases,clients,documents,payments,tasks}/actions.ts` (M) — `logActivity` вшит во все мутации — **позже cases/clients не трогали, documents/payments/tasks модифицировались CSO #2-фиксом**
+- `src/lib/cases/queries.ts` (M) — `.or()` поиск — **позже переписан RPC-фиксом**
+- `src/lib/tasks/queries.ts` (M) — `listUpcomingTasks`
+- `src/components/cases/cases-search.tsx` (M) — обновлён плейсхолдер — **позже снова обновлён под client/tag**
+- `src/app/(app)/cases/[id]/page.tsx` (M) — 5-й блок История + **позже изменён ₴-фиксом**
+- `src/app/(app)/page.tsx` (M) — `UpcomingDeadlinesBlock`
+- `scripts/smoke-rls.ts` (M) — блок 13 — **позже переписан с 7→9 проверок (CSO #1 allowlist + stage_corrected-spoof)**
+- `docs/qa-10-{01..05}*.png` (new)
+
+**Шлифовка (CSO + ₸→₴ + Cmd+K + RPC поиска + design-review + QA fix):**
+- `supabase/migrations/20260527120000_log_activity_allowlist.sql` (new) — CSO #1 allowlist + size cap + CHECK constraint
+- `supabase/migrations/20260527130000_search_case_ids.sql` (new) — RPC `search_case_ids`, SECURITY INVOKER, поиск по 5 полям + tags
+- `src/lib/search/types.ts` (new), `src/lib/search/queries.ts` (new), `src/app/api/search/route.ts` (new) — backend для Cmd+K
+- `src/components/app/command-palette.tsx` (new) — `CommandPaletteProvider` + `CommandPaletteTrigger`, cmdk+Radix Dialog
+- `src/app/(app)/layout.tsx` (M) — обёртка `<CommandPaletteProvider role>`
+- `src/components/app/sidebar.tsx` (M) — `<CommandPaletteTrigger />` над nav
+- `package.json` + `package-lock.json` (M) — `cmdk@^1.1.1` добавлен
+- `src/lib/cases/queries.ts` (M) — `listCases` использует RPC `search_case_ids` при q
+- `src/components/cases/cases-search.tsx` (M) — плейсхолдер «Поиск: номер, клиент, оппонент, № суддела, тег…»
+- `src/lib/{payments,documents,tasks}/actions.ts` (M) — CSO #2 cid-spoof фикс (4 bare action'a)
+- `src/app/api/documents/[id]/download/route.ts` (M) — CSO #3 UUID-guard перед `getDocument`
+- `src/lib/activity-log/format.ts` (M) — ₸→₴
+- `src/components/payments/{case-payments-block,payment-form,payment-row}.tsx` (M) — ₸→₴
+- `src/app/(app)/cases/[id]/page.tsx` (M) — добавлен ₴-суффикс в KPI «Финансы» (design-review F-001)
+- `src/app/(app)/cases/page.tsx` (M) — ₴-суффикс в колонках + `overflow-hidden`→`overflow-x-auto` + `whitespace-nowrap tabular-nums`
+- `src/app/(app)/clients/page.tsx` (M) — `overflow-hidden`→`overflow-x-auto`
+- `src/app/(app)/clients/[id]/page.tsx` (M) — ₴-суффикс в колонках
+- `CLAUDE.md` (M) — §11 «Plus Jakarta Sans» → «Manrope» (DESIGN.md — источник правды, было устаревшее)
+- **Артефакты вне git** (в `.gstack/`, gitignored): `.gstack/security-reports/2026-05-27-cso-daily.json`, `.gstack/design-audit-20260527/{design-audit.md,screenshots/*.png}`, `.gstack/qa-reports/qa-report-localhost-20260527.md`
+- **Политика коммитов:** по правилу [feedback_batch_commits](MEMORY) — коммиты НЕ делаем после каждого шага, копим до фазы шлифовки. Шаги 6+7 уже в git (4 коммита `8ace0ef..fe29164`), Шаги 8+9+10 — целиком в working tree.
+- **Незакоммичено (Шаг 8 + 9 + 10):**
+  - **Шаг 8:** миграция `20260527100000_documents_storage.sql`; `src/lib/documents/{queries,actions}`; роут `src/app/api/documents/[id]/download`; 4 компонента `src/components/documents/`; `src/app/(app)/cases/[id]/page.tsx` (заменил Документы-SoonCard); smoke блок 11; `docs/qa-08-{01..04}*.png`.
+  - **Шаг 9:** `src/lib/types/db.ts` (расширение типами `PaymentRow`/`PaymentWithCreator`); `src/lib/payments/{queries,actions}.ts` (new); `src/components/payments/{payment-row,payment-form,case-payments-block}.tsx` (new); `src/app/(app)/cases/[id]/page.tsx` (M — заменил Платежи-SoonCard + удалил функцию-helper `SoonCard` целиком); `scripts/smoke-rls.ts` (M — блок 12); `docs/qa-09-{01..04}*.png`.
+  - **Шаг 10:** миграция `20260527110000_activity_log_writer.sql`; `src/lib/activity-log/{log,diff,queries,format}.ts` (new); `src/components/activity/case-activity-block.tsx` (new); `src/components/tasks/upcoming-deadlines-block.tsx` (new); `src/lib/{cases,clients,documents,payments,tasks}/actions.ts` (M — добавлен logActivity во все мутации); `src/lib/cases/queries.ts` (M — `.or()` поиск); `src/lib/tasks/queries.ts` (M — `listUpcomingTasks`); `src/components/cases/cases-search.tsx` (M — обновлён плейсхолдер); `src/app/(app)/cases/[id]/page.tsx` (M — 5-й блок История); `src/app/(app)/page.tsx` (M — `UpcomingDeadlinesBlock`); `scripts/smoke-rls.ts` (M — блок 13); `docs/qa-10-{01..05}*.png`.
+- **Долги перед фазой шлифовки:**
+  - `/cso` review (с Шага 8 не запускали — отложили до шлифовки).
+  - Косметика: символ `₸` (U+20B8) не покрыт Plus Jakarta Sans → fallback на mono выглядит как заглавная «Т». Не блокер; либо добавить web-font с покрытием, либо заменить на «KZT»/«тенге»-text.
+  - Cmd+K глобальная палитра поиска (CLAUDE.md §11) — намеренно отложена из Шага 10.
+  - Поиск дел по `client.name` (PostgREST nested-filter) и `tags` (cs-оператор) — отложено за рамки Phase 1.
+- **QA-state в БД:** Чисто. Дважды делали `db reset` + `db:seed` в течение сессии (последний раз — финальная верификация smoke-rls).
+
+### Реализовано в фазе шлифовки (одиннадцатая сессия)
+
+**1. `/cso` daily audit + 3 фикса (CRITICAL/HIGH = 0, MEDIUM × 3):**
+- **CSO #1 (audit log integrity, MEDIUM 9/10):** `public.log_activity` принимал любой `p_action`/`p_changes` — authenticated мог подделывать журнал. Миграция `20260527120000_log_activity_allowlist.sql`: (a) CHECK constraint на `activity_log.action` (15 значений включая `stage_corrected`), (b) allowlist в SECURITY-DEFINER функции (14 значений, БЕЗ `stage_corrected` — пишется только триггером), (c) `octet_length(p_changes::text) > 8192` silent-skip.
+- **CSO #2 (cid-spoof, MEDIUM 8/10):** в 4 bare-action'ах (`deletePaymentAction`, `deleteDocumentAction`, `toggleTaskStatusAction`, `deleteTaskAction`) паттерн `cid = case_id || row?.case_id` позволял подменить `entity_id` записи activity_log через crafted form-POST. Заменено на `cid = row?.case_id` (DB-truth) — user-supplied case_id используется только как UI-fallback для revalidatePath.
+- **CSO #3 (info-leak 500 vs 404, MEDIUM 8/10):** `GET /api/documents/[id]/download` отдавал 500 на не-UUID id (Postgres 22P02 throw → Next 500), различая «id похож на UUID, недоступен» vs «id мусор». Добавлен UUID-guard в начале роута → единый 404.
+- Smoke-rls block 13 переписан с 7→9 проверок: добавлены тесты `evil_fake_action` (silent skip по allowlist) и `stage_corrected` через rpc (silent skip — только триггер пишет). Smoke-маркеры через `changes._smoke_run`/`_smoke_marker`, cleanup точечный.
+- Отчёт: `.gstack/security-reports/2026-05-27-cso-daily.json` (структурированный JSON для regression-сравнения при будущих /cso).
+
+**2. Фикс валюты ₸ → ₴ (баг, не косметика):**
+- Проект для Украины, валюта — гривна (`₴` U+20B4), не тенге (`₸` U+20B8). 6 файлов: `format.ts`, `case-payments-block.tsx`, `payment-form.tsx`, `payment-row.tsx`. Manrope шрифт корректно рендерит ₴ — в QA подтверждено.
+- Дополнительно `/design-review` нашёл что KPI «Финансы» на `/cases/[id]` не показывал валюту вообще (только число), а блок «Платежи» — с ₴. Несоответствие. Добавлен ` ₴` суффикс в KPI + в колонки «СУММА»/«ДОЛГ» на `/cases` и `/clients/[id]`.
+
+**3. Cmd+K глобальная палитра поиска (новая фича из CLAUDE.md §11):**
+- Установлено `cmdk@^1.1.1` (Paco Coursey, shadcn cookbook стандарт).
+- `src/components/app/command-palette.tsx` — `CommandPaletteProvider` (Context + Radix Dialog через `Command.Dialog` cmdk) + `CommandPaletteTrigger` (кнопка в сайдбаре с «Ctrl K» бейджем). Global keydown listener на Cmd+K / Ctrl+K (toggle через `openRef`, обходит React 19 lint `react-hooks/set-state-in-effect`). Debounce 180 мс + AbortController, min 2 символа для server-запроса.
+- Role-gated действия: `owner/admin` видят «Создать дело» + «Создать клиента»; `specialist` — только «Создать клиента»; `assistant` — только навигацию. RLS визуально согласован.
+- Backend: `src/lib/search/types.ts` (shared types), `src/lib/search/queries.ts` (`searchEverything(q)` — 3 parallel queries, RLS auto-фильтр), `src/app/api/search/route.ts` (GET ?q=, requireUser, < 2 символов = пустой результат без БД).
+- `Sidebar` шапка обновлена — `<CommandPaletteTrigger />` над `SidebarNav`. App-layout оборачивает в `<CommandPaletteProvider role={user.profile.role}>`.
+
+**4. RPC `public.search_case_ids` (поиск дел по client.name и tags):**
+- Миграция `20260527130000_search_case_ids.sql`. SECURITY INVOKER + STABLE + `set search_path = ''`. Returns `table(id uuid, total bigint)` — `total` дублируется в каждой строке через `count(*) over ()` window-function.
+- Поиск (OR между полями): `number_title`, `opponent`, `court_case_number`, `clients.name` (LEFT JOIN — RLS на clients тоже применяется), любой tag в `cases.tags[]` (через `unnest` + ILIKE substring). Доп. фильтры (AND): `p_stage`, `p_case_type`, `p_responsible_id`.
+- `p_limit` cap = 100 (защита от abuse), default 20. `p_offset` default 0.
+- `listCases` в `src/lib/cases/queries.ts` теперь использует RPC при `q`: (1) rpc → ids + total, (2) `.in('id', ids)` для полных рядов с PostgREST-join'ами, (3) сортировка по indexMap (RPC возвращает порядок, `.in` теряет его).
+- `cases-search.tsx` плейсхолдер: «Поиск: номер, клиент, оппонент, № суддела, тег…».
+
+**5. `/design-review` daily audit + 3 фикса (Design Score B+ → A−):**
+- **F-001 HIGH:** KPI «Финансы» без ₴ — закрыто (см. пункт 2).
+- **F-005 MEDIUM:** Cases / Clients таблицы оборачивались в `overflow-hidden` div для скругления углов → колонки «СУММА»/«ДОЛГ» обрезались на узких viewports. Заменено на `overflow-x-auto` (скругление сохранено через `rounded-lg`). Добавлен `whitespace-nowrap tabular-nums` на числовые ячейки.
+- **F-009 LOW (doc drift):** `CLAUDE.md §11` ссылался на Plus Jakarta Sans, но `src/app/layout.tsx` грузит Manrope, DESIGN.md §5 (источник правды) — Manrope. Обновил §11.
+- **F-002 dismissed (false positive):** JS-инспекция показала корректное применение `--grad-indigo` на 32px аватаре. На малом размере индиго-violet градиент визуально темнее, что и сбило с толку.
+- Отчёт: `.gstack/design-audit-20260527/{design-audit.md,screenshots/}`.
+
+**6. `/qa` exhaustive (Health Score 95/100 (A), 1 MEDIUM fixed):**
+- 6 раундов через 4 роли (admin, lawyer, jurist, assistant): Cmd+K палитра role-gating, RPC поиск (tag+client+opponent), воронка дел (lawyer UI только forward, admin rollback с audit log), audit log integrity (smoke-rls 9 проверок), golden-path CRUD (create client → case → delete), RLS isolation.
+- **M-001 MEDIUM (fixed):** Cmd+K палитра использовала старый `.or('number_title|opponent|court_case_number')` вместо нового RPC `search_case_ids` → не находила дела по client.name/tags, несмотря на /cases?q= это умел. Inconsistent UX. Переписал `searchEverything` в `src/lib/search/queries.ts`: cases теперь идут через RPC + второй query `.in('id', matchedIds)` с PostgREST-join'ом на `client.name`, порядок восстанавливается через indexMap (как в `listCases`). Verified в браузере: Cmd+K «qa-test» (tag) и «Иванов» (client name) теперь находят соответствующие дела.
+- Отчёт: `.gstack/qa-reports/qa-report-localhost-20260527.md`.
+
+### Реализовано в Шаге 10
+
+**Миграция (`supabase/migrations/20260527110000_activity_log_writer.sql`):**
+- `public.log_activity(entity_type text, entity_id uuid, action text, changes jsonb)` returns void; SECURITY DEFINER + `set search_path = ''`; granted to `authenticated`.
+- Внутри: проверка `private.active_uid() != null`; allow-list `entity_type in ('case','client')`; для `case` — `private.can_see_case(entity_id)` (защита от enumeration); для `client` — `private.is_staff()` (staff-only журнал клиентов); INSERT с `user_id = active_uid()`.
+- `exception when others` глотает все ошибки в `pg_notify('activity_log_failed', sqlerrm)` — лог никогда не ломает основной flow.
+- Конвенция: все «дочерние» события (документы/задачи/платежи) логируются под `entity_type='case'`, `entity_id=case_id` — один SELECT на карточке дела возвращает всю историю.
+
+**Лог-helper (`src/lib/activity-log/`):**
+- `log.ts` — `logActivity({entity_type, entity_id, action, changes?})`: вызывает `rpc('log_activity', ...)` через session-client; любая ошибка глушится в `console.error`, не пробрасывается.
+- `diff.ts` — `diffChanges(before, after, fields)` сравнивает по whitelist'у полей (включая поверхностные массивы для `tags[]`/`billing_types[]`), возвращает `null` если изменений нет → no-op update'ы не плодят мусор.
+- `queries.ts` — `listCaseActivity(caseId, limit=20)` с join `user:user_id(id, full_name)`, sort `created_at desc`.
+- `format.ts` — `formatActivity(entry)` → `{actor, text}` с RU-формулировками для всех 12 action'ов; локализация значений полей (stage/case_type/priority/kind/doc_type → labels; contract_sum/amount → `MONEY.format ₸`; due_at → `ru-RU dd.MM.yyyy, HH:mm`). Винительный падеж для task_created (задачу/заседание/дедлайн). `formatActivityTime` — relative («3 мин назад» / «вчера» / абсолютная дата).
+
+**Покрытие server actions:**
+- `cases/actions.ts`: `case_created` (after), `case_updated` (diff по 12 полям, кроме stage — у него свой `stage_corrected`-триггер), `case_deleted` (before, логируем ДО delete т.к. потом can_see_case=false).
+- `clients/actions.ts`: `client_created` / `client_updated` (diff по 5 полям, кроме notes) / `client_deleted`. entity_type='client' — staff-only по log_activity-проверкам.
+- `documents/actions.ts`: `document_uploaded` (после INSERT row, со значением `document_id` из `.select('id').single()`), `document_deleted` (читаем file_name/doc_type до delete).
+- `payments/actions.ts`: `payment_created` (после INSERT, с `payment_id`), `payment_deleted` (читаем amount до delete для лога).
+- `tasks/actions.ts`: `task_created` (с kind/title/due_at/assignee_id) / `task_updated` (diff по 4 полям) / `task_toggled` (status: open|done, читаем title) / `task_deleted` (читаем title).
+
+**UI журнала (`src/components/activity/case-activity-block.tsx`):**
+- Card с хедером «История · N событий» (плюрализатор).
+- Список рядов: Avatar (sm) + ФИО (font-medium) + текст (text-muted) + относительное время (mono, tabular-nums) с `title=полная дата` на hover.
+- Empty-state «Изменений по делу пока не было».
+- Если `entries.length === limit` (=20) — футер «Показаны 20 последних событий».
+- Размещён на `/cases/[id]` 5-м блоком после Платежей.
+
+**Поиск (`src/lib/cases/queries.ts` + `src/components/cases/cases-search.tsx`):**
+- `listCases` теперь использует PostgREST `.or('number_title.ilike.%q%,opponent.ilike.%q%,court_case_number.ilike.%q%')` вместо одиночного `.ilike` на `number_title`.
+- Плейсхолдер обновлён: «Поиск: номер, оппонент, № суддела…».
+- `client.name` и `tags` — за рамками Phase 1 (требуют nested-filter / cs-оператор / отдельный RPC).
+
+**Напоминания (`src/lib/tasks/queries.ts` + `src/components/tasks/upcoming-deadlines-block.tsx`):**
+- `listUpcomingTasks({hoursAhead=72, limit=10})` — `status=open`, `due_at not null`, `<= now()+72h`, sort asc. **RLS-видимость, не assignee** — admin видит дедлайны команды; specialist — только по своим делам.
+- `UpcomingDeadlinesBlock` на `/`: Card «Приближающиеся сроки · ближайшие 3 дня» + ссылка `/tasks?status=open&mode=all`; рендерит `TaskRow showCase canManage=false`. Empty-state «На ближайшие 3 дня ничего не запланировано — день под контролем.»
+
+**Smoke-test (`scripts/smoke-rls.ts`):**
+Блок 13 — 7 проверок `public.log_activity`:
+1. lawyer rpc на своё дело → запись появилась с `user_id=lawyerUid`.
+2. lawyer rpc на чужое дело → silent skip (rpc не падает, запись не создаётся).
+3. admin rpc entity_type=client → запись появилась с `user_id=adminUid`.
+4. lawyer rpc entity_type=client → silent skip (staff-only).
+5. lawyer SELECT activity_log: видит свои case-события, не видит чужих case'ов и client-записей.
+6. admin SELECT: видит client-записи (is_staff=true).
+7. Cleanup: удалить все `smoke_test_*` записи через service_role.
+Все 13 блоков ✓.
+
+### QA-прогон через gstack `$B` (admin + lawyer)
+- **admin (Анна Админ):**
+  1. `/` — блок «Приближающиеся сроки · ближайшие 3 дня», empty-state «На ближайшие 3 дня ничего не запланировано — день под контролем». Скриншот `docs/qa-10-01-admin-home-no-deadlines.png`.
+  2. `/cases?q=Контрагент` — поиск нашёл CRM-2026-001 через `opponent='ООО Контрагент'` (выставлено через SQL для теста). Скриншот `docs/qa-10-02-admin-search-opponent.png`.
+  3. `/cases/<lawyer-case>/edit` → contract_sum 30000 → 35000 → Сохранить → `case_updated` лог с diff `сумму договора: 30 000 ₸ → 35 000 ₸`. Скриншот `docs/qa-10-03-admin-case-activity.png` показывает 2 события + предсуществующий `stage_corrected`.
+  4. Создание задачи «Подготовить документы к завтра» через disclosure (due_at=завтра 10:00) → `task_created` лог («создал(а) задачу…»). Раньше было «создал(а) задача» — пофикшен винительный падеж в `format.ts` для task/hearing/deadline.
+  5. `/` → блок «Приближающиеся сроки» теперь показывает task `28.05, 10:00 · CRM-2026-001`. Скриншот `docs/qa-10-04-admin-home-with-deadline.png`.
+- **lawyer (Лев Адвокатов):**
+  6. `/cases/<lawyer-case>` → видит все 3 admin-события (RLS allow через can_see_case).
+  7. Добавил платёж 2 500 ₸ Карта → `payment_created` лог «Лев Адвокатов добавил(а) платёж 2 500 ₸ от 2026-05-27 (Карта)». Счётчик «История · 4 события». Скриншот `docs/qa-10-05-lawyer-case-activity.png`.
+- Console: единственная ошибка — 405 на `GET /logout` (мой кривой переход для logout; UI использует POST через кнопку «Выйти», там 200). Не регрессия.
+
+**Проверки:** `npm run lint` ✓, `npx tsc --noEmit` ✓, `npm run build` ✓ (16 роутов, как было — новых страниц не добавляли), `npm run smoke:rls` ✓ (13 блоков).
+
+### Открытые решения / тонкости
+- **`case_deleted` логируется ДО delete.** После DELETE `can_see_case=false` → log_activity silent-skip. Минус: FK-violation (есть документы/платежи) даст спорадическую «попытку удаления» в журнале. Phase 1 — приемлемо: FK-violations редки, в логе хорошо видно как раз попытку. Полностью fix-able через bypass-флаг в log_activity, но это усложнение.
+- **`changes` jsonb намеренно НЕ хранит:** `payments.note`, `tasks.description`, `clients.notes`, контент документов — чтобы не дублировать чувствительные строки в журнал и не разрастаться по объёму.
+- **diff для `task_updated` не покрывает `description`** — изменения тела задачи не логируются (нет интересной семантики «было/стало» для свободного текста).
+- **Локализация `due_at` в diff** — использует `Intl.DateTimeFormat('ru-RU')`; перевод из ISO → 27.05.2026, 10:00.
+- **Сообщения формата feminine/masculine:** используем «создал(а)» / «изменил(а)» — нейтрально, не требует gender-поля. Конвенция русского UI Yandex/Avito/etc.
+- **opponent='ООО Контрагент'** для CRM-2026-001 — артефакт QA-смок-теста, выставлен через `docker exec psql` для проверки `.or()` поиска. Можно при желании очистить.
+
+### Реализовано в Шаге 9
+
+**Типы (`src/lib/types/db.ts`):**
+- `PaymentRow` (8 полей точно из БД — `id, case_id, amount, paid_at, method, note, created_by, created_at`) + `PaymentWithCreator` (с join creator).
+- Заметка по `amount`: PostgREST возвращает `numeric(14,2)` как **string**, нормализуем в `number` в `normalizePayments` — Phase 1-суммы влезают в JS double без потери точности.
+
+**Data layer (`src/lib/payments/`):**
+- `queries.ts`: `listPaymentsByCase(caseId)` (select с PostgREST-join `creator:created_by(id, full_name)`, sort `paid_at desc → created_at desc` — на одну дату новые сверху, сворачивание массива-join через `normalizePayments`).
+- `actions.ts`:
+  - `createPaymentAction` — ручная валидация: UUID `case_id`; `amount` через `parseAmount` (replace `,` → `.`, regex `^\d+(\.\d{1,2})?$`, `Number.isFinite`, > 0, < 10^12); `paid_at` через `isValidDate` (regex `^\d{4}-\d{2}-\d{2}$` + roundtrip-check `d.toISOString().slice(0,10) === s` — отсекает `2026-02-31`); `method` ≤ 80, `note` ≤ 500; INSERT с `created_by = user.profile.id` (RLS WITH CHECK требует `= active_uid()`); revalidate `/cases/<id>`. Триггеры `payments_recalc` + `cases_recompute_debt` в БД сами пересчитывают `paid_total`/`debt` — actions их не трогают.
+  - `deletePaymentAction` (bare) — UUID-валидация → DELETE → revalidate. RLS отрежет не-staff молча (rows=0); UI скрывает кнопку при `canManage=false` как defence-in-depth.
+
+**UI (`src/components/payments/`):**
+- `payment-row.tsx` (SC) — `Banknote`-иконка в `bg-success-bg`-кружке; сумма крупно (16px, bold, mono, tabular-nums, success-green) + дата mono + опц. method как Badge + опц. note; Avatar+creator; trash-кнопка в `group-hover` только при `canManage`.
+- `payment-form.tsx` (CC, `useActionState`+`useFormStatus`+`formRef.reset()` после success). Поля: `amount` (`type="text"` + `inputMode="decimal"` + mono+tabular-nums) / `paid_at` (`type="date"`, `defaultValue={todayISO()}` через локальную дату) / `method` (свободный текст, placeholder «Наличные / Безнал / Карта») / `note` (textarea rows=2).
+- `case-payments-block.tsx` (SC, async) — Card с хедером «Платежи · N платеж[а/ей] · итого X ₸» (плюрализатор + total суммируется локально из массива, не из `case.paid_total`); `<details>+ Добавить платёж</details>` только при `canWrite`; список или empty-state.
+
+**Интеграция (`src/app/(app)/cases/[id]/page.tsx`):**
+- Заменил последнюю SoonCard «Платежи» на `<CasePaymentsBlock caseId canWrite={canEdit} canManage={isStaff} />`. Удалил функцию-helper `SoonCard` целиком (станет неиспользуемой, lint ругался).
+- На карточке дела теперь все 3 блока (Задачи · Документы · Платежи) реальные. Phase 1 §8 для карточки дела закрыт.
+
+**Smoke-test (`scripts/smoke-rls.ts`):**
+- Блок 12 (6 проверок):
+  1. admin INSERT 5000 ₸ на juristCase (где `paid=0, debt=120000`) → `paid_total=5000, debt=115000` (триггеры отработали).
+  2. jurist пробует подделать `created_by=lawyerUid` → WITH CHECK fail.
+  3. lawyer UPDATE seed-платежа `{note:'hacked'}` → RLS возвращает empty result, через admin SELECT проверяем что `note` не изменилось.
+  4. lawyer DELETE seed-платежа → RLS отвергает, admin SELECT видит row живой.
+  5. admin UPDATE `{note:'corrected'}` → ok.
+  6. admin DELETE юристового платежа → `paid_total=0, debt=120000` (триггеры откатили).
+- Финал: cleanup `note=null` на seed-платеже. Все 12 блоков ✓.
+
+### QA-прогон через gstack `$B` (admin + lawyer)
+- **admin (Анна Админ)** на `/cases/CRM-2026-001`: блок «Платежи · 1 платёж · итого 10 000 ₸», 1 ряд (10 000 ₸ · 10.05.2026 · bank · Анна Админ). Скриншот `docs/qa-09-01-admin-initial.png`.
+- **admin** раскрыл disclosure → добавил 5 000 ₸ / сегодня / Наличные / «доплата». Success-banner «Платёж сохранён.», новый ряд сверху, счётчик «· 2 платежа · итого 15 000 ₸», KPI «Финансы»: ОПЛАЧЕНО 15 000 / ДОЛГ 15 000 (пересчёт триггерами `payments_recalc` + `cases_recompute_debt`). Скриншот `docs/qa-09-02-admin-added.png`.
+- **lawyer (Лев Адвокатов)** на том же деле: видит оба платежа, JS-инспекция `document.querySelectorAll('button[aria-label="Удалить платёж"]').length === 0` ✓ (UI скрыл trash для не-staff). Кнопка «Удалить» дела тоже отсутствует — staff-only паттерн консистентен. Скриншот `docs/qa-09-03-lawyer-readonly.png`.
+- **lawyer** добавил 3 000 ₸ / сегодня / Безнал / «от lawyer'a» — INSERT прошёл (`payments_insert_via_case` разрешает specialist'у на своём деле, `created_by=lawyerUid` соответствует `active_uid`). Счётчик «· 3 платежа · итого 18 000 ₸», KPI ОПЛАЧЕНО 18 000 / ДОЛГ 12 000. Скриншот `docs/qa-09-04-lawyer-added.png`.
+
+**Проверки:** `npm run lint` ✓, `npx tsc --noEmit` ✓, `npm run build` ✓ (16 роутов, без изменений), `npm run smoke:rls` ✓ (12 блоков).
+
+**Косметика, найденная в QA:** символ `₸` (U+20B8) не покрыт Plus Jakarta Sans → fallback на mono даёт «Т»-видимый-как-заглавная-Т. Не блокер, фиксить в фазе шлифовки (либо web-font, либо «KZT»/«тенге»-text).
+
+### Реализовано в Шаге 8
+
+**Миграция (`supabase/migrations/20260527100000_documents_storage.sql`):**
+- `insert into storage.buckets ('case-documents','case-documents', false) on conflict do nothing` — приватный бакет.
+- `private.case_id_from_storage_path(text) returns uuid` — `language plpgsql immutable`, парсит convention-путь `cases/<uuid>/<filename>` через `split_part(p_path,'/',2)::uuid` (с try/except `invalid_text_representation` → NULL → политики дают false). `grant execute to authenticated`.
+- 4 политики на `storage.objects` (все с `bucket_id = 'case-documents'` AND `split_part(name,'/',1) = 'cases'`):
+  - `case_documents_select_via_case` → `can_see_case(case_id_from_storage_path(name))`.
+  - `case_documents_insert_via_case` → `can_write_case(...)` AND `owner = (select active_uid())`.
+  - `case_documents_update_via_case` → `can_write_case(...)` (USING + WITH CHECK).
+  - `case_documents_delete_staff` → `is_staff()`.
+
+**Типы (`src/lib/types/db.ts`):**
+- `DocType` (`contract|claim|power_of_attorney|correspondence|other`) + `DOC_TYPES` + `DOC_TYPE_LABEL` (RU: «Договор/Претензия/Доверенность/Переписка/Прочее»).
+- `DocumentRow` (7 полей точно из БД) + `DocumentWithUploader` (с join uploader).
+
+**Data layer (`src/lib/documents/`):**
+- `queries.ts`: `listDocumentsByCase(caseId)` (sort uploaded_at desc, PostgREST-join `uploader:uploaded_by(...)` со сворачиванием массива через `normalizeDocuments`), `getDocument(id)` (для download-роута), `createSignedDownloadUrl(storage_key, file_name)` (TTL 600 сек, `{ download: file_name }` принуждает браузер скачивать с оригинальным именем).
+- `actions.ts`: `uploadDocumentAction` — ручная валидация: UUID, DocType enum, File (size > 0 && size ≤ 25 MB, name ≤ 200, расширение НЕ в `FORBIDDEN_EXT` = `exe/bat/cmd/com/msi/scr/ps1/vbs/js/jse/wsf/wsh/dll/sh/lnk`); `slugifyFilename` (NFC + замена whitespace/slash/`?#%&+='"<>:|*\x00-\x1f` на `-` + collapse + trim + slice 80, kotrillic-сохраняющий); storage key = `cases/<case_id>/<crypto.randomUUID()>--<slug>`; порядок: `storage.upload(buffer, {contentType, upsert:false})` → `INSERT documents row` → на ошибке INSERT `storage.remove([key])` (rollback). `deleteDocumentAction` (bare) — читает `storage_key` до DELETE row → `delete documents` → `storage.remove([key])` (best-effort). revalidate `/cases/<id>` в обоих.
+
+**Route handler (`src/app/api/documents/[id]/download/route.ts`):**
+- `GET` → `requireUser()` → `getDocument(id)` (RLS отрежет невидимое → null → 404) → `createSignedDownloadUrl` → `NextResponse.redirect(url, 307)`. Browser получает 307 → следует на signed URL Supabase Storage → скачивает с `Content-Disposition: attachment; filename=<file_name>`.
+
+**UI (`src/components/documents/`):**
+- `doc-type-badge.tsx` (SC) — `Badge` с tone'ом по типу (info=contract, warning=claim, prio-mid=power_of_attorney, neutral=correspondence/other).
+- `document-upload-form.tsx` (CC, `useActionState` + `useFormStatus` + `useRef`+`useEffect` для `formRef.current?.reset()` после success — сбрасывает File-input). Поля: `<input type="file" required>` (с file:className-стилем кнопки), `<select name="doc_type" defaultValue="other">`. Без `encType` — React Server Actions сами выставляют multipart/form-data (был warning в console — убрали).
+- `document-row.tsx` (SC) — `FileText`-иконка в primary-кружке, `file_name` как `<a href="/api/documents/<id>/download">`, `DocTypeBadge`, uploaded_at (mono) + Avatar+uploader.full_name, `<Download>`-кнопка (та же ссылка), trash-кнопка в `group-hover` только при `canDelete=true` (`<form action={deleteDocumentAction}>` + bare action, без `window.confirm`).
+- `case-documents-block.tsx` (SC) — `Card` с хедером «Документы · N файл(а/ов)», `<details>+ Загрузить документ</details>` (только при `canWrite`), список или empty-state (текст зависит от `canWrite`).
+
+**Интеграция (`src/app/(app)/cases/[id]/page.tsx`):**
+- Удалил SoonCard «Документы» (Шаг 8) → `<CaseDocumentsBlock caseId={c.id} canWrite={canEdit} canDelete={isStaff} />`.
+- Оставшаяся SoonCard «Платежи» (Шаг 9) — теперь одиночная (убрал `grid-cols-2`-обёртку).
+- Удалил неиспользуемый `FileText` из import'ов lucide.
+
+**Smoke-test (`scripts/smoke-rls.ts`):**
+- Блок 10 — теперь толерантен к QA-task'ам: вместо «ровно 1 task» проверяет «≥1 + ни одной с чужим case_id».
+- Блок 11 (7 проверок): lawyer upload в свой `cases/<id>/...` → ok; lawyer upload в `cases/<juristCaseId>/...` → storage RLS reject (no row); lawyer INSERT row → ok; lawyer forged `uploaded_by=juristUid` → WITH CHECK fail; jurist SELECT documents lawyer'a → 0; jurist DELETE → fail (row остаётся); admin DELETE row + storage object → ok.
+- Все 11 блоков ✓.
+
+### QA-прогон через gstack `/browse` (admin + lawyer + jurist)
+- **admin (Анна Админ):** `/cases/CRM-2026-001` → блок «Документы · 0 файлов» → раскрыл disclosure → upload `contract-test.txt` (139 B, тип «Договор») → success-banner «Файл загружен.», ряд с DocTypeBadge + Avatar+«Анна Админ» + датой. Скриншот `docs/qa-08-01-admin-uploaded.png`. Скачивание через `/api/documents/<id>/download` — содержимое идентично исходному файлу (проверено `cat`).
+- **lawyer (Лев Адвокатов):** открыл то же дело → видит оба файла (свой `power-test.txt` + admin'a). JS-инспекция ряда: `hasDeleteButton: false, hasDownloadButton: true` → UI правильно скрыл trash для не-staff. Скриншот `docs/qa-08-02-lawyer-two-docs.png`.
+- **jurist (Юрий Юристов):** прямой URL `/cases/<lawyer-uuid>` → 404 (`getCase`=null из-за RLS). `fetch('/api/documents/<id>/download', {redirect:'manual'})` → 404 (`getDocument`=null из-за RLS на documents). Скриншот `docs/qa-08-03-jurist-404.png`.
+- **admin (вторая итерация):** удалил `power-test.txt` через trash → ряд исчез, счётчик 2→1, остался `contract-test.txt`. Скриншот `docs/qa-08-04-admin-after-delete.png`.
+
+**Проверки:** `npm run lint` ✓, `npx tsc --noEmit` ✓, `npm run build` ✓ (16 роутов — добавился `/api/documents/[id]/download`), `npm run smoke:rls` ✓ (11 блоков).
 
 ### Реализовано в Шаге 7
 
@@ -212,6 +499,93 @@ _Снимок на 2026-05-27 (седьмая сессия)._
 ## Лог сессий
 
 <!-- Новые записи добавляются СВЕРХУ (новейшая первой). Append-only — историю не переписывать. -->
+
+## Сессия 2026-05-27 (Шаг 8 — Документы)
+
+**Шаг(и):** 8 — Документы (storage bucket + RLS + upload/download/delete + UI на карточке дела) — завершён. Заодно собрали долг по коммитам Шага 6+7 (4 коммита в начале сессии).
+**Длительность:** ~2.5 часа
+**Модель:** Claude Opus 4.7 (1M context)
+
+### Сделано
+
+**Сбор долга (4 коммита в начале сессии):**
+- `fe29164` feat(cases): шаг 6 — воронка только вперёд + activity_log
+- `db77c44` docs: log Шаг 6 completion + handoff to Шаг 7
+- `b4eb2c1` feat(tasks): шаг 7 — задачи, общий список и календарь
+- `8ace0ef` docs: log Шаг 7 completion + handoff to Шаг 8
+- Технический приём: разделил `scripts/smoke-rls.ts` через временную правку (блок 10 вырезали на коммит 1, восстановили из `/tmp/smoke-rls.full.ts` для коммита 3). PROGRESS.md аналогично — промежуточная версия для шага 6, финальная для шага 7.
+
+**Шаг 8 — полностью реализован, но НЕ закоммичен** (новое правило, см. ниже). Файлы и компоненты — см. «Реализовано в Шаге 8» в Текущем состоянии.
+
+**Новое правило про коммиты:** пользователь сказал «коммиты оставим на потом, уже когда закончим основную разработку срм, перед шлифовкой системы всё закоммитим». Сохранил как `feedback_batch_commits.md` в memory. С Шага 8 и далее — коммиты НЕ делаем после каждого шага, накапливаем до фазы шлифовки.
+
+**QA-прогон через gstack `/browse`** (auto-mode classifier блокирует `mcp__chrome-devtools__*` по правилу CLAUDE.md «Use /browse from gstack» — пошли через `$B` (browse binary) напрямую через Bash, минуя interactive Skill-preamble). 4 скриншота `qa-08-01..04`, isolation подтверждена на UI/Server/Storage уровнях.
+
+### Решения и почему
+
+- **Convention storage-пути `cases/<case_id>/<uuid>--<slug>`.** Альтернативы: (a) `bucket_id = case-documents-<case_id>` (бакет на дело) — миграции на каждое новое дело, плохо; (b) поле `case_id` в метаданных storage — не сериализуется в политики; (c) plain UUID без префикса — нет способа извлечь case_id для RLS. Convention в пути даёт чистый парсинг через `split_part`. Префикс `cases/` оставлен на случай добавления других папок в тот же бакет в будущем (avatars, шаблоны и т.п.).
+- **`private.case_id_from_storage_path` как plpgsql, не sql.** Нужен try/catch на `invalid_text_representation` — sql-функции не имеют exception handler. NULL возвращаем при любом несоответствии формату → политики дают false → доступ закрыт. Безопасное поведение по умолчанию.
+- **Owner column в storage.objects = uploader.** Когда anon-JWT клиент делает `.upload()`, Supabase Storage автоматически проставляет `owner = auth.uid()`. Наша политика `owner = (select active_uid())` это валидирует — нельзя приписать upload чужому юзеру (mirror контракта `documents.uploaded_by = active_uid()`).
+- **`uploadDocumentAction` — upload first, INSERT second, rollback на ошибке INSERT.** Альтернатива (INSERT first, upload second) была бы хуже: row без файла = битый ряд, который пользователь видит как «скачать», но GET даёт 404. Текущий порядок: либо обе операции прошли, либо ни одной (storage object удаляется в catch).
+- **MIME validation по расширению, не по `file.type`.** `file.type` берётся из браузерного определения и для `.exe`-битов на macOS возвращает `application/octet-stream` — useless. Список `FORBIDDEN_EXT` отсекает Windows-исполняемые + shell-скрипты + DLL. Не полная защита (можно переименовать `.exe` в `.txt`), но базовый барьер для случайных. Для Phase 2 — реальный antivirus / sandbox.
+- **Download через GET-роут, не Server Action `redirect()`.** Server Action возвращающий `redirect()` ломается в большинстве случаев на cross-form скачивания (Next.js игнорирует redirect, если был preceding action-response). GET-route отдаёт 307 → браузер следует → файл скачивается через signed URL с правильными headers (`Content-Disposition: attachment`). Сам signed URL генерируется ТОЛЬКО при клике (не на render), TTL 10 мин = безопасный диапазон.
+- **`deleteDocumentAction` — bare action без `window.confirm`.** Phase 1, staff-only по RLS, ошибочное удаление редкое. Если потребуется — `DeleteCaseForm`-подход (window.confirm + name) добавим точечно.
+- **Smoke-блок 10 переписал на толерантность к QA-данным.** Раньше «ровно 1 task у lawyer» падало после прошлой сессии (test-task осталась). Теперь «≥1 + все по своему case_id» — проверяет isolation, а не точное число. Это улучшение для всех будущих smoke (данные накопляются).
+- **`encType` на форме upload убрал.** React 19 + Server Actions сами выставляют `multipart/form-data` когда есть `<input type="file">`. Ручное `encType="multipart/form-data"` → console warning «Cannot specify a encType or method for a form that specifies a function as the action». Поймал в QA, удалил.
+- **Sidebar пункт «Документы» оставил `скоро`.** Отдельной страницы /documents нет — все доступы через карточку дела. По CLAUDE.md §8 для Phase 1 не нужно. Можно убрать пункт sidebar совсем — отдельным fix позже.
+- **`/cso` review НЕ запускали.** kickoff-prompt.md Шаг 8 явно требовал, но `/cso` — interactive skill с AskUserQuestion-гейтами, в auto-mode не запустится. Smoke-блок 11 покрыл основное (forged uploaded_by, foreign case storage, DELETE staff-only, isolation). Запустить вручную перед фазой шлифовки.
+
+### Незакрытые вопросы / TODO
+
+- [ ] **Шаг 8 целиком НЕ закоммичен** (по новому правилу — это намеренно, до фазы шлифовки).
+- [ ] **Sidebar пункт «Документы»** показывает «скоро», хотя загрузка работает. Решить: убрать пункт совсем или добавить `enabled:true` без отдельной страницы (тогда `href` куда?). Возможно убрать в Шаге 9 или позже.
+- [ ] **`/cso` review** — обязателен по kickoff. Запустить в отдельной сессии перед шлифовкой.
+- [ ] **Auto-mode classifier vs `mcp__chrome-devtools__*`** — снова блокирует, snippet CLAUDE.md явно запрещает. Использовали `$B` (gstack browse) через Bash напрямую — работает чище и не требует grant. Перейти на `$B` как основной QA-инструмент.
+- [ ] **`window.confirm` на delete document** — Phase 2.
+- [ ] **MIME validation по содержимому** (magic bytes / antivirus) — Phase 2.
+- [ ] **Test-документ `contract-test.txt`** остался в БД и storage по делу CRM-2026-001 (после QA admin удалил только `power-test.txt`). Не критично, можно убрать вручную или оставить как фикстуру.
+- [ ] **Старый dev-сервер на PID 19064** работает с прошлой сессии — Turbopack HMR подхватил все новые файлы Шага 8 на лету. Если в Шаге 9 будут странности, перезапустить.
+- [ ] **2 moderate npm vulnerabilities** — тащим с Шага 0.
+
+### Handoff для следующей сессии (Шаг 9 — Платежи)
+
+- **Первая задача:** Шаг 9 — Платежи. Коммиты НЕ делаем (правило `feedback_batch_commits`).
+- **Что прочитать:**
+  - `CLAUDE.md §5` модель `payments` (`id, case_id, amount, paid_at, method, note, created_by, created_at`, CHECK `amount > 0`), `§7-7` (activity_log) и `§8` (Phase 1 — финансы).
+  - `kickoff-prompt.md` Шаг 9.
+  - `supabase/migrations/20260526100100_core_tables.sql` — модель `payments` + триггер `payments_recalc_trigger` (auto-update `paid_total` после INSERT/UPDATE/DELETE) + `cases_recompute_debt` (debt = max(0, contract_sum - paid_total)).
+  - `supabase/migrations/20260526100200_rls_policies.sql` — `payments_select_via_case`, `payments_insert_via_case` (can_write_case + created_by=active_uid()), `payments_update_staff`, `payments_delete_staff`.
+  - `src/lib/documents/{queries,actions}.ts` как свежий образец data layer; `case-documents-block.tsx` как шаблон Card-блока на карточке дела.
+- **Что делать:**
+  - Типы `Payment` / `PaymentWithCreator`.
+  - `src/lib/payments/queries.ts`: `listPaymentsByCase(caseId)` (sort paid_at desc, join created_by), `getPayment(id)` если потребуется.
+  - `src/lib/payments/actions.ts`: `createPaymentAction` (валидация amount > 0, paid_at = YYYY-MM-DD, method/note опц., `created_by = user.profile.id`), `updatePaymentAction` (staff-only — RLS закроет, но в UI скрыть кнопку для не-staff), `deletePaymentAction` (staff-only).
+  - **Авторасчёт `paid_total`/`debt` — НЕ трогать.** Триггеры в БД делают это сами. UI просто читает свежие значения из `getCase`.
+  - UI `src/components/payments/`:
+    - `payment-row.tsx` — строка платежа (дата mono / сумма mono с разрядкой / метод / автор / actions для staff).
+    - `payment-form.tsx` — inline в disclosure: amount + paid_at + method + note.
+    - `case-payments-block.tsx` — Card-блок (хедер «Платежи · N · итого X ₸»), список + кнопки добавить (для всех с can_write_case) + удалить/изменить (staff only).
+  - Интеграция: `src/app/(app)/cases/[id]/page.tsx` — заменить последнюю SoonCard «Платежи» на `<CasePaymentsBlock />`. После этого все 3 блока на карточке дела (Задачи / Документы / Платежи) — реальные.
+  - **Smoke-test блок 12** (5-6 проверок):
+    - lawyer INSERT payment на своё дело → `paid_total` пересчитан (триггер) → `debt` пересчитан.
+    - lawyer payment на чужое дело → RLS reject.
+    - lawyer forged `created_by=juristUid` → WITH CHECK fail.
+    - lawyer UPDATE своего платежа → RLS reject (только staff может).
+    - admin UPDATE/DELETE → ok.
+    - cleanup.
+  - QA через `$B`: admin/lawyer/jurist роли + проверка что KPI «Оплачено/Долг» на карточке дела двигаются автоматически.
+- **Подводные камни:**
+  - **Триггер `cases_recompute_debt` срабатывает на UPDATE `contract_sum, paid_total`.** Если SQL-операция `update payments` → `payments_recalc_trigger` → `update cases.paid_total` → `cases_recompute_debt` пересчитает `debt`. Цепочка проверена smoke-блоком 1.
+  - **`payments_update_staff` / `payments_delete_staff`** — UI должен скрывать кнопки для не-staff, иначе пользователь увидит trash → клик → RLS отвергнет молча → UX баг. По образцу `document-row.tsx` (`canDelete` пропс).
+  - **`amount` — `numeric(14, 2)`.** В TS храним как `number` (JS-double выдержит до 2^53 — этого хватит для ₸/$/€ в Phase 1). При INSERT передавать как число (Supabase сам сериализует).
+  - **`paid_at` — `date`, не `timestamptz`.** В отличие от `tasks.due_at` (datetime-local) — для платежа достаточно дня. `<input type="date">` даёт `YYYY-MM-DD` строку, валидация regex `^\d{4}-\d{2}-\d{2}$`.
+  - **Sidebar пункт «Финансы» (`finance`)** — сейчас «скоро». Решить: тоже как «Документы» — пункт без отдельной страницы (все через карточку дела), или сделать `/payments` общий список (по CLAUDE.md §8 этого в Phase 1 нет, но может пригодиться owner/admin для финансового обзора).
+
+### Коммиты
+- В начале сессии — 4 коммита по Шагам 6+7 (см. выше).
+- Шаг 8 — НЕТ коммитов (по новому правилу `feedback_batch_commits`).
+
+---
 
 ## Сессия 2026-05-27 (Шаг 7 — Задачи и календарь)
 
