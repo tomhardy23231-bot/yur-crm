@@ -23,6 +23,7 @@ import {
   CASE_TYPES,
   type BillingType,
   type Case,
+  type CaseStage,
 } from '@/lib/types/db';
 
 const INITIAL: CaseActionState = { ok: false };
@@ -44,6 +45,12 @@ interface CaseFormProps {
   cancelHref: string;
   /** Подсказать форме умолчания (например, текущего пользователя как ответственного). */
   defaultResponsibleId?: string;
+  /**
+   * Какие этапы показывать в Select. По умолчанию — все 8. Шаг 6: для не-staff
+   * передаём только текущий и все «вперёд» (CLAUDE.md §7-2). Триггер
+   * `cases_validate_stage_forward` всё равно защитит на стороне БД.
+   */
+  allowedStages?: ReadonlyArray<CaseStage>;
 }
 
 const SPECIALIST_TYPE_LABEL: Record<'lawyer' | 'jurist', string> = {
@@ -60,7 +67,9 @@ export function CaseForm({
   submitLabel,
   cancelHref,
   defaultResponsibleId,
+  allowedStages,
 }: CaseFormProps) {
+  const stageOptions = allowedStages ?? CASE_STAGES;
   const [state, formAction] = useActionState<CaseActionState, FormData>(
     action,
     INITIAL,
@@ -221,11 +230,11 @@ export function CaseForm({
             <Select
               id="stage"
               name="stage"
-              defaultValue={value('stage') || 'new_request'}
+              defaultValue={value('stage') || stageOptions[0] || 'new_request'}
               required
               aria-invalid={err('stage') ? 'true' : undefined}
             >
-              {CASE_STAGES.map((s) => (
+              {stageOptions.map((s) => (
                 <option key={s} value={s}>
                   {CASE_STAGE_LABEL[s]}
                 </option>

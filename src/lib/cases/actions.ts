@@ -257,11 +257,18 @@ export async function updateCaseAction(
     .eq('id', caseId);
 
   if (error) {
+    // Шаг 6: триггер `cases_validate_stage_forward` бросает 'stage_backward_forbidden'
+    // когда specialist/assistant пытается откатить этап. Подменяем системное
+    // сообщение Postgres на человеческое.
+    const isStageBackward = error.message?.includes('stage_backward_forbidden');
     return {
       ok: false,
       values: result.values,
       selectedBillingTypes: result.selectedBillingTypes,
-      message: error.message,
+      fieldErrors: isStageBackward ? { stage: 'Возврат на предыдущий этап запрещён' } : undefined,
+      message: isStageBackward
+        ? 'Возврат на предыдущий этап разрешён только администратору.'
+        : error.message,
     };
   }
 

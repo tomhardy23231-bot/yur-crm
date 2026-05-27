@@ -11,13 +11,14 @@ import {
   listSpecialistsForAssignment,
 } from '@/lib/cases/queries';
 import { requireUser } from '@/lib/auth/require-role';
+import { CASE_STAGES } from '@/lib/types/db';
 
 export default async function EditCasePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
 
   const [c, clients, specialists] = await Promise.all([
@@ -30,6 +31,16 @@ export default async function EditCasePage({
 
   // bind на Server Action сохраняет server-action-маркировку (см. Шаг 4 баг).
   const boundAction = updateCaseAction.bind(null, id);
+
+  // Шаг 6: воронка только вперёд (CLAUDE.md §7-2). Staff видит все 8 этапов,
+  // не-staff — текущий и все «вперёд». На БД дополнительно стоит триггер
+  // cases_validate_stage_forward, так что UI-фильтр — для UX, не для безопасности.
+  const isStaff =
+    user.profile.role === 'owner' || user.profile.role === 'admin';
+  const currentStageIdx = CASE_STAGES.indexOf(c.stage);
+  const allowedStages = isStaff
+    ? CASE_STAGES
+    : CASE_STAGES.slice(currentStageIdx >= 0 ? currentStageIdx : 0);
 
   return (
     <main className="flex flex-col gap-6 px-8 py-10 sm:px-12">
@@ -55,6 +66,7 @@ export default async function EditCasePage({
           specialists={specialists}
           submitLabel="Сохранить"
           cancelHref={`/cases/${id}`}
+          allowedStages={allowedStages}
         />
       </Card>
     </main>

@@ -136,6 +136,101 @@ async function main() {
   if (juristPay?.length !== 0) fail(`jurist не должен видеть платежи lawyer, видит ${juristPay?.length}`);
   ok('jurist изолирован от чужих платежей');
 
+  console.log('\n9. Шаг 6 — воронка только вперёд (cases_validate_stage_forward):');
+  // Все stage-операции делаем через adminUser (HTTP с JWT) — service_role обошёл бы
+  // RLS, но триггер всё равно срабатывает и под service_role auth.uid()=NULL →
+  // is_staff()=false → backward бросит. Поэтому пишем как реальный admin.
+  // `admin` (service_role) используем только для read-проверок.
+  const { data: caseBefore, error: caseBeforeErr } = await admin
+    .from('cases')
+    .select('id, stage')
+    .eq('number_title', 'CRM-2026-001')
+    .single();
+  if (caseBeforeErr || !caseBefore) fail(`не нашёл CRM-2026-001: ${caseBeforeErr?.message}`);
+  const originalStage = caseBefore.stage as string;
+  const caseId = caseBefore.id;
+
+  // Гарантируем стартовое состояние in_progress, чтобы у lawyer было «куда откатывать».
+  // adminUser staff → может двигать в любую сторону. Если уже там — триггер обрежет no-op.
+  const { error: setupErr } = await adminUser
+    .from('cases')
+    .update({ stage: 'in_progress' })
+    .eq('id', caseId);
+  if (setupErr) fail(`setup (in_progress) не удался: ${setupErr.message}`);
+  ok('setup: CRM-2026-001 переведён в in_progress');
+
+  // Lawyer пробует откатить на consultation → триггер должен бросить ошибку.
+  const { error: lawyerBackErr } = await lawyer
+    .from('cases')
+    .update({ stage: 'consultation' })
+    .eq('id', caseId);
+  if (!lawyerBackErr || !lawyerBackErr.message.includes('stage_backward_forbidden')) {
+    fail(`lawyer должен получить stage_backward_forbidden, получил: ${lawyerBackErr?.message ?? 'no error'}`);
+  }
+  const { data: afterLawyerBack } = await admin
+    .from('cases').select('stage').eq('id', caseId).single();
+  if (afterLawyerBack?.stage !== 'in_progress') {
+    fail(`lawyer не должен был откатить stage, факт: ${afterLawyerBack?.stage}`);
+  }
+  ok('lawyer не может откатить stage (триггер бросил stage_backward_forbidden)');
+
+  // Lawyer двигает вперёд на pretrial → должно сработать.
+  const { error: lawyerFwdErr } = await lawyer
+    .from('cases')
+    .update({ stage: 'pretrial' })
+    .eq('id', caseId);
+  if (lawyerFwdErr) fail(`lawyer не смог двинуть вперёд: ${lawyerFwdErr.message}`);
+  const { data: afterLawyerFwd } = await admin
+    .from('cases').select('stage').eq('id', caseId).single();
+  if (afterLawyerFwd?.stage !== 'pretrial') {
+    fail(`lawyer должен был двинуть в pretrial, факт: ${afterLawyerFwd?.stage}`);
+  }
+  ok('lawyer двинул stage вперёд (pretrial)');
+
+  // Admin откатывает обратно на consultation → ок + запись в activity_log.
+  const { count: beforeCount } = await admin
+    .from('activity_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('entity_type', 'case')
+    .eq('entity_id', caseId)
+    .eq('action', 'stage_corrected');
+
+  const { error: adminBackErr } = await adminUser
+    .from('cases')
+    .update({ stage: 'consultation' })
+    .eq('id', caseId);
+  if (adminBackErr) fail(`admin не смог откатить: ${adminBackErr.message}`);
+  const { data: afterAdminBack } = await admin
+    .from('cases').select('stage').eq('id', caseId).single();
+  if (afterAdminBack?.stage !== 'consultation') {
+    fail(`admin должен был откатить в consultation, факт: ${afterAdminBack?.stage}`);
+  }
+  ok('admin откатил stage назад (pretrial → consultation)');
+
+  const { count: afterCount, data: logRows } = await admin
+    .from('activity_log')
+    .select('changes, action', { count: 'exact' })
+    .eq('entity_type', 'case')
+    .eq('entity_id', caseId)
+    .eq('action', 'stage_corrected')
+    .order('created_at', { ascending: false });
+  if ((afterCount ?? 0) !== (beforeCount ?? 0) + 1) {
+    fail(`в activity_log ожидалась +1 запись stage_corrected, было ${beforeCount}, стало ${afterCount}`);
+  }
+  const lastChanges = logRows?.[0]?.changes as { from?: string; to?: string } | undefined;
+  if (lastChanges?.from !== 'pretrial' || lastChanges?.to !== 'consultation') {
+    fail(`activity_log changes ожидались {from:pretrial,to:consultation}, факт: ${JSON.stringify(lastChanges)}`);
+  }
+  ok('activity_log получил запись stage_corrected с {from,to}');
+
+  // Cleanup: возвращаем исходный stage. Если назад — добавит ещё одну stage_corrected запись (это ок).
+  const { error: cleanupErr } = await adminUser
+    .from('cases')
+    .update({ stage: originalStage })
+    .eq('id', caseId);
+  if (cleanupErr) fail(`cleanup не удался: ${cleanupErr.message}`);
+  ok(`cleanup: CRM-2026-001 возвращён в ${originalStage}`);
+
   console.log('\n✓ Все RLS-проверки пройдены.');
 }
 
