@@ -9,45 +9,80 @@
 
 ## Текущее состояние
 
-_Снимок на 2026-05-27 (тринадцатая сессия — Phase 1.1 + канбан)._
+_Снимок на 2026-05-27 (четырнадцатая сессия — внешнее ревью + Phase 2/A time-tracking)._
 
-- **Phase 1 MVP + Phase 1.1 (закрытие kickoff-дыр) + канбан-доска — в `master`** 🚢.
-  Последние коммиты: `f95c8fa` (канбан), `786576e` (kickoff-дыры), `c3266bc` (PROGRESS), `3a27aea` (Phase 1 batch).
-- **Закрыто в этой сессии (13):**
-  - 4 функциональные дыры из kickoff: документы в Cmd+K, sticky-заголовки, sortable columns, skeleton states (`786576e`).
-  - Канбан-доска `/cases/board` — 8 колонок, click-to-advance, фильтры, skeleton (`f95c8fa`).
+- **Phase 1 MVP + Phase 1.1 + канбан + полное закрытие внешнего ревью + Phase 2/A — в `master`** 🚢.
+  Свежие коммиты:
+  - `4d49b71` feat(time): Phase 2/A — учёт рабочего времени (time_entries)
+  - `f0657fa` fix(security): close all external review findings — 3 HIGH + 3 MED + 3 LOW
+  - `1a061bb` docs: log Phase 1.1 + kanban + handoff
+  - `f95c8fa` feat(cases): канбан-доска `/cases/board`
+- **Закрыто в этой сессии (14):**
+
+  **Часть 1 — внешнее ревью (вердикт от внешней LLM по repomix-снапшоту, 9 findings):**
+  - **3 HIGH** (блокеры production):
+    - delete-actions (cases/payments/documents/clients) — добавлен `requireRole(['owner','admin'])`. Раньше RLS DELETE = is_staff() возвращал rows=0 без ошибки → specialist через ручной POST получал silent-success UI и фейковую `*_deleted` запись в activity_log.
+    - `updateCaseAction` — `closed_at` больше не перезаписывается на today при правке уже-закрытого дела.
+    - `search_case_ids(p_sort, p_dir)` — сортировка в SQL ДО LIMIT (миграция `20260527140000`). Клиентский `sortItemsByColumn` удалён.
+  - **3 MED** (миграция `20260527150000` + коде):
+    - `cases_validate_responsible` теперь проверяет `users.is_active`.
+    - `button.tsx` тени через CSS-токены `--shadow-{primary,destructive}-hover` (color-mix in oklab).
+    - `log_activity` is_staff bypass для `*_deleted` (entity уже удалена) → `deleteCaseAction`/`deleteClientAction` переписаны на **log-AFTER-delete**, фейковая запись при FK-violation больше не появляется. Бонусом UUID-валидация в `deleteClientAction`.
+  - **3 LOW**: `_` wildcard в sanitizeSearch (3 файла); Cmd+K «Документы» ведёт на `/cases/<id>#document-<doc_id>` + `:target` подсветка; комментарий-decision про `notes` в clients.
+  - smoke:rls 13 → 15 блоков. Новые: MED#4 (INSERT с неактивным responsible) + MED#7 (log_activity после delete).
+
+  **Часть 2 — Phase 2/A: time-tracking (новая функциональная фича, CLAUDE.md §9 Q12):**
+  - Миграция `20260528100000_time_tracking.sql`: `cases.hourly_rate numeric(10,2)` + таблица `time_entries` (id, case_id CASCADE, task_id SET NULL, user_id RESTRICT, spent_at, minutes int 0<m≤24*60, billable, hourly_rate snapshot, note ≤500, invoice_id placeholder под Phase 2/B, created/updated_at + триггер) + 4 RLS-политики + 3 новых action в allowlist (`time_entry_{created,updated,deleted}`).
+  - Парсер времени `parseMinutes("1ч 30м" | "1.5" | "1:30" | "90м") → 90` (int minutes); форматтер обратно. Голое число = ЧАСЫ.
+  - Server actions: `create/update/delete` с CSO #2 (case_id из row, не из formData). `delete` без role-gate — specialist удаляет свои часы по RLS (отличается от cases/payments/etc).
+  - UI:
+    - Карточка дела — блок «Учёт времени» (inline-форма + список + footer с агрегатами).
+    - В блоке Финансы — новая KPI-строка «Учтено часов / Оплачиваемых / Ожидаемый доход».
+    - Форма case — поле «Почасовая ставка, ₴/ч»; validate + CASE_DIFF_FIELDS обновлены.
+    - `/time` — личный экран с фильтрами период (week/month/all) + billable, группировкой по дате, footer-агрегатами, pagination, skeleton.
+    - Sidebar — пункт «Моё время» (Clock icon).
+  - smoke:rls 15 → 16 блоков. Новый блок 16 (13 проверок): specialist INSERT свой / приписать чужой uid / на чужое дело / jurist изолирован / assistant пишет на дело супервайзера / UPDATE-DELETE своё ok / чужое silent-fail / admin bypass / CHECK minutes (0 / >24h).
 - **Все проверки зелёные** на момент закрытия:
   - `npm run lint` ✓
   - `npx tsc --noEmit` ✓
-  - `npm run build` ✓ (18 routes — добавился `/cases/board`)
-  - `npm run db:seed` ✓
-  - `npm run smoke:rls` ✓ (13 блоков)
-- **Working tree** — чист. Артефакт `repomix-output.xml` есть в корне (создан пользователем), добавлен в `.gitignore`.
+  - `npm run build` ✓ (**19 routes** — `/time` добавился)
+  - `npm run smoke:rls` ✓ (**16 блоков**)
+- **Working tree** — чист.
 
 ### Следующая сессия — на выбор
 
-**Сценарий A — внешнее ревью.** Пользователь готовит `repomix-output.xml` + промпт из конца 13-й сессии → отправляет во внешнюю LLM (GPT/Gemini/Claude web) → приносит вердикт. Разбираем CRITICAL/HIGH в первую очередь.
+**Сценарий A — Phase 2/B: инвойсы** (продолжение Phase 2 → CLAUDE.md §8).
+- Таблица `invoices` (id, case_id, client_id snapshot, number, status `draft|sent|paid|void`, totals из time_entries × hourly_rate + fixed-fee, due_at, created_at, sent_at, paid_at, items snapshot).
+- FK добавляется на `time_entries.invoice_id` (placeholder уже заложен в Phase 2/A миграции).
+- Server actions: `createInvoice` (выбор unbilled entries → агрегация → инвойс), `markPaid` (двусторонняя связь с payments: либо создаёт payment автоматически, либо ссылается на существующий), `void`. RLS — owner/admin (выставление счетов — staff-операция).
+- UI: список `/invoices`, карточка инвойса с PDF-предпросмотром, кнопка «Создать инвойс» в карточке дела (выбор entries чек-боксами).
+- Связь с финансами дела: «Выставлено», «Оплачено», «Остаток» — рядом с текущими «Сумма договора / Оплачено / Долг».
 
-**Сценарий B — Phase 2** (CLAUDE.md §8):
-- шаблоны документов с автоподстановкой данных дела (договор / претензия / доверенность);
-- инвойсы (выставление счетов из системы);
-- `time_entries` — учёт рабочего времени для почасовой оплаты;
-- расширенные отчёты и аналитика.
+**Сценарий B — Phase 2/C: шаблоны документов с автоподстановкой** (договор / претензия / доверенность).
+- Таблица `document_templates` (id, name, doc_type, body — Markdown с `{{client.name}}` / `{{case.number_title}}` / `{{case.contract_sum}}` плейсхолдерами).
+- Engine подстановки: рендер шаблона + сохранение результата как обычный документ в storage.
+- UI: библиотека шаблонов owner/admin, кнопка «Создать из шаблона» в блоке Документов дела.
 
-**Сценарий C — опциональные post-ship** (по желанию):
-- `/document-release` — CHANGELOG + README sync.
-- GitHub remote + `git push -u origin master` + опционально PR через `/ship`.
-- `/retro` — ретроспектива по 13 сессиям.
+**Сценарий C — внешнее ревью №2 по новой кодовой базе.**
+- Пользователь готовит `npx repomix --output repomix-output.xml` → отправляет во внешнюю LLM (GPT/Gemini/Claude web) с тем же промптом, что использовался в 14-й сессии.
+- В этой сессии добавились time-tracking + закрылись все 9 находок предыдущего ревью — стоит снять второй вердикт по новому состоянию перед инвойсами.
 
-### Долги, сознательно отложенные за пределы Phase 1.1
+**Сценарий D — пост-ship штрихи** (по желанию).
+- `/document-release` или ручной `CHANGELOG.md` + `README.md` sync под Phase 1 + Phase 2/A.
+- GitHub remote (`git push -u origin master` — нужен URL от пользователя).
+- `/retro` — ретро по 14 сессиям с lessons learned.
+
+### Долги, сознательно отложенные за пределы Phase 1.1 + Phase 2/A
 
 - **GitHub remote не подключён** — коммиты только локально.
-- **2 moderate npm vulnerabilities** — тащим с Шага 0. Phase 2 — `npm audit fix` + `/cso` deep scan.
-- **`window.confirm` на delete document** — Phase 2 (Phase 1 — RLS-only, ошибочное удаление редкое).
-- **MIME validation по magic-bytes / antivirus** — Phase 2 (Phase 1 — extension blacklist).
-- **Drag-and-drop на канбане** — Phase 2 (есть click-to-advance).
-- **Sort по joined-полям / aggregate** — Phase 2 (требует RPC).
-- **Тёмная тема** — CLAUDE.md §11 явно «в Phase 1 НЕ делается».
+- **2 moderate npm vulnerabilities** — тащим с Шага 0. Перед Phase 2/B — `npm audit fix` + `/cso` deep scan.
+- **`window.confirm` на delete document/payment/time_entry** — оставлено на полировку UX-блока.
+- **MIME validation по magic-bytes / antivirus** — текущая защита только по extension blacklist.
+- **Drag-and-drop на канбане** — есть click-to-advance, drag не критичен.
+- **Sort по joined-полям / aggregate в `/cases`** — требует RPC (как `search_case_ids`).
+- **Inline-редактирование time_entry в UI** — есть только create + delete. При запросе — добавим `/time/[id]/edit` или модалку в блоке дела.
+- **Cmd+K поиск по time_entries.note** — пропущен в Phase 2/A намеренно. Добавится, когда станет нужно.
+- **Тёмная тема** — CLAUDE.md §11 «в Phase 1 НЕ делается». В Phase 2 можно рассмотреть.
 - **`/codex`** — пользователь делает second opinion через `npx repomix` → внешняя LLM (см. [[feedback-second-opinion]] в памяти).
 - **Электронная подпись / ЄДРСР / клиентский портал** — Phase 3 (CLAUDE.md §9).
 
