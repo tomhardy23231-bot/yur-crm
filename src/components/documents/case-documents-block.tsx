@@ -22,7 +22,10 @@ export async function CaseDocumentsBlock({
   const docs = await listDocumentsByCase(caseId);
 
   return (
-    <Card>
+    // id="documents" + scroll-mt-20 — якорь для глобального поиска
+    // (Cmd+K → клик по документу ведёт на /cases/<id>#document-<doc_id>;
+    // если бы блок был ниже фолда, прокрутка сюда). LOW#9 из внешнего ревью.
+    <Card id="documents" className="scroll-mt-20">
       <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
         <FileText size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[16px] font-semibold text-text">Документы</h2>

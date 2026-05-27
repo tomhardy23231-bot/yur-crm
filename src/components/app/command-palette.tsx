@@ -318,7 +318,9 @@ export function CommandPaletteProvider({
                 <PaletteItem
                   key={d.id}
                   value={`document-${d.id}`}
-                  onSelect={() => go(`/cases/${d.case_id}`)}
+                  // LOW#9: якорь #document-<id> ведёт прямо к нужной строке
+                  // в карточке дела + target: подсвечивает её на секунду.
+                  onSelect={() => go(`/cases/${d.case_id}#document-${d.id}`)}
                   icon={<FileText size={15} strokeWidth={1.75} />}
                   label={d.file_name}
                   hint={d.case_number ?? undefined}

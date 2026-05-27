@@ -19,7 +19,7 @@ const buttonVariants = cva(
       variant: {
         primary: [
           "bg-primary text-primary-fg",
-          "hover:bg-primary-hover hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(79,70,229,0.25)]",
+          "hover:bg-primary-hover hover:-translate-y-px hover:shadow-primary-hover",
           "active:bg-primary-pressed active:translate-y-0 active:shadow-none",
         ],
         secondary:
@@ -28,7 +28,7 @@ const buttonVariants = cva(
           "bg-transparent text-text-muted hover:bg-surface-muted hover:text-text",
         destructive: [
           "bg-error text-primary-fg",
-          "hover:opacity-90 hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(239,68,68,0.25)]",
+          "hover:opacity-90 hover:-translate-y-px hover:shadow-destructive-hover",
         ],
       },
       size: {

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { requireUser } from '@/lib/auth/require-role';
+import { requireRole, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -306,6 +306,8 @@ export async function updateCaseAction(
     responsible_id: string;
     opened_at: string;
     case_type: string;
+    stage: string;
+    closed_at: string | null;
     priority: string;
     contract_sum: number | string;
     billing_types: string[] | null;
@@ -317,18 +319,28 @@ export async function updateCaseAction(
   const { data: beforeRaw } = await supabase
     .from('cases')
     .select(
-      'number_title, client_id, responsible_id, opened_at, case_type, ' +
+      'number_title, client_id, responsible_id, opened_at, case_type, stage, closed_at, ' +
         'priority, contract_sum, billing_types, opponent, court_case_number, court, tags',
     )
     .eq('id', caseId)
     .maybeSingle();
   const before = beforeRaw as CaseBeforeRow | null;
 
+  // closed_at — историческая дата закрытия. Если дело уже было закрыто, любая
+  // правка admin'ом не должна перезаписывать оригинальный closed_at на сегодня
+  // (validate() ставит todayIso() безусловно при stage='closed'). Сохраняем
+  // before.closed_at для no-op closed→closed; для переходов из/в closed
+  // оставляем поведение validate (today при входе в closed, null при выходе).
+  const updatePayload: Validated =
+    before && before.stage === 'closed' && result.data.stage === 'closed'
+      ? { ...result.data, closed_at: before.closed_at }
+      : result.data;
+
   // При смене этапа на/с 'closed' триггеров для closed_at нет — обновляем сами.
   // (CHECK constraint cases_closed_consistency требует синхронности.)
   const { error } = await supabase
     .from('cases')
-    .update(result.data)
+    .update(updatePayload)
     .eq('id', caseId);
 
   if (error) {
@@ -397,7 +409,10 @@ export async function updateCaseAction(
 }
 
 export async function deleteCaseAction(formData: FormData): Promise<void> {
-  await requireUser();
+  // RLS DELETE = is_staff(); UI скрывает кнопку. Но без role-gate на сервере
+  // не-staff, форсящий POST вручную, проходит мимо silent-RLS-deny и
+  // получает фейковый `case_deleted` в activity_log (log пишется ДО delete).
+  await requireRole(['owner', 'admin']);
 
   const caseId = getString(formData, 'case_id');
   if (!caseId || !UUID_RE.test(caseId)) {
@@ -406,15 +421,26 @@ export async function deleteCaseAction(formData: FormData): Promise<void> {
 
   const supabase = await createSupabaseServerClient();
 
-  // Снапшот до удаления — нужен и для логирования, и потому что после DELETE
-  // private.can_see_case(case_id) = false → лог не запишется.
-  // Поэтому логируем ДО delete; при FK-ошибке журнал получит спорадическую
-  // «попытку удаления» — приемлемая цена, FK-violations редки.
+  // Снапшот для лога. После DELETE строки уже нет, но миграция MED#7
+  // расширила log_activity: для 'case_deleted' проверка идёт через is_staff()
+  // (RLS DELETE и так staff-only + requireRole выше), не через can_see_case.
+  // Поэтому логируем ПОСЛЕ delete — при FK-violation фейковая запись не
+  // создаётся (раньше: лог писался до delete и оставался при ошибке).
   const { data: before } = await supabase
     .from('cases')
     .select('number_title, stage, client_id')
     .eq('id', caseId)
     .maybeSingle();
+
+  const { error } = await supabase.from('cases').delete().eq('id', caseId);
+
+  if (error) {
+    // documents и payments — ON DELETE RESTRICT, tasks — CASCADE.
+    // FK 23503 = «есть связанные документы или платежи».
+    const isFkViolation = error.code === '23503';
+    const param = isFkViolation ? 'has_links' : 'delete_failed';
+    redirect(`/cases/${caseId}?error=${param}`);
+  }
 
   if (before) {
     await logActivity({
@@ -428,16 +454,6 @@ export async function deleteCaseAction(formData: FormData): Promise<void> {
         },
       },
     });
-  }
-
-  const { error } = await supabase.from('cases').delete().eq('id', caseId);
-
-  if (error) {
-    // documents и payments — ON DELETE RESTRICT, tasks — CASCADE.
-    // FK 23503 = «есть связанные документы или платежи».
-    const isFkViolation = error.code === '23503';
-    const param = isFkViolation ? 'has_links' : 'delete_failed';
-    redirect(`/cases/${caseId}?error=${param}`);
   }
 
   revalidatePath('/cases');

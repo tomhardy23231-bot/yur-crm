@@ -15,8 +15,10 @@ import type {
 export const CASES_PAGE_SIZE = 20;
 
 // PostgREST .or() — пользовательский ввод санитайзим (как в clients/queries.ts).
+// Убираем `_` помимо `%` — оба wildcard'а PostgreSQL ILIKE, иначе «task_5»
+// матчит «task15»/«taskA5» (LOW#8 из внешнего ревью).
 function sanitizeSearch(value: string): string {
-  return value.replace(/[,()*'"\\%]/g, '').trim();
+  return value.replace(/[,()*'"\\%_]/g, '').trim();
 }
 
 export type CaseListItem = {
@@ -112,7 +114,10 @@ export async function listCases(
 
   if (q) {
     // Поиск через RPC. Дополнительные фильтры передаём в RPC, чтобы
-    // pagination и count были консистентны с фильтрами.
+    // pagination и count были консистентны с фильтрами. p_sort/p_dir —
+    // сортировка в SQL ДО LIMIT/OFFSET (внешнее ревью HIGH#3): иначе
+    // клиентский sort на 20 уже-спагинированных рядах врёт пользователю
+    // (на странице 1 для «contract_sum desc» он видит не топ-20 по сумме).
     const { data: matchRows, error: matchErr } = await supabase.rpc(
       'search_case_ids',
       {
@@ -122,6 +127,8 @@ export async function listCases(
         p_responsible_id: params.responsibleId ?? null,
         p_limit: CASES_PAGE_SIZE,
         p_offset: offset,
+        p_sort: sortColumn,
+        p_dir: sortDir,
       },
     );
     if (matchErr) {
@@ -161,11 +168,6 @@ export async function listCases(
           (indexById.get(a.id) ?? 0) - (indexById.get(b.id) ?? 0),
       );
 
-    // q-путь: RPC возвращает свой порядок (по relevance/created_at),
-    // поверх — пользовательская сортировка клиентским sort'ом.
-    // limit=20 → стоимость пренебрежимо мала.
-    sortItemsByColumn(items, sortColumn, ascending);
-
     const pageCount = Math.max(1, Math.ceil(total / CASES_PAGE_SIZE));
     return { items, total, page, pageSize: CASES_PAGE_SIZE, pageCount };
   }
@@ -197,25 +199,6 @@ export async function listCases(
   const pageCount = Math.max(1, Math.ceil(total / CASES_PAGE_SIZE));
 
   return { items, total, page, pageSize: CASES_PAGE_SIZE, pageCount };
-}
-
-// Клиентская сортировка для q-пути (RPC). Только whitelisted колонки.
-function sortItemsByColumn(
-  items: CaseListItem[],
-  column: CasesSortColumn,
-  ascending: boolean,
-): void {
-  const dir = ascending ? 1 : -1;
-  items.sort((a, b) => {
-    const av = a[column];
-    const bv = b[column];
-    if (typeof av === 'number' && typeof bv === 'number') {
-      return (av - bv) * dir;
-    }
-    const as = String(av ?? '');
-    const bs = String(bv ?? '');
-    return as.localeCompare(bs, 'ru') * dir;
-  });
 }
 
 // Сворачивает PostgREST-массив-join в одиночный объект.

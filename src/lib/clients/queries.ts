@@ -12,8 +12,9 @@ export const CLIENTS_PAGE_SIZE = 20;
 
 // Поисковая строка идёт через PostgREST .or() — там запятая/паренсы/звёздочка
 // меняют структуру фильтра. Это пользовательский ввод, поэтому экранируем.
+// `_` и `%` — wildcard'ы ILIKE, тоже вычищаем (LOW#8 внешнего ревью).
 function sanitizeSearch(value: string): string {
-  return value.replace(/[,()*'"\\%]/g, '').trim();
+  return value.replace(/[,()*'"\\%_]/g, '').trim();
 }
 
 export type ClientListItem = Client & {

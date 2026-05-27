@@ -22,7 +22,13 @@ const DATETIME_FMT = new Intl.DateTimeFormat('ru-RU', {
 
 export function DocumentRow({ doc, canDelete }: DocumentRowProps) {
   return (
-    <div className="group flex items-start gap-3 px-4 py-3 border-b border-border last:border-b-0 hover:bg-surface-muted/50 transition-colors duration-[120ms] ease-out">
+    // id + scroll-mt-24 + target:* — переход по якорю из Cmd+K (LOW#9).
+    // target:bg-primary-subtle/60 даёт мягкую подсветку выбранного документа,
+    // снимается при следующем клике/смене URL hash.
+    <div
+      id={`document-${doc.id}`}
+      className="group flex items-start gap-3 px-4 py-3 border-b border-border last:border-b-0 hover:bg-surface-muted/50 target:bg-primary-subtle/60 scroll-mt-24 transition-colors duration-[120ms] ease-out"
+    >
       <span className="shrink-0 mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-md bg-primary-subtle text-primary">
         <FileText size={16} strokeWidth={1.75} />
       </span>

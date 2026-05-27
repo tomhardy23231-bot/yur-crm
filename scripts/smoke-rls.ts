@@ -690,6 +690,138 @@ async function main() {
   if (cleanupLogErr) fail(`cleanup activity_log failed: ${cleanupLogErr.message}`);
   ok(`cleanup: записи ${SMOKE_RUN_ID} удалены`);
 
+  console.log('\n14. Внешнее ревью MED#4 — cases_validate_responsible проверяет is_active:');
+  // 14.1 — создаём временного НЕАКТИВНОГО специалиста.
+  const inactiveEmail = `inactive-spec-${SMOKE_RUN_ID}@yur.local`;
+  const { data: inactiveAuth, error: inactiveAuthErr } = await admin.auth.admin.createUser({
+    email: inactiveEmail,
+    password: PASSWORD,
+    email_confirm: true,
+  });
+  if (inactiveAuthErr || !inactiveAuth.user) {
+    fail(`MED#4 setup: auth admin create failed: ${inactiveAuthErr?.message}`);
+  }
+  const inactiveUid = inactiveAuth.user.id;
+  const { error: inactiveProfErr } = await admin.from('users').insert({
+    id: inactiveUid,
+    full_name: 'Smoke Inactive Specialist',
+    email: inactiveEmail,
+    role: 'specialist',
+    specialist_type: 'lawyer',
+    is_active: false,
+  });
+  if (inactiveProfErr) fail(`MED#4 setup profile: ${inactiveProfErr.message}`);
+
+  // 14.2 — admin (staff, INSERT cases разрешён по RLS) пытается создать дело
+  // с неактивным responsible — триггер cases_validate_responsible должен бросить.
+  const { data: anyClient } = await admin
+    .from('clients').select('id').limit(1).single();
+  if (!anyClient) fail('MED#4: нет клиента в БД для setup');
+  const { error: badInsertErr } = await adminUser
+    .from('cases')
+    .insert({
+      number_title: `SMOKE-INACT-${SMOKE_RUN_ID}`,
+      client_id: anyClient.id,
+      responsible_id: inactiveUid,
+      opened_at: '2026-05-27',
+      case_type: 'civil',
+      stage: 'new_request',
+      priority: 'normal',
+      contract_sum: 0,
+    });
+  if (!badInsertErr) {
+    fail('MED#4: INSERT cases с неактивным responsible_id прошёл — триггер молчит');
+  }
+  if (!/not active|inactive/i.test(badInsertErr.message)) {
+    fail(`MED#4: ожидалось "not active/inactive" в ошибке, получено: ${badInsertErr.message}`);
+  }
+  ok('MED#4: INSERT cases с неактивным responsible отвергнут триггером');
+
+  // 14.3 — cleanup: удалить временного специалиста.
+  const { error: delInactErr } = await admin.from('users').delete().eq('id', inactiveUid);
+  if (delInactErr) fail(`MED#4 cleanup users: ${delInactErr.message}`);
+  const { error: delInactAuthErr } = await admin.auth.admin.deleteUser(inactiveUid);
+  if (delInactAuthErr) fail(`MED#4 cleanup auth: ${delInactAuthErr.message}`);
+  ok('cleanup: временный неактивный специалист удалён');
+
+  console.log('\n15. Внешнее ревью MED#7 — log_activity для *_deleted после delete (is_staff bypass):');
+  // 15.1 — service_role создаёт временный case (минуя all RLS).
+  const { data: tempCase, error: tempCaseErr } = await admin
+    .from('cases')
+    .insert({
+      number_title: `SMOKE-DEL-${SMOKE_RUN_ID}`,
+      client_id: anyClient.id,
+      responsible_id: lawyerUid,
+      opened_at: '2026-05-27',
+      case_type: 'civil',
+      stage: 'new_request',
+      priority: 'normal',
+      contract_sum: 0,
+    })
+    .select('id')
+    .single();
+  if (tempCaseErr || !tempCase) fail(`MED#7 setup: ${tempCaseErr?.message}`);
+  const tempCaseId = tempCase.id as string;
+
+  // 15.2 — admin (is_staff) удаляет case → can_see_case(tempCaseId)=false после.
+  const { error: tempDelErr } = await adminUser
+    .from('cases').delete().eq('id', tempCaseId);
+  if (tempDelErr) fail(`MED#7: admin не смог delete: ${tempDelErr.message}`);
+
+  // 15.3 — admin log_activity 'case_deleted' ПОСЛЕ delete должен записать
+  // (раньше: silent skip из-за can_see_case=false; теперь is_staff bypass).
+  const { error: adminDelLogErr } = await adminUser.rpc('log_activity', {
+    p_entity_type: 'case',
+    p_entity_id: tempCaseId,
+    p_action: 'case_deleted',
+    p_changes: {
+      _smoke_run: SMOKE_RUN_ID,
+      _smoke_marker: 'med7-admin-del',
+      number_title: `SMOKE-DEL-${SMOKE_RUN_ID}`,
+    },
+  });
+  if (adminDelLogErr) fail(`MED#7 admin rpc: ${adminDelLogErr.message}`);
+  const { data: adminDelLog } = await admin
+    .from('activity_log')
+    .select('id')
+    .eq('changes->>_smoke_marker', 'med7-admin-del')
+    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
+    .maybeSingle();
+  if (!adminDelLog) {
+    fail('MED#7: admin не смог записать case_deleted после delete (is_staff bypass не работает)');
+  }
+  ok('MED#7: admin записал case_deleted ПОСЛЕ delete entity (is_staff bypass)');
+
+  // 15.4 — lawyer (не staff) пытается записать case_deleted — silent skip.
+  // Защита: bypass работает ТОЛЬКО для is_staff, не для всех authenticated.
+  const { error: lawyerDelLogErr } = await lawyer.rpc('log_activity', {
+    p_entity_type: 'case',
+    p_entity_id: tempCaseId,
+    p_action: 'case_deleted',
+    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'med7-lawyer-attempt' },
+  });
+  if (lawyerDelLogErr) {
+    fail(`MED#7 lawyer rpc должен быть silent: ${lawyerDelLogErr.message}`);
+  }
+  const { data: lawyerDelLog } = await admin
+    .from('activity_log')
+    .select('id')
+    .eq('changes->>_smoke_marker', 'med7-lawyer-attempt')
+    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
+    .maybeSingle();
+  if (lawyerDelLog) {
+    fail('MED#7: lawyer записал case_deleted — is_staff-only bypass пробит');
+  }
+  ok('MED#7: lawyer не может писать case_deleted (silent skip, не staff)');
+
+  // 15.5 — cleanup: записи MED#7 (по SMOKE_RUN_ID).
+  const { error: med7CleanupErr } = await admin
+    .from('activity_log')
+    .delete()
+    .eq('changes->>_smoke_run', SMOKE_RUN_ID);
+  if (med7CleanupErr) fail(`MED#7 cleanup: ${med7CleanupErr.message}`);
+  ok('cleanup: MED#7 записи удалены');
+
   console.log('\n✓ Все RLS-проверки пройдены.');
 }
 

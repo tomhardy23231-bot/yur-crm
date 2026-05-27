@@ -11,10 +11,11 @@ import {
   type DocumentPaletteItem,
 } from '@/lib/search/types';
 
-// PostgREST .or() — экранируем `,()*'"\%` от operator-injection
-// (та же логика, что в cases/queries.ts:18 и clients/queries.ts).
+// PostgREST .or() — экранируем `,()*'"\%_` от operator-injection и
+// ILIKE-wildcard'ов (та же логика, что в cases/queries.ts:18 и
+// clients/queries.ts). LOW#8 внешнего ревью: добавлен `_`.
 function sanitize(value: string): string {
-  return value.replace(/[,()*'"\\%]/g, '').trim();
+  return value.replace(/[,()*'"\\%_]/g, '').trim();
 }
 
 // Глобальный поиск для Cmd+K. RLS отрежет невидимое автоматически —

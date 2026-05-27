@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import { revalidatePath } from 'next/cache';
 
-import { requireUser } from '@/lib/auth/require-role';
+import { requireRole, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { DOC_TYPES, type DocType } from '@/lib/types/db';
@@ -170,10 +170,11 @@ export async function uploadDocumentAction(
 }
 
 // Bare action: удаление документа. RLS DELETE = is_staff() only.
-// Удаляет сначала storage-объект, потом row (RESTRICT нет — на documents
-// нет дочерних таблиц), реверсивный порядок не нужен.
+// requireRole — первая линия защиты: иначе specialist, форсящий POST вручную,
+// проходит мимо silent-RLS-deny и пишет фейковый `document_deleted` на видимое
+// ему дело (storage.remove тоже silent-fails, файл остаётся жив).
 export async function deleteDocumentAction(formData: FormData): Promise<void> {
-  await requireUser();
+  await requireRole(['owner', 'admin']);
   const doc_id = String(formData.get('doc_id') ?? '').trim();
   const case_id = String(formData.get('case_id') ?? '').trim();
 

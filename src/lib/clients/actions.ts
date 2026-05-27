@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { requireUser } from '@/lib/auth/require-role';
+import { requireRole, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -35,6 +35,8 @@ function isClientKind(value: string): value is ClientKind {
 
 // Базовая валидация e-mail без RFC-крайностей — пользовательских e-mail тут немного.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Validated = {
   name: string;
@@ -137,6 +139,12 @@ export async function createClientAction(
   redirect(`/clients/${data.id}`);
 }
 
+// LOW#10 (внешнее ревью): `notes` намеренно НЕ в этом списке.
+// Причина — Phase 1: notes часто содержит длинный свободный текст
+// (комментарии адвоката, контекст по делу), при каждой правке diff раздувал
+// бы activity_log payload. CSO #1 cap 8KB обрезает большие записи.
+// Если в Phase 2 понадобится аудит изменений notes — добавить сюда + продумать
+// truncation в logActivity-обёртке.
 const CLIENT_DIFF_FIELDS = [
   'name',
   'client_kind',
@@ -216,32 +224,28 @@ export async function updateClientAction(
 }
 
 export async function deleteClientAction(formData: FormData): Promise<void> {
-  await requireUser();
+  // RLS DELETE = is_staff(). Без role-gate specialist, форсящий POST вручную,
+  // получает silent-success UI ("Клиент удалён") при том, что RLS DELETE
+  // молча возвращает 0 строк — клиент жив. Журнал тут защищён allowlist'ом
+  // log_activity (is_staff для entity_type=client), но UI-обман всё равно есть.
+  await requireRole(['owner', 'admin']);
 
   const clientId = getString(formData, 'client_id');
-  if (!clientId) {
+  if (!clientId || !UUID_RE.test(clientId)) {
     redirect('/clients?error=missing_id');
   }
 
   const supabase = await createSupabaseServerClient();
 
-  // Логируем ДО delete (client-журнал staff-only, после delete RLS на activity
-  // даст is_staff()=true для admin'a — но клиента уже не существует, так что
-  // before-snapshot важен для UI).
+  // Снапшот для лога. После DELETE строки нет; миграция MED#7 расширила
+  // log_activity на is_staff bypass для 'client_deleted'. Логируем ПОСЛЕ
+  // delete — при FK-violation (есть связанные дела) фейковая запись
+  // 'client_deleted' не появится в журнале.
   const { data: clientBefore } = await supabase
     .from('clients')
     .select('name, client_kind')
     .eq('id', clientId)
     .maybeSingle();
-
-  if (clientBefore) {
-    await logActivity({
-      entity_type: 'client',
-      entity_id: clientId,
-      action: 'client_deleted',
-      changes: { before: { name: clientBefore.name, client_kind: clientBefore.client_kind } },
-    });
-  }
 
   const { error } = await supabase.from('clients').delete().eq('id', clientId);
 
@@ -251,6 +255,15 @@ export async function deleteClientAction(formData: FormData): Promise<void> {
     const isFkViolation = error.code === '23503';
     const param = isFkViolation ? 'has_cases' : 'delete_failed';
     redirect(`/clients/${clientId}?error=${param}`);
+  }
+
+  if (clientBefore) {
+    await logActivity({
+      entity_type: 'client',
+      entity_id: clientId,
+      action: 'client_deleted',
+      changes: { before: { name: clientBefore.name, client_kind: clientBefore.client_kind } },
+    });
   }
 
   revalidatePath('/clients');
