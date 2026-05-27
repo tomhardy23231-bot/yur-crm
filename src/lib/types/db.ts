@@ -48,8 +48,7 @@ export type Client = {
 };
 
 // =====================================================================
-// Cases — пока используется только сводкой в карточке клиента (Шаг 4).
-// Полная сущность будет в Шаге 5. Здесь — минимум полей для compact-таблицы.
+// Cases — центральная сущность (CLAUDE.md §5, §6).
 // =====================================================================
 
 export type CaseStage =
@@ -62,6 +61,83 @@ export type CaseStage =
   | 'enforcement'
   | 'closed';
 
+export const CASE_STAGES: ReadonlyArray<CaseStage> = [
+  'new_request',
+  'consultation',
+  'in_progress',
+  'pretrial',
+  'litigation',
+  'awaiting_decision',
+  'enforcement',
+  'closed',
+];
+
+export const CASE_STAGE_LABEL: Record<CaseStage, string> = {
+  new_request: 'Новое обращение',
+  consultation: 'Консультация',
+  in_progress: 'В работе',
+  pretrial: 'Досудебное',
+  litigation: 'Судебное',
+  awaiting_decision: 'Ожидание решения',
+  enforcement: 'Исполнение',
+  closed: 'Завершено',
+};
+
+export type CaseType =
+  | 'civil'
+  | 'criminal'
+  | 'corporate'
+  | 'administrative'
+  | 'family'
+  | 'labor'
+  | 'other';
+
+export const CASE_TYPES: ReadonlyArray<CaseType> = [
+  'civil',
+  'criminal',
+  'corporate',
+  'administrative',
+  'family',
+  'labor',
+  'other',
+];
+
+export const CASE_TYPE_LABEL: Record<CaseType, string> = {
+  civil: 'Гражданское',
+  criminal: 'Уголовное',
+  corporate: 'Корпоративное',
+  administrative: 'Административное',
+  family: 'Семейное',
+  labor: 'Трудовое',
+  other: 'Другое',
+};
+
+export type CasePriority = 'normal' | 'urgent';
+
+export const CASE_PRIORITIES: ReadonlyArray<CasePriority> = ['normal', 'urgent'];
+
+export const CASE_PRIORITY_LABEL: Record<CasePriority, string> = {
+  normal: 'Обычный',
+  urgent: 'Срочный',
+};
+
+export type BillingType = 'prepaid' | 'hourly' | 'fixed' | 'success_fee';
+
+export const BILLING_TYPES: ReadonlyArray<BillingType> = [
+  'prepaid',
+  'hourly',
+  'fixed',
+  'success_fee',
+];
+
+export const BILLING_TYPE_LABEL: Record<BillingType, string> = {
+  prepaid: 'Предоплата',
+  hourly: 'Почасовая',
+  fixed: 'Фиксированная',
+  success_fee: 'За результат',
+};
+
+// Используется в /clients/[id] для compact-таблицы дел клиента.
 export type CaseSummary = {
   id: string;
   number_title: string;
@@ -72,5 +148,41 @@ export type CaseSummary = {
   responsible: {
     id: string;
     full_name: string;
+  } | null;
+};
+
+// Полная сущность дела — для карточки и формы редактирования.
+export type Case = {
+  id: string;
+  number_title: string;
+  client_id: string;
+  responsible_id: string;
+  opened_at: string;
+  case_type: CaseType;
+  stage: CaseStage;
+  priority: CasePriority;
+  tags: string[];
+  contract_sum: number;
+  paid_total: number;
+  debt: number;
+  billing_types: BillingType[];
+  opponent: string | null;
+  court_case_number: string | null;
+  court: string | null;
+  closed_at: string | null;
+  created_at: string;
+};
+
+// Дело с join-ом клиента и ответственного — для списка и карточки.
+export type CaseWithRefs = Case & {
+  client: {
+    id: string;
+    name: string;
+    client_kind: ClientKind;
+  } | null;
+  responsible: {
+    id: string;
+    full_name: string;
+    specialist_type: SpecialistType | null;
   } | null;
 };

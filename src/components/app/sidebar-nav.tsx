@@ -25,7 +25,7 @@ type NavItem = {
 const ITEMS: ReadonlyArray<NavItem> = [
   { href: '/',          label: 'Главная',    icon: LayoutDashboard, enabled: true  },
   { href: '/clients',   label: 'Клиенты',    icon: Users,           enabled: true  },
-  { href: '/cases',     label: 'Дела',       icon: Briefcase,       enabled: false },
+  { href: '/cases',     label: 'Дела',       icon: Briefcase,       enabled: true  },
   { href: '/tasks',     label: 'Задачи',     icon: CheckSquare,     enabled: false },
   { href: '/calendar',  label: 'Календарь',  icon: Calendar,        enabled: false },
   { href: '/documents', label: 'Документы',  icon: FileText,        enabled: false },

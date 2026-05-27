@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ChevronLeft, Mail, MapPin, Pencil, Phone } from 'lucide-react';
+import { ChevronLeft, Mail, MapPin, Pencil, Phone, Plus } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -174,15 +174,22 @@ export default async function ClientDetailPage({
                 : `Всего: ${cases.length}`}
             </p>
           </div>
-          <span className="text-[11px] font-mono uppercase tracking-[0.05em] text-text-subtle font-semibold">
-            Шаг 5 · скоро
-          </span>
+          {isStaff && (
+            <Button asChild size="sm">
+              <Link href={`/cases/new?client=${client.id}`}>
+                <Plus size={14} strokeWidth={2} />
+                Новое дело
+              </Link>
+            </Button>
+          )}
         </div>
 
         {cases.length === 0 ? (
           <div className="py-10 px-6 text-center">
             <p className="text-[13px] text-text-muted">
-              Создание дел появится на следующем шаге.
+              {isStaff
+                ? 'Заведите первое дело — оно соберёт документы, задачи и финансы.'
+                : 'Пока нет дел.'}
             </p>
           </div>
         ) : (
