@@ -9,13 +9,50 @@
 
 ## Текущее состояние
 
-_Снимок на 2026-05-27 (пятая сессия)._
+_Снимок на 2026-05-27 (шестая сессия)._
 
-- **Шаг:** 5 — Дела (CRUD + интеграция с клиентами + RLS-проверки) — **ЗАВЕРШЁН** ✓ (12 QA-скриншотов под admin и lawyer).
-- **Следующий шаг:** 6 — Воронка / валидация «только вперёд» на смену `stage` (CLAUDE.md §7 п.2). В Шаге 5 сейчас — любой переход разрешён, это намеренно. Нужны: SQL-триггер `cases_validate_stage_forward` + UI-фильтр доступных опций в Select (скрыть «назад») + ручное исправление через owner/admin с `activity_log`.
-- **Последний коммит:** `ef1685d` feat(cases): шаг 5 — CRUD дел + интеграция с клиентами + RLS-проверки.
-- **Незакоммичено:** PROGRESS.md (этот update сессии).
-- **Следующее действие:** в новой сессии — прочитать `CLAUDE.md §6` (8 этапов, порядок) и `§7 п.2` (правило «только вперёд», исключение для staff с записью в `activity_log`), `kickoff-prompt.md` Шаг 6 если он есть; спланировать миграцию + UI-фильтрацию stage-Select на /cases/[id]/edit; план показать и ждать «ок».
+- **Шаг:** 6 — Воронка / валидация «только вперёд» — **ЗАВЕРШЁН** ✓ (миграция `20260527090000_stage_forward.sql`, триггер `cases_validate_stage_forward`, UI-фильтр опций Select для не-staff, маппинг ошибки в Server Action, smoke-test блок 9, 4 QA-скриншота).
+- **Следующий шаг:** 7 — Задачи и календарь (CLAUDE.md §5 модель `tasks`, §8 Phase 1 — задачи + общий календарь). Модель и RLS-политики `tasks_*_via_case` уже есть в `20260526100100`/`20260526100200` — новых миграций не нужно. UI: блок задач на карточке дела + общая страница `/tasks` (или `/calendar`).
+- **Последний коммит:** `fe29164` feat(cases): шаг 6 — воронка только вперёд + activity_log. Осталось закоммитить только этот docs-блок.
+- **Незакоммичено:** `docs/PROGRESS.md` (этот файл — запись Шага 6 + handoff to Шаг 7).
+- **Следующее действие:** закоммитить `docs: log Шаг 6 completion + handoff to Шаг 7`, затем стартовать Шаг 7.
+
+### Реализовано в Шаге 6
+- **Миграция (`supabase/migrations/20260527090000_stage_forward.sql`):**
+  - `private.case_stage_order(case_stage) → int` (1..8) — pure SQL immutable; набор `when ...::case_stage then N` для всех 8 этапов воронки.
+  - `private.cases_validate_stage_forward() returns trigger` BEFORE UPDATE OF stage, `security definer`, `set search_path = ''`. Логика: пропуск no-op (new=old); пропуск вперёд (order(new) >= order(old)); для не-staff `raise 'stage_backward_forbidden: cannot move case ...'` с `errcode = 'P0001'`; для staff — insert в `public.activity_log` (`entity_type='case'`, `action='stage_corrected'`, `changes=jsonb_build_object('from','to')`, `user_id=private.active_uid()`) и пропуск UPDATE.
+- **UI (`src/components/cases/case-form.tsx`):** новый пропс `allowedStages?: ReadonlyArray<CaseStage>` (default — все 8); Select рендерится из `stageOptions = allowedStages ?? CASE_STAGES`; defaultValue падает на `value('stage') || stageOptions[0] || 'new_request'`.
+- **UI (`src/app/(app)/cases/[id]/edit/page.tsx`):** получает текущего юзера через `requireUser()`; для staff (`owner`/`admin`) передаёт `allowedStages=CASE_STAGES`; для остальных — `CASE_STAGES.slice(currentStageIdx)` (текущий + все вперёд). Дублирует логику триггера в UI как UX, не как безопасность.
+- **Server Action (`src/lib/cases/actions.ts`):** в `updateCaseAction` после ошибки от Supabase проверяет `error.message?.includes('stage_backward_forbidden')` → возвращает `fieldErrors.stage = 'Возврат на предыдущий этап запрещён'` + `message = 'Возврат на предыдущий этап разрешён только администратору.'`. RU-сообщение подменяет системное «cannot move case ... from ... to ...».
+- **Smoke-test (`scripts/smoke-rls.ts`):** блок 9 «Шаг 6 — воронка только вперёд» — 6 проверок:
+  - setup CRM-2026-001 в `in_progress` через adminUser (через JWT, не service_role — иначе триггер увидел бы NULL `auth.uid()` и трактовал как не-staff).
+  - lawyer пробует откатить → ожидаемый error.message содержит `stage_backward_forbidden`.
+  - lawyer двигает вперёд (in_progress → pretrial) → ок.
+  - adminUser откатывает (pretrial → consultation) → ок.
+  - `activity_log` count выросло на 1, последняя запись содержит `changes={from:'pretrial', to:'consultation'}`.
+  - Cleanup: возврат в `originalStage` (записанный в начале блока).
+
+### QA-прогон под двумя ролями (`chrome-devtools` через explicit grant)
+- **admin (Анна Админ):**
+  1. `/cases/91793118-.../edit` — Select «Этап» содержит все 8 опций. Скрин `docs/qa-06-01-admin-stage-all.png`.
+  2. Откат `in_progress → consultation` через UI → редирект на карточку, бейдж «Консультация». Скрин `docs/qa-06-02-admin-rolled-back.png`. В `activity_log` появилась запись `stage_corrected{from:in_progress, to:consultation}` с `user_id=1336bc40-... (admin)`.
+- **lawyer (Лев Адвокатов):**
+  3. `/cases/91793118-.../edit` (stage=consultation) — Select содержит 7 опций: consultation + 6 вперёд. `new_request` не показан. Скрин `docs/qa-06-03-lawyer-stage-filtered.png`.
+  4. Bypass UI через DevTools: добавил `<option value="new_request">` в Select, выбрал, нажал «Сохранить» → форма вернулась с alert «Возврат на предыдущий этап запрещён», `aria-invalid` на Select. Stage в БД не изменился (`consultation`), `activity_log` count тот же (lawyer попытка raise → транзакция откатилась → ничего не записано). Скрин `docs/qa-06-04-lawyer-backward-error.png`.
+
+### Найденные и закрытые в сессии баги / косяки
+1. **smoke-test первая версия использовала service_role-клиент для setup move.** Service_role обходит RLS, но триггер всё равно срабатывает; внутри триггера `auth.uid() = NULL` → `is_staff() = false` → если setup был backward, тест падал. Фикс: все stage-операции в блоке 9 через `adminUser` (HTTP с JWT) — реальный admin = staff. `admin` (service_role) остался только для read-проверок.
+2. **Auto-mode classifier дважды отверг `mcp__chrome-devtools__*` и `Skill browse`.** CLAUDE.md мандат на `/browse`, но классификатор трактовал chrome-devtools как родственный заблокированному `mcp__claude-in-chrome__*`. Пользователь дал явное разрешение в чате; в следующий раз можно добавить allow-rule в `.claude/settings.local.json` через `/update-config`.
+3. **Старый chrome-devtools MCP-процесс висел в фоне** от прошлой сессии (PID 8580). Новая страница не открывалась — «browser already running». Фикс: `Stop-Process -Id 8580 -Force` — дочерние процессы умерли каскадом.
+
+### Открытые решения
+- **Бейдж «Этап исправлен» НЕ сделан** — план явно помечал его опциональным («скажите «без бейджа» если хотите оставить на Шаг 10»), пользователь сказал «ок» без явного указания. По CLAUDE.md «Don't add features beyond what the task requires» — отложил, появится в Шаге 10 (полный экран журнала).
+- **Триггерное сообщение через `errcode = 'P0001'` + строковое `includes('stage_backward_forbidden')`.** Идеально было бы выделить кастомный SQLSTATE, но P0001 — стандартный плэйсхолдер plpgsql exceptions, и текст ошибки мы сами контролируем. Если на проде Postgres-локализация заменит prefix, mapping сломается → переписать на match по SQLSTATE+context.
+- **CRM-2026-001 сейчас в `stage=consultation`** (после QA-сценария Admin откатил → Lawyer попытался дальше откатить → ошибка). Seed-base было `new_request`, в нескольких сессиях двигали. Не критично, можно при желании cleanup через Studio.
+- **`activity_log` накопил 2 записи `stage_corrected` по CRM-2026-001** — это нормально, лог append-only.
+- **`/design-review` НЕ запускали** — auto-mode опять режет AskUserQuestion-гейты. Изменений в UI стиле в Шаге 6 нет — только пропс на существующий Select.
+- **2 moderate npm vulnerabilities** — тащим с Шага 0. `/cso` review когда-нибудь.
+- **Локальный Supabase поднят** (vector контейнер периодически рестартится, остальное healthy).
 
 ### Реализовано в Шаге 5
 - **Типы (`src/lib/types/db.ts`):** `CaseType`/`CASE_TYPES`/`CASE_TYPE_LABEL`, `CasePriority`/`CASE_PRIORITIES`/`CASE_PRIORITY_LABEL`, `BillingType`/`BILLING_TYPES`/`BILLING_TYPE_LABEL`, `CASE_STAGES`/`CASE_STAGE_LABEL`, полная `Case` и `CaseWithRefs` (с join client+responsible).
@@ -123,6 +160,102 @@ _Снимок на 2026-05-27 (пятая сессия)._
 ## Лог сессий
 
 <!-- Новые записи добавляются СВЕРХУ (новейшая первой). Append-only — историю не переписывать. -->
+
+## Сессия 2026-05-27 (Шаг 6 — Воронка только вперёд)
+
+**Шаг(и):** 6 — Воронка / валидация «только вперёд» — завершён
+**Длительность:** ~1 час
+**Модель:** Claude Opus 4.7 (1M context)
+
+### Сделано
+
+**Миграция (`supabase/migrations/20260527090000_stage_forward.sql`):**
+- `private.case_stage_order(public.case_stage) returns int` — pure SQL immutable, маппит 8 этапов 1..8 (явные `s::public.case_stage` касты).
+- `private.cases_validate_stage_forward()` `returns trigger`, `security definer`, `set search_path = ''`:
+  - `new.stage = old.stage` → return (обрезаем no-op до записи в лог; триггер OF stage срабатывает даже при SET stage = old.stage).
+  - `case_stage_order(new) >= case_stage_order(old)` → return (вперёд всегда ок).
+  - не-staff → `raise exception 'stage_backward_forbidden: cannot move case % from % to %' using errcode = 'P0001'`.
+  - staff → insert в `public.activity_log` (`entity_type='case'`, `entity_id=new.id`, `user_id=private.active_uid()`, `action='stage_corrected'`, `changes=jsonb_build_object('from', old.stage::text, 'to', new.stage::text)`).
+- Триггер `before update of stage on public.cases for each row`. Активация: `npx supabase migration up` (применилась идемпотентно).
+
+**UI:**
+- `src/components/cases/case-form.tsx`: добавил пропс `allowedStages?: ReadonlyArray<CaseStage>`. `stageOptions = allowedStages ?? CASE_STAGES`. Select-Этап рендерится из stageOptions; defaultValue падает на первый элемент массива.
+- `src/app/(app)/cases/[id]/edit/page.tsx`: `requireUser()` → `user.profile.role`. Для staff (`owner`/`admin`) `allowedStages = CASE_STAGES`. Для остальных — `CASE_STAGES.slice(currentStageIdx >= 0 ? currentStageIdx : 0)`. Передаёт в CaseForm.
+
+**Server Action (`src/lib/cases/actions.ts`):**
+- В `updateCaseAction` после ошибки Supabase: `const isStageBackward = error.message?.includes('stage_backward_forbidden')`. Если true — `fieldErrors.stage = 'Возврат на предыдущий этап запрещён'` + `message = 'Возврат на предыдущий этап разрешён только администратору.'`. Иначе — старый путь (raw `error.message`).
+
+**Smoke-test (`scripts/smoke-rls.ts`):** новый блок 9, 6 проверок, все зелёные. Подробности — в «Реализовано в Шаге 6» в Текущем состоянии выше.
+
+**QA-прогон (`chrome-devtools` через explicit grant пользователя):**
+- 4 скриншота `docs/qa-06-01..04.png`.
+- Admin видит все 8 этапов; откатывает с UI → запись `stage_corrected{from:in_progress,to:consultation}` в activity_log с `user_id` админа.
+- Lawyer на CRM-2026-001 (stage=consultation) видит 7 опций (consultation + 6 вперёд).
+- Bypass UI через injected `<option value="new_request">` → форма вернулась с alert «Возврат на предыдущий этап запрещён», `aria-invalid` на Select, БД не изменилась, activity_log count не вырос.
+
+**Проверки:** `npm run lint` ✓, `npx tsc --noEmit` ✓, `npm run build` ✓ (12 роутов, Next.js 16.2.6 + Turbopack), `npm run smoke:rls` ✓ (9 блоков).
+
+### Решения и почему
+
+- **Триггер `security definer` для записи в `activity_log`.** У user-policy нет INSERT на activity_log (журнал append-only, см. `20260526100200_rls_policies.sql`). Security definer + write — допустимо по уже принятому контракту: «запись возможна только через service_role (серверные действия, триггеры)». Триггер — это и есть «триггер».
+- **`case_stage_order` БЕЗ `grant execute`.** Функция вызывается только изнутри `cases_validate_stage_forward` (которая security definer и сама имеет всё). Не выдаём grant, чтобы не плодить лишних surfaces.
+- **`if new.stage = old.stage then return` shortcut.** Триггер `OF stage` срабатывает даже при `SET stage = old.stage` (Postgres смотрит на список колонок в SET, не на фактическое изменение). Без этого shortcut мы бы плодили `stage_corrected` записи без события.
+- **Маппинг ошибки через `error.message.includes('stage_backward_forbidden')`** — не идеально (зависит от текста), но триггер кидает с конкретным текстом, который мы сами контролируем. Альтернатива (match SQLSTATE P0001) ловит ВСЕ user exceptions plpgsql — слишком широко.
+- **UI-фильтр в edit page — UX, не безопасность.** Заложил защиту: триггер сработает в любом случае. Комментарий в коде это явно прописывает. QA-сценарий 04 подтвердил: bypass UI ловится триггером.
+- **`closed_at` остался синхронным из Server Action**, не триггером. План явно говорил: разделение ответственности — триггер про порядок stage, Server Action про `closed_at`. Никаких пересечений, CHECK `cases_closed_consistency` не страдает.
+- **Бейдж «Этап исправлен» НЕ сделан** — план помечал опциональным; «ок» от пользователя на план не означал «делай всё опциональное» (CLAUDE.md «Don't add features beyond what the task requires»). Появится в Шаге 10 (полный журнал).
+- **smoke-test использует `adminUser` (JWT)**, не `admin` (service_role) для stage-операций. Под service_role `auth.uid() = NULL` → `is_staff() = false` → если setup был backward, тест падал. Все stage-write через JWT, service_role только для read-asserts.
+
+### Незакрытые вопросы / TODO
+
+- [ ] **Шаг 6 НЕ закоммичен** — миграция, 3 src-файла, smoke-rls, 4 QA-скриншота, PROGRESS.md. В новой сессии — закоммитить первым делом. Предложение по split (как Шаг 5):
+  - `feat(cases): шаг 6 — воронка только вперёд + activity_log`
+  - `docs: log Шаг 6 + handoff to Шаг 7`
+- [ ] **Шаг 7 — Задачи и календарь** — главное TODO. См. Handoff ниже.
+- [ ] **`activity_log` бейдж/секция на карточке дела** — отложено до Шага 10 (полный журнал).
+- [ ] **Auto-mode classifier vs chrome-devtools / `/browse`** — на постоянку добавить allow-rule в `.claude/settings.local.json` или через `/update-config`. Сейчас каждый QA-прогон в браузере требует явного разрешения от пользователя.
+- [ ] **2 moderate npm vulnerabilities** — тащим с Шага 0-3.
+- [ ] **`/cso` review** — Шага 6 SQL-триггер с записью в activity_log стоит прогнать (privilege escalation surface).
+
+### Handoff для следующей сессии (Шаг 7 — Задачи и календарь)
+
+- **Первая задача:** закоммитить Шаг 6 двумя коммитами (feat + docs), затем стартовать Шаг 7.
+- **Спланировать:**
+  - Модель `tasks` уже есть в БД (`supabase/migrations/20260526100100_core_tables.sql`):
+    `id, case_id (FK cases ON DELETE CASCADE), title, description, kind (task|hearing|deadline), assignee_id, created_by, due_at, status (open|done), created_at`. Индексы: `tasks_case_idx`, `tasks_assignee_idx`, `tasks_due_open_idx` (where status=open), `tasks_status_idx`. RLS: `tasks_*_via_case` через `private.can_write_case(case_id)`. INSERT требует `created_by = active_uid()`.
+  - **Типы/queries/actions** (`src/lib/tasks/`):
+    - `TaskKind` (`task|hearing|deadline`), `TaskStatus` (`open|done`), `Task`, `TaskWithRefs` (с join assignee + case).
+    - `listTasksByCase(caseId)`, `listTasksForUser(userId, {status?, dueBefore?})`, `listUpcomingTasks({days?})` для календаря/dashboard.
+    - `createTaskAction`, `updateTaskAction`, `toggleTaskStatusAction`, `deleteTaskAction`.
+  - **UI на карточке дела (`/cases/[id]`)** — заменить soon-card «Задачи и заседания» на реальный блок: inline-форма добавить + список открытых/закрытых задач с чекбоксом-toggle. Хедер с счётчиком открытых.
+  - **Общая страница задач (`/tasks` или `/calendar`)** — приоритезировать что важнее. Календарь требует UI-библиотеку или ручной grid; список с группировкой по дням/неделям проще. Решить с пользователем.
+  - **Sidebar:** включить пункт «Задачи» (counter — число открытых задач юзера). «Календарь» — позже, если делаем отдельный экран.
+- **Файлы открыть в первую очередь:**
+  - `CLAUDE.md §5` (tasks модель), `§8` (Phase 1 — задачи + календарь).
+  - `kickoff-prompt.md` Шаг 7.
+  - `supabase/migrations/20260526100100_core_tables.sql` (модель tasks, индексы).
+  - `supabase/migrations/20260526100200_rls_policies.sql` (политики `tasks_*_via_case`).
+  - `src/lib/cases/queries.ts` / `actions.ts` как образец.
+  - `src/components/cases/case-form.tsx` — паттерн больших форм; для tasks форма будет короче (5-6 полей).
+  - `src/components/ui/stage-badge.tsx` — задел на task-status-badge.
+- **Команды для проверки текущего состояния:**
+  - `git log --oneline -7` — последние коммиты Шага 5 + Шага 6 (после фиксации в начале сессии).
+  - `docker ps --format "{{.Names}}"` — Supabase подняты.
+  - `npm run lint && npx tsc --noEmit && npm run build` — чисто.
+  - `npm run smoke:rls` — 9 блоков (если решим — добавить блок 10 на tasks RLS).
+  - `npm run dev` → /login → admin/lawyer/jurist/assistant (см. `scripts/seed.ts`).
+- **Подводные камни:**
+  - **`tasks.kind = 'hearing'`** — судебное заседание, требует date+time. `due_at` уже `timestamptz`, не `date`. Календарь должен это учитывать (показать время).
+  - **`tasks.case_id` ON DELETE CASCADE** (в отличие от documents/payments которые RESTRICT). Удаление дела снесёт связанные задачи — это намеренно (задачи без дела не имеют смысла).
+  - **RLS на INSERT tasks:** `can_write_case(case_id) AND created_by = active_uid()`. Нельзя создать задачу от чужого имени. Server Action: `created_by = currentUser.id` неявно через сессию.
+  - **assignee_id** может быть ЛЮБОЙ active user (включая других специалистов). По CLAUDE.md §7-5: «Задачи может ставить любой специалист — себе и коллегам». UI: list specialists + admin + assistant.
+  - **Триггер `cases_validate_stage_forward`** не пересекается с tasks, но если в Шаге 7 будем менять stage по событиям (например auto-close дела при последней done-task) — нужно учесть, что service_role-операции записи в activity_log с `user_id=NULL` (это документировано).
+  - **Sidebar enabled-флаг** — `src/components/app/sidebar-nav.tsx`. Для «Задачи» поставить `enabled: true` после готовности страницы.
+
+### Коммиты
+- (пока нет) — будут после `git commit` в начале следующей сессии.
+
+---
 
 ## Сессия 2026-05-27 (Шаг 5 — Дела)
 
