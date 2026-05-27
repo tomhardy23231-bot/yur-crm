@@ -27,6 +27,7 @@ export type CaseFormFields =
   | 'stage'
   | 'priority'
   | 'contract_sum'
+  | 'hourly_rate'
   | 'billing_types'
   | 'opponent'
   | 'court_case_number'
@@ -70,6 +71,7 @@ type Validated = {
   stage: CaseStage;
   priority: CasePriority;
   contract_sum: number;
+  hourly_rate: number | null;
   billing_types: BillingType[];
   opponent: string | null;
   court_case_number: string | null;
@@ -98,6 +100,7 @@ function validate(formData: FormData):
   const stage_raw = getString(formData, 'stage');
   const priority_raw = getString(formData, 'priority');
   const contract_sum_raw = getString(formData, 'contract_sum');
+  const hourly_rate_raw = getString(formData, 'hourly_rate');
   const opponent = getString(formData, 'opponent');
   const court_case_number = getString(formData, 'court_case_number');
   const court = getString(formData, 'court');
@@ -117,6 +120,7 @@ function validate(formData: FormData):
     stage: stage_raw,
     priority: priority_raw,
     contract_sum: contract_sum_raw,
+    hourly_rate: hourly_rate_raw,
     billing_types: billing_types.join(','),
     opponent,
     court_case_number,
@@ -165,6 +169,19 @@ function validate(formData: FormData):
     }
   }
 
+  // Phase 2/A: дефолтная ставка по делу (numeric(10,2), nullable).
+  // Пусто → null (ставка не задана), иначе валидируем как число ≥ 0.
+  let hourly_rate: number | null = null;
+  if (hourly_rate_raw) {
+    const normalized = hourly_rate_raw.replace(',', '.');
+    const n = Number(normalized);
+    if (!Number.isFinite(n) || n < 0 || n >= 1_000_000) {
+      fieldErrors.hourly_rate = 'Ставка — число от 0';
+    } else {
+      hourly_rate = n;
+    }
+  }
+
   if (Object.keys(fieldErrors).length > 0) {
     return {
       ok: false,
@@ -200,6 +217,7 @@ function validate(formData: FormData):
       stage,
       priority: priority_raw as CasePriority,
       contract_sum,
+      hourly_rate,
       billing_types,
       opponent: opponent || null,
       court_case_number: court_case_number || null,
@@ -264,6 +282,7 @@ const CASE_DIFF_FIELDS = [
   'case_type',
   'priority',
   'contract_sum',
+  'hourly_rate',
   'billing_types',
   'opponent',
   'court_case_number',
@@ -279,6 +298,7 @@ type CaseDiffShape = {
   case_type: CaseType;
   priority: CasePriority;
   contract_sum: number;
+  hourly_rate: number | null;
   billing_types: BillingType[];
   opponent: string | null;
   court_case_number: string | null;
@@ -310,6 +330,7 @@ export async function updateCaseAction(
     closed_at: string | null;
     priority: string;
     contract_sum: number | string;
+    hourly_rate: number | string | null;
     billing_types: string[] | null;
     opponent: string | null;
     court_case_number: string | null;
@@ -320,7 +341,7 @@ export async function updateCaseAction(
     .from('cases')
     .select(
       'number_title, client_id, responsible_id, opened_at, case_type, stage, closed_at, ' +
-        'priority, contract_sum, billing_types, opponent, court_case_number, court, tags',
+        'priority, contract_sum, hourly_rate, billing_types, opponent, court_case_number, court, tags',
     )
     .eq('id', caseId)
     .maybeSingle();
@@ -371,6 +392,7 @@ export async function updateCaseAction(
       case_type: before.case_type as CaseType,
       priority: before.priority as CasePriority,
       contract_sum: Number(before.contract_sum ?? 0),
+      hourly_rate: before.hourly_rate == null ? null : Number(before.hourly_rate),
       billing_types: (before.billing_types ?? []) as BillingType[],
       opponent: (before.opponent as string | null) ?? null,
       court_case_number: (before.court_case_number as string | null) ?? null,
@@ -385,6 +407,7 @@ export async function updateCaseAction(
       case_type: result.data.case_type,
       priority: result.data.priority,
       contract_sum: result.data.contract_sum,
+      hourly_rate: result.data.hourly_rate,
       billing_types: result.data.billing_types,
       opponent: result.data.opponent,
       court_case_number: result.data.court_case_number,

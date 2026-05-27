@@ -166,6 +166,9 @@ export type Case = {
   paid_total: number;
   debt: number;
   billing_types: BillingType[];
+  // Phase 2/A — дефолтная почасовая ставка по делу (snapshot копируется
+  // в time_entries.hourly_rate при создании entry). NULL = не настроено.
+  hourly_rate: number | null;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;
@@ -289,4 +292,39 @@ export type PaymentRow = {
 
 export type PaymentWithCreator = PaymentRow & {
   creator: { id: string; full_name: string } | null;
+};
+
+// =====================================================================
+// Time entries — учёт времени (CLAUDE.md §9 Q12, Phase 2 / Step A).
+// minutes хранятся как int (1ч 30м = 90); UI парсит свободный ввод.
+// hourly_rate — snapshot из cases.hourly_rate на момент создания.
+// =====================================================================
+
+export type TimeEntryRow = {
+  id: string;
+  case_id: string;
+  task_id: string | null;
+  user_id: string;
+  spent_at: string;        // date (YYYY-MM-DD)
+  minutes: number;          // int, >0 ≤ 24*60
+  billable: boolean;
+  hourly_rate: number | null;  // numeric(10,2); null = почасово не считается
+  note: string | null;
+  invoice_id: string | null;   // Phase 2/B placeholder
+  created_at: string;
+  updated_at: string;
+};
+
+export type TimeEntryWithRefs = TimeEntryRow & {
+  user: { id: string; full_name: string } | null;
+  case: { id: string; number_title: string } | null;
+  task: { id: string; title: string } | null;
+};
+
+// Агрегаты «по делу» для KPI в карточке дела.
+export type CaseTimeAggregate = {
+  total_minutes: number;
+  billable_minutes: number;
+  billable_amount: number;   // сумма billable_minutes/60 × rate
+  entries_count: number;
 };

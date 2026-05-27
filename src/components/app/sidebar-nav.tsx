@@ -8,6 +8,7 @@ import {
   Briefcase,
   CheckSquare,
   Calendar,
+  Clock,
   FileText,
   Wallet,
   type LucideIcon,
@@ -34,6 +35,7 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { href: '/cases',     label: 'Дела',       icon: Briefcase,       enabled: true  },
   { href: '/tasks',     label: 'Задачи',     icon: CheckSquare,     enabled: true, counterKey: 'tasksOpen' },
   { href: '/calendar',  label: 'Календарь',  icon: Calendar,        enabled: true  },
+  { href: '/time',      label: 'Моё время',  icon: Clock,           enabled: true  },
   { href: '/documents', label: 'Документы',  icon: FileText,        enabled: false },
   { href: '/finance',   label: 'Финансы',    icon: Wallet,          enabled: false },
 ];

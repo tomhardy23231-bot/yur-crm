@@ -89,6 +89,8 @@ export function CaseForm({
         case 'stage': return caseRow.stage;
         case 'priority': return caseRow.priority;
         case 'contract_sum': return String(caseRow.contract_sum);
+        case 'hourly_rate':
+          return caseRow.hourly_rate != null ? String(caseRow.hourly_rate) : '';
         case 'opponent': return caseRow.opponent ?? '';
         case 'court_case_number': return caseRow.court_case_number ?? '';
         case 'court': return caseRow.court ?? '';
@@ -277,6 +279,25 @@ export function CaseForm({
               min="0"
               defaultValue={value('contract_sum') || '0'}
               aria-invalid={err('contract_sum') ? 'true' : undefined}
+              className="font-mono"
+            />
+          </Field>
+
+          <Field
+            label="Почасовая ставка, ₴/ч"
+            htmlFor="hourly_rate"
+            error={err('hourly_rate')}
+          >
+            <Input
+              id="hourly_rate"
+              name="hourly_rate"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              defaultValue={value('hourly_rate')}
+              placeholder="например, 1500"
+              aria-invalid={err('hourly_rate') ? 'true' : undefined}
               className="font-mono"
             />
           </Field>

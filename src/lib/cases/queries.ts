@@ -244,7 +244,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     .from('cases')
     .select(
       'id, number_title, client_id, responsible_id, opened_at, case_type, stage, priority, tags, ' +
-        'contract_sum, paid_total, debt, billing_types, opponent, court_case_number, court, closed_at, created_at, ' +
+        'contract_sum, paid_total, debt, billing_types, hourly_rate, opponent, court_case_number, court, closed_at, created_at, ' +
         'client:client_id(id, name, client_kind), responsible:responsible_id(id, full_name, specialist_type)',
     )
     .eq('id', id)
@@ -255,10 +255,11 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
   }
   if (!data) return null;
 
-  type Row = Omit<Case, 'contract_sum' | 'paid_total' | 'debt'> & {
+  type Row = Omit<Case, 'contract_sum' | 'paid_total' | 'debt' | 'hourly_rate'> & {
     contract_sum: number | string;
     paid_total: number | string;
     debt: number | string;
+    hourly_rate: number | string | null;
     client:
       | ReadonlyArray<{ id: string; name: string; client_kind: ClientKind }>
       | { id: string; name: string; client_kind: ClientKind }
@@ -297,6 +298,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     paid_total: Number(r.paid_total),
     debt: Number(r.debt),
     billing_types: (r.billing_types ?? []) as BillingType[],
+    hourly_rate: r.hourly_rate == null ? null : Number(r.hourly_rate),
     opponent: r.opponent,
     court_case_number: r.court_case_number,
     court: r.court,

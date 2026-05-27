@@ -23,8 +23,11 @@ import { CaseActivityBlock } from '@/components/activity/case-activity-block';
 import { CaseDocumentsBlock } from '@/components/documents/case-documents-block';
 import { CasePaymentsBlock } from '@/components/payments/case-payments-block';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
+import { CaseTimeEntriesBlock } from '@/components/time-entries/case-time-entries-block';
 import { requireUser } from '@/lib/auth/require-role';
 import { getCase } from '@/lib/cases/queries';
+import { getCaseTimeAggregate } from '@/lib/time-entries/queries';
+import { formatMinutes } from '@/lib/time-entries/parse';
 import {
   CASE_TYPE_LABEL,
   CLIENT_KIND_LABEL,
@@ -73,6 +76,11 @@ export default async function CaseDetailPage({
   // RLS UPDATE = staff OR responsible_id = uid. Маскируем кнопку Edit под это.
   const canEdit = isStaff || c.responsible_id === user.profile.id;
   const errorMessage = error ? ERROR_MESSAGES[error] : undefined;
+
+  // KPI «Учтено часов» в блоке Финансы — отдельный запрос, агрегаты не дешёвые,
+  // но и не критичные (на Phase 1-объёмах — пара миллисекунд). При росте можно
+  // переехать в SQL view.
+  const timeAgg = await getCaseTimeAggregate(c.id);
 
   return (
     <main className="flex flex-col gap-6 px-8 py-10 sm:px-12 max-w-5xl">
@@ -225,6 +233,28 @@ export default async function CaseDetailPage({
             tone={c.debt > 0 ? 'error' : 'muted'}
           />
         </div>
+        {(timeAgg.total_minutes > 0 || c.hourly_rate != null) && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border border-t border-border">
+            <KPI
+              label="Учтено часов"
+              value={formatMinutes(timeAgg.total_minutes)}
+            />
+            <KPI
+              label="Оплачиваемых"
+              value={formatMinutes(timeAgg.billable_minutes)}
+              tone={timeAgg.billable_minutes > 0 ? 'success' : 'muted'}
+            />
+            <KPI
+              label={
+                c.hourly_rate != null
+                  ? `Ожидаемый доход @ ${MONEY_FMT.format(c.hourly_rate)} ₴/ч`
+                  : 'Ожидаемый доход'
+              }
+              value={`${MONEY_FMT.format(timeAgg.billable_amount)} ₴`}
+              tone={timeAgg.billable_amount > 0 ? 'success' : 'muted'}
+            />
+          </div>
+        )}
         <div className="px-5 py-4 border-t border-border">
           <p className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle mb-2">
             Тип оплаты
@@ -245,6 +275,15 @@ export default async function CaseDetailPage({
         caseId={c.id}
         canWrite={canEdit}
         canDelete={isStaff}
+      />
+
+      {/* Учёт времени (Phase 2/A) */}
+      <CaseTimeEntriesBlock
+        caseId={c.id}
+        defaultHourlyRate={c.hourly_rate}
+        canWrite={canEdit}
+        isStaff={isStaff}
+        currentUserId={user.profile.id}
       />
 
       {/* Платежи (Шаг 9) */}

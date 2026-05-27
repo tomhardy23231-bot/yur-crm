@@ -822,6 +822,178 @@ async function main() {
   if (med7CleanupErr) fail(`MED#7 cleanup: ${med7CleanupErr.message}`);
   ok('cleanup: MED#7 записи удалены');
 
+  console.log('\n16. Phase 2/A — time_entries RLS:');
+
+  // 16.1 — lawyer создаёт entry на СВОЁ дело.
+  const { data: lawyerEntry, error: lawyerEntryErr } = await lawyer
+    .from('time_entries')
+    .insert({
+      case_id: lawyerCaseId,
+      user_id: lawyerUid,
+      spent_at: '2026-05-27',
+      minutes: 90,
+      billable: true,
+      hourly_rate: 1500,
+      note: 'smoke: подготовка иска',
+    })
+    .select('id')
+    .single();
+  if (lawyerEntryErr || !lawyerEntry) {
+    fail(`lawyer не смог создать time_entry: ${lawyerEntryErr?.message}`);
+  }
+  const lawyerEntryId = lawyerEntry.id as string;
+  ok('lawyer создал time_entry на своё дело');
+
+  // 16.2 — lawyer пытается приписать user_id чужому юзеру → WITH CHECK отверг.
+  const { error: forgedUserErr } = await lawyer
+    .from('time_entries')
+    .insert({
+      case_id: lawyerCaseId,
+      user_id: juristUid, // forged
+      spent_at: '2026-05-27',
+      minutes: 30,
+    });
+  if (!forgedUserErr) {
+    fail('lawyer смог приписать user_id чужому юзеру — RLS дыра');
+  }
+  ok('lawyer не может приписать user_id чужому (WITH CHECK отверг)');
+
+  // 16.3 — lawyer пытается создать entry на ЧУЖОЕ дело → can_write_case отверг.
+  const { error: foreignCaseTimeErr } = await lawyer
+    .from('time_entries')
+    .insert({
+      case_id: juristCaseId,
+      user_id: lawyerUid,
+      spent_at: '2026-05-27',
+      minutes: 30,
+    });
+  if (!foreignCaseTimeErr) {
+    fail('lawyer смог создать entry на дело jurist — RLS дыра');
+  }
+  ok('lawyer не может создать entry на чужое дело (can_write_case отверг)');
+
+  // 16.4 — jurist НЕ видит time_entries lawyer (RLS SELECT через case).
+  const { data: juristSeesTime } = await jurist
+    .from('time_entries')
+    .select('id')
+    .eq('case_id', lawyerCaseId);
+  if (juristSeesTime && juristSeesTime.length > 0) {
+    fail(`jurist видит entries на чужом деле: ${juristSeesTime.length}`);
+  }
+  ok('jurist изолирован от time_entries чужого дела');
+
+  // 16.5 — assistant видит entries на деле супервайзера (jurist) и
+  //        может писать свои часы на это дело.
+  const { data: assistantEntry, error: assistantEntryErr } = await assistant
+    .from('time_entries')
+    .insert({
+      case_id: juristCaseId,
+      user_id: 'assistant-uid-placeholder', // заменим ниже
+      spent_at: '2026-05-27',
+      minutes: 45,
+      note: 'smoke: помощник логирует',
+    })
+    .select('id');
+  // Сначала получим реальный uid ассистента, потом вставим заново.
+  // (Делаем чище: сначала uid, потом insert.)
+  void assistantEntry; void assistantEntryErr;
+  const { data: assistantProfile } = await admin
+    .from('users').select('id').eq('email', 'assistant@yur.local').single();
+  const assistantUid = assistantProfile!.id as string;
+
+  const { data: assistantEntryOk, error: assistantInsertErr } = await assistant
+    .from('time_entries')
+    .insert({
+      case_id: juristCaseId,
+      user_id: assistantUid,
+      spent_at: '2026-05-27',
+      minutes: 45,
+      billable: false,
+      note: 'smoke: помощник логирует на дело супервайзера',
+    })
+    .select('id')
+    .single();
+  if (assistantInsertErr || !assistantEntryOk) {
+    fail(`assistant не смог записать entry на дело супервайзера: ${assistantInsertErr?.message}`);
+  }
+  const assistantEntryId = assistantEntryOk.id as string;
+  ok('assistant записал entry на дело супервайзера (jurist)');
+
+  // 16.6 — assistant ВИДИТ свой entry + entries jurist на том же деле.
+  const { data: assistantVisible } = await assistant
+    .from('time_entries').select('id, user_id').eq('case_id', juristCaseId);
+  if (!assistantVisible || assistantVisible.length === 0) {
+    fail('assistant не видит свои entries на деле супервайзера');
+  }
+  ok(`assistant видит ${assistantVisible.length} entries на деле супервайзера`);
+
+  // 16.7 — lawyer обновляет СВОЙ entry → ok.
+  const { error: ownUpdateErr } = await lawyer
+    .from('time_entries').update({ minutes: 120, note: 'updated by self' }).eq('id', lawyerEntryId);
+  if (ownUpdateErr) {
+    fail(`lawyer не смог обновить свой entry: ${ownUpdateErr.message}`);
+  }
+  const { data: afterOwn } = await admin
+    .from('time_entries').select('minutes').eq('id', lawyerEntryId).single();
+  if (Number(afterOwn?.minutes) !== 120) {
+    fail(`свой entry не обновился, факт: ${afterOwn?.minutes}`);
+  }
+  ok('lawyer обновил свой entry (60 → 120 min)');
+
+  // 16.8 — lawyer пытается обновить entry АССИСТЕНТА → silent fail (RLS owner_or_staff).
+  const { error: foreignUpdErr } = await lawyer
+    .from('time_entries').update({ minutes: 1 }).eq('id', assistantEntryId);
+  void foreignUpdErr; // RLS возвращает 0 rows без ошибки
+  const { data: afterForeignUpd } = await admin
+    .from('time_entries').select('minutes').eq('id', assistantEntryId).single();
+  if (Number(afterForeignUpd?.minutes) !== 45) {
+    fail(`lawyer смог обновить чужой entry, факт: ${afterForeignUpd?.minutes}`);
+  }
+  ok('lawyer не может обновить чужой entry (owner_or_staff отверг)');
+
+  // 16.9 — lawyer пытается удалить entry АССИСТЕНТА → silent fail.
+  const { error: foreignDelErr } = await lawyer
+    .from('time_entries').delete().eq('id', assistantEntryId);
+  void foreignDelErr;
+  const { data: assistantStillExists } = await admin
+    .from('time_entries').select('id').eq('id', assistantEntryId).maybeSingle();
+  if (!assistantStillExists) {
+    fail('lawyer смог удалить чужой entry');
+  }
+  ok('lawyer не может удалить чужой entry (owner_or_staff отверг)');
+
+  // 16.10 — admin может удалить ЛЮБОЙ entry (is_staff bypass).
+  const { error: adminDelEntryErr } = await adminUser
+    .from('time_entries').delete().eq('id', assistantEntryId);
+  if (adminDelEntryErr) {
+    fail(`admin не смог удалить чужой entry: ${adminDelEntryErr.message}`);
+  }
+  ok('admin удалил entry ассистента (is_staff bypass)');
+
+  // 16.11 — CHECK: minutes ≤ 0 → constraint reject.
+  const { error: zeroMinErr } = await lawyer
+    .from('time_entries')
+    .insert({ case_id: lawyerCaseId, user_id: lawyerUid, spent_at: '2026-05-27', minutes: 0 });
+  if (!zeroMinErr || !/minutes/i.test(zeroMinErr.message)) {
+    fail(`minutes=0 должен отвергаться CHECK, факт: ${zeroMinErr?.message}`);
+  }
+  ok('CHECK minutes > 0 работает');
+
+  // 16.12 — CHECK: minutes > 24*60 → reject.
+  const { error: tooBigErr } = await lawyer
+    .from('time_entries')
+    .insert({ case_id: lawyerCaseId, user_id: lawyerUid, spent_at: '2026-05-27', minutes: 24 * 60 + 1 });
+  if (!tooBigErr || !/minutes/i.test(tooBigErr.message)) {
+    fail(`minutes > 24h должен отвергаться, факт: ${tooBigErr?.message}`);
+  }
+  ok('CHECK minutes ≤ 24h работает');
+
+  // 16.13 — cleanup своего entry.
+  const { error: cleanupLawyerEntryErr } = await admin
+    .from('time_entries').delete().eq('id', lawyerEntryId);
+  if (cleanupLawyerEntryErr) fail(`cleanup lawyer entry: ${cleanupLawyerEntryErr.message}`);
+  ok('cleanup: lawyer entry удалён');
+
   console.log('\n✓ Все RLS-проверки пройдены.');
 }
 
