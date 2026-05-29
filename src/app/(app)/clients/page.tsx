@@ -109,18 +109,13 @@ export default async function ClientsPage({
   }
 
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-            Клиенты
-          </h1>
-          <p className="text-[13px] text-text-muted">
-            {total === 0
-              ? 'Пока нет клиентов'
-              : `Всего: ${total} ${plural(total, ['клиент', 'клиента', 'клиентов'])}`}
-          </p>
-        </div>
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-text-muted">
+          {total === 0
+            ? 'Пока нет клиентов'
+            : `Всего: ${total} ${plural(total, ['клиент', 'клиента', 'клиентов'])}`}
+        </p>
         <Button asChild>
           <Link href="/clients/new">
             <Plus size={16} strokeWidth={2} />

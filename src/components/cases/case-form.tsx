@@ -11,10 +11,14 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { CaseActionState, CaseFormFields } from '@/lib/cases/actions';
-import type { ClientOption, SpecialistOption } from '@/lib/cases/queries';
+import type { AssigneeOption, ClientOption } from '@/lib/cases/queries';
 import {
+  ACCRUAL_MODE_LABEL,
+  ACCRUAL_MODES,
   BILLING_TYPE_LABEL,
   BILLING_TYPES,
+  CASE_CATEGORIES,
+  CASE_CATEGORY_LABEL,
   CASE_PRIORITIES,
   CASE_PRIORITY_LABEL,
   CASE_STAGE_LABEL,
@@ -40,34 +44,36 @@ interface CaseFormProps {
   clients?: ClientOption[];
   /** Если задан — клиент жёстко прибит, селект не показывается. */
   lockedClient?: { id: string; name: string };
-  specialists: SpecialistOption[];
+  /** Юристы-продажники (lawyer_id). */
+  lawyers: AssigneeOption[];
+  /** Експерты-исполнители (responsible_id). */
+  experts: AssigneeOption[];
   submitLabel: string;
   cancelHref: string;
-  /** Подсказать форме умолчания (например, текущего пользователя как ответственного). */
+  /** Подсказать форме умолчания (например, текущего пользователя как Експерта). */
   defaultResponsibleId?: string;
+  /** owner/admin — показываем поля индивидуального % (P1.1). */
+  canEditRates?: boolean;
   /**
-   * Какие этапы показывать в Select. По умолчанию — все 8. Шаг 6: для не-staff
+   * Какие этапы показывать в Select. По умолчанию — все 5. Для не-staff
    * передаём только текущий и все «вперёд» (CLAUDE.md §7-2). Триггер
    * `cases_validate_stage_forward` всё равно защитит на стороне БД.
    */
   allowedStages?: ReadonlyArray<CaseStage>;
 }
 
-const SPECIALIST_TYPE_LABEL: Record<'lawyer' | 'jurist', string> = {
-  lawyer: 'адвокат',
-  jurist: 'юрист',
-};
-
 export function CaseForm({
   action,
   caseRow,
   clients,
   lockedClient,
-  specialists,
+  lawyers,
+  experts,
   submitLabel,
   cancelHref,
   defaultResponsibleId,
   allowedStages,
+  canEditRates = false,
 }: CaseFormProps) {
   const stageOptions = allowedStages ?? CASE_STAGES;
   const [state, formAction] = useActionState<CaseActionState, FormData>(
@@ -83,14 +89,24 @@ export function CaseForm({
       switch (field) {
         case 'number_title': return caseRow.number_title;
         case 'client_id': return caseRow.client_id;
+        case 'lawyer_id': return caseRow.lawyer_id;
         case 'responsible_id': return caseRow.responsible_id;
         case 'opened_at': return caseRow.opened_at;
         case 'case_type': return caseRow.case_type;
+        case 'category': return caseRow.category;
+        case 'subject': return caseRow.subject ?? '';
         case 'stage': return caseRow.stage;
         case 'priority': return caseRow.priority;
         case 'contract_sum': return String(caseRow.contract_sum);
-        case 'hourly_rate':
-          return caseRow.hourly_rate != null ? String(caseRow.hourly_rate) : '';
+        case 'lawyer_rate_override':
+          return caseRow.lawyer_rate_override == null
+            ? ''
+            : String(caseRow.lawyer_rate_override);
+        case 'expert_rate_override':
+          return caseRow.expert_rate_override == null
+            ? ''
+            : String(caseRow.expert_rate_override);
+        case 'accrual_mode': return caseRow.accrual_mode;
         case 'opponent': return caseRow.opponent ?? '';
         case 'court_case_number': return caseRow.court_case_number ?? '';
         case 'court': return caseRow.court ?? '';
@@ -115,6 +131,8 @@ export function CaseForm({
 
   const defaultResponsible =
     value('responsible_id') || defaultResponsibleId || '';
+
+  const defaultLawyer = value('lawyer_id') || '';
 
   const defaultOpenedAt = value('opened_at') || todayIso();
 
@@ -176,7 +194,29 @@ export function CaseForm({
           </Field>
 
           <Field
-            label="Ответственный"
+            label="Юрист (договор)"
+            htmlFor="lawyer_id"
+            error={err('lawyer_id')}
+            required
+          >
+            <Select
+              id="lawyer_id"
+              name="lawyer_id"
+              defaultValue={defaultLawyer}
+              required
+              aria-invalid={err('lawyer_id') ? 'true' : undefined}
+            >
+              <option value="">— выберите —</option>
+              {lawyers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.full_name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field
+            label="Эксперт (исполнитель)"
             htmlFor="responsible_id"
             error={err('responsible_id')}
             required
@@ -189,12 +229,9 @@ export function CaseForm({
               aria-invalid={err('responsible_id') ? 'true' : undefined}
             >
               <option value="">— выберите —</option>
-              {specialists.map((s) => (
+              {experts.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.full_name}
-                  {s.specialist_type
-                    ? ` · ${SPECIALIST_TYPE_LABEL[s.specialist_type]}`
-                    : ''}
                 </option>
               ))}
             </Select>
@@ -226,6 +263,42 @@ export function CaseForm({
                 </option>
               ))}
             </Select>
+          </Field>
+
+          <Field
+            label="Категория (для расчёта зарплаты)"
+            htmlFor="category"
+            error={err('category')}
+            required
+          >
+            <Select
+              id="category"
+              name="category"
+              defaultValue={value('category') || 'document'}
+              required
+              aria-invalid={err('category') ? 'true' : undefined}
+            >
+              {CASE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CASE_CATEGORY_LABEL[c]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field
+            label="Предмет договора"
+            htmlFor="subject"
+            error={err('subject')}
+            className="sm:col-span-2"
+          >
+            <Input
+              id="subject"
+              name="subject"
+              defaultValue={value('subject')}
+              maxLength={300}
+              placeholder="кратко: взыскание задолженности, регистрация ООО…"
+            />
           </Field>
 
           <Field label="Этап" htmlFor="stage" error={err('stage')} required>
@@ -283,23 +356,75 @@ export function CaseForm({
             />
           </Field>
 
+          {canEditRates && (
+            <div className="sm:col-span-2 flex flex-col gap-2 rounded-md border border-border bg-surface-muted/40 p-4">
+              <p className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
+                Индивидуальный % зарплаты по этому делу
+              </p>
+              <p className="text-[12px] text-text-subtle">
+                Необязательно. Пусто → берётся ставка категории. Меняет только
+                владелец/администратор.
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field
+                  label="% юриста"
+                  htmlFor="lawyer_rate_override"
+                  error={err('lawyer_rate_override')}
+                >
+                  <Input
+                    id="lawyer_rate_override"
+                    name="lawyer_rate_override"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    defaultValue={value('lawyer_rate_override')}
+                    placeholder="по категории"
+                    aria-invalid={err('lawyer_rate_override') ? 'true' : undefined}
+                    className="font-mono"
+                  />
+                </Field>
+                <Field
+                  label="% эксперта"
+                  htmlFor="expert_rate_override"
+                  error={err('expert_rate_override')}
+                >
+                  <Input
+                    id="expert_rate_override"
+                    name="expert_rate_override"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    defaultValue={value('expert_rate_override')}
+                    placeholder="по категории"
+                    aria-invalid={err('expert_rate_override') ? 'true' : undefined}
+                    className="font-mono"
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
+
           <Field
-            label="Почасовая ставка, ₴/ч"
-            htmlFor="hourly_rate"
-            error={err('hourly_rate')}
+            label="Начисление зарплаты"
+            htmlFor="accrual_mode"
+            error={err('accrual_mode')}
           >
-            <Input
-              id="hourly_rate"
-              name="hourly_rate"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              defaultValue={value('hourly_rate')}
-              placeholder="например, 1500"
-              aria-invalid={err('hourly_rate') ? 'true' : undefined}
-              className="font-mono"
-            />
+            <Select
+              id="accrual_mode"
+              name="accrual_mode"
+              defaultValue={value('accrual_mode') || 'on_completion'}
+              aria-invalid={err('accrual_mode') ? 'true' : undefined}
+            >
+              {ACCRUAL_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {ACCRUAL_MODE_LABEL[m]}
+                </option>
+              ))}
+            </Select>
           </Field>
 
           <Field

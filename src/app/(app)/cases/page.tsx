@@ -4,6 +4,8 @@ import { Briefcase, LayoutGrid, Plus } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { StageBadge } from '@/components/ui/stage-badge';
+import { CategoryBadge } from '@/components/ui/category-badge';
+import { PaymentProgress } from '@/components/cases/payment-progress';
 import {
   Table,
   TableHeader,
@@ -16,6 +18,7 @@ import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { requireUser } from '@/lib/auth/require-role';
+import { formatMoney } from '@/lib/utils';
 import { SortableHeader, type SortDir } from '@/components/ui/sortable-header';
 import {
   CASES_DEFAULT_SORT,
@@ -23,13 +26,17 @@ import {
   CASES_SORTABLE_COLUMNS,
   type CasesSortColumn,
   listCases,
-  listSpecialistsForAssignment,
+  listExpertsForAssignment,
 } from '@/lib/cases/queries';
 import {
+  CASE_CATEGORIES,
+  CASE_CATEGORY_LABEL,
   CASE_STAGE_LABEL,
   CASE_STAGES,
   CASE_TYPE_LABEL,
   CASE_TYPES,
+  STAFF_ROLES,
+  type CaseCategory,
   type CaseStage,
   type CaseType,
 } from '@/lib/types/db';
@@ -40,17 +47,14 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   year: 'numeric',
 });
 
-const MONEY_FMT = new Intl.NumberFormat('ru-RU', {
-  style: 'decimal',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
-
 function isCaseStage(value: string): value is CaseStage {
   return (CASE_STAGES as readonly string[]).includes(value);
 }
 function isCaseType(value: string): value is CaseType {
   return (CASE_TYPES as readonly string[]).includes(value);
+}
+function isCaseCategory(value: string): value is CaseCategory {
+  return (CASE_CATEGORIES as readonly string[]).includes(value);
 }
 
 const UUID_RE =
@@ -70,6 +74,7 @@ export default async function CasesPage({
     q?: string;
     stage?: string;
     type?: string;
+    category?: string;
     responsible?: string;
     page?: string;
     deleted?: string;
@@ -83,6 +88,8 @@ export default async function CasesPage({
   const q = sp.q?.trim() ?? '';
   const stage = sp.stage && isCaseStage(sp.stage) ? sp.stage : undefined;
   const caseType = sp.type && isCaseType(sp.type) ? sp.type : undefined;
+  const category =
+    sp.category && isCaseCategory(sp.category) ? sp.category : undefined;
   const responsibleId =
     sp.responsible && UUID_RE.test(sp.responsible) ? sp.responsible : undefined;
   const page = sp.page ? Math.max(1, Number(sp.page) || 1) : 1;
@@ -92,14 +99,13 @@ export default async function CasesPage({
   const dir: SortDir =
     sp.dir && isSortDir(sp.dir) ? sp.dir : CASES_DEFAULT_SORT.dir;
 
-  const isStaff =
-    user.profile.role === 'owner' || user.profile.role === 'admin';
+  const isStaff = STAFF_ROLES.includes(user.profile.role);
 
-  // Список ответственных для staff-фильтра (специалистам/ассистентам он не нужен:
-  // они и так видят только свои дела).
-  const specialists = isStaff ? await listSpecialistsForAssignment() : [];
+  // Список Експертов для staff-фильтра по ответственному (юристам/Експертам он
+  // не нужен: они и так видят только свои дела).
+  const experts = isStaff ? await listExpertsForAssignment() : [];
 
-  const result = await listCases({ q, stage, caseType, responsibleId, page, sort, dir });
+  const result = await listCases({ q, stage, caseType, category, responsibleId, page, sort, dir });
   const { items, total, pageCount } = result;
 
   function buildHref(
@@ -107,6 +113,7 @@ export default async function CasesPage({
       q: string;
       stage: string;
       type: string;
+      category: string;
       responsible: string;
       page: number;
       sort: string;
@@ -117,6 +124,7 @@ export default async function CasesPage({
     const nextQ = overrides.q ?? q;
     const nextStage = overrides.stage ?? stage ?? '';
     const nextType = overrides.type ?? caseType ?? '';
+    const nextCategory = overrides.category ?? category ?? '';
     const nextResp = overrides.responsible ?? responsibleId ?? '';
     const nextPage = overrides.page ?? page;
     const nextSort = overrides.sort ?? sort;
@@ -124,6 +132,7 @@ export default async function CasesPage({
     if (nextQ) params.set('q', nextQ);
     if (nextStage) params.set('stage', nextStage);
     if (nextType) params.set('type', nextType);
+    if (nextCategory) params.set('category', nextCategory);
     if (nextResp) params.set('responsible', nextResp);
     if (nextPage > 1) params.set('page', String(nextPage));
     // Не шумим в URL дефолтным sort'ом — храним только когда отличается.
@@ -150,18 +159,13 @@ export default async function CasesPage({
   }
 
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-            Дела
-          </h1>
-          <p className="text-[13px] text-text-muted">
-            {total === 0
-              ? 'Пока нет дел'
-              : `Всего: ${total} ${plural(total, ['дело', 'дела', 'дел'])}`}
-          </p>
-        </div>
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-text-muted">
+          {total === 0
+            ? 'Пока нет дел'
+            : `Всего: ${total} ${plural(total, ['дело', 'дела', 'дел'])}`}
+        </p>
         <div className="flex items-center gap-2">
           <Button asChild variant="secondary">
             <Link href={boardHref()}>
@@ -215,14 +219,27 @@ export default async function CasesPage({
           ]}
         />
 
+        <CasesFilterSelect
+          name="category"
+          value={category ?? ''}
+          ariaLabel="Категория"
+          options={[
+            { value: '', label: 'Все категории' },
+            ...CASE_CATEGORIES.map((c) => ({
+              value: c,
+              label: CASE_CATEGORY_LABEL[c],
+            })),
+          ]}
+        />
+
         {isStaff && (
           <CasesFilterSelect
             name="responsible"
             value={responsibleId ?? ''}
-            ariaLabel="Ответственный"
+            ariaLabel="Эксперт"
             options={[
-              { value: '', label: 'Все ответственные' },
-              ...specialists.map((s) => ({
+              { value: '', label: 'Все эксперты' },
+              ...experts.map((s) => ({
                 value: s.id,
                 label: s.full_name,
               })),
@@ -230,9 +247,9 @@ export default async function CasesPage({
           />
         )}
 
-        {(stage || caseType || responsibleId) && (
+        {(stage || caseType || category || responsibleId) && (
           <Link
-            href={buildHref({ stage: '', type: '', responsible: '', page: 1 })}
+            href={buildHref({ stage: '', type: '', category: '', responsible: '', page: 1 })}
             className="text-[13px] text-text-muted hover:text-text underline-offset-2 hover:underline"
           >
             Сбросить
@@ -242,7 +259,7 @@ export default async function CasesPage({
 
       {items.length === 0 ? (
         <EmptyState
-          hasFilters={Boolean(q || stage || caseType || responsibleId)}
+          hasFilters={Boolean(q || stage || caseType || category || responsibleId)}
           isStaff={isStaff}
         />
       ) : (
@@ -261,8 +278,9 @@ export default async function CasesPage({
                 <TableHead>Клиент</TableHead>
                 <TableHead>Этап</TableHead>
                 <TableHead>Тип</TableHead>
+                <TableHead>Категория</TableHead>
                 <TableHead>Приоритет</TableHead>
-                <TableHead>Ответственный</TableHead>
+                <TableHead>Эксперт</TableHead>
                 <SortableHeader
                   column="opened_at"
                   currentSort={sort}
@@ -321,6 +339,9 @@ export default async function CasesPage({
                     {CASE_TYPE_LABEL[c.case_type]}
                   </TableCell>
                   <TableCell>
+                    <CategoryBadge category={c.category} />
+                  </TableCell>
+                  <TableCell>
                     <PriorityBadge priority={c.priority} />
                   </TableCell>
                   <TableCell>
@@ -338,13 +359,22 @@ export default async function CasesPage({
                   <TableCell className="font-mono text-[12.5px] text-text-muted">
                     {DATE_FMT.format(new Date(c.opened_at))}
                   </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
-                    {MONEY_FMT.format(c.contract_sum)} ₴
+                  <TableCell className="text-right">
+                    <div className="ml-auto flex w-32 flex-col items-end gap-1">
+                      <span className="font-mono tabular-nums whitespace-nowrap">
+                        {formatMoney(c.contract_sum)} ₴
+                      </span>
+                      <PaymentProgress
+                        paid={Math.max(0, c.contract_sum - c.debt)}
+                        total={c.contract_sum}
+                        className="w-full"
+                      />
+                    </div>
                   </TableCell>
                   <TableCell
                     className={`text-right font-mono tabular-nums whitespace-nowrap ${c.debt > 0 ? 'text-error' : 'text-text-muted'}`}
                   >
-                    {MONEY_FMT.format(c.debt)} ₴
+                    {formatMoney(c.debt)} ₴
                   </TableCell>
                 </TableRow>
               ))}

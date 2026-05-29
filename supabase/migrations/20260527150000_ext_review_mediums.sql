@@ -1,11 +1,9 @@
--- Юр CRM — Внешнее ревью MED#4 + MED#7.
+-- Юр CRM — Внешнее ревью MED#7.
 --
--- MED#4: private.cases_validate_responsible() игнорирует users.is_active.
--- UI отсекает деактивированных в listSpecialistsForAssignment.eq('is_active', true),
--- но прямой UPDATE/INSERT с responsible_id уволенного специалиста пройдёт →
--- дело окажется навечно прикованным к человеку, который даже sign-out'нут.
--- Расширяем проверку: select role + is_active, отвергаем не-активного с
--- человекочитаемой ошибкой ('responsible_inactive').
+-- MED#4 (is_active в валидаторе ответственного) свёрнут в базовую миграцию
+-- 20260526100100_core_tables.sql: private.cases_validate_assignees() уже
+-- проверяет existence + is_active для lawyer_id и responsible_id. Отдельный
+-- блок здесь больше не нужен (старая функция cases_validate_responsible удалена).
 --
 -- MED#7: log_activity для p_action='case_deleted' / 'client_deleted' падает
 -- в silent-skip ветке `can_see_case(p_entity_id) = false`, потому что после
@@ -23,42 +21,6 @@
 -- payment_deleted / document_deleted продолжают работать как раньше —
 -- родительский case всё ещё существует, can_see_case=true; новая ветка для
 -- них просто не активируется (action не в списке is_staff-only-deleted).
-
--- ========================================================================
--- MED#4 — is_active в cases_validate_responsible
--- ========================================================================
-
-create or replace function private.cases_validate_responsible()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_role   public.user_role;
-  v_active boolean;
-begin
-  select role, is_active
-    into v_role, v_active
-    from public.users
-   where id = new.responsible_id;
-
-  if v_role is null then
-    raise exception 'responsible_id % does not exist in public.users', new.responsible_id;
-  end if;
-
-  if v_role <> 'specialist' then
-    raise exception 'responsible_id must reference a specialist, got role=%', v_role;
-  end if;
-
-  if not coalesce(v_active, false) then
-    raise exception 'responsible specialist % is not active', new.responsible_id
-      using errcode = 'P0001', hint = 'responsible_inactive';
-  end if;
-
-  return new;
-end;
-$$;
 
 -- ========================================================================
 -- MED#7 — log_activity: пропуск can_see_case для *_deleted (is_staff-only)

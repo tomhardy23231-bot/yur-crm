@@ -6,6 +6,7 @@ const TONE: Record<DocType, React.ComponentProps<typeof Badge>['tone']> = {
   claim: 'warning',
   power_of_attorney: 'prio-mid',
   correspondence: 'neutral',
+  act: 'success',
   other: 'neutral',
 };
 

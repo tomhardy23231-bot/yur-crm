@@ -7,7 +7,7 @@ import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { requireUser } from '@/lib/auth/require-role';
 import {
   listCasesForBoard,
-  listSpecialistsForAssignment,
+  listExpertsForAssignment,
   type BoardCaseItem,
 } from '@/lib/cases/queries';
 import {
@@ -15,8 +15,9 @@ import {
   CASE_STAGE_LABEL,
   CASE_TYPES,
   CASE_TYPE_LABEL,
-  type CaseStage,
+  STAFF_ROLES,
   type CaseType,
+  type CaseStage,
 } from '@/lib/types/db';
 
 const UUID_RE =
@@ -40,24 +41,23 @@ export default async function CasesBoardPage({
   const responsibleId =
     sp.responsible && UUID_RE.test(sp.responsible) ? sp.responsible : undefined;
 
-  const isStaff =
-    user.profile.role === 'owner' || user.profile.role === 'admin';
+  const isStaff = STAFF_ROLES.includes(user.profile.role);
 
-  const specialists = isStaff ? await listSpecialistsForAssignment() : [];
+  const experts = isStaff ? await listExpertsForAssignment() : [];
   const all = await listCasesForBoard({ caseType, responsibleId });
 
   // Группируем дела по этапу. Order сохраняется из запроса (priority asc → opened_at desc).
   const grouped = groupByStage(all);
 
-  // Право двигать дело вперёд: staff (owner/admin) — любое; specialist — только
-  // где responsible_id = я; assistant — read-only (по CLAUDE.md §4).
+  // Право двигать дело вперёд: staff (owner/admin/office_manager) — любое;
+  // юрист/Експерт — только своё дело (lawyer_id или responsible_id = я).
   // RLS уже отфильтровал, что видно; здесь — что можно ИЗМЕНИТЬ.
   function canAdvanceFor(c: BoardCaseItem): boolean {
-    if (user.profile.role === 'owner' || user.profile.role === 'admin') return true;
-    if (user.profile.role === 'specialist') {
-      return c.responsible?.id === user.profile.id;
-    }
-    return false; // assistant
+    if (isStaff) return true;
+    return (
+      c.responsible?.id === user.profile.id ||
+      c.lawyer?.id === user.profile.id
+    );
   }
 
   // Строит href обратно на список с теми же фильтрами.
@@ -70,17 +70,12 @@ export default async function CasesBoardPage({
   }
 
   return (
-    <main className="flex flex-col gap-5 px-8 py-10 sm:px-12 min-h-0">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-            Доска дел
-          </h1>
-          <p className="text-[13px] text-text-muted">
-            Воронка 8 этапов · движение только вперёд · {all.length}{' '}
-            {plural(all.length, ['дело', 'дела', 'дел'])}
-          </p>
-        </div>
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4 min-h-0">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-text-muted">
+          Воронка 5 этапов · движение только вперёд · {all.length}{' '}
+          {plural(all.length, ['дело', 'дела', 'дел'])}
+        </p>
         <div className="flex items-center gap-2">
           <Button asChild variant="secondary" size="sm">
             <Link href={listHref()}>
@@ -116,10 +111,10 @@ export default async function CasesBoardPage({
           <CasesFilterSelect
             name="responsible"
             value={responsibleId ?? ''}
-            ariaLabel="Ответственный"
+            ariaLabel="Эксперт"
             options={[
-              { value: '', label: 'Все ответственные' },
-              ...specialists.map((s) => ({
+              { value: '', label: 'Все эксперты' },
+              ...experts.map((s) => ({
                 value: s.id,
                 label: s.full_name,
               })),

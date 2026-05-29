@@ -70,19 +70,21 @@ const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 );
 CardFooter.displayName = "CardFooter";
 
-/* Hero-карточка с indigo gradient шапкой — NetHunt-style */
+/* Hero-карточка с градиентной шапкой. По умолчанию — латунь (бренд «ЮрКейс»). */
 interface CardHeroProps extends React.HTMLAttributes<HTMLDivElement> {
-  gradient?: "indigo" | "rose" | "amber";
+  gradient?: "brass" | "indigo" | "rose" | "amber";
 }
 
 const CardHero = React.forwardRef<HTMLDivElement, CardHeroProps>(
-  ({ className, gradient = "indigo", style, ...props }, ref) => {
+  ({ className, gradient = "brass", style, ...props }, ref) => {
     const grad =
       gradient === "rose"
         ? "var(--grad-rose)"
         : gradient === "amber"
           ? "var(--grad-amber)"
-          : "var(--grad-indigo)";
+          : gradient === "indigo"
+            ? "var(--grad-indigo)"
+            : "var(--grad-brass)";
     return (
       <div
         ref={ref}

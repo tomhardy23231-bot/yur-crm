@@ -47,8 +47,8 @@ export type ListClientsResult = {
 };
 
 // RLS-видимость:
-//   - owner/admin — все клиенты;
-//   - specialist/assistant — клиенты, привязанные к их видимым делам.
+//   - staff (owner/admin/office_manager) — все клиенты;
+//   - lawyer/expert — клиенты, привязанные к их видимым делам.
 // На уровне запроса фильтры не дублируем — RLS политика делает это сама.
 export async function listClients(
   params: ListClientsParams = {},
@@ -63,7 +63,7 @@ export async function listClients(
   let query = supabase
     .from('clients')
     .select(
-      'id, name, client_kind, phone, email, address, notes, created_by, created_at, cases(count)',
+      'id, name, client_kind, phone, email, address, source, notes, created_by, created_at, cases(count)',
       { count: 'exact' },
     )
     .order(sortColumn, { ascending })
@@ -99,6 +99,7 @@ export async function listClients(
       phone: r.phone,
       email: r.email,
       address: r.address,
+      source: r.source,
       notes: r.notes,
       created_by: r.created_by,
       created_at: r.created_at,
@@ -116,7 +117,7 @@ export async function getClient(id: string): Promise<Client | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('clients')
-    .select('id, name, client_kind, phone, email, address, notes, created_by, created_at')
+    .select('id, name, client_kind, phone, email, address, source, notes, created_by, created_at')
     .eq('id', id)
     .maybeSingle<Client>();
 

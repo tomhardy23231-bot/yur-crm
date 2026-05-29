@@ -22,14 +22,15 @@ drop function if exists public.search_case_ids(
 );
 
 create or replace function public.search_case_ids(
-  p_q              text                 default null,
-  p_stage          public.case_stage    default null,
-  p_case_type      public.case_type     default null,
-  p_responsible_id uuid                 default null,
-  p_limit          int                  default 20,
-  p_offset         int                  default 0,
-  p_sort           text                 default 'opened_at',
-  p_dir            text                 default 'desc'
+  p_q              text                  default null,
+  p_stage          public.case_stage     default null,
+  p_case_type      public.case_type      default null,
+  p_responsible_id uuid                  default null,
+  p_category       public.case_category  default null,
+  p_limit          int                   default 20,
+  p_offset         int                   default 0,
+  p_sort           text                  default 'opened_at',
+  p_dir            text                  default 'desc'
 ) returns table (id uuid, total bigint)
 language sql
 security invoker
@@ -65,6 +66,7 @@ as $$
     and (p_stage is null or c.stage = p_stage)
     and (p_case_type is null or c.case_type = p_case_type)
     and (p_responsible_id is null or c.responsible_id = p_responsible_id)
+    and (p_category is null or c.category = p_category)
   ),
   paged as (
     select
@@ -96,10 +98,10 @@ as $$
 $$;
 
 grant execute on function public.search_case_ids(
-  text, public.case_stage, public.case_type, uuid, int, int, text, text
+  text, public.case_stage, public.case_type, uuid, public.case_category, int, int, text, text
 ) to authenticated;
 
 comment on function public.search_case_ids(
-  text, public.case_stage, public.case_type, uuid, int, int, text, text
+  text, public.case_stage, public.case_type, uuid, public.case_category, int, int, text, text
 ) is
-  'Поиск дел по number_title/opponent/court_case_number/client.name/tags. SECURITY INVOKER → RLS применяется. Возвращает (case_id, total). p_sort whitelist: number_title|opened_at|contract_sum|debt (default opened_at desc).';
+  'Поиск дел по number_title/opponent/court_case_number/client.name/tags. SECURITY INVOKER → RLS применяется. Возвращает (case_id, total). Фильтры: p_stage/p_case_type/p_responsible_id/p_category. p_sort whitelist: number_title|opened_at|contract_sum|debt (default opened_at desc).';

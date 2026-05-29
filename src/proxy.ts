@@ -11,6 +11,20 @@ import { createServerClient } from '@supabase/ssr';
 const PUBLIC_PATHS = new Set(['/login', '/forbidden']);
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const path = request.nextUrl.pathname;
+
+  // Публичные пути (/login, /forbidden) НЕ трогаем сессией Supabase.
+  // Причина: при протухшем refresh-токене getUser() инициирует refresh,
+  // @supabase/ssr пересоздаёт ответ через NextResponse.next({ request }),
+  // и для POST-запроса (Server Action логина) это РОНЯЕТ тело запроса →
+  // loginAction получает пустую FormData → «Заполните email и пароль».
+  // Логину сессия не нужна (страница сама зовёт getCurrentUser), поэтому
+  // просто пропускаем — тело POST остаётся целым, login работает даже со
+  // старой кукой (успешный вход перезапишет её свежей).
+  if (PUBLIC_PATHS.has(path)) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({ request });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -46,11 +60,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.has(path);
-
-  // Не залогинен → шлём на /login (кроме публичных путей).
-  if (!user && !isPublic) {
+  // Не залогинен → шлём на /login (публичные пути уже отсеяны выше).
+  if (!user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/login';
     loginUrl.searchParams.set('next', path);

@@ -1,111 +1,193 @@
+import {
+  AlertTriangle,
+  Briefcase,
+  Coins,
+  TrendingUp,
+} from 'lucide-react';
+
 import { requireUser } from '@/lib/auth/require-role';
-import { Card, CardHero } from '@/components/ui/card';
-import { Avatar } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { KpiTile } from '@/components/dashboard/kpi-tile';
+import { StageFunnel } from '@/components/dashboard/stage-funnel';
+import { CategoryRevenue } from '@/components/dashboard/category-revenue';
+import { RecentCases } from '@/components/dashboard/recent-cases';
+import { PersonalEarnings } from '@/components/dashboard/personal-earnings';
 import { UpcomingDeadlinesBlock } from '@/components/tasks/upcoming-deadlines-block';
-import type { Role, SpecialistType } from '@/lib/types/db';
+import {
+  computeDashboardStats,
+  computePersonalEarnings,
+  getDashboardCases,
+  getRevenueThisMonth,
+} from '@/lib/dashboard/queries';
+import { getPayrollRates, listPayrollBySpecialist } from '@/lib/payroll/queries';
+import { listCases } from '@/lib/cases/queries';
+import { STAFF_ROLES } from '@/lib/types/db';
+import { formatMoney } from '@/lib/utils';
 
-const ROLE_LABEL: Record<Role, string> = {
-  owner: 'Владелец',
-  admin: 'Администратор',
-  specialist: 'Специалист',
-  assistant: 'Помощник',
-};
-
-const ROLE_TONE: Record<Role, 'info' | 'success' | 'warning' | 'neutral'> = {
-  owner: 'warning',
-  admin: 'info',
-  specialist: 'success',
-  assistant: 'neutral',
-};
-
-const SPECIALIST_TYPE_LABEL: Record<SpecialistType, string> = {
-  lawyer: 'адвокат',
-  jurist: 'юрист',
-};
+// Подпись месяца — в часовом поясе фирмы (как и границы окна в getRevenueThisMonth).
+const MONTH_FMT = new Intl.DateTimeFormat('ru-RU', {
+  month: 'long',
+  timeZone: 'Europe/Kyiv',
+});
 
 export default async function HomePage() {
   const user = await requireUser();
   const { profile } = user;
+  const staff = STAFF_ROLES.includes(profile.role);
 
-  const roleLabel = ROLE_LABEL[profile.role];
-  const roleTone = ROLE_TONE[profile.role];
-  const specialistLabel = profile.specialist_type
-    ? SPECIALIST_TYPE_LABEL[profile.specialist_type]
-    : null;
+  const firstName = profile.full_name.split(' ')[0];
+
+  // База для всех ролей — RLS уже ограничивает видимость по роли.
+  const [cases, recentResult] = await Promise.all([
+    getDashboardCases(),
+    listCases({ page: 1 }),
+  ]);
+  const stats = computeDashboardStats(cases);
+  const recent = recentResult.items.slice(0, 6);
 
   return (
-    <main className="flex flex-col gap-10 px-8 py-12 sm:px-12">
-      <header className="flex flex-col gap-3 max-w-3xl">
-        <h1 className="text-[36px] leading-[1.1] tracking-[-0.02em] font-bold text-text">
-          Добрый день, {profile.full_name.split(' ')[0]}.
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
+      <header className="flex flex-col gap-1.5">
+        <h1 className="text-[24px] font-bold leading-[1.15] tracking-[-0.02em] text-text">
+          Добрый день, {firstName}.
         </h1>
-        <p className="text-[15px] text-text-muted leading-[1.55]">
-          Сегодня в работе будет всё, что важно. Спокойного дня.
+        <p className="text-[14px] text-text-muted">
+          {staff
+            ? 'Сводка по компании на сегодня.'
+            : 'Ваши дела и начисления на сегодня.'}
         </p>
       </header>
 
-      <Card className="max-w-3xl">
-        <CardHero>
-          <Avatar
-            name={profile.full_name}
-            size="xl"
-            className="border-2 border-white/40"
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-[20px] font-bold leading-tight">{profile.full_name}</p>
-            <p className="text-[13px] opacity-90 mt-0.5">
-              {specialistLabel ? `${roleLabel} · ${specialistLabel}` : roleLabel}
-            </p>
-          </div>
-          <Badge
-            tone={roleTone}
-            className="!text-white !bg-white/20 backdrop-blur"
-          >
-            {roleLabel}
-          </Badge>
-        </CardHero>
-
-        <dl className="grid grid-cols-1 gap-x-12 gap-y-5 p-6 sm:grid-cols-2">
-          <Row label="Email" mono>
-            {profile.email}
-          </Row>
-          <Row label="Роль">{roleLabel}</Row>
-          {specialistLabel && <Row label="Специализация">{specialistLabel}</Row>}
-          {profile.supervisor_id && (
-            <Row label="Супервайзер" mono>
-              {profile.supervisor_id}
-            </Row>
-          )}
-        </dl>
-      </Card>
+      {staff ? (
+        <StaffDashboard stats={stats} recent={recent} />
+      ) : (
+        <PersonalDashboard
+          cases={cases}
+          stats={stats}
+          recent={recent}
+          userId={profile.id}
+        />
+      )}
 
       <UpcomingDeadlinesBlock />
     </main>
   );
 }
 
-function Row({
-  label,
-  children,
-  mono,
+// ============================================================================
+// Staff (owner / admin / office_manager) — метрики компании.
+// ============================================================================
+
+async function StaffDashboard({
+  stats,
+  recent,
 }: {
-  label: string;
-  children: React.ReactNode;
-  mono?: boolean;
+  stats: ReturnType<typeof computeDashboardStats>;
+  recent: Awaited<ReturnType<typeof listCases>>['items'];
 }) {
+  const [monthRevenue, payroll] = await Promise.all([
+    getRevenueThisMonth(),
+    listPayrollBySpecialist(),
+  ]);
+  const payrollFund = payroll.reduce((sum, r) => sum + r.earned, 0);
+  const monthName = MONTH_FMT.format(new Date());
+
   return (
-    <div className="flex flex-col gap-1">
-      <dt className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
-        {label}
-      </dt>
-      <dd
-        className={
-          mono ? 'font-mono text-[13px] text-text' : 'text-[14px] text-text font-medium'
-        }
-      >
-        {children}
-      </dd>
-    </div>
+    <>
+      <section className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-2 xl:grid-cols-4">
+        <KpiTile
+          label="Активные дела"
+          value={String(stats.activeCases)}
+          hint={`из ${stats.totalCases} всего`}
+          icon={Briefcase}
+          tone="primary"
+        />
+        <KpiTile
+          label="Выручка за месяц"
+          value={`${formatMoney(monthRevenue)} ₴`}
+          hint={monthName}
+          icon={TrendingUp}
+          tone="success"
+        />
+        <KpiTile
+          label="Фонд зарплат"
+          value={`${formatMoney(payrollFund)} ₴`}
+          hint="начислено по оплатам"
+          icon={Coins}
+        />
+        <KpiTile
+          label="Задолженность клиентов"
+          value={`${formatMoney(stats.totalDebt)} ₴`}
+          hint={`оплачено ${formatMoney(stats.totalPaid)} ₴`}
+          icon={AlertTriangle}
+          tone={stats.totalDebt > 0 ? 'error' : 'default'}
+        />
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 animate-fade-in-up lg:grid-cols-2">
+        <StageFunnel funnel={stats.funnel} />
+        <CategoryRevenue data={stats.revenueByCategory} />
+      </section>
+
+      <section className="animate-fade-in-up">
+        <RecentCases items={recent} />
+      </section>
+    </>
+  );
+}
+
+// ============================================================================
+// Юрист / Эксперт — только свои дела и личные начисления (метрики компании скрыты).
+// ============================================================================
+
+async function PersonalDashboard({
+  cases,
+  stats,
+  recent,
+  userId,
+}: {
+  cases: Awaited<ReturnType<typeof getDashboardCases>>;
+  stats: ReturnType<typeof computeDashboardStats>;
+  recent: Awaited<ReturnType<typeof listCases>>['items'];
+  userId: string;
+}) {
+  const rates = await getPayrollRates();
+  const earnings = computePersonalEarnings(cases, rates, userId);
+  const totalEarned = earnings.reduce((sum, e) => sum + e.earned, 0);
+
+  return (
+    <>
+      <section className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-3">
+        <KpiTile
+          label="Мои активные дела"
+          value={String(stats.activeCases)}
+          hint={`из ${stats.totalCases} всего`}
+          icon={Briefcase}
+          tone="primary"
+        />
+        <KpiTile
+          label="Начислено мне"
+          value={`${formatMoney(totalEarned)} ₴`}
+          hint="% от оплаченного по делам"
+          icon={Coins}
+          tone="success"
+        />
+        <KpiTile
+          label="Задолженность по делам"
+          value={`${formatMoney(stats.totalDebt)} ₴`}
+          hint={`оплачено ${formatMoney(stats.totalPaid)} ₴`}
+          icon={AlertTriangle}
+          tone={stats.totalDebt > 0 ? 'error' : 'default'}
+        />
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 animate-fade-in-up lg:grid-cols-2">
+        <StageFunnel funnel={stats.funnel} />
+        <RecentCases items={recent} />
+      </section>
+
+      <section className="animate-fade-in-up">
+        <PersonalEarnings earnings={earnings} />
+      </section>
+    </>
   );
 }

@@ -31,6 +31,27 @@ export async function listDocumentsByCase(
 }
 
 // =====================================================================
+// caseHasDocOfType — есть ли у дела документ заданного типа.
+// Используется для мягкого предупреждения «закрыто без акта» (acт = act).
+// =====================================================================
+export async function caseHasDocOfType(
+  caseId: string,
+  docType: DocType,
+): Promise<boolean> {
+  const supabase = await createSupabaseServerClient();
+  const { count, error } = await supabase
+    .from('documents')
+    .select('id', { count: 'exact', head: true })
+    .eq('case_id', caseId)
+    .eq('doc_type', docType);
+
+  if (error) {
+    throw new Error(`caseHasDocOfType failed: ${error.message}`);
+  }
+  return (count ?? 0) > 0;
+}
+
+// =====================================================================
 // getDocument — одна запись (для download-роута).
 // =====================================================================
 export async function getDocument(

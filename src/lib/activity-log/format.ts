@@ -1,12 +1,16 @@
 import {
   CASE_STAGE_LABEL,
   CASE_TYPE_LABEL,
+  CASE_CATEGORY_LABEL,
   CASE_PRIORITY_LABEL,
+  CLIENT_SOURCE_LABEL,
   TASK_KIND_LABEL,
   DOC_TYPE_LABEL,
   type CaseStage,
   type CaseType,
+  type CaseCategory,
   type CasePriority,
+  type ClientSource,
   type TaskKind,
   type DocType,
 } from '@/lib/types/db';
@@ -65,6 +69,18 @@ function localizeFieldValue(field: string, value: unknown): string {
         ? CASE_TYPE_LABEL[s as CaseType]
         : String(value);
     }
+    case 'category': {
+      const s = asString(value);
+      return s && s in CASE_CATEGORY_LABEL
+        ? CASE_CATEGORY_LABEL[s as CaseCategory]
+        : String(value);
+    }
+    case 'source': {
+      const s = asString(value);
+      return s && s in CLIENT_SOURCE_LABEL
+        ? CLIENT_SOURCE_LABEL[s as ClientSource]
+        : String(value);
+    }
     case 'priority': {
       const s = asString(value);
       return s && s in CASE_PRIORITY_LABEL
@@ -115,9 +131,12 @@ function localizeFieldValue(field: string, value: unknown): string {
 const FIELD_LABEL: Record<string, string> = {
   number_title: 'номер/название',
   client_id: 'клиента',
-  responsible_id: 'ответственного',
+  lawyer_id: 'юриста (договор)',
+  responsible_id: 'Експерта',
   opened_at: 'дату открытия',
   case_type: 'тип дела',
+  category: 'категорию',
+  subject: 'предмет договора',
   stage: 'этап',
   priority: 'приоритет',
   contract_sum: 'сумму договора',
@@ -126,6 +145,8 @@ const FIELD_LABEL: Record<string, string> = {
   court_case_number: 'номер суддела',
   court: 'суд',
   tags: 'теги',
+  // clients
+  source: 'источник',
   // tasks
   title: 'название',
   kind: 'тип',

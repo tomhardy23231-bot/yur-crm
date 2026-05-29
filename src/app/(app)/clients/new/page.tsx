@@ -8,11 +8,12 @@ import { requireUser } from '@/lib/auth/require-role';
 
 export default async function NewClientPage() {
   // requireUser защищает страницу от незалогиненного пользователя; роль не
-  // фильтруем — RLS позволит создать клиента всем, кроме assistant (см. политики).
+  // фильтруем — RLS (clients_insert_active) позволяет создать клиента любому
+  // активному сотруднику.
   await requireUser();
 
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-col gap-1">
         <Link
           href="/clients"

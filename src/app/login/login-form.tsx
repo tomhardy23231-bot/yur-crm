@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +18,7 @@ export function LoginForm({ next }: Props) {
     loginAction,
     INITIAL_STATE,
   );
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <form action={action} className="flex flex-col gap-5 w-full" noValidate>
@@ -37,14 +39,31 @@ export function LoginForm({ next }: Props) {
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="password">Пароль</Label>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          placeholder="••••••••"
-        />
+        <div className="relative">
+          <Input
+            id="password"
+            name="password"
+            type={showPassword ? 'text' : 'password'}
+            required
+            autoComplete="current-password"
+            placeholder="••••••••"
+            className="pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            aria-pressed={showPassword}
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors"
+            tabIndex={-1}
+          >
+            {showPassword ? (
+              <EyeOff size={16} strokeWidth={1.75} />
+            ) : (
+              <Eye size={16} strokeWidth={1.75} />
+            )}
+          </button>
+        </div>
       </div>
 
       {state?.error && (

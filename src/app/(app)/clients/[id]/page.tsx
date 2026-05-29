@@ -18,7 +18,11 @@ import { ClientKindBadge } from '@/components/clients/client-kind-badge';
 import { DeleteClientForm } from '@/components/clients/delete-client-form';
 import { getClient, getClientCases } from '@/lib/clients/queries';
 import { requireUser } from '@/lib/auth/require-role';
-import { CLIENT_KIND_LABEL } from '@/lib/types/db';
+import {
+  CLIENT_KIND_LABEL,
+  CLIENT_SOURCE_LABEL,
+  STAFF_ROLES,
+} from '@/lib/types/db';
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
@@ -53,14 +57,16 @@ export default async function ClientDetailPage({
   if (!client) notFound();
 
   const cases = await getClientCases(id);
-  const isStaff = user.profile.role === 'owner' || user.profile.role === 'admin';
+  const isStaff = STAFF_ROLES.includes(user.profile.role);
   // RLS UPDATE = staff ИЛИ автор записи. Если ни то, ни другое — скрываем
   // «Редактировать», чтобы не показывать кнопку, действие которой откажет.
   const canEdit = isStaff || client.created_by === user.profile.id;
+  // Удаление клиента — только owner/admin (RLS clients_delete_managers).
+  const canDelete = user.profile.role === 'owner' || user.profile.role === 'admin';
   const errorMessage = error ? ERROR_MESSAGES[error] : undefined;
 
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12 max-w-5xl">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <Link
         href="/clients"
         className="inline-flex items-center gap-1 text-[12.5px] text-text-muted hover:text-text transition-colors w-fit"
@@ -102,7 +108,7 @@ export default async function ClientDetailPage({
                 </Link>
               </Button>
             )}
-            {isStaff && (
+            {canDelete && (
               <DeleteClientForm clientId={client.id} clientName={client.name} />
             )}
           </div>
@@ -146,6 +152,16 @@ export default async function ClientDetailPage({
               <span className="inline-flex items-start gap-2 text-[13.5px] text-text">
                 <MapPin size={14} strokeWidth={1.75} className="text-text-muted mt-[3px] shrink-0" />
                 {client.address}
+              </span>
+            ) : (
+              <Empty />
+            )}
+          </Section>
+
+          <Section title="Источник">
+            {client.source ? (
+              <span className="text-[13.5px] text-text">
+                {CLIENT_SOURCE_LABEL[client.source]}
               </span>
             ) : (
               <Empty />

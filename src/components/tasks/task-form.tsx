@@ -40,8 +40,9 @@ interface TaskFormProps {
 const ROLE_HINT: Record<string, string> = {
   owner: 'владелец',
   admin: 'админ',
-  specialist: 'специалист',
-  assistant: 'помощник',
+  office_manager: 'секретарь',
+  lawyer: 'юрист',
+  expert: 'эксперт',
 };
 
 export function TaskForm({

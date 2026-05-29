@@ -11,32 +11,48 @@
 -- Enum-ы домена (CLAUDE.md §5, §6)
 -- =====================================================================
 
+-- Роли (CLAUDE.md §4, новая Концепция):
+--   owner          — владелец / супер-админ (всё + системные настройки);
+--   admin          — руководитель подразделения (всё + управление пользователями,
+--                    но без системных настроек);
+--   office_manager — секретарь (заводит клиентов/дела, видит все финансы,
+--                    без управления пользователями/настроек);
+--   lawyer         — юрист-продажник (заключает договор → cases.lawyer_id);
+--   expert         — Експерт-исполнитель (ведёт дело → cases.responsible_id).
+-- Помощник (assistant) и specialist_type удалены по новой Концепции.
 create type public.user_role as enum (
-  'owner', 'admin', 'specialist', 'assistant'
-);
-
-create type public.specialist_type as enum (
-  'lawyer', 'jurist'
+  'owner', 'admin', 'office_manager', 'lawyer', 'expert'
 );
 
 create type public.client_kind as enum (
   'individual', 'company'
 );
 
+-- Источник клиента (откуда пришёл) — фиксируем по новой Концепции (раздел 7).
+create type public.client_source as enum (
+  'website', 'referral', 'advertising', 'repeat', 'other'
+);
+
 create type public.case_type as enum (
   'civil', 'criminal', 'corporate', 'administrative', 'family', 'labor', 'other'
 );
 
--- Воронка дела, движение только вперёд (CLAUDE.md §6, §7-2).
--- Сам факт «только вперёд» в Шаге 1 не валидируем — это Шаг 6.
+-- Категория дела (новая Концепция, раздел 3): основа расчёта % зарплаты.
+--   document       — документ        (7%);
+--   claim          — иск             (10%);
+--   representation — представительство (25%).
+-- Конкретные проценты лежат в public.payroll_rates и редактируются owner.
+create type public.case_category as enum (
+  'document', 'claim', 'representation'
+);
+
+-- Воронка дела (новая Концепция, раздел 6): 5 этапов, движение только вперёд.
+-- «Только вперёд» валидируется триггером (20260527090000_stage_forward.sql).
 create type public.case_stage as enum (
   'new_request',
   'consultation',
   'in_progress',
-  'pretrial',
-  'litigation',
   'awaiting_decision',
-  'enforcement',
   'closed'
 );
 
@@ -44,12 +60,16 @@ create type public.case_priority as enum (
   'normal', 'urgent'
 );
 
+-- Схема расчётов с клиентом (новая Концепция, раздел 7): предоплата,
+-- график расчётов (рассрочка), фиксированная сумма, гонорар успеха.
+-- Почасовая оплата (hourly) удалена вместе с учётом времени.
 create type public.billing_type as enum (
-  'prepaid', 'hourly', 'fixed', 'success_fee'
+  'prepaid', 'installments', 'fixed', 'success_fee'
 );
 
+-- doc_type: +act — акт приёма-передачи выполненных работ (закрытие дела).
 create type public.doc_type as enum (
-  'contract', 'claim', 'power_of_attorney', 'correspondence', 'other'
+  'contract', 'claim', 'power_of_attorney', 'correspondence', 'act', 'other'
 );
 
 create type public.task_kind as enum (

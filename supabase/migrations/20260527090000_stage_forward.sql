@@ -2,9 +2,9 @@
 --
 -- Назначение:
 --   - сравнить позицию старого и нового этапа в линейной воронке;
---   - запретить откат на предыдущий этап обычным сотрудникам (specialist/assistant);
---   - разрешить staff (owner/admin) ручное исправление с обязательной записью
---     в public.activity_log (action='stage_corrected').
+--   - запретить откат на предыдущий этап обычным сотрудникам (lawyer/expert);
+--   - разрешить staff (owner/admin/office_manager) ручное исправление с
+--     обязательной записью в public.activity_log (action='stage_corrected').
 --
 -- Почему security definer:
 --   - триггеру нужно писать в public.activity_log; у user-ролей INSERT-политики
@@ -24,11 +24,8 @@ as $$
     when 'new_request'::public.case_stage       then 1
     when 'consultation'::public.case_stage      then 2
     when 'in_progress'::public.case_stage       then 3
-    when 'pretrial'::public.case_stage          then 4
-    when 'litigation'::public.case_stage        then 5
-    when 'awaiting_decision'::public.case_stage then 6
-    when 'enforcement'::public.case_stage       then 7
-    when 'closed'::public.case_stage            then 8
+    when 'awaiting_decision'::public.case_stage then 4
+    when 'closed'::public.case_stage            then 5
   end
 $$;
 

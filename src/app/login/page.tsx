@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth/current-user';
 import { LoginForm } from './login-form';
 
 export const metadata: Metadata = {
-  title: 'Вход — Юр CRM',
+  title: 'Вход — ЮрКейс',
 };
 
 type SearchParams = Promise<{ next?: string | string[] }>;
@@ -32,16 +32,33 @@ export default async function LoginPage({
     <div className="flex flex-1 items-center justify-center px-6 py-16">
       <div className="w-full max-w-sm flex flex-col gap-8">
         <header className="flex flex-col gap-3">
-          <span
-            className="inline-flex items-center gap-2 self-start font-mono text-[11px] uppercase tracking-[0.06em] text-primary bg-primary-subtle px-2.5 py-1 rounded-full font-semibold"
-          >
-            ▲ Юр CRM
+          <span className="inline-flex items-center gap-2.5 self-start">
+            <span
+              className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] text-[18px] font-bold leading-none"
+              style={{
+                background: 'var(--grad-brass)',
+                color: '#1A140A',
+                boxShadow:
+                  '0 4px 14px rgba(184,138,62,.35), inset 0 1px 0 rgba(255,255,255,.25)',
+              }}
+              aria-hidden="true"
+            >
+              Ю
+            </span>
+            <span className="flex flex-col leading-none">
+              <span className="text-[17px] font-bold tracking-[-0.01em] text-text">
+                ЮрКейс
+              </span>
+              <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                Legal CRM
+              </span>
+            </span>
           </span>
           <h1 className="text-[36px] leading-[1.1] tracking-[-0.02em] font-bold text-text">
             Вход в{' '}
             <span
               className="bg-clip-text text-transparent"
-              style={{ backgroundImage: 'var(--grad-indigo)' }}
+              style={{ backgroundImage: 'var(--grad-brass)' }}
             >
               систему
             </span>

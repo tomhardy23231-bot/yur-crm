@@ -8,6 +8,7 @@ import { TasksFilterSelect } from '@/components/tasks/tasks-filter-select';
 import { requireUser } from '@/lib/auth/require-role';
 import { listTasksForUser, TASKS_PAGE_SIZE } from '@/lib/tasks/queries';
 import {
+  STAFF_ROLES,
   TASK_STATUS_LABEL,
   TASK_STATUSES,
   type TaskStatus,
@@ -34,8 +35,7 @@ export default async function TasksPage({
   const mode: 'mine' | 'all' = sp.mode === 'all' ? 'all' : 'mine';
   const page = sp.page ? Math.max(1, Number(sp.page) || 1) : 1;
 
-  const isStaff =
-    user.profile.role === 'owner' || user.profile.role === 'admin';
+  const isStaff = STAFF_ROLES.includes(user.profile.role);
 
   // Для не-staff режим 'all' покажет только видимые им задачи (через RLS),
   // что = их же задачам. Поэтому не показываем переключатель.
@@ -65,18 +65,13 @@ export default async function TasksPage({
   }
 
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12 max-w-5xl">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-            Задачи
-          </h1>
-          <p className="text-[13px] text-text-muted">
-            {total === 0
-              ? 'Пока нет задач'
-              : `Всего: ${total} ${plural(total, ['задача', 'задачи', 'задач'])}`}
-          </p>
-        </div>
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-text-muted">
+          {total === 0
+            ? 'Пока нет задач'
+            : `Всего: ${total} ${plural(total, ['задача', 'задачи', 'задач'])}`}
+        </p>
         <Button asChild variant="secondary" size="sm">
           <Link href="/calendar">
             <Calendar size={14} strokeWidth={1.75} />

@@ -8,31 +8,54 @@ import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
+  ACCRUAL_MODES,
   BILLING_TYPES,
+  CASE_CATEGORIES,
   CASE_PRIORITIES,
   CASE_STAGES,
   CASE_TYPES,
+  MANAGER_ROLES,
+  type AccrualMode,
   type BillingType,
+  type CaseCategory,
   type CasePriority,
   type CaseStage,
   type CaseType,
+  type Role,
 } from '@/lib/types/db';
 
 export type CaseFormFields =
   | 'number_title'
   | 'client_id'
+  | 'lawyer_id'
   | 'responsible_id'
   | 'opened_at'
   | 'case_type'
+  | 'category'
+  | 'subject'
   | 'stage'
   | 'priority'
   | 'contract_sum'
-  | 'hourly_rate'
   | 'billing_types'
+  | 'lawyer_rate_override'
+  | 'expert_rate_override'
+  | 'accrual_mode'
   | 'opponent'
   | 'court_case_number'
   | 'court'
   | 'tags';
+
+// Переопределения % по делу (P1.1). Применяются ТОЛЬКО owner/admin; для прочих
+// ролей не попадают в payload (а БД-триггер cases_guard_rate_overrides — жёсткая
+// защита). null → ставка категории.
+export type RateOverrides = {
+  lawyer_rate_override: number | null;
+  expert_rate_override: number | null;
+};
+
+function isManager(role: Role): boolean {
+  return (MANAGER_ROLES as readonly Role[]).includes(role);
+}
 
 export type CaseActionState = {
   ok: boolean;
@@ -56,6 +79,9 @@ function isCaseStage(value: string): value is CaseStage {
 function isCasePriority(value: string): value is CasePriority {
   return (CASE_PRIORITIES as readonly string[]).includes(value);
 }
+function isCaseCategory(value: string): value is CaseCategory {
+  return (CASE_CATEGORIES as readonly string[]).includes(value);
+}
 function isBillingType(value: string): value is BillingType {
   return (BILLING_TYPES as readonly string[]).includes(value);
 }
@@ -65,20 +91,27 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 type Validated = {
   number_title: string;
   client_id: string;
+  lawyer_id: string;
   responsible_id: string;
   opened_at: string;
   case_type: CaseType;
+  category: CaseCategory;
+  subject: string | null;
   stage: CaseStage;
   priority: CasePriority;
   contract_sum: number;
-  hourly_rate: number | null;
   billing_types: BillingType[];
+  accrual_mode: AccrualMode;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;
   tags: string[];
   closed_at: string | null;
 };
+
+function isAccrualMode(value: string): value is AccrualMode {
+  return (ACCRUAL_MODES as readonly string[]).includes(value);
+}
 
 function todayIso(): string {
   // local date в формате YYYY-MM-DD; БД хранит как date без TZ.
@@ -90,21 +123,32 @@ function todayIso(): string {
 }
 
 function validate(formData: FormData):
-  | { ok: true; data: Validated; values: Record<CaseFormFields, string>; selectedBillingTypes: BillingType[] }
+  | {
+      ok: true;
+      data: Validated;
+      overrides: RateOverrides;
+      values: Record<CaseFormFields, string>;
+      selectedBillingTypes: BillingType[];
+    }
   | { ok: false; state: CaseActionState } {
   const number_title = getString(formData, 'number_title');
   const client_id = getString(formData, 'client_id');
+  const lawyer_id = getString(formData, 'lawyer_id');
   const responsible_id = getString(formData, 'responsible_id');
   const opened_at = getString(formData, 'opened_at');
   const case_type_raw = getString(formData, 'case_type');
+  const category_raw = getString(formData, 'category');
+  const subject = getString(formData, 'subject');
   const stage_raw = getString(formData, 'stage');
   const priority_raw = getString(formData, 'priority');
   const contract_sum_raw = getString(formData, 'contract_sum');
-  const hourly_rate_raw = getString(formData, 'hourly_rate');
   const opponent = getString(formData, 'opponent');
   const court_case_number = getString(formData, 'court_case_number');
   const court = getString(formData, 'court');
   const tags_raw = getString(formData, 'tags');
+  const lawyer_rate_override_raw = getString(formData, 'lawyer_rate_override');
+  const expert_rate_override_raw = getString(formData, 'expert_rate_override');
+  const accrual_mode_raw = getString(formData, 'accrual_mode');
 
   const billing_types_raw = formData
     .getAll('billing_types')
@@ -114,21 +158,26 @@ function validate(formData: FormData):
   const values: Record<CaseFormFields, string> = {
     number_title,
     client_id,
+    lawyer_id,
     responsible_id,
     opened_at,
     case_type: case_type_raw,
+    category: category_raw,
+    subject,
     stage: stage_raw,
     priority: priority_raw,
     contract_sum: contract_sum_raw,
-    hourly_rate: hourly_rate_raw,
     billing_types: billing_types.join(','),
+    lawyer_rate_override: lawyer_rate_override_raw,
+    expert_rate_override: expert_rate_override_raw,
+    accrual_mode: accrual_mode_raw,
     opponent,
     court_case_number,
     court,
     tags: tags_raw,
   };
 
-  const fieldErrors: CaseActionState['fieldErrors'] = {};
+  const fieldErrors: Partial<Record<CaseFormFields, string>> = {};
 
   if (!number_title) fieldErrors.number_title = 'Укажите номер/название';
   else if (number_title.length > 200)
@@ -138,7 +187,11 @@ function validate(formData: FormData):
   else if (!UUID_RE.test(client_id))
     fieldErrors.client_id = 'Некорректный идентификатор клиента';
 
-  if (!responsible_id) fieldErrors.responsible_id = 'Выберите ответственного';
+  if (!lawyer_id) fieldErrors.lawyer_id = 'Выберите юриста (договор)';
+  else if (!UUID_RE.test(lawyer_id))
+    fieldErrors.lawyer_id = 'Некорректный идентификатор';
+
+  if (!responsible_id) fieldErrors.responsible_id = 'Выберите Експерта';
   else if (!UUID_RE.test(responsible_id))
     fieldErrors.responsible_id = 'Некорректный идентификатор';
 
@@ -149,6 +202,13 @@ function validate(formData: FormData):
   if (!case_type_raw) fieldErrors.case_type = 'Выберите тип дела';
   else if (!isCaseType(case_type_raw))
     fieldErrors.case_type = 'Недопустимый тип';
+
+  if (!category_raw) fieldErrors.category = 'Выберите категорию';
+  else if (!isCaseCategory(category_raw))
+    fieldErrors.category = 'Недопустимая категория';
+
+  if (subject && subject.length > 300)
+    fieldErrors.subject = 'Слишком длинное (макс 300)';
 
   if (!stage_raw) fieldErrors.stage = 'Выберите этап';
   else if (!isCaseStage(stage_raw)) fieldErrors.stage = 'Недопустимый этап';
@@ -169,18 +229,27 @@ function validate(formData: FormData):
     }
   }
 
-  // Phase 2/A: дефолтная ставка по делу (numeric(10,2), nullable).
-  // Пусто → null (ставка не задана), иначе валидируем как число ≥ 0.
-  let hourly_rate: number | null = null;
-  if (hourly_rate_raw) {
-    const normalized = hourly_rate_raw.replace(',', '.');
-    const n = Number(normalized);
-    if (!Number.isFinite(n) || n < 0 || n >= 1_000_000) {
-      fieldErrors.hourly_rate = 'Ставка — число от 0';
-    } else {
-      hourly_rate = n;
+  // Override % по делу (P1.1): пусто → null; иначе число 0..100.
+  function parseOverride(
+    raw: string,
+    field: 'lawyer_rate_override' | 'expert_rate_override',
+  ): number | null {
+    if (!raw) return null;
+    const n = Number(raw.replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > 100) {
+      fieldErrors[field] = 'Процент — число от 0 до 100';
+      return null;
     }
+    return n;
   }
+  const lawyer_rate_override = parseOverride(
+    lawyer_rate_override_raw,
+    'lawyer_rate_override',
+  );
+  const expert_rate_override = parseOverride(
+    expert_rate_override_raw,
+    'expert_rate_override',
+  );
 
   if (Object.keys(fieldErrors).length > 0) {
     return {
@@ -211,20 +280,26 @@ function validate(formData: FormData):
     data: {
       number_title,
       client_id,
+      lawyer_id,
       responsible_id,
       opened_at,
       case_type: case_type_raw as CaseType,
+      category: category_raw as CaseCategory,
+      subject: subject || null,
       stage,
       priority: priority_raw as CasePriority,
       contract_sum,
-      hourly_rate,
       billing_types,
+      accrual_mode: isAccrualMode(accrual_mode_raw)
+        ? accrual_mode_raw
+        : 'on_completion',
       opponent: opponent || null,
       court_case_number: court_case_number || null,
       court: court || null,
       tags,
       closed_at,
     },
+    overrides: { lawyer_rate_override, expert_rate_override },
     values,
     selectedBillingTypes: billing_types,
   };
@@ -234,14 +309,20 @@ export async function createCaseAction(
   _prev: CaseActionState,
   formData: FormData,
 ): Promise<CaseActionState> {
-  await requireUser();
+  const user = await requireUser();
   const result = validate(formData);
   if (!result.ok) return result.state;
+
+  // Override % задаёт только owner/admin; для прочих ролей не отправляем поля
+  // вовсе (БД-триггер всё равно отверг бы non-null override от не-менеджера).
+  const insertPayload = isManager(user.profile.role)
+    ? { ...result.data, ...result.overrides }
+    : result.data;
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('cases')
-    .insert(result.data)
+    .insert(insertPayload)
     .select('id')
     .single();
 
@@ -262,6 +343,7 @@ export async function createCaseAction(
       after: {
         number_title: result.data.number_title,
         case_type: result.data.case_type,
+        category: result.data.category,
         stage: result.data.stage,
         priority: result.data.priority,
         contract_sum: result.data.contract_sum,
@@ -277,13 +359,18 @@ export async function createCaseAction(
 const CASE_DIFF_FIELDS = [
   'number_title',
   'client_id',
+  'lawyer_id',
   'responsible_id',
   'opened_at',
   'case_type',
+  'category',
+  'subject',
   'priority',
   'contract_sum',
-  'hourly_rate',
   'billing_types',
+  'lawyer_rate_override',
+  'expert_rate_override',
+  'accrual_mode',
   'opponent',
   'court_case_number',
   'court',
@@ -293,13 +380,18 @@ const CASE_DIFF_FIELDS = [
 type CaseDiffShape = {
   number_title: string;
   client_id: string;
+  lawyer_id: string;
   responsible_id: string;
   opened_at: string;
   case_type: CaseType;
+  category: CaseCategory;
+  subject: string | null;
   priority: CasePriority;
   contract_sum: number;
-  hourly_rate: number | null;
   billing_types: BillingType[];
+  lawyer_rate_override: number | null;
+  expert_rate_override: number | null;
+  accrual_mode: AccrualMode;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;
@@ -311,10 +403,11 @@ export async function updateCaseAction(
   _prev: CaseActionState,
   formData: FormData,
 ): Promise<CaseActionState> {
-  await requireUser();
+  const user = await requireUser();
   const result = validate(formData);
   if (!result.ok) return result.state;
 
+  const canEditRates = isManager(user.profile.role);
   const supabase = await createSupabaseServerClient();
 
   // Снапшот до правки — для diff'а в activity_log. RLS отрежет невидимое →
@@ -323,15 +416,20 @@ export async function updateCaseAction(
   type CaseBeforeRow = {
     number_title: string;
     client_id: string;
+    lawyer_id: string;
     responsible_id: string;
     opened_at: string;
     case_type: string;
+    category: string;
+    subject: string | null;
     stage: string;
     closed_at: string | null;
     priority: string;
     contract_sum: number | string;
-    hourly_rate: number | string | null;
     billing_types: string[] | null;
+    lawyer_rate_override: number | string | null;
+    expert_rate_override: number | string | null;
+    accrual_mode: string;
     opponent: string | null;
     court_case_number: string | null;
     court: string | null;
@@ -340,8 +438,8 @@ export async function updateCaseAction(
   const { data: beforeRaw } = await supabase
     .from('cases')
     .select(
-      'number_title, client_id, responsible_id, opened_at, case_type, stage, closed_at, ' +
-        'priority, contract_sum, hourly_rate, billing_types, opponent, court_case_number, court, tags',
+      'number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, closed_at, ' +
+        'priority, contract_sum, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, tags',
     )
     .eq('id', caseId)
     .maybeSingle();
@@ -352,10 +450,16 @@ export async function updateCaseAction(
   // (validate() ставит todayIso() безусловно при stage='closed'). Сохраняем
   // before.closed_at для no-op closed→closed; для переходов из/в closed
   // оставляем поведение validate (today при входе в closed, null при выходе).
-  const updatePayload: Validated =
+  const basePayload: Validated =
     before && before.stage === 'closed' && result.data.stage === 'closed'
       ? { ...result.data, closed_at: before.closed_at }
       : result.data;
+
+  // Override % мержим только для owner/admin; иначе колонки не трогаем (иначе
+  // guard-триггер отклонил бы изменение от не-менеджера).
+  const updatePayload = canEditRates
+    ? { ...basePayload, ...result.overrides }
+    : basePayload;
 
   // При смене этапа на/с 'closed' триггеров для closed_at нет — обновляем сами.
   // (CHECK constraint cases_closed_consistency требует синхронности.)
@@ -365,8 +469,8 @@ export async function updateCaseAction(
     .eq('id', caseId);
 
   if (error) {
-    // Шаг 6: триггер `cases_validate_stage_forward` бросает 'stage_backward_forbidden'
-    // когда specialist/assistant пытается откатить этап. Подменяем системное
+    // Триггер `cases_validate_stage_forward` бросает 'stage_backward_forbidden'
+    // когда юрист/Експерт пытается откатить этап. Подменяем системное
     // сообщение Postgres на человеческое.
     const isStageBackward = error.message?.includes('stage_backward_forbidden');
     return {
@@ -387,13 +491,20 @@ export async function updateCaseAction(
     const beforeShape: CaseDiffShape = {
       number_title: String(before.number_title ?? ''),
       client_id: String(before.client_id ?? ''),
+      lawyer_id: String(before.lawyer_id ?? ''),
       responsible_id: String(before.responsible_id ?? ''),
       opened_at: String(before.opened_at ?? ''),
       case_type: before.case_type as CaseType,
+      category: before.category as CaseCategory,
+      subject: (before.subject as string | null) ?? null,
       priority: before.priority as CasePriority,
       contract_sum: Number(before.contract_sum ?? 0),
-      hourly_rate: before.hourly_rate == null ? null : Number(before.hourly_rate),
       billing_types: (before.billing_types ?? []) as BillingType[],
+      lawyer_rate_override:
+        before.lawyer_rate_override == null ? null : Number(before.lawyer_rate_override),
+      expert_rate_override:
+        before.expert_rate_override == null ? null : Number(before.expert_rate_override),
+      accrual_mode: before.accrual_mode as AccrualMode,
       opponent: (before.opponent as string | null) ?? null,
       court_case_number: (before.court_case_number as string | null) ?? null,
       court: (before.court as string | null) ?? null,
@@ -402,13 +513,23 @@ export async function updateCaseAction(
     const afterShape: Partial<CaseDiffShape> = {
       number_title: result.data.number_title,
       client_id: result.data.client_id,
+      lawyer_id: result.data.lawyer_id,
       responsible_id: result.data.responsible_id,
       opened_at: result.data.opened_at,
       case_type: result.data.case_type,
+      category: result.data.category,
+      subject: result.data.subject,
       priority: result.data.priority,
       contract_sum: result.data.contract_sum,
-      hourly_rate: result.data.hourly_rate,
       billing_types: result.data.billing_types,
+      // Override меняет только менеджер; иначе after = before (нет diff).
+      lawyer_rate_override: canEditRates
+        ? result.overrides.lawyer_rate_override
+        : beforeShape.lawyer_rate_override,
+      expert_rate_override: canEditRates
+        ? result.overrides.expert_rate_override
+        : beforeShape.expert_rate_override,
+      accrual_mode: result.data.accrual_mode,
       opponent: result.data.opponent,
       court_case_number: result.data.court_case_number,
       court: result.data.court,

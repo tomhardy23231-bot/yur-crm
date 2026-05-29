@@ -6,59 +6,82 @@
    ============================================================ */
 
 :root {
-  /* Surfaces */
-  --bg:             #F5F7FA;
-  --surface:        #FFFFFF;
-  --surface-muted:  #F1F4F9;
-  --surface-sunken: #E7ECF3;
-  --border:         #E2E8F0;
-  --border-strong:  #CBD5E1;
+  /* ── Paper — светлая рабочая зона ──────────────────────────── */
+  --bg:             #EEF1F6;  /* paper */
+  --surface:        #FFFFFF;  /* карточки, таблицы */
+  --surface-muted:  #F8FAFC;  /* surface-2 — зебра/hover строки */
+  --surface-sunken: #EEF1F6;  /* surface-3 — поля поиска, чипы, прогресс-трек */
+  --border:         #E3E8EF;  /* line */
+  --border-strong:  #CFD6E0;  /* line-strong */
 
   /* Text */
-  --text:           #1E293B;
-  --text-muted:     #64748B;
-  --text-subtle:    #94A3B8;
+  --text:           #161A22;
+  --text-muted:     #525A68;  /* text-2 */
+  --text-subtle:    #858D9C;  /* text-3 */
 
-  /* Primary — индиго */
-  --primary:        #4F46E5;
-  --primary-hover:  #4338CA;
-  --primary-pressed:#3730A3;
+  /* ── Brand — латунь / legal gold ──────────────────────────── */
+  --primary:        #B88A3E;  /* brass */
+  --primary-hover:  #A87D35;
+  --primary-pressed:#8F6A2C;  /* brass-deep */
   --primary-fg:     #FFFFFF;
-  --primary-subtle: #EEF2FF;
-  --primary-border: #C7D2FE;
+  --primary-subtle: #F7EED9;  /* тёплый светлый фон акцента */
+  --primary-border: #E3CFA3;
+  --brass-bright:   #D8AA55;
+  --brass-glow:     rgba(184, 138, 62, 0.16);
 
-  /* Градиенты — только для hero-шапок карточек */
-  --grad-indigo: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-  --grad-rose:   linear-gradient(135deg, #EC4899 0%, #F472B6 100%);
-  --grad-amber:  linear-gradient(135deg, #F59E0B 0%, #FB923C 100%);
+  /* Градиенты — латунь для CTA/бренд-плашки + hero-шапки карточек */
+  --grad-brass:  linear-gradient(150deg, #B88A3E 0%, #8F6A2C 100%);
+  --grad-indigo: linear-gradient(135deg, #2F6FE0 0%, #7A52C9 100%);
+  --grad-rose:   linear-gradient(135deg, #CF4242 0%, #B134D4 100%);
+  --grad-amber:  linear-gradient(135deg, #C08A2E 0%, #EF7518 100%);
 
-  /* Semantic */
-  --success:    #10B981;
-  --success-bg: #ECFDF5;
-  --warning:    #F59E0B;
-  --warning-bg: #FFFBEB;
-  --error:      #EF4444;
-  --error-bg:   #FEF2F2;
-  --info:       #3B82F6;
-  --info-bg:    #EFF6FF;
+  /* ── Ink — тёмный сайдбар ─────────────────────────────────── */
+  --ink-950: #161A23;
+  --ink-900: #1C212C;
+  --ink-850: #232834;
+  --ink-800: #2A303E;
+  --sidebar-bg:           #1C212C;  /* ink-900 (база, поверх — градиент) */
+  --sidebar-bg-gradient:  linear-gradient(180deg, #232834 0%, #1C212C 100%);
+  --sidebar-elevated:     #232834;  /* me-card, поиск-триггер */
+  --sidebar-border:       #2A3040;  /* разделители внутри тёмной зоны */
+  --sidebar-text:         #8E97AB;  /* неактивные пункты (ink-txt-dim) */
+  --sidebar-text-disabled:#69728A;  /* «скоро»-пункты (ink-txt-faint) */
+  --sidebar-text-strong:  #FFFFFF;  /* логотип, hover, имя пользователя */
+  --sidebar-hover-bg:     rgba(255, 255, 255, 0.045);
+  --sidebar-active-bg:    rgba(184, 138, 62, 0.13);  /* латунный тинт активного пункта */
+  --sidebar-active-text:  #FFFFFF;
+  --sidebar-accent:       #B88A3E;  /* латунная полоса/счётчик активного пункта */
+  --sidebar-accent-bright:#D8AA55;
+
+  /* ── Semantic ─────────────────────────────────────────────── */
+  --success:    #1F8A5B;  /* money — деньги/успех */
+  --success-bg: #E6F4EC;
+  --warning:    #C08A2E;
+  --warning-bg: #F7EED9;
+  --error:      #CF4242;  /* debt — задолженность/удаление */
+  --error-bg:   #FBE9E9;
+  --info:       #2F6FE0;
+  --info-bg:    #E4ECFC;
 
   /* Priority */
-  --prio-low:     #10B981;
-  --prio-low-bg:  #ECFDF5;
-  --prio-mid:     #F59E0B;
-  --prio-mid-bg:  #FFFBEB;
-  --prio-high:    #F43F5E;
-  --prio-high-bg: #FFF1F2;
+  --prio-low:     #1F8A5B;
+  --prio-low-bg:  #E6F4EC;
+  --prio-mid:     #C08A2E;
+  --prio-mid-bg:  #F7EED9;
+  --prio-high:    #CF4242;
+  --prio-high-bg: #FBE9E9;
 
-  /* Stage colors (8 этапов воронки) */
-  --stage-new:             #3B82F6; --stage-new-bg:             #EFF6FF;
-  --stage-consultation:    #06B6D4; --stage-consultation-bg:    #ECFEFF;
-  --stage-in-progress:     #6366F1; --stage-in-progress-bg:     #EEF2FF;
-  --stage-pretrial:        #F59E0B; --stage-pretrial-bg:        #FFFBEB;
-  --stage-litigation:      #F97316; --stage-litigation-bg:      #FFF7ED;
-  --stage-awaiting:        #A855F7; --stage-awaiting-bg:        #FAF5FF;
-  --stage-enforcement:     #EC4899; --stage-enforcement-bg:     #FDF2F8;
-  --stage-closed:          #64748B; --stage-closed-bg:          #F1F5F9;
+  /* Stage colors (5 этапов воронки) — эталон «ЮрКейс» */
+  --stage-new:             #6B7589; --stage-new-bg:             #ECEEF2;
+  --stage-consultation:    #C08A2E; --stage-consultation-bg:    #F7EED9;
+  --stage-in-progress:     #2F6FE0; --stage-in-progress-bg:     #E4ECFC;
+  --stage-awaiting:        #7A52C9; --stage-awaiting-bg:        #EDE6FA;
+  --stage-closed:          #1F8A5B; --stage-closed-bg:          #E2F2EA;
+
+  /* Категории дел (3) — несут % зарплаты (7/10/25). Яркая семантика эталона. */
+  --cat-document:       #0AA593; --cat-document-bg:       #D3F3EE;  /* teal — Документ */
+  --cat-claim:          #EF7518; --cat-claim-bg:          #FDE6D3;  /* orange — Иск */
+  --cat-representation: #B134D4; --cat-representation-bg: #F4DDFA;  /* magenta — Представительство */
 
   /* Brand integrations */
   --brand-gmail:    #EA4335;
@@ -66,22 +89,22 @@
   --brand-whatsapp: #25D366;
   --brand-viber:    #7360F2;
 
-  /* Радиусы */
-  --r-sm:   6px;
-  --r-md:   8px;
-  --r-lg:  12px;
-  --r-xl:  16px;
+  /* Радиусы — «пузырьковые» скругления эталона */
+  --r-sm:   8px;
+  --r-md:  12px;
+  --r-lg:  16px;
+  --r-xl:  22px;
   --r-full: 9999px;
 
-  /* Тени — с лёгким blue/indigo-tint */
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-lg: 0 12px 32px rgba(79, 70, 229, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05);
+  /* Тени — мягкие, объёмные (ink-tint) */
+  --shadow-sm: 0 1px 2px rgba(20, 22, 30, 0.05), 0 1px 3px rgba(20, 22, 30, 0.04);
+  --shadow-md: 0 2px 6px rgba(20, 22, 30, 0.06), 0 8px 24px rgba(20, 22, 30, 0.06);
+  --shadow-lg: 0 12px 40px rgba(20, 22, 30, 0.12);
+  --shadow-pop: 0 18px 50px rgba(13, 15, 21, 0.28);
 
   /* Hover-тени привязаны к --primary/--error через color-mix → при смене
-     цветовых токенов тени автоматически следуют. (MED#5: было захардкожено
-     rgba() в button.tsx — нарушение «никаких hex/rgb в JSX» из §11.) */
-  --shadow-primary-hover:     0 4px 12px color-mix(in oklab, var(--primary) 25%, transparent);
+     цветовых токенов тени автоматически следуют. */
+  --shadow-primary-hover:     0 6px 18px color-mix(in oklab, var(--primary) 40%, transparent);
   --shadow-destructive-hover: 0 4px 12px color-mix(in oklab, var(--error)   25%, transparent);
 
   /* Motion */
@@ -120,6 +143,7 @@
   --color-primary-fg:      var(--primary-fg);
   --color-primary-subtle:  var(--primary-subtle);
   --color-primary-border:  var(--primary-border);
+  --color-brass-bright:    var(--brass-bright);
 
   /* Semantic */
   --color-success:    var(--success);
@@ -146,14 +170,8 @@
   --color-stage-consultation-bg: var(--stage-consultation-bg);
   --color-stage-in-progress:     var(--stage-in-progress);
   --color-stage-in-progress-bg:  var(--stage-in-progress-bg);
-  --color-stage-pretrial:        var(--stage-pretrial);
-  --color-stage-pretrial-bg:     var(--stage-pretrial-bg);
-  --color-stage-litigation:      var(--stage-litigation);
-  --color-stage-litigation-bg:   var(--stage-litigation-bg);
   --color-stage-awaiting:        var(--stage-awaiting);
   --color-stage-awaiting-bg:     var(--stage-awaiting-bg);
-  --color-stage-enforcement:     var(--stage-enforcement);
-  --color-stage-enforcement-bg:  var(--stage-enforcement-bg);
   --color-stage-closed:          var(--stage-closed);
   --color-stage-closed-bg:       var(--stage-closed-bg);
 
@@ -162,6 +180,27 @@
   --color-brand-telegram: var(--brand-telegram);
   --color-brand-whatsapp: var(--brand-whatsapp);
   --color-brand-viber:    var(--brand-viber);
+
+  /* Sidebar (тёмная навигация) */
+  --color-sidebar-bg:          var(--sidebar-bg);
+  --color-sidebar-elevated:    var(--sidebar-elevated);
+  --color-sidebar-border:      var(--sidebar-border);
+  --color-sidebar-text:          var(--sidebar-text);
+  --color-sidebar-text-disabled: var(--sidebar-text-disabled);
+  --color-sidebar-text-strong:   var(--sidebar-text-strong);
+  --color-sidebar-hover-bg:    var(--sidebar-hover-bg);
+  --color-sidebar-active-bg:   var(--sidebar-active-bg);
+  --color-sidebar-active-text: var(--sidebar-active-text);
+  --color-sidebar-accent:        var(--sidebar-accent);
+  --color-sidebar-accent-bright: var(--sidebar-accent-bright);
+
+  /* Категории дел */
+  --color-cat-document:       var(--cat-document);
+  --color-cat-document-bg:    var(--cat-document-bg);
+  --color-cat-claim:          var(--cat-claim);
+  --color-cat-claim-bg:       var(--cat-claim-bg);
+  --color-cat-representation:    var(--cat-representation);
+  --color-cat-representation-bg: var(--cat-representation-bg);
 
   /* Радиусы */
   --radius-sm:   var(--r-sm);
@@ -174,6 +213,7 @@
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
+  --shadow-pop: var(--shadow-pop);
   --shadow-primary-hover:     var(--shadow-primary-hover);
   --shadow-destructive-hover: var(--shadow-destructive-hover);
 }
@@ -208,6 +248,12 @@ body {
   border-radius: 2px;
 }
 
+/* В тёмной навигации латунь-кольцо читаемо к тёмным поверхностям сайдбара
+   (WCAG 1.4.11 / 2.4.7). */
+.app-sidebar :focus-visible {
+  outline-color: var(--sidebar-accent-bright);
+}
+
 /* Скроллбары */
 * {
   scrollbar-width: thin;
@@ -221,3 +267,67 @@ body {
   border: 2px solid var(--bg);
 }
 *::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
+
+/* ============================================================
+   Анимации появления (дашборд, карточки, полосы графиков)
+   ============================================================ */
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Пульс-кольцо у точки активного (не завершённого) этапа — «живой» статус. */
+@keyframes stage-pulse {
+  0%   { transform: scale(0.8); opacity: 0.45; }
+  70%  { transform: scale(2.4); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up var(--dur-medium) var(--ease-out) both;
+}
+
+/* Появление экрана при переходе. */
+.animate-screen-in {
+  animation: screen-in 340ms var(--ease-out) both;
+}
+
+/* Точка этапа с пульсацией: маркер + расходящееся кольцо того же цвета. */
+.stage-dot-live {
+  position: relative;
+}
+.stage-dot-live::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.35;
+  animation: stage-pulse 1.8s ease-out infinite;
+}
+
+/* Полосы воронки/графиков: растут слева направо при загрузке. */
+.animate-bar-grow {
+  transform-origin: left center;
+  animation: bar-grow 560ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .animate-screen-in,
+  .animate-bar-grow {
+    animation: none;
+  }
+  .stage-dot-live::after { animation: none; opacity: 0; }
+}

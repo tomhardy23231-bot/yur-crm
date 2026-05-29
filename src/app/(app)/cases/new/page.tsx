@@ -6,24 +6,28 @@ import { CaseForm } from '@/components/cases/case-form';
 import { createCaseAction } from '@/lib/cases/actions';
 import {
   listClientsForSelect,
-  listSpecialistsForAssignment,
+  listExpertsForAssignment,
+  listLawyersForAssignment,
 } from '@/lib/cases/queries';
 import { getClient } from '@/lib/clients/queries';
 import { requireRole } from '@/lib/auth/require-role';
+import { MANAGER_ROLES } from '@/lib/types/db';
 
-// В Phase 1 дела заводит admin/owner (RLS-политика cases_insert_staff).
-// Для specialist/assistant — /forbidden.
+// Дела заводит staff: owner/admin/office_manager (RLS-политика cases_insert_staff).
+// Для юриста/Експерта — /forbidden.
 export default async function NewCasePage({
   searchParams,
 }: {
   searchParams: Promise<{ client?: string }>;
 }) {
-  await requireRole(['owner', 'admin']);
+  const user = await requireRole(['owner', 'admin', 'office_manager']);
+  const canEditRates = MANAGER_ROLES.includes(user.profile.role);
   const sp = await searchParams;
 
-  const [clients, specialists] = await Promise.all([
+  const [clients, lawyers, experts] = await Promise.all([
     listClientsForSelect(),
-    listSpecialistsForAssignment(),
+    listLawyersForAssignment(),
+    listExpertsForAssignment(),
   ]);
 
   // Если пришли с карточки клиента — фиксируем его в форме.
@@ -33,7 +37,7 @@ export default async function NewCasePage({
     : undefined;
 
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-col gap-1">
         <Link
           href={lockedClient ? `/clients/${lockedClient.id}` : '/cases'}
@@ -56,9 +60,11 @@ export default async function NewCasePage({
           action={createCaseAction}
           clients={clients}
           lockedClient={lockedClient}
-          specialists={specialists}
+          lawyers={lawyers}
+          experts={experts}
           submitLabel="Создать дело"
           cancelHref={lockedClient ? `/clients/${lockedClient.id}` : '/cases'}
+          canEditRates={canEditRates}
         />
       </Card>
     </main>

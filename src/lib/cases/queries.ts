@@ -4,12 +4,12 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type {
   BillingType,
   Case,
+  CaseCategory,
   CasePriority,
   CaseStage,
   CaseType,
   CaseWithRefs,
   ClientKind,
-  SpecialistType,
 } from '@/lib/types/db';
 
 export const CASES_PAGE_SIZE = 20;
@@ -26,11 +26,13 @@ export type CaseListItem = {
   number_title: string;
   stage: CaseStage;
   case_type: CaseType;
+  category: CaseCategory;
   priority: CasePriority;
   opened_at: string;
   contract_sum: number;
   debt: number;
   client: { id: string; name: string } | null;
+  lawyer: { id: string; full_name: string } | null;
   responsible: { id: string; full_name: string } | null;
 };
 
@@ -53,6 +55,7 @@ export type ListCasesParams = {
   q?: string;
   stage?: CaseStage;
   caseType?: CaseType;
+  category?: CaseCategory;
   responsibleId?: string;
   page?: number;
   sort?: CasesSortColumn;
@@ -68,16 +71,15 @@ export type ListCasesResult = {
 };
 
 // RLS-видимость:
-//   - owner/admin — все дела;
-//   - specialist  — где responsible_id = uid;
-//   - assistant   — где responsible_id = supervisor_id.
+//   - staff (owner/admin/office_manager) — все дела;
+//   - lawyer  — где lawyer_id = uid;
+//   - expert  — где responsible_id = uid.
 // Фильтры на уровне запроса — только пользовательские, безопасность от RLS.
 //
-// Когда есть q → используем RPC search_case_ids (миграция 20260527130000):
-// поиск идёт по 5 полям (number_title, opponent, court_case_number,
-// client.name через JOIN, tags через unnest). RPC возвращает (id, total),
-// затем подтягиваем полные ряды с PostgREST-join'ом по найденным id.
-// Без q → обычный flow со встроенным count: 'exact'.
+// Когда есть q → используем RPC search_case_ids: поиск идёт по 5 полям
+// (number_title, opponent, court_case_number, client.name через JOIN,
+// tags через unnest). RPC возвращает (id, total), затем подтягиваем полные
+// ряды с PostgREST-join'ом по найденным id. Без q → обычный flow с count:'exact'.
 export async function listCases(
   params: ListCasesParams = {},
 ): Promise<ListCasesResult> {
@@ -94,6 +96,7 @@ export async function listCases(
     number_title: string;
     stage: CaseStage;
     case_type: CaseType;
+    category: CaseCategory;
     priority: CasePriority;
     opened_at: string;
     contract_sum: number | string;
@@ -102,6 +105,10 @@ export async function listCases(
       | ReadonlyArray<{ id: string; name: string }>
       | { id: string; name: string }
       | null;
+    lawyer:
+      | ReadonlyArray<{ id: string; full_name: string }>
+      | { id: string; full_name: string }
+      | null;
     responsible:
       | ReadonlyArray<{ id: string; full_name: string }>
       | { id: string; full_name: string }
@@ -109,15 +116,13 @@ export async function listCases(
   };
 
   const SELECT =
-    'id, number_title, stage, case_type, priority, opened_at, contract_sum, debt, ' +
-    'client:client_id(id, name), responsible:responsible_id(id, full_name)';
+    'id, number_title, stage, case_type, category, priority, opened_at, contract_sum, debt, ' +
+    'client:client_id(id, name), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)';
 
   if (q) {
     // Поиск через RPC. Дополнительные фильтры передаём в RPC, чтобы
     // pagination и count были консистентны с фильтрами. p_sort/p_dir —
-    // сортировка в SQL ДО LIMIT/OFFSET (внешнее ревью HIGH#3): иначе
-    // клиентский sort на 20 уже-спагинированных рядах врёт пользователю
-    // (на странице 1 для «contract_sum desc» он видит не топ-20 по сумме).
+    // сортировка в SQL ДО LIMIT/OFFSET (внешнее ревью HIGH#3).
     const { data: matchRows, error: matchErr } = await supabase.rpc(
       'search_case_ids',
       {
@@ -125,6 +130,7 @@ export async function listCases(
         p_stage: params.stage ?? null,
         p_case_type: params.caseType ?? null,
         p_responsible_id: params.responsibleId ?? null,
+        p_category: params.category ?? null,
         p_limit: CASES_PAGE_SIZE,
         p_offset: offset,
         p_sort: sortColumn,
@@ -183,6 +189,7 @@ export async function listCases(
 
   if (params.stage) query = query.eq('stage', params.stage);
   if (params.caseType) query = query.eq('case_type', params.caseType);
+  if (params.category) query = query.eq('category', params.category);
   if (params.responsibleId)
     query = query.eq('responsible_id', params.responsibleId);
 
@@ -207,6 +214,7 @@ function normalizeRow(r: {
   number_title: string;
   stage: CaseStage;
   case_type: CaseType;
+  category: CaseCategory;
   priority: CasePriority;
   opened_at: string;
   contract_sum: number | string;
@@ -215,12 +223,17 @@ function normalizeRow(r: {
     | ReadonlyArray<{ id: string; name: string }>
     | { id: string; name: string }
     | null;
+  lawyer:
+    | ReadonlyArray<{ id: string; full_name: string }>
+    | { id: string; full_name: string }
+    | null;
   responsible:
     | ReadonlyArray<{ id: string; full_name: string }>
     | { id: string; full_name: string }
     | null;
 }): CaseListItem {
   const client = Array.isArray(r.client) ? (r.client[0] ?? null) : r.client;
+  const lawyer = Array.isArray(r.lawyer) ? (r.lawyer[0] ?? null) : r.lawyer;
   const responsible = Array.isArray(r.responsible)
     ? (r.responsible[0] ?? null)
     : r.responsible;
@@ -229,11 +242,13 @@ function normalizeRow(r: {
     number_title: r.number_title,
     stage: r.stage,
     case_type: r.case_type,
+    category: r.category,
     priority: r.priority,
     opened_at: r.opened_at,
     contract_sum: Number(r.contract_sum),
     debt: Number(r.debt),
     client,
+    lawyer,
     responsible,
   };
 }
@@ -243,9 +258,9 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
   const { data, error } = await supabase
     .from('cases')
     .select(
-      'id, number_title, client_id, responsible_id, opened_at, case_type, stage, priority, tags, ' +
-        'contract_sum, paid_total, debt, billing_types, hourly_rate, opponent, court_case_number, court, closed_at, created_at, ' +
-        'client:client_id(id, name, client_kind), responsible:responsible_id(id, full_name, specialist_type)',
+      'id, number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, priority, tags, ' +
+        'contract_sum, paid_total, debt, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, created_at, ' +
+        'client:client_id(id, name, client_kind), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
     )
     .eq('id', id)
     .maybeSingle();
@@ -255,31 +270,32 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
   }
   if (!data) return null;
 
-  type Row = Omit<Case, 'contract_sum' | 'paid_total' | 'debt' | 'hourly_rate'> & {
+  type Row = Omit<
+    Case,
+    'contract_sum' | 'paid_total' | 'debt' | 'lawyer_rate_override' | 'expert_rate_override'
+  > & {
     contract_sum: number | string;
     paid_total: number | string;
     debt: number | string;
-    hourly_rate: number | string | null;
+    lawyer_rate_override: number | string | null;
+    expert_rate_override: number | string | null;
     client:
       | ReadonlyArray<{ id: string; name: string; client_kind: ClientKind }>
       | { id: string; name: string; client_kind: ClientKind }
       | null;
+    lawyer:
+      | ReadonlyArray<{ id: string; full_name: string }>
+      | { id: string; full_name: string }
+      | null;
     responsible:
-      | ReadonlyArray<{
-          id: string;
-          full_name: string;
-          specialist_type: SpecialistType | null;
-        }>
-      | {
-          id: string;
-          full_name: string;
-          specialist_type: SpecialistType | null;
-        }
+      | ReadonlyArray<{ id: string; full_name: string }>
+      | { id: string; full_name: string }
       | null;
   };
 
   const r = data as unknown as Row;
   const client = Array.isArray(r.client) ? (r.client[0] ?? null) : r.client;
+  const lawyer = Array.isArray(r.lawyer) ? (r.lawyer[0] ?? null) : r.lawyer;
   const responsible = Array.isArray(r.responsible)
     ? (r.responsible[0] ?? null)
     : r.responsible;
@@ -288,9 +304,12 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     id: r.id,
     number_title: r.number_title,
     client_id: r.client_id,
+    lawyer_id: r.lawyer_id,
     responsible_id: r.responsible_id,
     opened_at: r.opened_at,
     case_type: r.case_type,
+    category: r.category,
+    subject: r.subject,
     stage: r.stage,
     priority: r.priority,
     tags: r.tags ?? [],
@@ -298,19 +317,24 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     paid_total: Number(r.paid_total),
     debt: Number(r.debt),
     billing_types: (r.billing_types ?? []) as BillingType[],
-    hourly_rate: r.hourly_rate == null ? null : Number(r.hourly_rate),
+    lawyer_rate_override:
+      r.lawyer_rate_override == null ? null : Number(r.lawyer_rate_override),
+    expert_rate_override:
+      r.expert_rate_override == null ? null : Number(r.expert_rate_override),
+    accrual_mode: r.accrual_mode,
     opponent: r.opponent,
     court_case_number: r.court_case_number,
     court: r.court,
     closed_at: r.closed_at,
     created_at: r.created_at,
     client,
+    lawyer,
     responsible,
   };
 }
 
 // ============================================================================
-// Kanban board (Шаг 6 — «доска или список»)
+// Kanban board (доска этапов)
 // ============================================================================
 
 export type BoardCaseItem = {
@@ -319,10 +343,12 @@ export type BoardCaseItem = {
   stage: CaseStage;
   priority: CasePriority;
   case_type: CaseType;
+  category: CaseCategory;
   opened_at: string;
   contract_sum: number;
   debt: number;
   client: { id: string; name: string } | null;
+  lawyer: { id: string; full_name: string } | null;
   responsible: { id: string; full_name: string } | null;
 };
 
@@ -341,8 +367,8 @@ export async function listCasesForBoard(params: {
   let query = supabase
     .from('cases')
     .select(
-      'id, number_title, stage, priority, case_type, opened_at, contract_sum, debt, ' +
-        'client:client_id(id, name), responsible:responsible_id(id, full_name)',
+      'id, number_title, stage, priority, case_type, category, opened_at, contract_sum, debt, ' +
+        'client:client_id(id, name), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
     )
     // urgent сверху (priority='urgent' < 'normal' в алфавите → ascending=true)
     .order('priority', { ascending: true })
@@ -363,12 +389,17 @@ export async function listCasesForBoard(params: {
     stage: CaseStage;
     priority: CasePriority;
     case_type: CaseType;
+    category: CaseCategory;
     opened_at: string;
     contract_sum: number | string;
     debt: number | string;
     client:
       | ReadonlyArray<{ id: string; name: string }>
       | { id: string; name: string }
+      | null;
+    lawyer:
+      | ReadonlyArray<{ id: string; full_name: string }>
+      | { id: string; full_name: string }
       | null;
     responsible:
       | ReadonlyArray<{ id: string; full_name: string }>
@@ -379,6 +410,7 @@ export async function listCasesForBoard(params: {
   return (data ?? []).map((row) => {
     const r = row as unknown as Row;
     const client = Array.isArray(r.client) ? (r.client[0] ?? null) : r.client;
+    const lawyer = Array.isArray(r.lawyer) ? (r.lawyer[0] ?? null) : r.lawyer;
     const responsible = Array.isArray(r.responsible)
       ? (r.responsible[0] ?? null)
       : r.responsible;
@@ -388,37 +420,47 @@ export async function listCasesForBoard(params: {
       stage: r.stage,
       priority: r.priority,
       case_type: r.case_type,
+      category: r.category,
       opened_at: r.opened_at,
       contract_sum: Number(r.contract_sum),
       debt: Number(r.debt),
       client,
+      lawyer,
       responsible,
     };
   });
 }
 
-export type SpecialistOption = {
+export type AssigneeOption = {
   id: string;
   full_name: string;
-  specialist_type: SpecialistType | null;
 };
 
-// Список активных специалистов для выбора ответственного.
-// RLS на users разрешает SELECT любому активному authenticated, поэтому
-// сюда приходят все специалисты системы (нам и нужно).
-export async function listSpecialistsForAssignment(): Promise<SpecialistOption[]> {
+// Список активных пользователей для выбора. RLS на users разрешает SELECT
+// любому активному authenticated, поэтому сюда приходят все подходящие.
+async function listUsersByRoles(roles: ReadonlyArray<string>): Promise<AssigneeOption[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('users')
-    .select('id, full_name, specialist_type')
-    .eq('role', 'specialist')
+    .select('id, full_name')
+    .in('role', roles as string[])
     .eq('is_active', true)
     .order('full_name', { ascending: true });
 
   if (error) {
-    throw new Error(`listSpecialistsForAssignment failed: ${error.message}`);
+    throw new Error(`listUsersByRoles failed: ${error.message}`);
   }
-  return (data ?? []) as SpecialistOption[];
+  return (data ?? []) as AssigneeOption[];
+}
+
+// Експерты-исполнители (responsible_id). owner/admin тоже могут вести дело.
+export function listExpertsForAssignment(): Promise<AssigneeOption[]> {
+  return listUsersByRoles(['expert', 'admin', 'owner']);
+}
+
+// Юристы-продажники (lawyer_id). owner/admin тоже могут заключать договор.
+export function listLawyersForAssignment(): Promise<AssigneeOption[]> {
+  return listUsersByRoles(['lawyer', 'admin', 'owner']);
 }
 
 export type ClientOption = {

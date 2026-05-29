@@ -40,20 +40,43 @@ as $$
   select role from public.users where id = auth.uid() and is_active = true
 $$;
 
--- supervisor_id текущего активного ассистента; для остальных ролей — NULL.
-create or replace function private.current_user_supervisor_id()
-returns uuid
+-- true для активных owner/admin/office_manager — «staff» по матрице §4
+-- (видят все дела, всех клиентов и все финансы).
+create or replace function private.is_staff()
+returns boolean
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select supervisor_id from public.users
-   where id = auth.uid() and is_active = true
+  select coalesce(
+    (select role in ('owner', 'admin', 'office_manager')
+       from public.users
+      where id = auth.uid() and is_active = true),
+    false
+  )
 $$;
 
--- true для активных owner/admin (всё «staff» по матрице §4).
-create or replace function private.is_staff()
+-- true только для активного owner — системные настройки (ставки зарплаты и т. п.).
+create or replace function private.is_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    (select role = 'owner'
+       from public.users
+      where id = auth.uid() and is_active = true),
+    false
+  )
+$$;
+
+-- true для активных owner/admin — управление пользователями и их правами,
+-- а также деструктивные операции (удаление, правка платежей). Офис-менеджер
+-- финансы ЧИТАЕТ (is_staff), но удалять/править их не может.
+create or replace function private.can_manage_users()
 returns boolean
 language sql
 stable
@@ -84,8 +107,8 @@ as $$
     where c.id = p_case_id
       and (
         private.is_staff()
-        or c.responsible_id = private.active_uid()
-        or c.responsible_id = private.current_user_supervisor_id()
+        or c.lawyer_id = private.active_uid()       -- юрист видит свои заключённые дела
+        or c.responsible_id = private.active_uid()  -- Експерт видит свои ведомые дела
       )
   )
 $$;
@@ -104,7 +127,8 @@ $$;
 
 grant execute on function private.active_uid()                   to authenticated;
 grant execute on function private.current_user_role()            to authenticated;
-grant execute on function private.current_user_supervisor_id()   to authenticated;
 grant execute on function private.is_staff()                     to authenticated;
+grant execute on function private.is_owner()                     to authenticated;
+grant execute on function private.can_manage_users()             to authenticated;
 grant execute on function private.can_see_case(uuid)             to authenticated;
 grant execute on function private.can_write_case(uuid)           to authenticated;

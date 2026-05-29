@@ -14,8 +14,8 @@ export type CurrentUser = {
 //
 // 1) `supabase.auth.getUser()` валидирует JWT с Auth-сервером (а не доверяет
 //    cookie, как getSession). Используем для решений о доступе.
-// 2) Затем читаем строку из public.users — там лежит роль, supervisor_id и
-//    is_active. Чтение идёт под RLS пользователя; политика `users_select_all`
+// 2) Затем читаем строку из public.users — там лежит роль и is_active.
+//    Чтение идёт под RLS пользователя; политика `users_select_all`
 //    разрешает любому активному сотруднику видеть всех остальных, поэтому
 //    свою строку он точно получит.
 // 3) Если is_active = false → возвращаем null. RLS уже отрезает доступ к
@@ -31,7 +31,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
   const { data: profile, error: profileError } = await supabase
     .from('users')
-    .select('id, full_name, email, role, specialist_type, supervisor_id, is_active, created_at')
+    .select('id, full_name, email, role, is_active, created_at')
     .eq('id', authData.user.id)
     .maybeSingle<UserProfile>();
 

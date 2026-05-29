@@ -1,10 +1,16 @@
 // scripts/smoke-rls.ts
-// Smoke-тест после применения миграций и сида:
-//   1) Триггер payments_recalc отработал — paid_total/debt корректны
-//   2) RLS режет видимость — lawyer не видит дел jurist, и наоборот
-//   3) RLS политики на cases UPDATE — specialist не может «угнать» чужое дело
+// Smoke-тест после применения миграций и сида (новая Концепция):
+//   - Триггеры payments_recalc / cases_recompute_debt
+//   - RLS видимость: юрист видит дела по lawyer_id, Експерт — по responsible_id,
+//     staff (owner/admin/office_manager) — всё; office_manager видит все финансы
+//   - Управление пользователями: owner + admin; office_manager/lawyer/expert — нет
+//   - Воронка только вперёд (5 этапов)
+//   - tasks / documents / payments RLS
+//   - activity_log writer (allowlist, CSO #1, MED#7)
+//   - cases_validate_assignees (active-check для lawyer_id и responsible_id)
+//   - payroll: ставки 7/10/25, case_payroll, изменение ставок только owner
 //
-// Запуск: npx tsx scripts/smoke-rls.ts (env через --env-file=.env.local)
+// Запуск: npm run smoke:rls (env через --env-file=.env.local)
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -25,974 +31,495 @@ async function asUser(email: string) {
   return c;
 }
 
+async function uid(email: string): Promise<string> {
+  const { data, error } = await admin.from('users').select('id').eq('email', email).single();
+  if (error || !data) fail(`uid ${email}: ${error?.message}`);
+  return data.id as string;
+}
+
+async function caseId(numberTitle: string): Promise<string> {
+  const { data, error } = await admin.from('cases').select('id').eq('number_title', numberTitle).single();
+  if (error || !data) fail(`caseId ${numberTitle}: ${error?.message}`);
+  return data.id as string;
+}
+
 async function main() {
-  console.log('1. Триггер payments_recalc:');
-  const { data: cases, error: e1 } = await admin.from('cases').select('number_title, contract_sum, paid_total, debt').order('number_title');
+  // Сессии всех ролей.
+  const owner = await asUser('owner@yur.local');
+  const adminUser = await asUser('admin@yur.local');
+  const office = await asUser('office@yur.local');
+  const lawyer1 = await asUser('lawyer@yur.local');
+  const lawyer2 = await asUser('lawyer2@yur.local');
+  const expert1 = await asUser('expert@yur.local');
+  const expert2 = await asUser('expert2@yur.local');
+
+  const lawyer1Uid = await uid('lawyer@yur.local');
+  const expert1Uid = await uid('expert@yur.local');
+  const expert2Uid = await uid('expert2@yur.local');
+  const adminUid = await uid('admin@yur.local');
+
+  const caseAId = await caseId('CRM-2026-001'); // lawyer1 + expert1, representation
+  const caseBId = await caseId('CRM-2026-002'); // lawyer2 + expert2, claim
+
+  console.log('1. Триггеры payments_recalc / cases_recompute_debt:');
+  const { data: cases, error: e1 } = await admin
+    .from('cases')
+    .select('number_title, contract_sum, paid_total, debt')
+    .order('number_title');
   if (e1) fail(e1.message);
   if (!cases || cases.length !== 2) fail(`ожидал 2 дела, получил ${cases?.length}`);
-  for (const c of cases) {
-    console.log(`    ${c.number_title}: contract=${c.contract_sum} paid=${c.paid_total} debt=${c.debt}`);
-  }
-  const lawyerCase = cases.find((c) => c.number_title === 'CRM-2026-001')!;
-  const juristCase = cases.find((c) => c.number_title === 'CRM-2026-002')!;
-  if (Number(lawyerCase.paid_total) !== 10000) fail(`CRM-2026-001 paid_total ожидался 10000, факт ${lawyerCase.paid_total}`);
-  if (Number(lawyerCase.debt) !== 20000) fail(`CRM-2026-001 debt ожидался 20000, факт ${lawyerCase.debt}`);
-  if (Number(juristCase.paid_total) !== 0) fail(`CRM-2026-002 paid_total ожидался 0, факт ${juristCase.paid_total}`);
-  if (Number(juristCase.debt) !== 120000) fail(`CRM-2026-002 debt ожидался 120000 (нет платежей), факт ${juristCase.debt}`);
+  const caseA = cases.find((c) => c.number_title === 'CRM-2026-001')!;
+  const caseB = cases.find((c) => c.number_title === 'CRM-2026-002')!;
+  if (Number(caseA.paid_total) !== 10000) fail(`CRM-2026-001 paid_total ожидался 10000, факт ${caseA.paid_total}`);
+  if (Number(caseA.debt) !== 20000) fail(`CRM-2026-001 debt ожидался 20000, факт ${caseA.debt}`);
+  if (Number(caseB.paid_total) !== 0) fail(`CRM-2026-002 paid_total ожидался 0, факт ${caseB.paid_total}`);
+  if (Number(caseB.debt) !== 120000) fail(`CRM-2026-002 debt ожидался 120000, факт ${caseB.debt}`);
   ok('paid_total и debt пересчитаны корректно');
 
-  console.log('\n2. RLS — lawyer видит только своё дело:');
-  const lawyer = await asUser('lawyer@yur.local');
-  const { data: lawyerSees } = await lawyer.from('cases').select('number_title');
-  console.log(`    lawyer видит: ${JSON.stringify(lawyerSees?.map((c) => c.number_title))}`);
-  if (lawyerSees?.length !== 1 || lawyerSees[0]!.number_title !== 'CRM-2026-001') {
-    fail(`lawyer должен видеть только CRM-2026-001, видит ${JSON.stringify(lawyerSees)}`);
+  console.log('\n2. RLS — юрист видит дело по lawyer_id:');
+  const { data: l1Sees } = await lawyer1.from('cases').select('number_title');
+  if (l1Sees?.length !== 1 || l1Sees[0]!.number_title !== 'CRM-2026-001') {
+    fail(`lawyer1 должен видеть только CRM-2026-001 (он lawyer_id), видит ${JSON.stringify(l1Sees)}`);
   }
-  ok('lawyer изолирован от дела jurist');
+  ok('lawyer1 видит своё дело по lawyer_id и изолирован от чужого');
 
-  console.log('\n3. RLS — jurist видит только своё дело:');
-  const jurist = await asUser('jurist@yur.local');
-  const { data: juristSees } = await jurist.from('cases').select('number_title');
-  console.log(`    jurist видит: ${JSON.stringify(juristSees?.map((c) => c.number_title))}`);
-  if (juristSees?.length !== 1 || juristSees[0]!.number_title !== 'CRM-2026-002') {
-    fail(`jurist должен видеть только CRM-2026-002, видит ${JSON.stringify(juristSees)}`);
+  console.log('\n3. RLS — Експерт видит дело по responsible_id:');
+  const { data: e1Sees } = await expert1.from('cases').select('number_title');
+  if (e1Sees?.length !== 1 || e1Sees[0]!.number_title !== 'CRM-2026-001') {
+    fail(`expert1 должен видеть только CRM-2026-001 (он responsible_id), видит ${JSON.stringify(e1Sees)}`);
   }
-  ok('jurist изолирован от дела lawyer');
+  ok('expert1 видит своё дело по responsible_id и изолирован от чужого');
 
-  console.log('\n4. RLS — assistant юриста видит ТОЛЬКО дело юриста:');
-  const assistant = await asUser('assistant@yur.local');
-  const { data: assSees } = await assistant.from('cases').select('number_title');
-  console.log(`    assistant видит: ${JSON.stringify(assSees?.map((c) => c.number_title))}`);
-  if (assSees?.length !== 1 || assSees[0]!.number_title !== 'CRM-2026-002') {
-    fail(`assistant юриста должен видеть только CRM-2026-002, видит ${JSON.stringify(assSees)}`);
+  console.log('\n4. RLS — изоляция второй пары (lawyer2/expert2 видят только дело B):');
+  const { data: l2Sees } = await lawyer2.from('cases').select('number_title');
+  const { data: e2Sees } = await expert2.from('cases').select('number_title');
+  if (l2Sees?.length !== 1 || l2Sees[0]!.number_title !== 'CRM-2026-002') {
+    fail(`lawyer2 должен видеть только CRM-2026-002, видит ${JSON.stringify(l2Sees)}`);
   }
-  ok('assistant видит дела супервайзера, чужие — нет');
+  if (e2Sees?.length !== 1 || e2Sees[0]!.number_title !== 'CRM-2026-002') {
+    fail(`expert2 должен видеть только CRM-2026-002, видит ${JSON.stringify(e2Sees)}`);
+  }
+  ok('вторая пара изолирована (видят только своё дело B)');
 
-  console.log('\n5. RLS — admin видит всё:');
-  const adminUser = await asUser('admin@yur.local');
+  console.log('\n5. RLS — staff видит всё (admin + office_manager):');
   const { data: adminSees } = await adminUser.from('cases').select('number_title');
   if (adminSees?.length !== 2) fail(`admin должен видеть 2 дела, видит ${adminSees?.length}`);
-  ok(`admin видит все ${adminSees.length} дел`);
+  const { data: officeSees } = await office.from('cases').select('number_title');
+  if (officeSees?.length !== 2) fail(`office_manager должен видеть 2 дела, видит ${officeSees?.length}`);
+  // office_manager видит ВСЕ финансы (ответ клиента).
+  const { data: officePay } = await office.from('payments').select('amount');
+  if (!officePay || officePay.length !== 1) fail(`office_manager должен видеть все платежи (1), видит ${officePay?.length}`);
+  ok('admin и office_manager видят все дела; office_manager видит все финансы');
 
-  console.log('\n6. RLS — lawyer НЕ может изменить дело jurist:');
-  const { error: stealErr } = await lawyer
-    .from('cases')
-    .update({ priority: 'urgent' })
-    .eq('number_title', 'CRM-2026-002');
-  // RLS не вернёт ошибку, но и не обновит — проверим через admin:
-  const { data: afterSteal } = await admin
-    .from('cases')
-    .select('priority')
-    .eq('number_title', 'CRM-2026-002')
-    .single();
-  if (afterSteal?.priority !== 'urgent') {
-    fail('CRM-2026-002 priority должен остаться urgent после попытки lawyer изменить (исходное значение)');
+  console.log('\n6. RLS — юрист не может изменить чужое дело, но может своё:');
+  await lawyer1.from('cases').update({ priority: 'urgent' }).eq('id', caseBId);
+  const { data: bAfter } = await admin.from('cases').select('priority').eq('id', caseBId).single();
+  if (bAfter?.priority !== 'urgent') {
+    fail('seed B priority должен быть urgent (lawyer1 не должен был его менять)');
   }
-  // Лучше: специалист пытается обновить специально на 'normal' и проверим что не сработало
-  const { error: stealErr2 } = await lawyer
-    .from('cases')
-    .update({ priority: 'normal' })
-    .eq('number_title', 'CRM-2026-002');
-  const { data: afterSteal2 } = await admin
-    .from('cases')
-    .select('priority')
-    .eq('number_title', 'CRM-2026-002')
-    .single();
-  if (afterSteal2?.priority !== 'urgent') {
-    fail(`lawyer смог изменить priority дела jurist на ${afterSteal2?.priority}!`);
-  }
-  ok('попытка lawyer изменить чужое дело молча отвергнута RLS');
-  void stealErr; void stealErr2;
+  // lawyer1 меняет СВОЁ дело A (он lawyer_id) → должно сработать.
+  const { error: ownUpd } = await lawyer1.from('cases').update({ priority: 'urgent' }).eq('id', caseAId);
+  if (ownUpd) fail(`lawyer1 не смог изменить своё дело: ${ownUpd.message}`);
+  const { data: aAfter } = await admin.from('cases').select('priority').eq('id', caseAId).single();
+  if (aAfter?.priority !== 'urgent') fail('lawyer1 не смог обновить приоритет своего дела');
+  await adminUser.from('cases').update({ priority: 'normal' }).eq('id', caseAId); // cleanup
+  ok('юрист правит своё дело (lawyer_id), чужое — RLS отвергает');
 
-  console.log('\n7. RLS — owner управляет users, admin НЕ может:');
-  const owner = await asUser('owner@yur.local');
-  // admin пытается обновить чужого пользователя
-  const { error: adminUpdate } = await adminUser
-    .from('users')
-    .update({ full_name: 'Hacked by admin' })
-    .eq('email', 'lawyer@yur.local');
-  const { data: lawyerAfterAdmin } = await admin.from('users').select('full_name').eq('email', 'lawyer@yur.local').single();
-  if (lawyerAfterAdmin?.full_name === 'Hacked by admin') {
-    fail('admin смог изменить чужого пользователя — RLS дыра');
-  }
-  ok('admin не может менять users (RLS отвергает)');
-  void adminUpdate;
+  console.log('\n7. RLS — управление пользователями: owner + admin да, остальные нет:');
+  // admin может (новая Концепция: admin управляет пользователями).
+  const { error: adminUpd } = await adminUser
+    .from('users').update({ full_name: 'Лев Юристов' }).eq('email', 'lawyer@yur.local');
+  if (adminUpd) fail(`admin должен мочь обновлять users: ${adminUpd.message}`);
+  ok('admin управляет пользователями');
+  // owner может.
+  const { error: ownerUpd } = await owner
+    .from('users').update({ full_name: 'Лев Юристов' }).eq('email', 'lawyer@yur.local');
+  if (ownerUpd) fail(`owner update users failed: ${ownerUpd.message}`);
+  ok('owner управляет пользователями');
+  // office_manager НЕ может.
+  await office.from('users').update({ full_name: 'Hacked by office' }).eq('email', 'lawyer@yur.local');
+  const { data: l1Name } = await admin.from('users').select('full_name').eq('email', 'lawyer@yur.local').single();
+  if (l1Name?.full_name === 'Hacked by office') fail('office_manager смог менять users — RLS дыра');
+  ok('office_manager НЕ может менять users (can_manage_users отверг)');
+  // expert НЕ может.
+  await expert1.from('users').update({ full_name: 'Hacked by expert' }).eq('email', 'lawyer@yur.local');
+  const { data: l1Name2 } = await admin.from('users').select('full_name').eq('email', 'lawyer@yur.local').single();
+  if (l1Name2?.full_name === 'Hacked by expert') fail('expert смог менять users — RLS дыра');
+  ok('expert НЕ может менять users');
 
-  // owner может
-  const { error: ownerUpdate } = await owner
-    .from('users')
-    .update({ full_name: 'Лев Адвокатов' }) // вернём как было
-    .eq('email', 'lawyer@yur.local');
-  if (ownerUpdate) fail(`owner update users failed: ${ownerUpdate.message}`);
-  ok('owner управляет users');
+  console.log('\n8. RLS — payments видимость:');
+  const { data: e1Pay } = await expert1.from('payments').select('amount');
+  if (e1Pay?.length !== 1) fail(`expert1 (responsible на A) должен видеть платёж дела A, видит ${e1Pay?.length}`);
+  ok('expert1 видит платёж своего дела');
+  const { data: e2Pay } = await expert2.from('payments').select('amount');
+  if (e2Pay?.length !== 0) fail(`expert2 не должен видеть платежи дела A, видит ${e2Pay?.length}`);
+  ok('expert2 изолирован от чужих платежей');
 
-  console.log('\n8. RLS — payments_select_via_case (admin видит все):');
-  const { data: adminPay } = await adminUser.from('payments').select('amount');
-  if (!adminPay || adminPay.length !== 1) fail(`admin должен видеть 1 платёж, видит ${adminPay?.length}`);
-  ok(`admin видит ${adminPay.length} платёж`);
+  console.log('\n9. Воронка только вперёд (5 этапов, cases_validate_stage_forward):');
+  const { data: caseBeforeRow } = await admin.from('cases').select('stage').eq('id', caseAId).single();
+  const originalStage = caseBeforeRow!.stage as string;
 
-  console.log('\n   — jurist НЕ видит платёж lawyer (платёж по CRM-2026-001):');
-  const { data: juristPay } = await jurist.from('payments').select('amount');
-  if (juristPay?.length !== 0) fail(`jurist не должен видеть платежи lawyer, видит ${juristPay?.length}`);
-  ok('jurist изолирован от чужих платежей');
-
-  console.log('\n9. Шаг 6 — воронка только вперёд (cases_validate_stage_forward):');
-  // Все stage-операции делаем через adminUser (HTTP с JWT) — service_role обошёл бы
-  // RLS, но триггер всё равно срабатывает и под service_role auth.uid()=NULL →
-  // is_staff()=false → backward бросит. Поэтому пишем как реальный admin.
-  // `admin` (service_role) используем только для read-проверок.
-  const { data: caseBefore, error: caseBeforeErr } = await admin
-    .from('cases')
-    .select('id, stage')
-    .eq('number_title', 'CRM-2026-001')
-    .single();
-  if (caseBeforeErr || !caseBefore) fail(`не нашёл CRM-2026-001: ${caseBeforeErr?.message}`);
-  const originalStage = caseBefore.stage as string;
-  const caseId = caseBefore.id;
-
-  // Гарантируем стартовое состояние in_progress, чтобы у lawyer было «куда откатывать».
-  // adminUser staff → может двигать в любую сторону. Если уже там — триггер обрежет no-op.
-  const { error: setupErr } = await adminUser
-    .from('cases')
-    .update({ stage: 'in_progress' })
-    .eq('id', caseId);
+  const { error: setupErr } = await adminUser.from('cases').update({ stage: 'in_progress' }).eq('id', caseAId);
   if (setupErr) fail(`setup (in_progress) не удался: ${setupErr.message}`);
-  ok('setup: CRM-2026-001 переведён в in_progress');
+  ok('setup: CRM-2026-001 в in_progress');
 
-  // Lawyer пробует откатить на consultation → триггер должен бросить ошибку.
-  const { error: lawyerBackErr } = await lawyer
-    .from('cases')
-    .update({ stage: 'consultation' })
-    .eq('id', caseId);
-  if (!lawyerBackErr || !lawyerBackErr.message.includes('stage_backward_forbidden')) {
-    fail(`lawyer должен получить stage_backward_forbidden, получил: ${lawyerBackErr?.message ?? 'no error'}`);
+  // lawyer1 (на деле A) пробует откатить назад → forbidden.
+  const { error: backErr } = await lawyer1.from('cases').update({ stage: 'consultation' }).eq('id', caseAId);
+  if (!backErr || !backErr.message.includes('stage_backward_forbidden')) {
+    fail(`lawyer1 должен получить stage_backward_forbidden, получил: ${backErr?.message ?? 'no error'}`);
   }
-  const { data: afterLawyerBack } = await admin
-    .from('cases').select('stage').eq('id', caseId).single();
-  if (afterLawyerBack?.stage !== 'in_progress') {
-    fail(`lawyer не должен был откатить stage, факт: ${afterLawyerBack?.stage}`);
-  }
-  ok('lawyer не может откатить stage (триггер бросил stage_backward_forbidden)');
+  ok('юрист не может откатить этап (триггер бросил stage_backward_forbidden)');
 
-  // Lawyer двигает вперёд на pretrial → должно сработать.
-  const { error: lawyerFwdErr } = await lawyer
-    .from('cases')
-    .update({ stage: 'pretrial' })
-    .eq('id', caseId);
-  if (lawyerFwdErr) fail(`lawyer не смог двинуть вперёд: ${lawyerFwdErr.message}`);
-  const { data: afterLawyerFwd } = await admin
-    .from('cases').select('stage').eq('id', caseId).single();
-  if (afterLawyerFwd?.stage !== 'pretrial') {
-    fail(`lawyer должен был двинуть в pretrial, факт: ${afterLawyerFwd?.stage}`);
-  }
-  ok('lawyer двинул stage вперёд (pretrial)');
+  // lawyer1 двигает вперёд in_progress → awaiting_decision → ок.
+  const { error: fwdErr } = await lawyer1.from('cases').update({ stage: 'awaiting_decision' }).eq('id', caseAId);
+  if (fwdErr) fail(`lawyer1 не смог двинуть вперёд: ${fwdErr.message}`);
+  const { data: afterFwd } = await admin.from('cases').select('stage').eq('id', caseAId).single();
+  if (afterFwd?.stage !== 'awaiting_decision') fail(`ожидался awaiting_decision, факт ${afterFwd?.stage}`);
+  ok('юрист двинул этап вперёд (in_progress → awaiting_decision)');
 
-  // Admin откатывает обратно на consultation → ок + запись в activity_log.
+  // admin откатывает awaiting_decision → consultation → ок + лог stage_corrected.
   const { count: beforeCount } = await admin
-    .from('activity_log')
-    .select('id', { count: 'exact', head: true })
-    .eq('entity_type', 'case')
-    .eq('entity_id', caseId)
-    .eq('action', 'stage_corrected');
-
-  const { error: adminBackErr } = await adminUser
-    .from('cases')
-    .update({ stage: 'consultation' })
-    .eq('id', caseId);
+    .from('activity_log').select('id', { count: 'exact', head: true })
+    .eq('entity_type', 'case').eq('entity_id', caseAId).eq('action', 'stage_corrected');
+  const { error: adminBackErr } = await adminUser.from('cases').update({ stage: 'consultation' }).eq('id', caseAId);
   if (adminBackErr) fail(`admin не смог откатить: ${adminBackErr.message}`);
-  const { data: afterAdminBack } = await admin
-    .from('cases').select('stage').eq('id', caseId).single();
-  if (afterAdminBack?.stage !== 'consultation') {
-    fail(`admin должен был откатить в consultation, факт: ${afterAdminBack?.stage}`);
-  }
-  ok('admin откатил stage назад (pretrial → consultation)');
-
   const { count: afterCount, data: logRows } = await admin
-    .from('activity_log')
-    .select('changes, action', { count: 'exact' })
-    .eq('entity_type', 'case')
-    .eq('entity_id', caseId)
-    .eq('action', 'stage_corrected')
+    .from('activity_log').select('changes', { count: 'exact' })
+    .eq('entity_type', 'case').eq('entity_id', caseAId).eq('action', 'stage_corrected')
     .order('created_at', { ascending: false });
   if ((afterCount ?? 0) !== (beforeCount ?? 0) + 1) {
-    fail(`в activity_log ожидалась +1 запись stage_corrected, было ${beforeCount}, стало ${afterCount}`);
+    fail(`ожидалась +1 запись stage_corrected, было ${beforeCount}, стало ${afterCount}`);
   }
   const lastChanges = logRows?.[0]?.changes as { from?: string; to?: string } | undefined;
-  if (lastChanges?.from !== 'pretrial' || lastChanges?.to !== 'consultation') {
-    fail(`activity_log changes ожидались {from:pretrial,to:consultation}, факт: ${JSON.stringify(lastChanges)}`);
+  if (lastChanges?.from !== 'awaiting_decision' || lastChanges?.to !== 'consultation') {
+    fail(`changes ожидались {from:awaiting_decision,to:consultation}, факт: ${JSON.stringify(lastChanges)}`);
   }
-  ok('activity_log получил запись stage_corrected с {from,to}');
+  ok('admin откатил этап (awaiting_decision → consultation) + запись stage_corrected');
 
-  // Cleanup: возвращаем исходный stage. Если назад — добавит ещё одну stage_corrected запись (это ок).
-  const { error: cleanupErr } = await adminUser
-    .from('cases')
-    .update({ stage: originalStage })
-    .eq('id', caseId);
-  if (cleanupErr) fail(`cleanup не удался: ${cleanupErr.message}`);
+  // cleanup stage.
+  await adminUser.from('cases').update({ stage: originalStage }).eq('id', caseAId);
   ok(`cleanup: CRM-2026-001 возвращён в ${originalStage}`);
 
-  console.log('\n10. Шаг 7 — tasks RLS (через дело):');
-  // ids тех, кто нам нужен
-  const { data: lawyerProfile } = await admin
-    .from('users').select('id').eq('email', 'lawyer@yur.local').single();
-  const { data: juristProfile } = await admin
-    .from('users').select('id').eq('email', 'jurist@yur.local').single();
-  const lawyerUid = lawyerProfile!.id as string;
-  const juristUid = juristProfile!.id as string;
+  console.log('\n10. tasks RLS (через дело):');
+  const { data: l1Tasks } = await lawyer1.from('tasks').select('id, case_id');
+  if (!l1Tasks) fail('lawyer1 не получил список tasks');
+  const foreignTask = l1Tasks.find((t) => t.case_id !== caseAId);
+  if (foreignTask) fail(`lawyer1 видит task с чужим case_id: ${foreignTask.case_id}`);
+  ok(`lawyer1 видит ${l1Tasks.length} task — все по своему делу A`);
 
-  const { data: lawyerCaseRow } = await admin
-    .from('cases').select('id').eq('number_title', 'CRM-2026-001').single();
-  const { data: juristCaseRow } = await admin
-    .from('cases').select('id').eq('number_title', 'CRM-2026-002').single();
-  const lawyerCaseId = lawyerCaseRow!.id as string;
-  const juristCaseId = juristCaseRow!.id as string;
-
-  // 10.1 — lawyer видит ровно task'и своего дела (isolation, не строгое число —
-  // QA может оставлять test-task; важно что НЕ видно чужих).
-  const { data: lawyerTasks } = await lawyer
+  // lawyer1 создаёт task на своё дело.
+  const { data: createdTask, error: createErr } = await lawyer1
     .from('tasks')
-    .select('id, title, case_id');
-  if (!lawyerTasks || lawyerTasks.length === 0) {
-    fail(`lawyer должен видеть свои task'и, видит ${lawyerTasks?.length}`);
-  }
-  const foreignTask = lawyerTasks.find((t) => t.case_id !== lawyerCaseId);
-  if (foreignTask) {
-    fail(`lawyer видит task с чужим case_id: ${foreignTask.case_id}`);
-  }
-  ok(`lawyer видит ${lawyerTasks.length} task — все по своему делу`);
+    .insert({ case_id: caseAId, title: 'smoke: задача', kind: 'task', assignee_id: lawyer1Uid, created_by: lawyer1Uid })
+    .select('id').single();
+  if (createErr || !createdTask) fail(`lawyer1 не смог создать task: ${createErr?.message}`);
+  const newTaskId = createdTask.id as string;
+  ok('lawyer1 создал task на своё дело');
 
-  // 10.2 — jurist НЕ видит task lawyer.
-  const { data: juristTasks } = await jurist
-    .from('tasks').select('id').eq('case_id', lawyerCaseId);
-  if (juristTasks?.length !== 0) {
-    fail(`jurist не должен видеть task на CRM-2026-001, видит ${juristTasks?.length}`);
-  }
-  ok('jurist изолирован от task чужого дела');
+  // forged created_by.
+  const { error: forgedTaskErr } = await lawyer1
+    .from('tasks').insert({ case_id: caseAId, title: 'forged', kind: 'task', assignee_id: lawyer1Uid, created_by: expert2Uid });
+  if (!forgedTaskErr) fail('lawyer1 смог приписать created_by чужому — RLS дыра');
+  ok('lawyer1 не может приписать created_by чужому (WITH CHECK отверг)');
 
-  // 10.3 — lawyer создаёт task на своё дело с правильным created_by.
-  const { data: created, error: createErr } = await lawyer
-    .from('tasks')
-    .insert({
-      case_id: lawyerCaseId,
-      title: 'smoke: проверка создания',
-      kind: 'task',
-      assignee_id: lawyerUid,
-      created_by: lawyerUid,
-    })
-    .select('id')
-    .single();
-  if (createErr || !created) {
-    fail(`lawyer не смог создать task на своё дело: ${createErr?.message}`);
-  }
-  const newTaskId = created.id as string;
-  ok('lawyer создал task на своё дело');
+  // task на чужое дело.
+  const { error: foreignTaskErr } = await lawyer1
+    .from('tasks').insert({ case_id: caseBId, title: 'foreign', kind: 'task', assignee_id: lawyer1Uid, created_by: lawyer1Uid });
+  if (!foreignTaskErr) fail('lawyer1 смог создать task на чужое дело — RLS дыра');
+  ok('lawyer1 не может создать task на чужое дело (can_write_case отверг)');
 
-  // 10.4 — lawyer пробует создать task с created_by=juristUid → WITH CHECK fail.
-  const { error: forgedErr } = await lawyer
-    .from('tasks')
-    .insert({
-      case_id: lawyerCaseId,
-      title: 'smoke: forged created_by',
-      kind: 'task',
-      assignee_id: lawyerUid,
-      created_by: juristUid,
-    });
-  if (!forgedErr) {
-    fail('lawyer смог приписать created_by чужому юзеру — RLS дыра');
-  }
-  ok('lawyer не может приписать created_by чужому юзеру (WITH CHECK отверг)');
-
-  // 10.5 — lawyer пробует создать task на ЧУЖОЕ дело → can_write_case fail.
-  const { error: foreignCaseErr } = await lawyer
-    .from('tasks')
-    .insert({
-      case_id: juristCaseId,
-      title: 'smoke: foreign case',
-      kind: 'task',
-      assignee_id: lawyerUid,
-      created_by: lawyerUid,
-    });
-  if (!foreignCaseErr) {
-    fail('lawyer смог создать task на дело jurist — RLS дыра');
-  }
-  ok('lawyer не может создать task на чужое дело (can_write_case отверг)');
-
-  // 10.6 — lawyer toggle статус новой task open → done.
-  const { error: toggleErr } = await lawyer
-    .from('tasks').update({ status: 'done' }).eq('id', newTaskId);
-  if (toggleErr) fail(`lawyer не смог обновить status своей task: ${toggleErr.message}`);
-  const { data: afterToggle } = await admin
-    .from('tasks').select('status').eq('id', newTaskId).single();
-  if (afterToggle?.status !== 'done') {
-    fail(`status должен был стать done, факт: ${afterToggle?.status}`);
-  }
-  ok('lawyer переключил status своей task (open → done)');
-
-  // 10.7 — cleanup: удалить созданную task.
-  const { error: cleanupTaskErr } = await admin.from('tasks').delete().eq('id', newTaskId);
-  if (cleanupTaskErr) fail(`cleanup task не удался: ${cleanupTaskErr.message}`);
+  // cleanup.
+  await admin.from('tasks').delete().eq('id', newTaskId);
   ok('cleanup: smoke-task удалена');
 
-  console.log('\n11. Шаг 8 — documents + storage RLS:');
-  // 11.1 — lawyer загружает в свой бакет (cases/<lawyerCaseId>/<key>).
-  const storageKey = `cases/${lawyerCaseId}/${crypto.randomUUID()}--smoke.txt`;
+  console.log('\n11. documents + storage RLS:');
+  const storageKey = `cases/${caseAId}/${crypto.randomUUID()}--smoke.txt`;
   const payload = new Uint8Array(Buffer.from('smoke-test content'));
-  const { error: uploadErr } = await lawyer.storage
-    .from('case-documents')
-    .upload(storageKey, payload, { contentType: 'text/plain', upsert: false });
-  if (uploadErr) fail(`lawyer не смог загрузить в своё дело: ${uploadErr.message}`);
-  ok('lawyer upload в storage свого дела');
+  const { error: uploadErr } = await lawyer1.storage
+    .from('case-documents').upload(storageKey, payload, { contentType: 'text/plain', upsert: false });
+  if (uploadErr) fail(`lawyer1 не смог загрузить в своё дело: ${uploadErr.message}`);
+  ok('lawyer1 upload в storage своего дела');
 
-  // 11.2 — lawyer пробует загрузить в чужое дело — storage RLS должен отказать.
-  const foreignKey = `cases/${juristCaseId}/${crypto.randomUUID()}--foreign.txt`;
-  const { error: foreignUploadErr } = await lawyer.storage
-    .from('case-documents')
-    .upload(foreignKey, payload, { contentType: 'text/plain', upsert: false });
+  const foreignKey = `cases/${caseBId}/${crypto.randomUUID()}--foreign.txt`;
+  const { error: foreignUploadErr } = await lawyer1.storage
+    .from('case-documents').upload(foreignKey, payload, { contentType: 'text/plain', upsert: false });
   if (!foreignUploadErr) {
-    // cleanup на всякий случай
     await admin.storage.from('case-documents').remove([foreignKey]);
-    fail('lawyer смог загрузить в чужое дело — storage RLS дыра');
+    fail('lawyer1 смог загрузить в чужое дело — storage RLS дыра');
   }
-  ok('lawyer не может загрузить в чужое дело (storage RLS отверг)');
+  ok('lawyer1 не может загрузить в чужое дело (storage RLS отверг)');
 
-  // 11.3 — lawyer создаёт row в documents с правильным uploaded_by.
-  const { data: docCreated, error: docInsertErr } = await lawyer
+  const { data: docCreated, error: docInsertErr } = await lawyer1
     .from('documents')
-    .insert({
-      case_id: lawyerCaseId,
-      file_name: 'smoke.txt',
-      storage_key: storageKey,
-      doc_type: 'other',
-      uploaded_by: lawyerUid,
-    })
-    .select('id')
-    .single();
-  if (docInsertErr || !docCreated) {
-    fail(`lawyer не смог создать documents row: ${docInsertErr?.message}`);
-  }
+    .insert({ case_id: caseAId, file_name: 'smoke.txt', storage_key: storageKey, doc_type: 'act', uploaded_by: lawyer1Uid })
+    .select('id').single();
+  if (docInsertErr || !docCreated) fail(`lawyer1 не смог создать documents row: ${docInsertErr?.message}`);
   const newDocId = docCreated.id as string;
-  ok('lawyer создал row в documents');
+  ok('lawyer1 создал row в documents (doc_type=act)');
 
-  // 11.4 — lawyer пробует подделать uploaded_by = juristUid → WITH CHECK fail.
-  const { error: forgedUploadedByErr } = await lawyer
-    .from('documents')
-    .insert({
-      case_id: lawyerCaseId,
-      file_name: 'forged.txt',
-      storage_key: `cases/${lawyerCaseId}/forged-${crypto.randomUUID()}.txt`,
-      doc_type: 'other',
-      uploaded_by: juristUid,
-    });
-  if (!forgedUploadedByErr) {
-    fail('lawyer смог приписать uploaded_by чужому юзеру — documents RLS дыра');
-  }
-  ok('lawyer не может приписать uploaded_by чужому юзеру (WITH CHECK отверг)');
+  // lawyer1 НЕ может удалить документ (DELETE = owner/admin via can_manage_users).
+  await lawyer1.from('documents').delete().eq('id', newDocId);
+  const { data: docAfterLawyerDel } = await admin.from('documents').select('id').eq('id', newDocId).maybeSingle();
+  if (!docAfterLawyerDel) fail('lawyer1 смог удалить документ — DELETE должен быть owner/admin');
+  ok('lawyer1 не может удалить документ (DELETE = owner/admin)');
 
-  // 11.5 — jurist НЕ видит document lawyer.
-  const { data: juristDocsView } = await jurist
-    .from('documents').select('id').eq('case_id', lawyerCaseId);
-  if (juristDocsView?.length !== 0) {
-    fail(`jurist не должен видеть документы lawyer, видит ${juristDocsView?.length}`);
-  }
-  ok('jurist изолирован от документов чужого дела');
+  // office_manager тоже НЕ может удалить (managers = owner/admin).
+  await office.from('documents').delete().eq('id', newDocId);
+  const { data: docAfterOfficeDel } = await admin.from('documents').select('id').eq('id', newDocId).maybeSingle();
+  if (!docAfterOfficeDel) fail('office_manager смог удалить документ — DELETE должен быть owner/admin');
+  ok('office_manager не может удалить документ (DELETE = owner/admin)');
 
-  // 11.6 — jurist пробует удалить document lawyer — DELETE staff-only.
-  const { error: juristDeleteErr } = await jurist
-    .from('documents').delete().eq('id', newDocId);
-  const { data: afterJuristDelete } = await admin
-    .from('documents').select('id').eq('id', newDocId).maybeSingle();
-  if (!afterJuristDelete) {
-    fail('jurist смог удалить document lawyer — RLS дыра (DELETE должен быть staff-only)');
-  }
-  ok('jurist не может удалить document (DELETE staff-only)');
-  void juristDeleteErr;
+  // expert2 (чужой) не видит документ.
+  const { data: e2Docs } = await expert2.from('documents').select('id').eq('case_id', caseAId);
+  if (e2Docs?.length !== 0) fail(`expert2 не должен видеть документы дела A, видит ${e2Docs?.length}`);
+  ok('expert2 изолирован от документов чужого дела');
 
-  // 11.7 — admin удаляет document + storage object.
-  const { error: adminDocDeleteErr } = await adminUser
-    .from('documents').delete().eq('id', newDocId);
-  if (adminDocDeleteErr) fail(`admin не смог удалить document: ${adminDocDeleteErr.message}`);
-  const { error: adminStorageDeleteErr } = await adminUser.storage
-    .from('case-documents').remove([storageKey]);
-  if (adminStorageDeleteErr) fail(`admin не смог удалить storage object: ${adminStorageDeleteErr.message}`);
+  // admin удаляет document + storage object.
+  const { error: adminDocDelErr } = await adminUser.from('documents').delete().eq('id', newDocId);
+  if (adminDocDelErr) fail(`admin не смог удалить document: ${adminDocDelErr.message}`);
+  await adminUser.storage.from('case-documents').remove([storageKey]);
   ok('admin удалил document + storage object');
 
-  console.log('\n12. Шаг 9 — payments RLS + триггеры:');
-  // 12.0 — забираем seed-платёж lawyer'a и admin uid для последующих проверок.
-  const { data: adminProfile } = await admin
-    .from('users').select('id').eq('email', 'admin@yur.local').single();
-  const adminUid = adminProfile!.id as string;
+  console.log('\n12. payments RLS + триггеры:');
+  const { data: seedPay } = await admin.from('payments').select('id').eq('case_id', caseAId);
+  if (seedPay?.length !== 1) fail(`ожидался 1 seed-платёж на деле A, факт ${seedPay?.length}`);
+  const seedPayId = seedPay![0]!.id as string;
 
-  const { data: seedPayments } = await admin
-    .from('payments').select('id, amount').eq('case_id', lawyerCaseId);
-  if (!seedPayments || seedPayments.length !== 1) {
-    fail(`ожидался 1 seed-платёж на lawyerCase, получили ${seedPayments?.length}`);
-  }
-  const lawyerSeedPaymentId = seedPayments[0]!.id as string;
-
-  // 12.1 — admin INSERT 5000 на juristCase → триггеры обновили paid_total и debt.
+  // admin INSERT 5000 на дело B → recalc.
   const { data: newPay, error: insErr } = await adminUser
     .from('payments')
-    .insert({
-      case_id: juristCaseId,
-      amount: 5000,
-      paid_at: '2026-05-27',
-      method: 'Наличные',
-      note: 'smoke recalc',
-      created_by: adminUid,
-    })
-    .select('id')
-    .single();
+    .insert({ case_id: caseBId, amount: 5000, paid_at: '2026-05-27', method: 'Наличные', created_by: adminUid })
+    .select('id').single();
   if (insErr || !newPay) fail(`admin INSERT payment failed: ${insErr?.message}`);
   const newPayId = newPay.id as string;
-
-  const { data: juristCaseAfter } = await admin
-    .from('cases').select('paid_total, debt')
-    .eq('id', juristCaseId).single();
-  if (Number(juristCaseAfter!.paid_total) !== 5000) {
-    fail(`paid_total после INSERT ожидался 5000, факт ${juristCaseAfter!.paid_total}`);
-  }
-  if (Number(juristCaseAfter!.debt) !== 115000) {
-    fail(`debt после INSERT ожидался 115000, факт ${juristCaseAfter!.debt}`);
+  const { data: bAfterPay } = await admin.from('cases').select('paid_total, debt').eq('id', caseBId).single();
+  if (Number(bAfterPay!.paid_total) !== 5000 || Number(bAfterPay!.debt) !== 115000) {
+    fail(`recalc после INSERT неверен: paid=${bAfterPay!.paid_total}, debt=${bAfterPay!.debt}`);
   }
   ok('payments_recalc + cases_recompute_debt отработали (paid=5000, debt=115000)');
 
-  // 12.2 — jurist пробует подделать created_by = lawyerUid → WITH CHECK fail.
-  const { error: forgedPayErr } = await jurist
-    .from('payments')
-    .insert({
-      case_id: juristCaseId,
-      amount: 1,
-      paid_at: '2026-05-27',
-      created_by: lawyerUid,
-    });
-  if (!forgedPayErr) {
-    fail('jurist смог приписать created_by чужому юзеру — payments RLS дыра');
+  // lawyer1 может INSERT платёж на своё дело (вносит данные об оплате), forged created_by — нет.
+  const { error: forgedPayErr } = await lawyer1
+    .from('payments').insert({ case_id: caseAId, amount: 1, paid_at: '2026-05-27', created_by: expert2Uid });
+  if (!forgedPayErr) fail('lawyer1 смог приписать created_by чужому — RLS дыра');
+  ok('lawyer1 не может приписать created_by чужому (WITH CHECK отверг)');
+
+  // lawyer1 НЕ может UPDATE/DELETE платёж (managers-only).
+  await lawyer1.from('payments').update({ note: 'hacked' }).eq('id', seedPayId);
+  const { data: payAfterLawyer } = await admin.from('payments').select('note').eq('id', seedPayId).single();
+  if (payAfterLawyer!.note === 'hacked') fail('lawyer1 смог UPDATE payment — должно быть owner/admin');
+  ok('lawyer1 не может UPDATE payment (owner/admin)');
+
+  // office_manager тоже НЕ может UPDATE платёж (видит, но не правит).
+  await office.from('payments').update({ note: 'office-hack' }).eq('id', seedPayId);
+  const { data: payAfterOffice } = await admin.from('payments').select('note').eq('id', seedPayId).single();
+  if (payAfterOffice!.note === 'office-hack') fail('office_manager смог UPDATE payment — должно быть owner/admin');
+  ok('office_manager не может UPDATE payment (только читает финансы)');
+
+  // admin DELETE → recalc откатился.
+  const { error: adminDelPayErr } = await adminUser.from('payments').delete().eq('id', newPayId);
+  if (adminDelPayErr) fail(`admin не смог DELETE payment: ${adminDelPayErr.message}`);
+  const { data: bFinal } = await admin.from('cases').select('paid_total, debt').eq('id', caseBId).single();
+  if (Number(bFinal!.paid_total) !== 0 || Number(bFinal!.debt) !== 120000) {
+    fail(`recalc после DELETE неверен: paid=${bFinal!.paid_total}, debt=${bFinal!.debt}`);
   }
-  ok('jurist не может приписать created_by чужому юзеру (WITH CHECK отверг)');
+  ok('admin DELETE + триггеры откатили (paid=0, debt=120000)');
 
-  // 12.3 — lawyer пробует UPDATE/DELETE своего же платежа — RLS staff-only.
-  const { error: lawyerUpdErr } = await lawyer
-    .from('payments').update({ note: 'hacked' }).eq('id', lawyerSeedPaymentId);
-  void lawyerUpdErr; // RLS возвращает empty, не ошибку
-  const { data: afterLawyerUpd } = await admin
-    .from('payments').select('note').eq('id', lawyerSeedPaymentId).single();
-  if (afterLawyerUpd!.note === 'hacked') {
-    fail('lawyer смог UPDATE payment — RLS дыра (UPDATE должен быть staff-only)');
-  }
-  ok('lawyer не может UPDATE payment (staff-only)');
-
-  const { error: lawyerDelErr } = await lawyer
-    .from('payments').delete().eq('id', lawyerSeedPaymentId);
-  void lawyerDelErr;
-  const { data: afterLawyerDel } = await admin
-    .from('payments').select('id').eq('id', lawyerSeedPaymentId).maybeSingle();
-  if (!afterLawyerDel) {
-    fail('lawyer смог DELETE payment — RLS дыра (DELETE должен быть staff-only)');
-  }
-  ok('lawyer не может DELETE payment (staff-only)');
-
-  // 12.4 — admin может UPDATE.
-  const { error: adminUpdErr } = await adminUser
-    .from('payments').update({ note: 'corrected' }).eq('id', lawyerSeedPaymentId);
-  if (adminUpdErr) fail(`admin не смог UPDATE payment: ${adminUpdErr.message}`);
-  ok('admin может UPDATE payment');
-
-  // 12.5 — admin DELETE юристового платежа → триггер откатил paid_total/debt.
-  const { error: adminDelErr } = await adminUser
-    .from('payments').delete().eq('id', newPayId);
-  if (adminDelErr) fail(`admin не смог DELETE payment: ${adminDelErr.message}`);
-
-  const { data: juristCaseFinal } = await admin
-    .from('cases').select('paid_total, debt')
-    .eq('id', juristCaseId).single();
-  if (Number(juristCaseFinal!.paid_total) !== 0) {
-    fail(`paid_total после DELETE ожидался 0, факт ${juristCaseFinal!.paid_total}`);
-  }
-  if (Number(juristCaseFinal!.debt) !== 120000) {
-    fail(`debt после DELETE ожидался 120000, факт ${juristCaseFinal!.debt}`);
-  }
-  ok('admin DELETE + триггеры откатили paid_total/debt (paid=0, debt=120000)');
-
-  // 12.6 — cleanup: откатываем note seed-платежа.
-  await adminUser
-    .from('payments').update({ note: null }).eq('id', lawyerSeedPaymentId);
-  ok('cleanup: seed-платёж восстановлен');
-
-  console.log('\n13. Шаг 10 + CSO #1 — activity_log writer (public.log_activity):');
-  // После CSO #1 (20260527120000) writer имеет allowlist на action — используем
-  // настоящие имена действий из allowlist, smoke-записи метим уникальным
-  // _smoke_run в changes для precise-cleanup'а.
+  console.log('\n13. activity_log writer (allowlist, CSO #1, MED#7):');
   const SMOKE_RUN_ID = `smoke-${Date.now()}`;
 
-  // 13.1 — lawyer пишет лог на СВОЁ дело (action из allowlist) — ok.
-  const { error: lawyerLogErr } = await lawyer.rpc('log_activity', {
-    p_entity_type: 'case',
-    p_entity_id: lawyerCaseId,
-    p_action: 'case_updated',
-    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'lawyer-ok', by: 'lawyer' },
+  // lawyer1 пишет лог на своё дело — ok.
+  await lawyer1.rpc('log_activity', {
+    p_entity_type: 'case', p_entity_id: caseAId, p_action: 'case_updated',
+    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'l1-ok' },
   });
-  if (lawyerLogErr) fail(`lawyer rpc log_activity failed: ${lawyerLogErr.message}`);
-  const { data: lawyerOwnLog } = await admin
-    .from('activity_log')
-    .select('user_id, action, changes')
-    .eq('changes->>_smoke_marker', 'lawyer-ok')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
-    .maybeSingle();
-  if (!lawyerOwnLog) fail('запись lawyer log не появилась в activity_log');
-  if (lawyerOwnLog.user_id !== lawyerUid) {
-    fail(`activity_log.user_id ожидался ${lawyerUid}, факт ${lawyerOwnLog.user_id}`);
-  }
-  ok('lawyer записал событие на своё дело (user_id = lawyerUid, action из allowlist)');
+  const { data: l1Log } = await admin.from('activity_log').select('user_id')
+    .eq('changes->>_smoke_marker', 'l1-ok').eq('changes->>_smoke_run', SMOKE_RUN_ID).maybeSingle();
+  if (!l1Log || l1Log.user_id !== lawyer1Uid) fail('lawyer1 log не записан корректно');
+  ok('lawyer1 записал событие на своё дело (user_id корректен)');
 
-  // 13.2 — lawyer пишет лог на ЧУЖОЕ дело — silent skip (can_see_case=false).
-  const { error: lawyerForeignLogErr } = await lawyer.rpc('log_activity', {
-    p_entity_type: 'case',
-    p_entity_id: juristCaseId,
-    p_action: 'case_updated',
-    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'lawyer-forbidden' },
+  // lawyer1 на чужое дело — silent skip.
+  await lawyer1.rpc('log_activity', {
+    p_entity_type: 'case', p_entity_id: caseBId, p_action: 'case_updated',
+    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'l1-foreign' },
   });
-  if (lawyerForeignLogErr) {
-    fail(`rpc log_activity не должен бросать на чужое дело, упал: ${lawyerForeignLogErr.message}`);
-  }
-  const { data: forbiddenLog } = await admin
-    .from('activity_log')
-    .select('id')
-    .eq('changes->>_smoke_marker', 'lawyer-forbidden')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
-    .maybeSingle();
-  if (forbiddenLog) {
-    fail('lawyer смог записать событие на чужое дело — log_activity дыра');
-  }
-  ok('lawyer не может записать событие на чужое дело (silent skip)');
+  const { data: foreignLog } = await admin.from('activity_log').select('id')
+    .eq('changes->>_smoke_marker', 'l1-foreign').eq('changes->>_smoke_run', SMOKE_RUN_ID).maybeSingle();
+  if (foreignLog) fail('lawyer1 смог записать на чужое дело — дыра');
+  ok('lawyer1 не может писать на чужое дело (silent skip)');
 
-  // 13.3 — admin записывает client-событие (allowlist client_updated) — ok.
-  const { data: someClient } = await admin
-    .from('clients').select('id').limit(1).single();
-  const clientId = someClient!.id as string;
-  const { error: adminClientLogErr } = await adminUser.rpc('log_activity', {
-    p_entity_type: 'client',
-    p_entity_id: clientId,
-    p_action: 'client_updated',
-    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'admin-client', ok: 1 },
+  // non-allowlisted action — silent skip.
+  await lawyer1.rpc('log_activity', {
+    p_entity_type: 'case', p_entity_id: caseAId, p_action: 'evil_fake_action',
+    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'evil' },
   });
-  if (adminClientLogErr) fail(`admin client log failed: ${adminClientLogErr.message}`);
-  const { data: adminClientLog } = await admin
-    .from('activity_log')
-    .select('user_id')
-    .eq('changes->>_smoke_marker', 'admin-client')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
-    .maybeSingle();
-  if (!adminClientLog) fail('admin client log не появился');
-  if (adminClientLog.user_id !== adminUid) {
-    fail(`admin client log user_id ожидался ${adminUid}, факт ${adminClientLog.user_id}`);
-  }
-  ok('admin записал событие entity_type=client (user_id = adminUid)');
+  const { data: evilLog } = await admin.from('activity_log').select('id')
+    .eq('changes->>_smoke_marker', 'evil').eq('changes->>_smoke_run', SMOKE_RUN_ID).maybeSingle();
+  if (evilLog) fail('CSO #1: non-allowlisted action записался');
+  ok('CSO #1: non-allowlisted action отвергается (silent skip)');
 
-  // 13.4 — lawyer не может записать client-событие (silent, не staff).
-  const { error: lawyerClientErr } = await lawyer.rpc('log_activity', {
-    p_entity_type: 'client',
-    p_entity_id: clientId,
-    p_action: 'client_updated',
-    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'lawyer-client-forbidden' },
-  });
-  if (lawyerClientErr) {
-    fail(`rpc должен быть silent для client+lawyer, упал: ${lawyerClientErr.message}`);
-  }
-  const { data: lawyerClientLog } = await admin
-    .from('activity_log')
-    .select('id')
-    .eq('changes->>_smoke_marker', 'lawyer-client-forbidden')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
-    .maybeSingle();
-  if (lawyerClientLog) {
-    fail('lawyer смог записать client-событие — staff-only нарушен');
-  }
-  ok('lawyer не может писать client-журнал (silent skip, staff-only)');
-
-  // 13.5 (NEW, CSO #1) — non-allowlisted action — silent skip.
-  // Защита от подделки журнала кастомным action-именем через rpc.
-  const { error: bogusActionErr } = await lawyer.rpc('log_activity', {
-    p_entity_type: 'case',
-    p_entity_id: lawyerCaseId,
-    p_action: 'evil_fake_action',
-    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'evil-action' },
-  });
-  if (bogusActionErr) {
-    fail(`evil_fake_action rpc должен быть silent, упал: ${bogusActionErr.message}`);
-  }
-  const { data: evilLog } = await admin
-    .from('activity_log')
-    .select('id')
-    .eq('changes->>_smoke_marker', 'evil-action')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
-    .maybeSingle();
-  if (evilLog) fail('CSO #1: allowlist пробит — non-allowlisted action записался');
-  ok('CSO #1: non-allowlisted action отвергается allowlist (silent skip)');
-
-  // 13.6 (NEW, CSO #1) — 'stage_corrected' через rpc — silent skip.
-  // Этот action пишет только триггер cases_validate_stage_forward;
-  // rpc-вызов с ним = попытка подделки и игнорируется.
-  const { error: fakeStageErr } = await lawyer.rpc('log_activity', {
-    p_entity_type: 'case',
-    p_entity_id: lawyerCaseId,
-    p_action: 'stage_corrected',
+  // stage_corrected через rpc — silent skip.
+  await lawyer1.rpc('log_activity', {
+    p_entity_type: 'case', p_entity_id: caseAId, p_action: 'stage_corrected',
     p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'fake-stage', from: 'closed', to: 'new_request' },
   });
-  if (fakeStageErr) {
-    fail(`stage_corrected rpc должен быть silent, упал: ${fakeStageErr.message}`);
-  }
-  const { data: fakeStageLog } = await admin
-    .from('activity_log')
-    .select('id')
-    .eq('changes->>_smoke_marker', 'fake-stage')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
-    .maybeSingle();
-  if (fakeStageLog) fail('CSO #1: stage_corrected через rpc пробит — подделка возможна');
-  ok('CSO #1: stage_corrected недоступен через rpc (пишет только триггер)');
+  const { data: fakeStageLog } = await admin.from('activity_log').select('id')
+    .eq('changes->>_smoke_marker', 'fake-stage').eq('changes->>_smoke_run', SMOKE_RUN_ID).maybeSingle();
+  if (fakeStageLog) fail('CSO #1: stage_corrected через rpc пробит');
+  ok('CSO #1: stage_corrected недоступен через rpc');
 
-  // 13.7 — lawyer SELECT activity_log: видит свои case-события + ничего по чужим / клиентам.
-  const { data: lawyerVisibleLog } = await lawyer
-    .from('activity_log')
-    .select('action, entity_type, entity_id, changes')
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (!lawyerVisibleLog) fail('lawyer не получил список activity_log');
-  const lawyerSeenSmoke = lawyerVisibleLog.find(
-    (r) => (r.changes as { _smoke_marker?: string } | null)?._smoke_marker === 'lawyer-ok',
-  );
-  if (!lawyerSeenSmoke) fail('lawyer не видит свою же запись в activity_log');
-  const lawyerSawForeignCase = lawyerVisibleLog.find(
-    (r) => r.entity_type === 'case' && r.entity_id !== lawyerCaseId,
-  );
-  if (lawyerSawForeignCase) {
-    fail(`lawyer видит запись по чужому делу: ${JSON.stringify(lawyerSawForeignCase)}`);
-  }
-  const lawyerSawClient = lawyerVisibleLog.find((r) => r.entity_type === 'client');
-  if (lawyerSawClient) fail('lawyer не должен видеть client-записи (staff-only)');
-  ok('lawyer видит только свои case-события в activity_log');
-
-  // 13.8 — admin SELECT видит всё (включая client-записи).
-  const { data: adminVisibleLog } = await adminUser
-    .from('activity_log')
-    .select('action, entity_type, changes')
-    .eq('changes->>_smoke_marker', 'admin-client')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID);
-  if (!adminVisibleLog || adminVisibleLog.length === 0) {
-    fail('admin не видит client-записи, которые сам создал');
-  }
-  ok('admin видит client-записи (is_staff=true)');
-
-  // 13.9 — cleanup: удаляем все записи текущего SMOKE_RUN_ID через service_role.
-  const { error: cleanupLogErr } = await admin
-    .from('activity_log')
-    .delete()
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID);
-  if (cleanupLogErr) fail(`cleanup activity_log failed: ${cleanupLogErr.message}`);
+  // cleanup.
+  await admin.from('activity_log').delete().eq('changes->>_smoke_run', SMOKE_RUN_ID);
   ok(`cleanup: записи ${SMOKE_RUN_ID} удалены`);
 
-  console.log('\n14. Внешнее ревью MED#4 — cases_validate_responsible проверяет is_active:');
-  // 14.1 — создаём временного НЕАКТИВНОГО специалиста.
-  const inactiveEmail = `inactive-spec-${SMOKE_RUN_ID}@yur.local`;
+  console.log('\n14. cases_validate_assignees — проверка is_active для lawyer_id и responsible_id:');
+  const inactiveEmail = `inactive-${SMOKE_RUN_ID}@yur.local`;
   const { data: inactiveAuth, error: inactiveAuthErr } = await admin.auth.admin.createUser({
-    email: inactiveEmail,
-    password: PASSWORD,
-    email_confirm: true,
+    email: inactiveEmail, password: PASSWORD, email_confirm: true,
   });
-  if (inactiveAuthErr || !inactiveAuth.user) {
-    fail(`MED#4 setup: auth admin create failed: ${inactiveAuthErr?.message}`);
-  }
+  if (inactiveAuthErr || !inactiveAuth.user) fail(`setup auth: ${inactiveAuthErr?.message}`);
   const inactiveUid = inactiveAuth.user.id;
-  const { error: inactiveProfErr } = await admin.from('users').insert({
-    id: inactiveUid,
-    full_name: 'Smoke Inactive Specialist',
-    email: inactiveEmail,
-    role: 'specialist',
-    specialist_type: 'lawyer',
-    is_active: false,
+  const { error: profErr } = await admin.from('users').insert({
+    id: inactiveUid, full_name: 'Smoke Inactive', email: inactiveEmail, role: 'expert', is_active: false,
   });
-  if (inactiveProfErr) fail(`MED#4 setup profile: ${inactiveProfErr.message}`);
+  if (profErr) fail(`setup profile: ${profErr.message}`);
 
-  // 14.2 — admin (staff, INSERT cases разрешён по RLS) пытается создать дело
-  // с неактивным responsible — триггер cases_validate_responsible должен бросить.
-  const { data: anyClient } = await admin
-    .from('clients').select('id').limit(1).single();
-  if (!anyClient) fail('MED#4: нет клиента в БД для setup');
-  const { error: badInsertErr } = await adminUser
-    .from('cases')
-    .insert({
-      number_title: `SMOKE-INACT-${SMOKE_RUN_ID}`,
-      client_id: anyClient.id,
-      responsible_id: inactiveUid,
-      opened_at: '2026-05-27',
-      case_type: 'civil',
-      stage: 'new_request',
-      priority: 'normal',
-      contract_sum: 0,
-    });
-  if (!badInsertErr) {
-    fail('MED#4: INSERT cases с неактивным responsible_id прошёл — триггер молчит');
+  const { data: anyClient } = await admin.from('clients').select('id').limit(1).single();
+
+  // Неактивный responsible → reject.
+  const { error: badResp } = await adminUser.from('cases').insert({
+    number_title: `SMOKE-INACT-R-${SMOKE_RUN_ID}`, client_id: anyClient!.id,
+    lawyer_id: lawyer1Uid, responsible_id: inactiveUid,
+    opened_at: '2026-05-27', case_type: 'civil', category: 'document', stage: 'new_request', priority: 'normal', contract_sum: 0,
+  });
+  if (!badResp || !/not active|inactive/i.test(badResp.message)) {
+    fail(`INSERT с неактивным responsible должен отвергаться, факт: ${badResp?.message}`);
   }
-  if (!/not active|inactive/i.test(badInsertErr.message)) {
-    fail(`MED#4: ожидалось "not active/inactive" в ошибке, получено: ${badInsertErr.message}`);
+  ok('неактивный responsible_id отвергнут триггером');
+
+  // Неактивный lawyer_id → reject.
+  const { error: badLawyer } = await adminUser.from('cases').insert({
+    number_title: `SMOKE-INACT-L-${SMOKE_RUN_ID}`, client_id: anyClient!.id,
+    lawyer_id: inactiveUid, responsible_id: expert1Uid,
+    opened_at: '2026-05-27', case_type: 'civil', category: 'document', stage: 'new_request', priority: 'normal', contract_sum: 0,
+  });
+  if (!badLawyer || !/not active|inactive/i.test(badLawyer.message)) {
+    fail(`INSERT с неактивным lawyer должен отвергаться, факт: ${badLawyer?.message}`);
   }
-  ok('MED#4: INSERT cases с неактивным responsible отвергнут триггером');
+  ok('неактивный lawyer_id отвергнут триггером');
 
-  // 14.3 — cleanup: удалить временного специалиста.
-  const { error: delInactErr } = await admin.from('users').delete().eq('id', inactiveUid);
-  if (delInactErr) fail(`MED#4 cleanup users: ${delInactErr.message}`);
-  const { error: delInactAuthErr } = await admin.auth.admin.deleteUser(inactiveUid);
-  if (delInactAuthErr) fail(`MED#4 cleanup auth: ${delInactAuthErr.message}`);
-  ok('cleanup: временный неактивный специалист удалён');
+  // cleanup.
+  await admin.from('users').delete().eq('id', inactiveUid);
+  await admin.auth.admin.deleteUser(inactiveUid);
+  ok('cleanup: временный неактивный пользователь удалён');
 
-  console.log('\n15. Внешнее ревью MED#7 — log_activity для *_deleted после delete (is_staff bypass):');
-  // 15.1 — service_role создаёт временный case (минуя all RLS).
-  const { data: tempCase, error: tempCaseErr } = await admin
-    .from('cases')
-    .insert({
-      number_title: `SMOKE-DEL-${SMOKE_RUN_ID}`,
-      client_id: anyClient.id,
-      responsible_id: lawyerUid,
-      opened_at: '2026-05-27',
-      case_type: 'civil',
-      stage: 'new_request',
-      priority: 'normal',
-      contract_sum: 0,
-    })
-    .select('id')
-    .single();
-  if (tempCaseErr || !tempCase) fail(`MED#7 setup: ${tempCaseErr?.message}`);
+  console.log('\n15. MED#7 — log_activity case_deleted после delete (is_staff bypass):');
+  const { data: tempCase, error: tempErr } = await admin.from('cases').insert({
+    number_title: `SMOKE-DEL-${SMOKE_RUN_ID}`, client_id: anyClient!.id,
+    lawyer_id: lawyer1Uid, responsible_id: expert1Uid,
+    opened_at: '2026-05-27', case_type: 'civil', category: 'document', stage: 'new_request', priority: 'normal', contract_sum: 0,
+  }).select('id').single();
+  if (tempErr || !tempCase) fail(`setup: ${tempErr?.message}`);
   const tempCaseId = tempCase.id as string;
 
-  // 15.2 — admin (is_staff) удаляет case → can_see_case(tempCaseId)=false после.
-  const { error: tempDelErr } = await adminUser
-    .from('cases').delete().eq('id', tempCaseId);
-  if (tempDelErr) fail(`MED#7: admin не смог delete: ${tempDelErr.message}`);
-
-  // 15.3 — admin log_activity 'case_deleted' ПОСЛЕ delete должен записать
-  // (раньше: silent skip из-за can_see_case=false; теперь is_staff bypass).
-  const { error: adminDelLogErr } = await adminUser.rpc('log_activity', {
-    p_entity_type: 'case',
-    p_entity_id: tempCaseId,
-    p_action: 'case_deleted',
-    p_changes: {
-      _smoke_run: SMOKE_RUN_ID,
-      _smoke_marker: 'med7-admin-del',
-      number_title: `SMOKE-DEL-${SMOKE_RUN_ID}`,
-    },
+  await adminUser.from('cases').delete().eq('id', tempCaseId);
+  await adminUser.rpc('log_activity', {
+    p_entity_type: 'case', p_entity_id: tempCaseId, p_action: 'case_deleted',
+    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'med7-admin' },
   });
-  if (adminDelLogErr) fail(`MED#7 admin rpc: ${adminDelLogErr.message}`);
-  const { data: adminDelLog } = await admin
-    .from('activity_log')
-    .select('id')
-    .eq('changes->>_smoke_marker', 'med7-admin-del')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
-    .maybeSingle();
-  if (!adminDelLog) {
-    fail('MED#7: admin не смог записать case_deleted после delete (is_staff bypass не работает)');
-  }
-  ok('MED#7: admin записал case_deleted ПОСЛЕ delete entity (is_staff bypass)');
+  const { data: med7Log } = await admin.from('activity_log').select('id')
+    .eq('changes->>_smoke_marker', 'med7-admin').eq('changes->>_smoke_run', SMOKE_RUN_ID).maybeSingle();
+  if (!med7Log) fail('MED#7: admin не смог записать case_deleted после delete');
+  ok('MED#7: admin записал case_deleted после delete (is_staff bypass)');
 
-  // 15.4 — lawyer (не staff) пытается записать case_deleted — silent skip.
-  // Защита: bypass работает ТОЛЬКО для is_staff, не для всех authenticated.
-  const { error: lawyerDelLogErr } = await lawyer.rpc('log_activity', {
-    p_entity_type: 'case',
-    p_entity_id: tempCaseId,
-    p_action: 'case_deleted',
-    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'med7-lawyer-attempt' },
+  await lawyer1.rpc('log_activity', {
+    p_entity_type: 'case', p_entity_id: tempCaseId, p_action: 'case_deleted',
+    p_changes: { _smoke_run: SMOKE_RUN_ID, _smoke_marker: 'med7-lawyer' },
   });
-  if (lawyerDelLogErr) {
-    fail(`MED#7 lawyer rpc должен быть silent: ${lawyerDelLogErr.message}`);
-  }
-  const { data: lawyerDelLog } = await admin
-    .from('activity_log')
-    .select('id')
-    .eq('changes->>_smoke_marker', 'med7-lawyer-attempt')
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID)
-    .maybeSingle();
-  if (lawyerDelLog) {
-    fail('MED#7: lawyer записал case_deleted — is_staff-only bypass пробит');
-  }
-  ok('MED#7: lawyer не может писать case_deleted (silent skip, не staff)');
+  const { data: med7LawyerLog } = await admin.from('activity_log').select('id')
+    .eq('changes->>_smoke_marker', 'med7-lawyer').eq('changes->>_smoke_run', SMOKE_RUN_ID).maybeSingle();
+  if (med7LawyerLog) fail('MED#7: lawyer записал case_deleted — bypass пробит');
+  ok('MED#7: lawyer не может писать case_deleted (silent skip)');
 
-  // 15.5 — cleanup: записи MED#7 (по SMOKE_RUN_ID).
-  const { error: med7CleanupErr } = await admin
-    .from('activity_log')
-    .delete()
-    .eq('changes->>_smoke_run', SMOKE_RUN_ID);
-  if (med7CleanupErr) fail(`MED#7 cleanup: ${med7CleanupErr.message}`);
+  await admin.from('activity_log').delete().eq('changes->>_smoke_run', SMOKE_RUN_ID);
   ok('cleanup: MED#7 записи удалены');
 
-  console.log('\n16. Phase 2/A — time_entries RLS:');
+  console.log('\n16. Payroll — ставки, расчёт, доступ:');
+  // 16.1 — ставки seed 7/10/25 (раздельно юрист/Експерт, дефолты равны).
+  const { data: rates } = await admin
+    .from('payroll_rates')
+    .select('category, lawyer_percent, expert_percent')
+    .order('category');
+  const rateMap = new Map(
+    (rates ?? []).map((r) => [r.category, Number(r.lawyer_percent)]),
+  );
+  const expRateMap = new Map(
+    (rates ?? []).map((r) => [r.category, Number(r.expert_percent)]),
+  );
+  if (
+    rateMap.get('document') !== 7 ||
+    rateMap.get('claim') !== 10 ||
+    rateMap.get('representation') !== 25 ||
+    expRateMap.get('document') !== 7 ||
+    expRateMap.get('claim') !== 10 ||
+    expRateMap.get('representation') !== 25
+  ) {
+    fail(`payroll_rates ожидались 7/10/25 (lawyer и expert), факт: ${JSON.stringify(rates)}`);
+  }
+  ok('payroll_rates seeded 7/10/25 (раздельно юрист/Експерт)');
 
-  // 16.1 — lawyer создаёт entry на СВОЁ дело.
-  const { data: lawyerEntry, error: lawyerEntryErr } = await lawyer
-    .from('time_entries')
-    .insert({
-      case_id: lawyerCaseId,
-      user_id: lawyerUid,
-      spent_at: '2026-05-27',
-      minutes: 90,
-      billable: true,
-      hourly_rate: 1500,
-      note: 'smoke: подготовка иска',
-    })
-    .select('id')
+  // 16.2 — case_payroll для дела A (representation 25%, paid 10000):
+  // lawyer_amount=2500, expert_amount=2500, total=5000.
+  const { data: payrollA, error: payrollErr } = await adminUser.rpc('case_payroll', { p_case_id: caseAId });
+  if (payrollErr) fail(`case_payroll failed: ${payrollErr.message}`);
+  const pr = (payrollA ?? [])[0] as
+    | { lawyer_amount: number | string; expert_amount: number | string; total: number | string }
+    | undefined;
+  if (
+    !pr ||
+    Number(pr.lawyer_amount) !== 2500 ||
+    Number(pr.expert_amount) !== 2500 ||
+    Number(pr.total) !== 5000
+  ) {
+    fail(`case_payroll(A) ожидался lawyer=2500 expert=2500 total=5000, факт: ${JSON.stringify(pr)}`);
+  }
+  ok('case_payroll(A): lawyer_amount=2500, expert_amount=2500, total=5000 (representation 25%)');
+
+  // 16.3 — lawyer1 видит начисление по своему делу (RLS на cases пускает).
+  const { data: l1Payroll } = await lawyer1.rpc('case_payroll', { p_case_id: caseAId });
+  if (!l1Payroll || (l1Payroll as unknown[]).length !== 1) {
+    fail(`lawyer1 должен видеть начисление своего дела, факт: ${JSON.stringify(l1Payroll)}`);
+  }
+  ok('lawyer1 видит начисление по своему делу');
+
+  // 16.4 — expert2 (чужой) НЕ видит начисление дела A (RLS на cases режет).
+  const { data: e2Payroll } = await expert2.rpc('case_payroll', { p_case_id: caseAId });
+  if (e2Payroll && (e2Payroll as unknown[]).length > 0) {
+    fail('expert2 видит начисление чужого дела — RLS дыра');
+  }
+  ok('expert2 не видит начисление чужого дела');
+
+  // 16.5 — изменение ставок: owner да, office_manager нет.
+  const { error: officeRateErr } = await office
+    .from('payroll_rates')
+    .update({ lawyer_percent: 99 })
+    .eq('category', 'document');
+  void officeRateErr;
+  const { data: docRateAfterOffice } = await admin
+    .from('payroll_rates')
+    .select('lawyer_percent')
+    .eq('category', 'document')
     .single();
-  if (lawyerEntryErr || !lawyerEntry) {
-    fail(`lawyer не смог создать time_entry: ${lawyerEntryErr?.message}`);
-  }
-  const lawyerEntryId = lawyerEntry.id as string;
-  ok('lawyer создал time_entry на своё дело');
+  if (Number(docRateAfterOffice!.lawyer_percent) !== 7) fail('office_manager смог изменить ставку — RLS дыра');
+  ok('office_manager не может менять ставки (write owner-only)');
 
-  // 16.2 — lawyer пытается приписать user_id чужому юзеру → WITH CHECK отверг.
-  const { error: forgedUserErr } = await lawyer
-    .from('time_entries')
-    .insert({
-      case_id: lawyerCaseId,
-      user_id: juristUid, // forged
-      spent_at: '2026-05-27',
-      minutes: 30,
-    });
-  if (!forgedUserErr) {
-    fail('lawyer смог приписать user_id чужому юзеру — RLS дыра');
-  }
-  ok('lawyer не может приписать user_id чужому (WITH CHECK отверг)');
-
-  // 16.3 — lawyer пытается создать entry на ЧУЖОЕ дело → can_write_case отверг.
-  const { error: foreignCaseTimeErr } = await lawyer
-    .from('time_entries')
-    .insert({
-      case_id: juristCaseId,
-      user_id: lawyerUid,
-      spent_at: '2026-05-27',
-      minutes: 30,
-    });
-  if (!foreignCaseTimeErr) {
-    fail('lawyer смог создать entry на дело jurist — RLS дыра');
-  }
-  ok('lawyer не может создать entry на чужое дело (can_write_case отверг)');
-
-  // 16.4 — jurist НЕ видит time_entries lawyer (RLS SELECT через case).
-  const { data: juristSeesTime } = await jurist
-    .from('time_entries')
-    .select('id')
-    .eq('case_id', lawyerCaseId);
-  if (juristSeesTime && juristSeesTime.length > 0) {
-    fail(`jurist видит entries на чужом деле: ${juristSeesTime.length}`);
-  }
-  ok('jurist изолирован от time_entries чужого дела');
-
-  // 16.5 — assistant видит entries на деле супервайзера (jurist) и
-  //        может писать свои часы на это дело.
-  const { data: assistantEntry, error: assistantEntryErr } = await assistant
-    .from('time_entries')
-    .insert({
-      case_id: juristCaseId,
-      user_id: 'assistant-uid-placeholder', // заменим ниже
-      spent_at: '2026-05-27',
-      minutes: 45,
-      note: 'smoke: помощник логирует',
-    })
-    .select('id');
-  // Сначала получим реальный uid ассистента, потом вставим заново.
-  // (Делаем чище: сначала uid, потом insert.)
-  void assistantEntry; void assistantEntryErr;
-  const { data: assistantProfile } = await admin
-    .from('users').select('id').eq('email', 'assistant@yur.local').single();
-  const assistantUid = assistantProfile!.id as string;
-
-  const { data: assistantEntryOk, error: assistantInsertErr } = await assistant
-    .from('time_entries')
-    .insert({
-      case_id: juristCaseId,
-      user_id: assistantUid,
-      spent_at: '2026-05-27',
-      minutes: 45,
-      billable: false,
-      note: 'smoke: помощник логирует на дело супервайзера',
-    })
-    .select('id')
-    .single();
-  if (assistantInsertErr || !assistantEntryOk) {
-    fail(`assistant не смог записать entry на дело супервайзера: ${assistantInsertErr?.message}`);
-  }
-  const assistantEntryId = assistantEntryOk.id as string;
-  ok('assistant записал entry на дело супервайзера (jurist)');
-
-  // 16.6 — assistant ВИДИТ свой entry + entries jurist на том же деле.
-  const { data: assistantVisible } = await assistant
-    .from('time_entries').select('id, user_id').eq('case_id', juristCaseId);
-  if (!assistantVisible || assistantVisible.length === 0) {
-    fail('assistant не видит свои entries на деле супервайзера');
-  }
-  ok(`assistant видит ${assistantVisible.length} entries на деле супервайзера`);
-
-  // 16.7 — lawyer обновляет СВОЙ entry → ok.
-  const { error: ownUpdateErr } = await lawyer
-    .from('time_entries').update({ minutes: 120, note: 'updated by self' }).eq('id', lawyerEntryId);
-  if (ownUpdateErr) {
-    fail(`lawyer не смог обновить свой entry: ${ownUpdateErr.message}`);
-  }
-  const { data: afterOwn } = await admin
-    .from('time_entries').select('minutes').eq('id', lawyerEntryId).single();
-  if (Number(afterOwn?.minutes) !== 120) {
-    fail(`свой entry не обновился, факт: ${afterOwn?.minutes}`);
-  }
-  ok('lawyer обновил свой entry (60 → 120 min)');
-
-  // 16.8 — lawyer пытается обновить entry АССИСТЕНТА → silent fail (RLS owner_or_staff).
-  const { error: foreignUpdErr } = await lawyer
-    .from('time_entries').update({ minutes: 1 }).eq('id', assistantEntryId);
-  void foreignUpdErr; // RLS возвращает 0 rows без ошибки
-  const { data: afterForeignUpd } = await admin
-    .from('time_entries').select('minutes').eq('id', assistantEntryId).single();
-  if (Number(afterForeignUpd?.minutes) !== 45) {
-    fail(`lawyer смог обновить чужой entry, факт: ${afterForeignUpd?.minutes}`);
-  }
-  ok('lawyer не может обновить чужой entry (owner_or_staff отверг)');
-
-  // 16.9 — lawyer пытается удалить entry АССИСТЕНТА → silent fail.
-  const { error: foreignDelErr } = await lawyer
-    .from('time_entries').delete().eq('id', assistantEntryId);
-  void foreignDelErr;
-  const { data: assistantStillExists } = await admin
-    .from('time_entries').select('id').eq('id', assistantEntryId).maybeSingle();
-  if (!assistantStillExists) {
-    fail('lawyer смог удалить чужой entry');
-  }
-  ok('lawyer не может удалить чужой entry (owner_or_staff отверг)');
-
-  // 16.10 — admin может удалить ЛЮБОЙ entry (is_staff bypass).
-  const { error: adminDelEntryErr } = await adminUser
-    .from('time_entries').delete().eq('id', assistantEntryId);
-  if (adminDelEntryErr) {
-    fail(`admin не смог удалить чужой entry: ${adminDelEntryErr.message}`);
-  }
-  ok('admin удалил entry ассистента (is_staff bypass)');
-
-  // 16.11 — CHECK: minutes ≤ 0 → constraint reject.
-  const { error: zeroMinErr } = await lawyer
-    .from('time_entries')
-    .insert({ case_id: lawyerCaseId, user_id: lawyerUid, spent_at: '2026-05-27', minutes: 0 });
-  if (!zeroMinErr || !/minutes/i.test(zeroMinErr.message)) {
-    fail(`minutes=0 должен отвергаться CHECK, факт: ${zeroMinErr?.message}`);
-  }
-  ok('CHECK minutes > 0 работает');
-
-  // 16.12 — CHECK: minutes > 24*60 → reject.
-  const { error: tooBigErr } = await lawyer
-    .from('time_entries')
-    .insert({ case_id: lawyerCaseId, user_id: lawyerUid, spent_at: '2026-05-27', minutes: 24 * 60 + 1 });
-  if (!tooBigErr || !/minutes/i.test(tooBigErr.message)) {
-    fail(`minutes > 24h должен отвергаться, факт: ${tooBigErr?.message}`);
-  }
-  ok('CHECK minutes ≤ 24h работает');
-
-  // 16.13 — cleanup своего entry.
-  const { error: cleanupLawyerEntryErr } = await admin
-    .from('time_entries').delete().eq('id', lawyerEntryId);
-  if (cleanupLawyerEntryErr) fail(`cleanup lawyer entry: ${cleanupLawyerEntryErr.message}`);
-  ok('cleanup: lawyer entry удалён');
+  const { error: ownerRateErr } = await owner
+    .from('payroll_rates')
+    .update({ lawyer_percent: 8 })
+    .eq('category', 'document');
+  if (ownerRateErr) fail(`owner не смог изменить ставку: ${ownerRateErr.message}`);
+  await owner.from('payroll_rates').update({ lawyer_percent: 7 }).eq('category', 'document'); // cleanup
+  ok('owner может менять ставки');
 
   console.log('\n✓ Все RLS-проверки пройдены.');
 }

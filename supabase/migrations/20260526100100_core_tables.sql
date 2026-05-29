@@ -11,54 +11,13 @@ create table public.users (
   full_name       text not null,
   email           text not null unique,
   role            public.user_role not null,
-  specialist_type public.specialist_type,
-  supervisor_id   uuid references public.users(id) on delete restrict,
   is_active       boolean not null default true,
-  created_at      timestamptz not null default now(),
-
-  -- specialist_type есть тогда и только тогда, когда роль = specialist.
-  constraint users_specialist_type_matches_role
-    check ((role = 'specialist') = (specialist_type is not null)),
-
-  -- supervisor_id есть тогда и только тогда, когда роль = assistant.
-  constraint users_supervisor_matches_role
-    check ((role = 'assistant') = (supervisor_id is not null))
+  created_at      timestamptz not null default now()
 );
 
-create index users_role_idx          on public.users(role);
-create index users_supervisor_id_idx on public.users(supervisor_id) where supervisor_id is not null;
+create index users_role_idx on public.users(role);
 
 comment on table public.users is 'Сотрудники компании. id зеркалит auth.users.id.';
-
--- supervisor_id (для assistant) обязан указывать на специалиста, не на
--- админа/другого ассистента. CHECK не умеет в FK на чужое поле — нужен триггер
--- (Self-review tail B). Аналогично cases_validate_responsible ниже.
-create or replace function private.users_validate_supervisor()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_role public.user_role;
-begin
-  if new.supervisor_id is null then
-    return new;
-  end if;
-  select role into v_role from public.users where id = new.supervisor_id;
-  if v_role is null then
-    raise exception 'supervisor_id % does not exist in public.users', new.supervisor_id;
-  end if;
-  if v_role <> 'specialist' then
-    raise exception 'supervisor_id must reference a specialist, got role=%', v_role;
-  end if;
-  return new;
-end;
-$$;
-
-create trigger users_validate_supervisor
-before insert or update of supervisor_id on public.users
-for each row execute function private.users_validate_supervisor();
 
 -- =====================================================================
 -- clients — доверители
@@ -71,6 +30,8 @@ create table public.clients (
   phone       text,
   email       text,
   address     text,
+  -- Источник клиента (новая Концепция, раздел 7) — опционально.
+  source      public.client_source,
   notes       text,
   created_by  uuid not null references public.users(id) on delete restrict,
   created_at  timestamptz not null default now()
@@ -87,9 +48,16 @@ create table public.cases (
   id                 uuid primary key default gen_random_uuid(),
   number_title       text not null,
   client_id          uuid not null references public.clients(id) on delete restrict,
+  -- lawyer_id     — юрист-продажник, заключивший договор (видимость роли lawyer);
+  -- responsible_id — Експерт-исполнитель, ведущий дело (видимость роли expert).
+  lawyer_id          uuid not null references public.users(id)   on delete restrict,
   responsible_id     uuid not null references public.users(id)   on delete restrict,
   opened_at          date not null,
   case_type          public.case_type not null,
+  -- category — основа расчёта % зарплаты (см. public.payroll_rates).
+  category           public.case_category not null,
+  -- subject — краткий предмет договора (новая Концепция, раздел 7).
+  subject            text,
   stage              public.case_stage not null default 'new_request',
   priority           public.case_priority not null default 'normal',
   tags               text[] not null default '{}',
@@ -116,36 +84,55 @@ create table public.cases (
 );
 
 create index cases_responsible_idx on public.cases(responsible_id);
+create index cases_lawyer_idx      on public.cases(lawyer_id);
 create index cases_client_idx      on public.cases(client_id);
 create index cases_stage_idx       on public.cases(stage);
 create index cases_case_type_idx   on public.cases(case_type);
+create index cases_category_idx    on public.cases(category);
 create index cases_opened_at_idx   on public.cases(opened_at desc);
 
--- responsible_id должен указывать на специалиста (lawyer/jurist).
+-- lawyer_id (юрист) и responsible_id (Експерт) должны указывать на
+-- СУЩЕСТВУЮЩЕГО и АКТИВНОГО пользователя. Конкретную роль не пиним:
+-- owner/admin легитимно совмещают функции, а UI и так показывает в селектах
+-- только подходящих людей. Деактивированного назначить нельзя — иначе дело
+-- окажется прикованным к уволенному (внешнее ревью MED#4).
 -- Делаем триггером, потому что CHECK не может ходить в другую таблицу.
-create or replace function private.cases_validate_responsible()
+create or replace function private.cases_validate_assignees()
 returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_role public.user_role;
+  v_active boolean;
 begin
-  select role into v_role from public.users where id = new.responsible_id;
-  if v_role is null then
+  -- lawyer_id
+  select is_active into v_active from public.users where id = new.lawyer_id;
+  if v_active is null then
+    raise exception 'lawyer_id % does not exist in public.users', new.lawyer_id;
+  end if;
+  if not v_active then
+    raise exception 'lawyer % is not active', new.lawyer_id
+      using errcode = 'P0001', hint = 'lawyer_inactive';
+  end if;
+
+  -- responsible_id (Експерт)
+  select is_active into v_active from public.users where id = new.responsible_id;
+  if v_active is null then
     raise exception 'responsible_id % does not exist in public.users', new.responsible_id;
   end if;
-  if v_role <> 'specialist' then
-    raise exception 'responsible_id must reference a specialist, got role=%', v_role;
+  if not v_active then
+    raise exception 'responsible (expert) % is not active', new.responsible_id
+      using errcode = 'P0001', hint = 'responsible_inactive';
   end if;
+
   return new;
 end;
 $$;
 
-create trigger cases_validate_responsible
-before insert or update of responsible_id on public.cases
-for each row execute function private.cases_validate_responsible();
+create trigger cases_validate_assignees
+before insert or update of lawyer_id, responsible_id on public.cases
+for each row execute function private.cases_validate_assignees();
 
 -- =====================================================================
 -- documents — файлы по делу (хранятся в Supabase Storage; ключ в storage_key)

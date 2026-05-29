@@ -15,10 +15,7 @@ const STAGE_HEADER: Record<CaseStage, string> = {
   new_request: 'text-stage-new bg-stage-new-bg',
   consultation: 'text-stage-consultation bg-stage-consultation-bg',
   in_progress: 'text-stage-in-progress bg-stage-in-progress-bg',
-  pretrial: 'text-stage-pretrial bg-stage-pretrial-bg',
-  litigation: 'text-stage-litigation bg-stage-litigation-bg',
   awaiting_decision: 'text-stage-awaiting bg-stage-awaiting-bg',
-  enforcement: 'text-stage-enforcement bg-stage-enforcement-bg',
   closed: 'text-stage-closed bg-stage-closed-bg',
 };
 
@@ -32,7 +29,7 @@ export function BoardColumn({
   cases: BoardCaseItem[];
   nextStageLabel: string | null;
   // Возвращает true, если текущий пользователь может двигать данное дело
-  // вперёд (responsible или staff).
+  // вперёд (юрист/Експерт дела или staff).
   canAdvanceFor: (c: BoardCaseItem) => boolean;
 }) {
   const visible = cases.slice(0, BOARD_COLUMN_CAP);

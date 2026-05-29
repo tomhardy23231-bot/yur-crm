@@ -10,7 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { ClientActionState, ClientFormFields } from '@/lib/clients/actions';
-import { CLIENT_KIND_LABEL, CLIENT_KINDS, type Client } from '@/lib/types/db';
+import {
+  CLIENT_KIND_LABEL,
+  CLIENT_KINDS,
+  CLIENT_SOURCE_LABEL,
+  CLIENT_SOURCES,
+  type Client,
+} from '@/lib/types/db';
 
 const INITIAL: ClientActionState = { ok: false };
 
@@ -45,6 +51,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
         case 'phone': return client.phone ?? '';
         case 'email': return client.email ?? '';
         case 'address': return client.address ?? '';
+        case 'source': return client.source ?? '';
         case 'notes': return client.notes ?? '';
       }
     }
@@ -109,13 +116,29 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
           />
         </Field>
 
-        <Field label="Адрес" htmlFor="address" error={err('address')} className="sm:col-span-2">
+        <Field label="Адрес" htmlFor="address" error={err('address')}>
           <Input
             id="address"
             name="address"
             defaultValue={value('address')}
             placeholder="г. Киев, ул. Крещатик, 1"
           />
+        </Field>
+
+        <Field label="Источник" htmlFor="source" error={err('source')}>
+          <Select
+            id="source"
+            name="source"
+            defaultValue={value('source')}
+            aria-invalid={err('source') ? 'true' : undefined}
+          >
+            <option value="">— не указан —</option>
+            {CLIENT_SOURCES.map((s) => (
+              <option key={s} value={s}>
+                {CLIENT_SOURCE_LABEL[s]}
+              </option>
+            ))}
+          </Select>
         </Field>
 
         <Field label="Заметки" htmlFor="notes" error={err('notes')} className="sm:col-span-2">

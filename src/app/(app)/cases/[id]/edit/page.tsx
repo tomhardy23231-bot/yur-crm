@@ -8,10 +8,11 @@ import { updateCaseAction } from '@/lib/cases/actions';
 import {
   getCase,
   listClientsForSelect,
-  listSpecialistsForAssignment,
+  listExpertsForAssignment,
+  listLawyersForAssignment,
 } from '@/lib/cases/queries';
 import { requireUser } from '@/lib/auth/require-role';
-import { CASE_STAGES } from '@/lib/types/db';
+import { CASE_STAGES, MANAGER_ROLES, STAFF_ROLES } from '@/lib/types/db';
 
 export default async function EditCasePage({
   params,
@@ -21,10 +22,11 @@ export default async function EditCasePage({
   const user = await requireUser();
   const { id } = await params;
 
-  const [c, clients, specialists] = await Promise.all([
+  const [c, clients, lawyers, experts] = await Promise.all([
     getCase(id),
     listClientsForSelect(),
-    listSpecialistsForAssignment(),
+    listLawyersForAssignment(),
+    listExpertsForAssignment(),
   ]);
 
   if (!c) notFound();
@@ -32,18 +34,17 @@ export default async function EditCasePage({
   // bind на Server Action сохраняет server-action-маркировку (см. Шаг 4 баг).
   const boundAction = updateCaseAction.bind(null, id);
 
-  // Шаг 6: воронка только вперёд (CLAUDE.md §7-2). Staff видит все 8 этапов,
+  // Воронка только вперёд (CLAUDE.md §7-2). Staff видит все 5 этапов,
   // не-staff — текущий и все «вперёд». На БД дополнительно стоит триггер
   // cases_validate_stage_forward, так что UI-фильтр — для UX, не для безопасности.
-  const isStaff =
-    user.profile.role === 'owner' || user.profile.role === 'admin';
+  const isStaff = STAFF_ROLES.includes(user.profile.role);
   const currentStageIdx = CASE_STAGES.indexOf(c.stage);
   const allowedStages = isStaff
     ? CASE_STAGES
     : CASE_STAGES.slice(currentStageIdx >= 0 ? currentStageIdx : 0);
 
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-col gap-1">
         <Link
           href={`/cases/${id}`}
@@ -63,10 +64,12 @@ export default async function EditCasePage({
           action={boundAction}
           caseRow={c}
           clients={clients}
-          specialists={specialists}
+          lawyers={lawyers}
+          experts={experts}
           submitLabel="Сохранить"
           cancelHref={`/cases/${id}`}
           allowedStages={allowedStages}
+          canEditRates={MANAGER_ROLES.includes(user.profile.role)}
         />
       </Card>
     </main>

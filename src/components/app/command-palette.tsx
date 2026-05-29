@@ -29,7 +29,7 @@ import {
   EMPTY_RESULTS,
   type PaletteResults,
 } from '@/lib/search/types';
-import type { Role } from '@/lib/types/db';
+import { STAFF_ROLES, type Role } from '@/lib/types/db';
 
 // ============================================================================
 // Context — sidebar-trigger открывает палитру без prop-drilling.
@@ -159,9 +159,9 @@ export function CommandPaletteProvider({
     [router, handleOpenChange],
   );
 
-  const canCreateCase = role === 'owner' || role === 'admin';
-  const canCreateClient =
-    role === 'owner' || role === 'admin' || role === 'specialist';
+  // Дело заводит staff (owner/admin/office_manager); клиента — любой активный.
+  const canCreateCase = STAFF_ROLES.includes(role);
+  const canCreateClient = true;
 
   const ctx = useMemo<Ctx>(() => ({ isOpen, open, close }), [isOpen, open, close]);
 
@@ -399,13 +399,13 @@ function PaletteItem({
       value={value}
       onSelect={onSelect}
       className={cn(
-        'flex items-center gap-2.5 mx-2 px-2.5 py-2 rounded-md cursor-pointer',
+        'group flex items-center gap-2.5 mx-2 px-2.5 py-2 rounded-md cursor-pointer',
         'text-[13.5px] text-text',
         'data-[selected=true]:bg-primary-subtle data-[selected=true]:text-primary',
         'transition-colors duration-[60ms]',
       )}
     >
-      <span className="text-text-muted shrink-0 data-[selected=true]:text-primary">
+      <span className="text-text-muted shrink-0 group-data-[selected=true]:text-primary">
         {icon}
       </span>
       <span
@@ -437,15 +437,15 @@ export function CommandPaletteTrigger() {
       onClick={open}
       className={cn(
         'flex items-center gap-2 mx-3 mt-3 mb-1 h-9 px-3 rounded-md',
-        'bg-surface-muted hover:bg-surface-sunken transition-colors duration-[80ms]',
-        'text-[13px] text-text-muted hover:text-text',
-        'border border-transparent hover:border-border',
+        'bg-sidebar-elevated hover:bg-sidebar-hover-bg transition-colors duration-[80ms]',
+        'text-[13px] text-sidebar-text hover:text-sidebar-text-strong',
+        'border border-sidebar-border hover:border-sidebar-active-bg',
       )}
       aria-label="Открыть глобальный поиск"
     >
       <Search size={14} strokeWidth={1.75} />
       <span className="flex-1 text-left">Поиск</span>
-      <kbd className="font-mono text-[10px] uppercase tracking-[0.04em] text-text-subtle bg-surface border border-border rounded px-1.5 py-0.5">
+      <kbd className="font-mono text-[10px] uppercase tracking-[0.04em] text-sidebar-text bg-sidebar-bg border border-sidebar-border rounded px-1.5 py-0.5">
         Ctrl K
       </kbd>
     </button>

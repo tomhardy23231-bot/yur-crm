@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
@@ -7,17 +7,26 @@ import { ClientForm } from '@/components/clients/client-form';
 import { updateClientAction } from '@/lib/clients/actions';
 import { getClient } from '@/lib/clients/queries';
 import { requireUser } from '@/lib/auth/require-role';
+import { isStaff } from '@/lib/types/db';
 
 export default async function EditClientPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
 
   const client = await getClient(id);
   if (!client) notFound();
+
+  // Править клиента может staff или автор записи (created_by). Юрист/Експерт
+  // видят клиента по своему делу, но редактировать чужого не вправе — RLS
+  // молча отклонит UPDATE, поэтому не показываем форму вовсе (иначе ложный
+  // «сохранено»). Зеркалит canEdit на карточке клиента. (Аудит P2.3.)
+  if (!isStaff(user.profile.role) && client.created_by !== user.profile.id) {
+    redirect('/forbidden');
+  }
 
   // .bind() на Server Action возвращает Server Action — можно передать в
   // Client Component. Подставляем clientId первым аргументом; useActionState
@@ -25,7 +34,7 @@ export default async function EditClientPage({
   const boundAction = updateClientAction.bind(null, id);
 
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-col gap-1">
         <Link
           href={`/clients/${id}`}

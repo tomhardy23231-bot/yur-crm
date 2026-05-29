@@ -7,7 +7,13 @@ import { requireRole, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { CLIENT_KINDS, type ClientKind } from '@/lib/types/db';
+import {
+  CLIENT_KINDS,
+  CLIENT_SOURCES,
+  isStaff,
+  type ClientKind,
+  type ClientSource,
+} from '@/lib/types/db';
 
 export type ClientFormFields =
   | 'name'
@@ -15,6 +21,7 @@ export type ClientFormFields =
   | 'phone'
   | 'email'
   | 'address'
+  | 'source'
   | 'notes';
 
 export type ClientActionState = {
@@ -33,6 +40,10 @@ function isClientKind(value: string): value is ClientKind {
   return (CLIENT_KINDS as readonly string[]).includes(value);
 }
 
+function isClientSource(value: string): value is ClientSource {
+  return (CLIENT_SOURCES as readonly string[]).includes(value);
+}
+
 // Базовая валидация e-mail без RFC-крайностей — пользовательских e-mail тут немного.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -44,6 +55,7 @@ type Validated = {
   phone: string | null;
   email: string | null;
   address: string | null;
+  source: ClientSource | null;
   notes: string | null;
 };
 
@@ -55,6 +67,7 @@ function validate(formData: FormData):
   const phone = getString(formData, 'phone');
   const email = getString(formData, 'email');
   const address = getString(formData, 'address');
+  const sourceRaw = getString(formData, 'source');
   const notes = getString(formData, 'notes');
 
   const values: Record<ClientFormFields, string> = {
@@ -63,6 +76,7 @@ function validate(formData: FormData):
     phone,
     email,
     address,
+    source: sourceRaw,
     notes,
   };
 
@@ -75,6 +89,10 @@ function validate(formData: FormData):
 
   if (email && !EMAIL_RE.test(email)) {
     fieldErrors.email = 'Похоже на ошибку в e-mail';
+  }
+
+  if (sourceRaw && !isClientSource(sourceRaw)) {
+    fieldErrors.source = 'Недопустимый источник';
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -94,6 +112,7 @@ function validate(formData: FormData):
       phone: phone || null,
       email: email || null,
       address: address || null,
+      source: sourceRaw ? (sourceRaw as ClientSource) : null,
       notes: notes || null,
     },
     values,
@@ -151,6 +170,7 @@ const CLIENT_DIFF_FIELDS = [
   'phone',
   'email',
   'address',
+  'source',
 ] as const;
 
 type ClientDiffShape = {
@@ -159,6 +179,7 @@ type ClientDiffShape = {
   phone: string | null;
   email: string | null;
   address: string | null;
+  source: ClientSource | null;
 };
 
 export async function updateClientAction(
@@ -166,18 +187,32 @@ export async function updateClientAction(
   _prev: ClientActionState,
   formData: FormData,
 ): Promise<ClientActionState> {
-  await requireUser();
+  const user = await requireUser();
   const result = validate(formData);
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
 
-  // Снапшот до правки — для diff'а. Поле notes намеренно не логируем.
+  // Снапшот до правки — для diff'а. created_by — для проверки прав (P2.3):
+  // править может staff или автор записи. Иначе RLS отклонил бы UPDATE молча
+  // (0 строк, error=null) → ложный «сохранено». Поле notes намеренно не логируем.
   const { data: before } = await supabase
     .from('clients')
-    .select('name, client_kind, phone, email, address')
+    .select('name, client_kind, phone, email, address, source, created_by')
     .eq('id', clientId)
     .maybeSingle();
+
+  if (
+    before &&
+    !isStaff(user.profile.role) &&
+    (before as { created_by: string }).created_by !== user.profile.id
+  ) {
+    return {
+      ok: false,
+      values: result.values,
+      message: 'Недостаточно прав: клиента может изменить автор записи или staff.',
+    };
+  }
 
   const { error } = await supabase
     .from('clients')
@@ -199,6 +234,7 @@ export async function updateClientAction(
       phone: (before.phone as string | null) ?? null,
       email: (before.email as string | null) ?? null,
       address: (before.address as string | null) ?? null,
+      source: (before.source as ClientSource | null) ?? null,
     };
     const afterShape: Partial<ClientDiffShape> = {
       name: result.data.name,
@@ -206,6 +242,7 @@ export async function updateClientAction(
       phone: result.data.phone,
       email: result.data.email,
       address: result.data.address,
+      source: result.data.source,
     };
     const diff = diffChanges(beforeShape, afterShape, CLIENT_DIFF_FIELDS);
     if (diff) {

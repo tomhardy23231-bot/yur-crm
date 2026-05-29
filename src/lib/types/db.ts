@@ -2,25 +2,55 @@
 // `supabase gen types` подключим позже — пока вручную, чтобы не тянуть в Шаге 2
 // генератор и не закладываться на структуру, которая ещё будет меняться.
 
-export type Role = 'owner' | 'admin' | 'specialist' | 'assistant';
-export type SpecialistType = 'lawyer' | 'jurist';
+// =====================================================================
+// Роли (CLAUDE.md §4, новая Концепция):
+//   owner          — владелец / супер-админ (всё + системные настройки);
+//   admin          — руководитель подразделения (всё + управление пользователями);
+//   office_manager — секретарь (заводит клиентов/дела, видит все финансы);
+//   lawyer         — юрист-продажник (заключает договор → cases.lawyer_id);
+//   expert         — Експерт-исполнитель (ведёт дело → cases.responsible_id).
+// =====================================================================
+
+export type Role = 'owner' | 'admin' | 'office_manager' | 'lawyer' | 'expert';
+
+export const ALL_ROLES: ReadonlyArray<Role> = [
+  'owner',
+  'admin',
+  'office_manager',
+  'lawyer',
+  'expert',
+];
+
+export const ROLE_LABEL: Record<Role, string> = {
+  owner: 'Владелец',
+  admin: 'Администратор',
+  office_manager: 'Офис-менеджер',
+  lawyer: 'Юрист',
+  expert: 'Эксперт',
+};
+
+// Staff — полный доступ к делам/клиентам/финансам (видят всё).
+export const STAFF_ROLES: ReadonlyArray<Role> = ['owner', 'admin', 'office_manager'];
+
+// Управление пользователями + деструктивные операции (удаление, правка платежей).
+export const MANAGER_ROLES: ReadonlyArray<Role> = ['owner', 'admin'];
+
+export function isRole(value: unknown): value is Role {
+  return typeof value === 'string' && (ALL_ROLES as readonly string[]).includes(value);
+}
+
+export function isStaff(role: Role): boolean {
+  return (STAFF_ROLES as readonly Role[]).includes(role);
+}
 
 export type UserProfile = {
   id: string;
   full_name: string;
   email: string;
   role: Role;
-  specialist_type: SpecialistType | null;
-  supervisor_id: string | null;
   is_active: boolean;
   created_at: string;
 };
-
-export const STAFF_ROLES: ReadonlyArray<Role> = ['owner', 'admin', 'specialist', 'assistant'];
-
-export function isStaffRole(value: unknown): value is Role {
-  return typeof value === 'string' && (STAFF_ROLES as readonly string[]).includes(value);
-}
 
 // =====================================================================
 // Clients
@@ -35,6 +65,30 @@ export const CLIENT_KIND_LABEL: Record<ClientKind, string> = {
   company: 'Компания',
 };
 
+// Источник клиента (новая Концепция, раздел 7).
+export type ClientSource =
+  | 'website'
+  | 'referral'
+  | 'advertising'
+  | 'repeat'
+  | 'other';
+
+export const CLIENT_SOURCES: ReadonlyArray<ClientSource> = [
+  'website',
+  'referral',
+  'advertising',
+  'repeat',
+  'other',
+];
+
+export const CLIENT_SOURCE_LABEL: Record<ClientSource, string> = {
+  website: 'Сайт',
+  referral: 'Рекомендация',
+  advertising: 'Реклама',
+  repeat: 'Повторное обращение',
+  other: 'Другое',
+};
+
 export type Client = {
   id: string;
   name: string;
@@ -42,6 +96,7 @@ export type Client = {
   phone: string | null;
   email: string | null;
   address: string | null;
+  source: ClientSource | null;
   notes: string | null;
   created_by: string;
   created_at: string;
@@ -55,20 +110,14 @@ export type CaseStage =
   | 'new_request'
   | 'consultation'
   | 'in_progress'
-  | 'pretrial'
-  | 'litigation'
   | 'awaiting_decision'
-  | 'enforcement'
   | 'closed';
 
 export const CASE_STAGES: ReadonlyArray<CaseStage> = [
   'new_request',
   'consultation',
   'in_progress',
-  'pretrial',
-  'litigation',
   'awaiting_decision',
-  'enforcement',
   'closed',
 ];
 
@@ -76,10 +125,7 @@ export const CASE_STAGE_LABEL: Record<CaseStage, string> = {
   new_request: 'Новое обращение',
   consultation: 'Консультация',
   in_progress: 'В работе',
-  pretrial: 'Досудебное',
-  litigation: 'Судебное',
   awaiting_decision: 'Ожидание решения',
-  enforcement: 'Исполнение',
   closed: 'Завершено',
 };
 
@@ -112,6 +158,22 @@ export const CASE_TYPE_LABEL: Record<CaseType, string> = {
   other: 'Другое',
 };
 
+// Категория дела (новая Концепция, раздел 3) — основа расчёта % зарплаты.
+// Конкретные проценты лежат в public.payroll_rates (по умолчанию 7/10/25).
+export type CaseCategory = 'document' | 'claim' | 'representation';
+
+export const CASE_CATEGORIES: ReadonlyArray<CaseCategory> = [
+  'document',
+  'claim',
+  'representation',
+];
+
+export const CASE_CATEGORY_LABEL: Record<CaseCategory, string> = {
+  document: 'Документ',
+  claim: 'Иск',
+  representation: 'Представительство',
+};
+
 export type CasePriority = 'normal' | 'urgent';
 
 export const CASE_PRIORITIES: ReadonlyArray<CasePriority> = ['normal', 'urgent'];
@@ -121,20 +183,34 @@ export const CASE_PRIORITY_LABEL: Record<CasePriority, string> = {
   urgent: 'Срочный',
 };
 
-export type BillingType = 'prepaid' | 'hourly' | 'fixed' | 'success_fee';
+// Схема расчётов (новая Концепция, раздел 7). Почасовая оплата удалена.
+export type BillingType = 'prepaid' | 'installments' | 'fixed' | 'success_fee';
 
 export const BILLING_TYPES: ReadonlyArray<BillingType> = [
   'prepaid',
-  'hourly',
+  'installments',
   'fixed',
   'success_fee',
 ];
 
 export const BILLING_TYPE_LABEL: Record<BillingType, string> = {
   prepaid: 'Предоплата',
-  hourly: 'Почасовая',
+  installments: 'График расчётов',
   fixed: 'Фиксированная',
-  success_fee: 'За результат',
+  success_fee: 'Гонорар успеха',
+};
+
+// Когда зарплата фиксируется в леджере (P2.1).
+export type AccrualMode = 'on_completion' | 'per_payment';
+
+export const ACCRUAL_MODES: ReadonlyArray<AccrualMode> = [
+  'on_completion',
+  'per_payment',
+];
+
+export const ACCRUAL_MODE_LABEL: Record<AccrualMode, string> = {
+  on_completion: 'При завершении дела',
+  per_payment: 'По мере оплат',
 };
 
 // Используется в /clients/[id] для compact-таблицы дел клиента.
@@ -156,9 +232,13 @@ export type Case = {
   id: string;
   number_title: string;
   client_id: string;
+  // lawyer_id     — юрист, заключивший договор; responsible_id — Експерт-исполнитель.
+  lawyer_id: string;
   responsible_id: string;
   opened_at: string;
   case_type: CaseType;
+  category: CaseCategory;
+  subject: string | null;
   stage: CaseStage;
   priority: CasePriority;
   tags: string[];
@@ -166,9 +246,10 @@ export type Case = {
   paid_total: number;
   debt: number;
   billing_types: BillingType[];
-  // Phase 2/A — дефолтная почасовая ставка по делу (snapshot копируется
-  // в time_entries.hourly_rate при создании entry). NULL = не настроено.
-  hourly_rate: number | null;
+  // Индивидуальные % по делу (null → ставка категории). Меняет только owner/admin.
+  lawyer_rate_override: number | null;
+  expert_rate_override: number | null;
+  accrual_mode: AccrualMode;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;
@@ -176,17 +257,20 @@ export type Case = {
   created_at: string;
 };
 
-// Дело с join-ом клиента и ответственного — для списка и карточки.
+// Дело с join-ом клиента, юриста и Експерта — для списка и карточки.
 export type CaseWithRefs = Case & {
   client: {
     id: string;
     name: string;
     client_kind: ClientKind;
   } | null;
+  lawyer: {
+    id: string;
+    full_name: string;
+  } | null;
   responsible: {
     id: string;
     full_name: string;
-    specialist_type: SpecialistType | null;
   } | null;
 };
 
@@ -240,6 +324,7 @@ export type DocType =
   | 'claim'
   | 'power_of_attorney'
   | 'correspondence'
+  | 'act'
   | 'other';
 
 export const DOC_TYPES: ReadonlyArray<DocType> = [
@@ -247,6 +332,7 @@ export const DOC_TYPES: ReadonlyArray<DocType> = [
   'claim',
   'power_of_attorney',
   'correspondence',
+  'act',
   'other',
 ];
 
@@ -255,6 +341,7 @@ export const DOC_TYPE_LABEL: Record<DocType, string> = {
   claim: 'Претензия',
   power_of_attorney: 'Доверенность',
   correspondence: 'Переписка',
+  act: 'Акт приёма-передачи',
   other: 'Прочее',
 };
 
@@ -295,36 +382,64 @@ export type PaymentWithCreator = PaymentRow & {
 };
 
 // =====================================================================
-// Time entries — учёт времени (CLAUDE.md §9 Q12, Phase 2 / Step A).
-// minutes хранятся как int (1ч 30м = 90); UI парсит свободный ввод.
-// hourly_rate — snapshot из cases.hourly_rate на момент создания.
+// Payroll — зарплата в % от оплат по делу (новая Концепция).
+// Каждый из юриста (lawyer_id) и Експерта (responsible_id) получает полный
+// категорийный % от cases.paid_total. Проценты — в public.payroll_rates.
 // =====================================================================
 
-export type TimeEntryRow = {
-  id: string;
-  case_id: string;
-  task_id: string | null;
-  user_id: string;
-  spent_at: string;        // date (YYYY-MM-DD)
-  minutes: number;          // int, >0 ≤ 24*60
-  billable: boolean;
-  hourly_rate: number | null;  // numeric(10,2); null = почасово не считается
-  note: string | null;
-  invoice_id: string | null;   // Phase 2/B placeholder
-  created_at: string;
+export type PayrollRate = {
+  category: CaseCategory;
+  // numeric(5,2) → нормализуем в number. Раздельно для юриста и Експерта
+  // (дефолты равны 7/10/25; переопределяются на деле через *_rate_override).
+  lawyer_percent: number;
+  expert_percent: number;
   updated_at: string;
 };
 
-export type TimeEntryWithRefs = TimeEntryRow & {
-  user: { id: string; full_name: string } | null;
-  case: { id: string; number_title: string } | null;
-  task: { id: string; title: string } | null;
+// Результат public.case_payroll(case_id). Эффективная ставка каждой роли =
+// coalesce(per-case override, дефолт категории).
+export type CasePayroll = {
+  category: CaseCategory;
+  lawyer_percent: number;
+  lawyer_amount: number;
+  expert_percent: number;
+  expert_amount: number;
+  total: number; // lawyer_amount + expert_amount
 };
 
-// Агрегаты «по делу» для KPI в карточке дела.
-export type CaseTimeAggregate = {
-  total_minutes: number;
-  billable_minutes: number;
-  billable_amount: number;   // сумма billable_minutes/60 × rate
-  entries_count: number;
+// Строка отчёта public.payroll_by_specialist().
+export type PayrollBySpecialist = {
+  user_id: string;
+  full_name: string;
+  role_in_case: 'lawyer' | 'expert';
+  case_count: number;
+  paid_base: number;
+  earned: number;
+};
+
+// Запись леджера начислений/выплат (P1.3).
+export type LedgerStatus = 'accrued' | 'paid';
+
+export const LEDGER_STATUS_LABEL: Record<LedgerStatus, string> = {
+  accrued: 'Начислено',
+  paid: 'Выплачено',
+};
+
+export type PayrollLedgerEntry = {
+  id: string;
+  case_id: string;
+  user_id: string;
+  role_in_case: 'lawyer' | 'expert';
+  base_amount: number;
+  percent: number;
+  amount: number;
+  status: LedgerStatus;
+  accrued_at: string;
+  paid_at: string | null;
+};
+
+// Запись леджера с join'ами сотрудника и дела — для отчёта выплат.
+export type PayrollLedgerWithRefs = PayrollLedgerEntry & {
+  user: { id: string; full_name: string } | null;
+  case: { id: string; number_title: string } | null;
 };

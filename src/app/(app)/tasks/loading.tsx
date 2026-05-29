@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 export default function TasksLoading() {
   return (
     <main
-      className="flex flex-col gap-6 px-8 py-10 sm:px-12 max-w-5xl"
+      className="flex flex-col gap-5 px-3 py-2 sm:px-4"
       aria-busy="true"
     >
       <header className="flex flex-wrap items-end justify-between gap-4">

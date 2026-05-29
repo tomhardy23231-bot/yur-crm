@@ -35,11 +35,10 @@ alter table public.activity_log enable row level security;
 -- =====================================================================
 -- users
 -- =====================================================================
--- SELECT: любой АКТИВНЫЙ авторизованный (имена ответственных, ассистентов,
---         выбор assignee). Деактивированных В СПИСКЕ видно (нужно для
---         исторических записей), но самим деактивированным таблица недоступна
---         (Self-review tail A — least access для уволенных).
--- INSERT/UPDATE/DELETE: только активный owner.
+-- SELECT: любой АКТИВНЫЙ авторизованный (имена ответственных, выбор assignee).
+--         Деактивированных В СПИСКЕ видно (нужно для исторических записей),
+--         но самим деактивированным таблица недоступна (least access для уволенных).
+-- INSERT/UPDATE/DELETE: owner + admin (управление пользователями — новая Концепция).
 
 create policy users_select_all
   on public.users
@@ -47,33 +46,33 @@ create policy users_select_all
   to authenticated
   using ((select private.active_uid()) is not null);
 
-create policy users_insert_owner
+create policy users_insert_managers
   on public.users
   for insert
   to authenticated
-  with check (private.current_user_role() = 'owner');
+  with check (private.can_manage_users());
 
-create policy users_update_owner
+create policy users_update_managers
   on public.users
   for update
   to authenticated
-  using      (private.current_user_role() = 'owner')
-  with check (private.current_user_role() = 'owner');
+  using      (private.can_manage_users())
+  with check (private.can_manage_users());
 
-create policy users_delete_owner
+create policy users_delete_managers
   on public.users
   for delete
   to authenticated
-  using (private.current_user_role() = 'owner');
+  using (private.can_manage_users());
 
 -- =====================================================================
 -- cases
 -- =====================================================================
--- SELECT: owner/admin — всё; specialist — где responsible_id = uid;
---         assistant — где responsible_id = supervisor_id.
--- INSERT: owner/admin (в Phase 1 дела заводит admin/owner).
--- UPDATE: owner/admin + специалист по своим делам (stage валидируется в Шаге 6).
--- DELETE: только owner/admin.
+-- SELECT: staff (owner/admin/office_manager) — всё; lawyer — где lawyer_id = uid;
+--         expert — где responsible_id = uid.
+-- INSERT: staff (дело заводит секретарь/админ/владелец).
+-- UPDATE: staff + юрист/Експерт по своим делам (stage валидируется триггером).
+-- DELETE: owner/admin (офис-менеджер дела не удаляет).
 
 create policy cases_select_visible
   on public.cases
@@ -81,8 +80,8 @@ create policy cases_select_visible
   to authenticated
   using (
     private.is_staff()
+    or lawyer_id = (select private.active_uid())
     or responsible_id = (select private.active_uid())
-    or responsible_id = (select private.current_user_supervisor_id())
   );
 
 create policy cases_insert_staff
@@ -91,34 +90,36 @@ create policy cases_insert_staff
   to authenticated
   with check (private.is_staff());
 
-create policy cases_update_staff_or_responsible
+create policy cases_update_staff_or_assignee
   on public.cases
   for update
   to authenticated
   using (
     private.is_staff()
+    or lawyer_id = (select private.active_uid())
     or responsible_id = (select private.active_uid())
   )
   with check (
     private.is_staff()
+    or lawyer_id = (select private.active_uid())
     or responsible_id = (select private.active_uid())
   );
 
-create policy cases_delete_staff
+create policy cases_delete_managers
   on public.cases
   for delete
   to authenticated
-  using (private.is_staff());
+  using (private.can_manage_users());
 
 -- =====================================================================
 -- clients
 -- =====================================================================
--- SELECT: owner/admin — все; иначе — клиенты, у которых есть видимое дело.
--- INSERT: owner/admin/specialist; created_by обязан = текущему активному uid
+-- SELECT: staff — все; иначе — клиенты, у которых есть видимое дело
+--         (где пользователь lawyer_id или responsible_id).
+-- INSERT: любой активный сотрудник; created_by обязан = текущему активному uid
 --         (запрет на приписывание создания чужому пользователю).
--- UPDATE: owner/admin + автор записи.
--- DELETE: только owner/admin (FK on cases.client_id = RESTRICT защищает от
---         каскадного сноса дел).
+-- UPDATE: staff + автор записи.
+-- DELETE: owner/admin (FK on cases.client_id = RESTRICT защищает от каскада).
 
 create policy clients_select_visible
   on public.clients
@@ -130,18 +131,18 @@ create policy clients_select_visible
       select 1 from public.cases c
       where c.client_id = clients.id
         and (
-          c.responsible_id = (select private.active_uid())
-          or c.responsible_id = (select private.current_user_supervisor_id())
+          c.lawyer_id = (select private.active_uid())
+          or c.responsible_id = (select private.active_uid())
         )
     )
   );
 
-create policy clients_insert_staff_or_specialist
+create policy clients_insert_active
   on public.clients
   for insert
   to authenticated
   with check (
-    private.current_user_role() in ('owner', 'admin', 'specialist')
+    (select private.active_uid()) is not null
     and created_by = (select private.active_uid())
   );
 
@@ -158,11 +159,11 @@ create policy clients_update_staff_or_creator
     or created_by = (select private.active_uid())
   );
 
-create policy clients_delete_staff
+create policy clients_delete_managers
   on public.clients
   for delete
   to authenticated
-  using (private.is_staff());
+  using (private.can_manage_users());
 
 -- =====================================================================
 -- documents / tasks / payments — наследуют доступ от дела
@@ -192,11 +193,11 @@ create policy documents_update_via_case
   using      (private.can_write_case(case_id))
   with check (private.can_write_case(case_id));
 
-create policy documents_delete_staff
+create policy documents_delete_managers
   on public.documents
   for delete
   to authenticated
-  using (private.is_staff());
+  using (private.can_manage_users());
 
 -- tasks ---------------------------------------------------------------
 
@@ -229,10 +230,12 @@ create policy tasks_delete_via_case
   using (private.can_write_case(case_id));
 
 -- payments ------------------------------------------------------------
--- Чтение: владелец/админ + специалист/ассистент по своему делу
--- (admin видит финансы по матрице §4).
--- INSERT: те же; created_by = active_uid (нет «платил кто-то другой»).
--- UPDATE/DELETE: только owner/admin (исправление платежа = админская операция).
+-- Чтение: staff (incl. office_manager — видит все финансы) + юрист/Експерт
+--         по своему делу.
+-- INSERT: те же, кто видит дело (юрист «вносит данные об оплате»);
+--         created_by = active_uid (нет «платил кто-то другой»).
+-- UPDATE/DELETE: owner/admin (исправление платежа = админская операция;
+--         офис-менеджер финансы только читает).
 
 create policy payments_select_via_case
   on public.payments
@@ -249,18 +252,18 @@ create policy payments_insert_via_case
     and created_by = (select private.active_uid())
   );
 
-create policy payments_update_staff
+create policy payments_update_managers
   on public.payments
   for update
   to authenticated
-  using      (private.is_staff())
-  with check (private.is_staff());
+  using      (private.can_manage_users())
+  with check (private.can_manage_users());
 
-create policy payments_delete_staff
+create policy payments_delete_managers
   on public.payments
   for delete
   to authenticated
-  using (private.is_staff());
+  using (private.can_manage_users());
 
 -- =====================================================================
 -- activity_log

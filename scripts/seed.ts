@@ -26,7 +26,6 @@ if (!SUPABASE_URL || !SERVICE_ROLE) {
 }
 
 // Защита от случайного запуска против staging/prod (CSO finding #5).
-// Сид создаёт 5 пользователей с известным паролем — катастрофично в чужом окружении.
 const IS_LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(SUPABASE_URL);
 if (!IS_LOCAL && process.env.ALLOW_NONLOCAL_SEED !== '1') {
   console.error(
@@ -44,42 +43,27 @@ const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
 
 const PASSWORD = 'test12345!';
 
-type Role = 'owner' | 'admin' | 'specialist' | 'assistant';
-type SpecialistType = 'lawyer' | 'jurist';
+type Role = 'owner' | 'admin' | 'office_manager' | 'lawyer' | 'expert';
 
 type Account = {
   email: string;
   full_name: string;
   role: Role;
-  specialist_type?: SpecialistType;
-  supervises?: string; // email супервайзера (для assistant)
 };
 
+// Два юриста и два Експерта — чтобы smoke-rls мог проверить изоляцию видимости
+// (юрист видит дела по lawyer_id, Експерт — по responsible_id).
 const ACCOUNTS: Account[] = [
   { email: 'owner@yur.local', full_name: 'Влад Владелец', role: 'owner' },
   { email: 'admin@yur.local', full_name: 'Анна Админ', role: 'admin' },
-  {
-    email: 'lawyer@yur.local',
-    full_name: 'Лев Адвокатов',
-    role: 'specialist',
-    specialist_type: 'lawyer',
-  },
-  {
-    email: 'jurist@yur.local',
-    full_name: 'Юрий Юристов',
-    role: 'specialist',
-    specialist_type: 'jurist',
-  },
-  {
-    email: 'assistant@yur.local',
-    full_name: 'Аля Ассистентова',
-    role: 'assistant',
-    supervises: 'jurist@yur.local',
-  },
+  { email: 'office@yur.local', full_name: 'Оля Секретарёва', role: 'office_manager' },
+  { email: 'lawyer@yur.local', full_name: 'Лев Юристов', role: 'lawyer' },
+  { email: 'lawyer2@yur.local', full_name: 'Лиза Договорова', role: 'lawyer' },
+  { email: 'expert@yur.local', full_name: 'Эдуард Экспертов', role: 'expert' },
+  { email: 'expert2@yur.local', full_name: 'Елена Экспертова', role: 'expert' },
 ];
 
 async function ensureAuthUser(email: string): Promise<string> {
-  // Постранично ищем существующего пользователя.
   let page = 1;
   while (true) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
@@ -100,19 +84,13 @@ async function ensureAuthUser(email: string): Promise<string> {
   return data.user.id;
 }
 
-async function upsertPublicUser(
-  id: string,
-  acc: Account,
-  supervisorId: string | null,
-): Promise<void> {
+async function upsertPublicUser(id: string, acc: Account): Promise<void> {
   const { error } = await admin.from('users').upsert(
     {
       id,
       full_name: acc.full_name,
       email: acc.email,
       role: acc.role,
-      specialist_type: acc.specialist_type ?? null,
-      supervisor_id: supervisorId,
       is_active: true,
     },
     { onConflict: 'id' },
@@ -122,23 +100,11 @@ async function upsertPublicUser(
 
 async function seedUsers(): Promise<Map<string, string>> {
   const idByEmail = new Map<string, string>();
-
-  // Сначала auth-пользователи + те, у кого нет supervisor (owner/admin/specialist).
   for (const acc of ACCOUNTS) {
     const id = await ensureAuthUser(acc.email);
     idByEmail.set(acc.email, id);
+    await upsertPublicUser(id, acc);
   }
-
-  // Сначала всех без супервайзера, потом ассистентов — чтобы FK был валиден.
-  for (const acc of ACCOUNTS.filter((a) => !a.supervises)) {
-    await upsertPublicUser(idByEmail.get(acc.email)!, acc, null);
-  }
-  for (const acc of ACCOUNTS.filter((a) => a.supervises)) {
-    const supId = idByEmail.get(acc.supervises!);
-    if (!supId) throw new Error(`Не найден супервайзер ${acc.supervises}`);
-    await upsertPublicUser(idByEmail.get(acc.email)!, acc, supId);
-  }
-
   return idByEmail;
 }
 
@@ -167,8 +133,10 @@ async function getOrCreate<T extends { id: string }>(
 
 async function seedDomain(ids: Map<string, string>): Promise<void> {
   const adminId = ids.get('admin@yur.local')!;
-  const lawyerId = ids.get('lawyer@yur.local')!;
-  const juristId = ids.get('jurist@yur.local')!;
+  const lawyer1 = ids.get('lawyer@yur.local')!;
+  const lawyer2 = ids.get('lawyer2@yur.local')!;
+  const expert1 = ids.get('expert@yur.local')!;
+  const expert2 = ids.get('expert2@yur.local')!;
 
   // Клиенты ----------------------------------------------------------
   const ivanov = await getOrCreate<{ id: string }>(
@@ -179,6 +147,7 @@ async function seedDomain(ids: Map<string, string>): Promise<void> {
       client_kind: 'individual',
       phone: '+380501112233',
       email: 'ivanov@example.com',
+      source: 'referral',
       created_by: adminId,
     },
   );
@@ -192,20 +161,25 @@ async function seedDomain(ids: Map<string, string>): Promise<void> {
       phone: '+380441234567',
       email: 'legal@acme.example',
       address: 'г. Киев, ул. Примерная, 1',
+      source: 'website',
       created_by: adminId,
     },
   );
 
   // Дела -------------------------------------------------------------
-  const caseLawyer = await getOrCreate<{ id: string }>(
+  // Case A: юрист lawyer1, Експерт expert1 — изолировано от lawyer2/expert2.
+  const caseA = await getOrCreate<{ id: string }>(
     'cases',
     { number_title: 'CRM-2026-001' },
     {
       number_title: 'CRM-2026-001',
       client_id: ivanov.id,
-      responsible_id: lawyerId,
+      lawyer_id: lawyer1,
+      responsible_id: expert1,
       opened_at: '2026-05-01',
       case_type: 'civil',
+      category: 'representation',
+      subject: 'Представительство в суде по имущественному спору',
       stage: 'in_progress',
       priority: 'normal',
       contract_sum: 30000,
@@ -214,32 +188,36 @@ async function seedDomain(ids: Map<string, string>): Promise<void> {
     },
   );
 
-  const caseJurist = await getOrCreate<{ id: string }>(
+  // Case B: юрист lawyer2, Експерт expert2.
+  const caseB = await getOrCreate<{ id: string }>(
     'cases',
     { number_title: 'CRM-2026-002' },
     {
       number_title: 'CRM-2026-002',
       client_id: acme.id,
-      responsible_id: juristId,
+      lawyer_id: lawyer2,
+      responsible_id: expert2,
       opened_at: '2026-05-15',
       case_type: 'corporate',
+      category: 'claim',
+      subject: 'Взыскание задолженности по договору поставки',
       stage: 'consultation',
       priority: 'urgent',
       contract_sum: 120000,
-      billing_types: ['prepaid', 'hourly'],
+      billing_types: ['prepaid', 'installments'],
       tags: ['corporate'],
     },
   );
 
-  // Задачи и платёж — чтобы было что показать в UI и проверить триггер пересчёта.
+  // Задачи и платёж — чтобы было что показать в UI и проверить триггеры.
   await getOrCreate(
     'tasks',
-    { case_id: caseLawyer.id, title: 'Подготовить иск' },
+    { case_id: caseA.id, title: 'Подготовить иск' },
     {
-      case_id: caseLawyer.id,
+      case_id: caseA.id,
       title: 'Подготовить иск',
       kind: 'task',
-      assignee_id: lawyerId,
+      assignee_id: expert1,
       created_by: adminId,
       due_at: '2026-06-05T10:00:00Z',
       status: 'open',
@@ -248,23 +226,25 @@ async function seedDomain(ids: Map<string, string>): Promise<void> {
 
   await getOrCreate(
     'tasks',
-    { case_id: caseJurist.id, title: 'Заседание по делу ООО Акме' },
+    { case_id: caseB.id, title: 'Заседание по делу ООО Акме' },
     {
-      case_id: caseJurist.id,
+      case_id: caseB.id,
       title: 'Заседание по делу ООО Акме',
       kind: 'hearing',
-      assignee_id: juristId,
+      assignee_id: expert2,
       created_by: adminId,
       due_at: '2026-06-10T09:00:00Z',
       status: 'open',
     },
   );
 
+  // Платёж по Case A → база для расчёта зарплаты (representation 25%):
+  // per_specialist = 10000 × 25% = 2500; total = 5000.
   await getOrCreate(
     'payments',
-    { case_id: caseLawyer.id, amount: 10000, paid_at: '2026-05-10' },
+    { case_id: caseA.id, amount: 10000, paid_at: '2026-05-10' },
     {
-      case_id: caseLawyer.id,
+      case_id: caseA.id,
       amount: 10000,
       paid_at: '2026-05-10',
       method: 'bank',
@@ -285,7 +265,7 @@ async function main(): Promise<void> {
 
   console.log('\nГотово. Тестовые логины:');
   for (const acc of ACCOUNTS) {
-    console.log(`  ${acc.email.padEnd(24)} → ${acc.role}${acc.specialist_type ? `/${acc.specialist_type}` : ''}`);
+    console.log(`  ${acc.email.padEnd(24)} → ${acc.role}`);
   }
 }
 
