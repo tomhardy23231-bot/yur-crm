@@ -43,13 +43,10 @@ export default async function EditClientPage({
           <ChevronLeft size={14} strokeWidth={1.75} />
           К карточке клиента
         </Link>
-        <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-          Редактирование клиента
-        </h1>
         <p className="text-[13px] text-text-muted">{client.name}</p>
       </div>
 
-      <Card className="max-w-3xl p-6 sm:p-8">
+      <Card className="p-6 sm:p-8">
         <ClientForm
           action={boundAction}
           client={client}

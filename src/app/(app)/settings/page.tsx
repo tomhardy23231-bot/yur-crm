@@ -16,7 +16,7 @@ export default async function SettingsPage() {
     (await cookies()).get('theme')?.value === 'brass' ? 'brass' : 'teal';
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4 max-w-5xl">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       {/* Оформление — цветовая тема */}
       <section className="flex flex-col gap-3">
         <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
@@ -32,7 +32,7 @@ export default async function SettingsPage() {
       </section>
 
       {/* Доступные настройки */}
-      <section className="flex flex-col gap-3">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Link
           href="/settings/payroll"
           className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"

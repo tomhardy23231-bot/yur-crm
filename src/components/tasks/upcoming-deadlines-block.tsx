@@ -21,7 +21,7 @@ export async function UpcomingDeadlinesBlock({
   const upcoming = await listUpcomingTasks({ hoursAhead, limit });
 
   return (
-    <Card className="max-w-3xl">
+    <Card>
       <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
         <Bell size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[16px] font-semibold text-text">

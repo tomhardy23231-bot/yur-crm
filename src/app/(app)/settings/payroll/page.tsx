@@ -24,7 +24,7 @@ export default async function PayrollSettingsPage() {
   }
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4 max-w-4xl">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <Link
         href="/reports/payroll"
         className="inline-flex w-fit items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-[12.5px] font-medium text-text-muted shadow-sm transition-colors hover:border-border-strong hover:text-text"

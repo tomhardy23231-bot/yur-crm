@@ -14,7 +14,7 @@ export default async function ProfilePage() {
   const user = await requireUser();
 
   return (
-    <main className="flex max-w-2xl flex-col gap-5 px-3 py-2 sm:px-4">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-col gap-1">
         <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
           Профиль и безопасность
@@ -24,6 +24,7 @@ export default async function ProfilePage() {
         </p>
       </div>
 
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
       {/* Данные пользователя */}
       <section className="flex flex-col gap-3">
         <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
@@ -64,6 +65,7 @@ export default async function ProfilePage() {
           <ChangePasswordForm />
         </Card>
       </section>
+      </div>
     </main>
   );
 }

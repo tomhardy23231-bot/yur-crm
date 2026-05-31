@@ -46,12 +46,9 @@ export default async function NewCasePage({
           <ChevronLeft size={14} strokeWidth={1.75} />
           {lockedClient ? `К клиенту «${lockedClient.name}»` : 'К списку'}
         </Link>
-        <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-          Новое дело
-        </h1>
       </div>
 
-      <Card className="max-w-3xl p-6 sm:p-8">
+      <Card className="p-6 sm:p-8">
         <CaseForm
           action={createCaseAction}
           clients={clients}

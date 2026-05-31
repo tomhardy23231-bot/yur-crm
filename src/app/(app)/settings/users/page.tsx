@@ -36,7 +36,7 @@ export default async function UsersSettingsPage() {
   const backLabel = actor.profile.role === 'owner' ? 'Настройки' : 'На главную';
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4 max-w-5xl">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <Link
         href={backHref}
         className="inline-flex items-center gap-1 text-[13px] text-text-muted hover:text-text transition-colors w-fit"

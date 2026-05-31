@@ -172,13 +172,13 @@ export function CaseForm({
       <form ref={formRef} action={formAction} className="flex flex-col gap-6">
       {/* Базовый блок */}
       <Section title="Основное">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Field
             label="Номер / название"
             htmlFor="number_title"
             error={err('number_title')}
             required
-            className="sm:col-span-2"
+            className="sm:col-span-2 lg:col-span-3"
           >
             <Input
               id="number_title"
@@ -338,7 +338,7 @@ export function CaseForm({
             label="Предмет договора"
             htmlFor="subject"
             error={err('subject')}
-            className="sm:col-span-2"
+            className="sm:col-span-2 lg:col-span-3"
           >
             <Input
               id="subject"
@@ -385,7 +385,7 @@ export function CaseForm({
 
       {/* Финансы */}
       <Section title="Финансы">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Field
             label="Сумма договора"
             htmlFor="contract_sum"
@@ -405,7 +405,7 @@ export function CaseForm({
           </Field>
 
           {canEditRates && (
-            <div className="sm:col-span-2 flex flex-col gap-2 rounded-md border border-border bg-surface-muted/40 p-4">
+            <div className="sm:col-span-2 lg:col-span-3 flex flex-col gap-2 rounded-md border border-border bg-surface-muted/40 p-4">
               <p className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
                 Индивидуальный % зарплаты по этому делу
               </p>
@@ -479,7 +479,7 @@ export function CaseForm({
             label="Тип оплаты"
             htmlFor="billing_types"
             error={err('billing_types')}
-            className="sm:col-span-2"
+            className="sm:col-span-2 lg:col-span-3"
           >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" id="billing_types">
               {BILLING_TYPES.map((bt) => (
@@ -506,12 +506,12 @@ export function CaseForm({
 
       {/* Судебная часть */}
       <Section title="Судебное (если применимо)">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Field
             label="Оппонент"
             htmlFor="opponent"
             error={err('opponent')}
-            className="sm:col-span-2"
+            className="sm:col-span-2 lg:col-span-1"
           >
             <Input
               id="opponent"

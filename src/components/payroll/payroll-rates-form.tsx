@@ -32,53 +32,59 @@ export function PayrollRatesForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
-      <div className="flex flex-col gap-4">
-        <div className="hidden sm:grid sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-4 px-1">
-          <span />
-          <span className="w-28 text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle text-center">
-            Юрист, %
-          </span>
-          <span className="w-28 text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle text-center">
-            Эксперт, %
-          </span>
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {CASE_CATEGORIES.map((c) => (
           <div
             key={c}
-            className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-4"
+            className="flex flex-col gap-3 rounded-lg border border-border bg-surface-muted/40 p-4"
           >
-            <Label
-              htmlFor={`lawyer_percent_${c}`}
-              className="text-[13px] font-medium text-text"
-            >
+            <span className="text-[13px] font-semibold text-text">
               {CASE_CATEGORY_LABEL[c]}
-            </Label>
-            <Input
-              id={`lawyer_percent_${c}`}
-              name={`lawyer_percent_${c}`}
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              max="100"
-              defaultValue={String(rates[c].lawyer)}
-              required
-              aria-label={`${CASE_CATEGORY_LABEL[c]} — ставка юриста, %`}
-              className="font-mono sm:w-28"
-            />
-            <Input
-              id={`expert_percent_${c}`}
-              name={`expert_percent_${c}`}
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              max="100"
-              defaultValue={String(rates[c].expert)}
-              required
-              aria-label={`${CASE_CATEGORY_LABEL[c]} — ставка эксперта, %`}
-              className="font-mono sm:w-28"
-            />
+            </span>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor={`lawyer_percent_${c}`}
+                  className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle"
+                >
+                  Юрист, %
+                </Label>
+                <Input
+                  id={`lawyer_percent_${c}`}
+                  name={`lawyer_percent_${c}`}
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  defaultValue={String(rates[c].lawyer)}
+                  required
+                  aria-label={`${CASE_CATEGORY_LABEL[c]} — ставка юриста, %`}
+                  className="font-mono"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor={`expert_percent_${c}`}
+                  className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle"
+                >
+                  Эксперт, %
+                </Label>
+                <Input
+                  id={`expert_percent_${c}`}
+                  name={`expert_percent_${c}`}
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  defaultValue={String(rates[c].expert)}
+                  required
+                  aria-label={`${CASE_CATEGORY_LABEL[c]} — ставка эксперта, %`}
+                  className="font-mono"
+                />
+              </div>
+            </div>
           </div>
         ))}
       </div>

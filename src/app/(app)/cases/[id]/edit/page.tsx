@@ -56,13 +56,10 @@ export default async function EditCasePage({
           <ChevronLeft size={14} strokeWidth={1.75} />
           К карточке дела
         </Link>
-        <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-          Редактировать дело
-        </h1>
         <p className="text-[13px] text-text-muted truncate">{c.number_title}</p>
       </div>
 
-      <Card className="max-w-3xl p-6 sm:p-8">
+      <Card className="p-6 sm:p-8">
         <CaseForm
           action={boundAction}
           caseRow={c}

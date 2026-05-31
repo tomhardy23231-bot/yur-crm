@@ -67,7 +67,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
 
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Имя или наименование" htmlFor="name" error={err('name')} required>
           <Input
             id="name"
@@ -144,7 +144,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
           </Select>
         </Field>
 
-        <Field label="Заметки" htmlFor="notes" error={err('notes')} className="sm:col-span-2">
+        <Field label="Заметки" htmlFor="notes" error={err('notes')} className="sm:col-span-2 lg:col-span-3">
           <Textarea
             id="notes"
             name="notes"
