@@ -39,11 +39,13 @@ export function CaseLedgerBlock({
 }) {
   if (entries.length === 0) {
     return (
-      <div className="border-t border-border px-5 py-4">
-        <p className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle mb-1">
-          Выплаты команде
+      <div className="border-t border-border px-4 py-2.5">
+        <p className="text-[12px] text-text-muted">
+          <span className="font-semibold uppercase tracking-[0.05em] text-text-subtle">
+            Выплаты:
+          </span>{" "}
+          {emptyHint}
         </p>
-        <p className="text-[13px] text-text-muted">{emptyHint}</p>
       </div>
     );
   }

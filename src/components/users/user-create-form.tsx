@@ -1,34 +1,58 @@
 'use client';
 
-import { useActionState, useEffect, useRef } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { UserPlus } from 'lucide-react';
+import { ChevronDown, UserPlus } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
-import { ROLE_LABEL, type Role } from '@/lib/types/db';
+import {
+  ROLE_LABEL,
+  type EffectiveCaps,
+  type Role,
+} from '@/lib/types/db';
 import {
   createUserAction,
   type CreateUserFields,
   type CreateUserState,
 } from '@/lib/users/actions';
 
+import { UserPermsFields } from './user-perms-fields';
+
 const INITIAL: CreateUserState = { ok: false };
 
 interface Props {
   // Роли, которые текущий пользователь вправе назначать (owner — все; admin — без owner/admin).
   assignableRoles: ReadonlyArray<Role>;
+  // Роль и эффективные права актора — для гейтинга настраиваемых прав по выбранной роли.
+  actorRole: Role;
+  actorCaps: EffectiveCaps;
 }
 
-export function UserCreateForm({ assignableRoles }: Props) {
+export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props) {
   const [state, formAction] = useActionState<CreateUserState, FormData>(
     createUserAction,
     INITIAL,
   );
   const formRef = useRef<HTMLFormElement>(null);
+  // Выбранная роль управляет тем, какие персональные права можно настроить.
+  const [selectedRole, setSelectedRole] = useState<Role | ''>('');
+  const [permsOpen, setPermsOpen] = useState(false);
+
+  // Сброс контролируемых полей после успеха — паттерн «правка состояния в
+  // рендере по изменению prev» (без setState-в-effect). DOM-reset (имя/email) —
+  // в эффекте ниже, т.к. это побочный эффект, а не state.
+  const [prevOk, setPrevOk] = useState(false);
+  if (state.ok !== prevOk) {
+    setPrevOk(state.ok);
+    if (state.ok) {
+      setSelectedRole('');
+      setPermsOpen(false);
+    }
+  }
 
   useEffect(() => {
     if (state.ok) formRef.current?.reset();
@@ -71,7 +95,8 @@ export function UserCreateForm({ assignableRoles }: Props) {
           <Select
             id="user-role"
             name="role"
-            defaultValue=""
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value as Role | '')}
             required
             aria-invalid={err('role') ? 'true' : undefined}
           >
@@ -84,6 +109,44 @@ export function UserCreateForm({ assignableRoles }: Props) {
           </Select>
         </Field>
       </div>
+
+      {/* Персональные права (опционально) — доступны после выбора роли.
+          По умолчанию все права наследуются от роли. */}
+      {selectedRole && (
+        <div className="rounded-lg border border-border bg-surface-muted/30">
+          <button
+            type="button"
+            onClick={() => setPermsOpen((v) => !v)}
+            aria-expanded={permsOpen}
+            className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left"
+          >
+            <span className="text-[13px] font-medium text-text">
+              Персональные права (необязательно)
+            </span>
+            <ChevronDown
+              size={16}
+              strokeWidth={1.75}
+              className={`text-text-muted transition-transform ${permsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {permsOpen && (
+            <div className="border-t border-border px-3.5 py-3">
+              <p className="mb-2.5 text-[12px] text-text-muted">
+                По умолчанию права наследуются от роли. Здесь можно точечно
+                разрешить или запретить отдельные действия.
+              </p>
+              {/* key по роли — пересоздаёт контролы с правильными дефолтами при смене роли. */}
+              <UserPermsFields
+                key={selectedRole}
+                actorRole={actorRole}
+                actorCaps={actorCaps}
+                targetRole={selectedRole}
+                idPrefix="new-user-perm"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {state.message && !state.ok && (
         <p

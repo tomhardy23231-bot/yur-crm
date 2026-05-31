@@ -23,11 +23,13 @@ export function DeleteCaseForm({
       }}
     >
       <input type="hidden" name="case_id" value={caseId} />
+      {/* Outline-destructive: спокойный красный в покое (текст/рамка), на hover
+          заливается сплошным — чтобы рядом с «Редактировать» в тулбаре не кричал. */}
       <Button
         type="submit"
         variant="secondary"
         size="sm"
-        className="!bg-white/15 !border-white/30 !text-white hover:!bg-error/80 hover:!border-error/80"
+        className="!border-error/30 !text-error hover:!border-error hover:!bg-error hover:!text-white"
       >
         <Trash2 size={14} strokeWidth={1.75} />
         Удалить

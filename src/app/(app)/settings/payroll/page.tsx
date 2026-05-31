@@ -6,13 +6,13 @@ import {
   PayrollRatesForm,
   type CategoryRatePair,
 } from '@/components/payroll/payroll-rates-form';
-import { requireRole } from '@/lib/auth/require-role';
+import { requireCap } from '@/lib/auth/require-role';
 import { getPayrollRates } from '@/lib/payroll/queries';
 import { CASE_CATEGORIES, type CaseCategory } from '@/lib/types/db';
 
 // Системная настройка — только owner (RLS payroll_rates_write_owner дублирует).
 export default async function PayrollSettingsPage() {
-  await requireRole(['owner']);
+  await requireCap('edit_payroll_rates');
   const rates = await getPayrollRates();
 
   // В карту category → {lawyer, expert}; недостающие — 0 (на случай рассинхрона).

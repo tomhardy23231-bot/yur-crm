@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { requireRole, requireUser } from '@/lib/auth/require-role';
+import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { dbErrorMessage } from '@/lib/errors';
@@ -15,14 +15,12 @@ import {
   CASE_PRIORITIES,
   CASE_STAGES,
   CASE_TYPES,
-  MANAGER_ROLES,
   type AccrualMode,
   type BillingType,
   type CaseCategory,
   type CasePriority,
   type CaseStage,
   type CaseType,
-  type Role,
 } from '@/lib/types/db';
 
 export type CaseFormFields =
@@ -53,10 +51,6 @@ export type RateOverrides = {
   lawyer_rate_override: number | null;
   expert_rate_override: number | null;
 };
-
-function isManager(role: Role): boolean {
-  return (MANAGER_ROLES as readonly Role[]).includes(role);
-}
 
 export type CaseActionState = {
   ok: boolean;
@@ -311,12 +305,15 @@ export async function createCaseAction(
   formData: FormData,
 ): Promise<CaseActionState> {
   const user = await requireUser();
+  if (!user.caps.create_cases) {
+    return { ok: false, message: 'Недостаточно прав для создания дела.' };
+  }
   const result = validate(formData);
   if (!result.ok) return result.state;
 
-  // Override % задаёт только owner/admin; для прочих ролей не отправляем поля
-  // вовсе (БД-триггер всё равно отверг бы non-null override от не-менеджера).
-  const insertPayload = isManager(user.profile.role)
+  // Override % задаёт только обладатель права edit_rate_overrides; иначе поля не
+  // шлём вовсе (БД-триггер cases_guard_rate_overrides отверг бы non-null override).
+  const insertPayload = user.caps.edit_rate_overrides
     ? { ...result.data, ...result.overrides }
     : result.data;
 
@@ -408,7 +405,7 @@ export async function updateCaseAction(
   const result = validate(formData);
   if (!result.ok) return result.state;
 
-  const canEditRates = isManager(user.profile.role);
+  const canEditRates = user.caps.edit_rate_overrides;
   const supabase = await createSupabaseServerClient();
 
   // Снапшот до правки — для diff'а в activity_log. RLS отрежет невидимое →
@@ -634,10 +631,10 @@ export async function updateCaseStageAction(
 }
 
 export async function deleteCaseAction(formData: FormData): Promise<void> {
-  // RLS DELETE = is_staff(); UI скрывает кнопку. Но без role-gate на сервере
-  // не-staff, форсящий POST вручную, проходит мимо silent-RLS-deny и
-  // получает фейковый `case_deleted` в activity_log (log пишется ДО delete).
-  await requireRole(['owner', 'admin']);
+  // RLS DELETE = private.can('delete_cases'); UI скрывает кнопку. Но без gate на
+  // сервере пользователь без права, форсящий POST вручную, прошёл бы мимо
+  // silent-RLS-deny и получил фейковый `case_deleted` в activity_log.
+  await requireCap('delete_cases');
 
   const caseId = getString(formData, 'case_id');
   if (!caseId || !UUID_RE.test(caseId)) {

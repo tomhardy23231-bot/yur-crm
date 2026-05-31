@@ -21,7 +21,6 @@ import { requireUser } from '@/lib/auth/require-role';
 import {
   CLIENT_KIND_LABEL,
   CLIENT_SOURCE_LABEL,
-  STAFF_ROLES,
 } from '@/lib/types/db';
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
@@ -57,12 +56,12 @@ export default async function ClientDetailPage({
   if (!client) notFound();
 
   const cases = await getClientCases(id);
-  const isStaff = STAFF_ROLES.includes(user.profile.role);
-  // RLS UPDATE = staff ИЛИ автор записи. Если ни то, ни другое — скрываем
-  // «Редактировать», чтобы не показывать кнопку, действие которой откажет.
-  const canEdit = isStaff || client.created_by === user.profile.id;
-  // Удаление клиента — только owner/admin (RLS clients_delete_managers).
-  const canDelete = user.profile.role === 'owner' || user.profile.role === 'admin';
+  // RLS UPDATE = view_all_cases ИЛИ автор записи. Если ни то, ни другое —
+  // скрываем «Редактировать», чтобы не показывать кнопку, действие которой откажет.
+  const canEdit = user.caps.view_all_cases || client.created_by === user.profile.id;
+  const canDelete = user.caps.delete_clients;
+  // Заводить дело по клиенту — обладатель права create_cases.
+  const canCreateCase = user.caps.create_cases;
   const errorMessage = error ? ERROR_MESSAGES[error] : undefined;
 
   return (
@@ -190,7 +189,7 @@ export default async function ClientDetailPage({
                 : `Всего: ${cases.length}`}
             </p>
           </div>
-          {isStaff && (
+          {canCreateCase && (
             <Button asChild size="sm">
               <Link href={`/cases/new?client=${client.id}`}>
                 <Plus size={14} strokeWidth={2} />
@@ -203,7 +202,7 @@ export default async function ClientDetailPage({
         {cases.length === 0 ? (
           <div className="py-10 px-6 text-center">
             <p className="text-[13px] text-text-muted">
-              {isStaff
+              {canCreateCase
                 ? 'Заведите первое дело — оно соберёт документы, задачи и финансы.'
                 : 'Пока нет дел.'}
             </p>

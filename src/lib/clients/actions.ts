@@ -3,16 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { requireRole, requireUser } from '@/lib/auth/require-role';
+import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { dbErrorMessage } from '@/lib/errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
-  canCreateClients,
   CLIENT_KINDS,
   CLIENT_SOURCES,
-  isStaff,
   type ClientKind,
   type ClientSource,
 } from '@/lib/types/db';
@@ -127,13 +125,13 @@ export async function createClientAction(
 ): Promise<ClientActionState> {
   const user = await requireUser();
 
-  // Задача 1: клиентов заводят owner/admin/office_manager/lawyer. Експерт — нет.
-  // RLS (clients_insert_creators) — жёсткая защита; здесь даём дружелюбный ответ
-  // вместо сырого RLS-отказа.
-  if (!canCreateClients(user.profile.role)) {
+  // Клиентов заводят обладатели права create_clients (по умолчанию все, кроме
+  // эксперта). RLS (clients_insert_creators) — жёсткая защита; здесь дружелюбный
+  // ответ вместо сырого RLS-отказа.
+  if (!user.caps.create_clients) {
     return {
       ok: false,
-      message: 'Недостаточно прав: эксперт не создаёт клиентов.',
+      message: 'Недостаточно прав для создания клиента.',
     };
   }
 
@@ -221,13 +219,14 @@ export async function updateClientAction(
 
   if (
     before &&
-    !isStaff(user.profile.role) &&
+    !user.caps.view_all_cases &&
     (before as { created_by: string }).created_by !== user.profile.id
   ) {
     return {
       ok: false,
       values: result.values,
-      message: 'Недостаточно прав: клиента может изменить автор записи или staff.',
+      message:
+        'Недостаточно прав: клиента может изменить автор записи или сотрудник с доступом ко всем делам.',
     };
   }
 
@@ -302,10 +301,10 @@ export async function createClientInlineAction(
 ): Promise<InlineClientState> {
   const user = await requireUser();
 
-  if (!canCreateClients(user.profile.role)) {
+  if (!user.caps.create_clients) {
     return {
       ok: false,
-      message: 'Недостаточно прав: эксперт не создаёт клиентов.',
+      message: 'Недостаточно прав для создания клиента.',
     };
   }
 
@@ -359,7 +358,7 @@ export async function deleteClientAction(formData: FormData): Promise<void> {
   // получает silent-success UI ("Клиент удалён") при том, что RLS DELETE
   // молча возвращает 0 строк — клиент жив. Журнал тут защищён allowlist'ом
   // log_activity (is_staff для entity_type=client), но UI-обман всё равно есть.
-  await requireRole(['owner', 'admin']);
+  await requireCap('delete_clients');
 
   const clientId = getString(formData, 'client_id');
   if (!clientId || !UUID_RE.test(clientId)) {

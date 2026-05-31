@@ -27,6 +27,7 @@ function titleForPath(pathname: string): string {
   if (pathname.startsWith('/calendar')) return 'Календарь';
   if (pathname.startsWith('/reports/payroll')) return 'Финансы и ЗП';
   if (pathname.startsWith('/settings/payroll')) return 'Ставки зарплаты';
+  if (pathname.startsWith('/settings/users')) return 'Пользователи';
   if (pathname.startsWith('/settings')) return 'Настройки';
 
   return 'ЮрКейс';

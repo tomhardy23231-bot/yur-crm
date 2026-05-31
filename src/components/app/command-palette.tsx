@@ -29,7 +29,7 @@ import {
   EMPTY_RESULTS,
   type PaletteResults,
 } from '@/lib/search/types';
-import { CLIENT_KIND_LABEL, STAFF_ROLES, type Role } from '@/lib/types/db';
+import { CLIENT_KIND_LABEL, type EffectiveCaps } from '@/lib/types/db';
 
 // ============================================================================
 // Context — sidebar-trigger открывает палитру без prop-drilling.
@@ -60,10 +60,10 @@ const SEARCH_DEBOUNCE_MS = 180;
 const MIN_QUERY_LEN = 2;
 
 export function CommandPaletteProvider({
-  role,
+  caps,
   children,
 }: {
-  role: Role;
+  caps: EffectiveCaps;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -159,9 +159,9 @@ export function CommandPaletteProvider({
     [router, handleOpenChange],
   );
 
-  // Дело заводит staff (owner/admin/office_manager); клиента — любой активный.
-  const canCreateCase = STAFF_ROLES.includes(role);
-  const canCreateClient = true;
+  // Гейтинг по эффективным правам (роль + персональные оверрайды).
+  const canCreateCase = caps.create_cases;
+  const canCreateClient = caps.create_clients;
 
   const ctx = useMemo<Ctx>(() => ({ isOpen, open, close }), [isOpen, open, close]);
 

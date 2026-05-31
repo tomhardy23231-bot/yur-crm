@@ -1,16 +1,21 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { Coins, Palette, ShieldCheck, Users, ChevronRight } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ThemeSwitcher, type Theme } from '@/components/app/theme-switcher';
-import { requireRole } from '@/lib/auth/require-role';
+import { requireUser } from '@/lib/auth/require-role';
 
-// Хаб системных настроек — ТОЛЬКО владелец (CLAUDE.md §4: системные настройки
-// = owner-exclusive). RLS на payroll_rates дублирует защиту на уровне БД.
+// Хаб настроек — единый вход в администрирование. Доступен обладателям права
+// управления пользователями ИЛИ системных настроек (ставок). Каждая карточка
+// дополнительно гейтится своим правом; RLS дублирует защиту на стороне БД.
 export default async function SettingsPage() {
-  await requireRole(['owner']);
+  const actor = await requireUser();
+  const canManageUsers = actor.caps.manage_users;
+  const canEditRates = actor.caps.edit_payroll_rates;
+  if (!canManageUsers && !canEditRates) redirect('/forbidden');
 
   const theme: Theme =
     (await cookies()).get('theme')?.value === 'brass' ? 'brass' : 'teal';
@@ -33,49 +38,53 @@ export default async function SettingsPage() {
 
       {/* Доступные настройки */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Link
-          href="/settings/payroll"
-          className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
-        >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
-            <Coins size={20} strokeWidth={1.75} />
-          </span>
-          <span className="flex-1">
-            <span className="block text-[15px] font-semibold text-text">
-              Ставки зарплаты
+        {canEditRates && (
+          <Link
+            href="/settings/payroll"
+            className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+              <Coins size={20} strokeWidth={1.75} />
             </span>
-            <span className="block text-[13px] text-text-muted">
-              Проценты по категориям, раздельно для юриста и эксперта.
+            <span className="flex-1">
+              <span className="block text-[15px] font-semibold text-text">
+                Ставки зарплаты
+              </span>
+              <span className="block text-[13px] text-text-muted">
+                Проценты по категориям, раздельно для юриста и эксперта.
+              </span>
             </span>
-          </span>
-          <ChevronRight
-            size={18}
-            strokeWidth={1.75}
-            className="text-text-subtle transition-transform group-hover:translate-x-0.5"
-          />
-        </Link>
+            <ChevronRight
+              size={18}
+              strokeWidth={1.75}
+              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
+            />
+          </Link>
+        )}
 
-        <Link
-          href="/settings/users"
-          className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
-        >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
-            <Users size={20} strokeWidth={1.75} />
-          </span>
-          <span className="flex-1">
-            <span className="block text-[15px] font-semibold text-text">
-              Пользователи и роли
+        {canManageUsers && (
+          <Link
+            href="/settings/users"
+            className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+              <Users size={20} strokeWidth={1.75} />
             </span>
-            <span className="block text-[13px] text-text-muted">
-              Управление сотрудниками и правами доступа.
+            <span className="flex-1">
+              <span className="block text-[15px] font-semibold text-text">
+                Пользователи и роли
+              </span>
+              <span className="block text-[13px] text-text-muted">
+                Управление сотрудниками и правами доступа.
+              </span>
             </span>
-          </span>
-          <ChevronRight
-            size={18}
-            strokeWidth={1.75}
-            className="text-text-subtle transition-transform group-hover:translate-x-0.5"
-          />
-        </Link>
+            <ChevronRight
+              size={18}
+              strokeWidth={1.75}
+              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
+            />
+          </Link>
+        )}
       </section>
 
       {/* Сводный список прав (P3.1) */}

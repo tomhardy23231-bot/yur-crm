@@ -26,13 +26,13 @@ export default async function AppLayout({
   const sidebarCollapsed = cookieStore.get('sidebar_collapsed')?.value === '1';
 
   return (
-    <CommandPaletteProvider role={user.profile.role}>
+    <CommandPaletteProvider caps={user.caps}>
       {/* App-shell: высота вьюпорта, скролл внутри контента → сайдбар и топбар закреплены. */}
       <div className="flex h-dvh overflow-hidden">
         <Sidebar
           userName={user.profile.full_name}
           roleLabel={ROLE_LABEL[user.profile.role]}
-          role={user.profile.role}
+          caps={user.caps}
           counts={{ tasksOpen }}
           defaultCollapsed={sidebarCollapsed}
         />

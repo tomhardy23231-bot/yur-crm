@@ -10,8 +10,7 @@ import {
   listLawyersForAssignment,
 } from '@/lib/cases/queries';
 import { getClient } from '@/lib/clients/queries';
-import { requireRole } from '@/lib/auth/require-role';
-import { canCreateClients, MANAGER_ROLES } from '@/lib/types/db';
+import { requireCap } from '@/lib/auth/require-role';
 
 // Дела заводит staff: owner/admin/office_manager (RLS-политика cases_insert_staff).
 // Для юриста/Експерта — /forbidden.
@@ -20,8 +19,8 @@ export default async function NewCasePage({
 }: {
   searchParams: Promise<{ client?: string }>;
 }) {
-  const user = await requireRole(['owner', 'admin', 'office_manager']);
-  const canEditRates = MANAGER_ROLES.includes(user.profile.role);
+  const user = await requireCap('create_cases');
+  const canEditRates = user.caps.edit_rate_overrides;
   const sp = await searchParams;
 
   const [clients, lawyers, experts] = await Promise.all([
@@ -58,7 +57,7 @@ export default async function NewCasePage({
           submitLabel="Создать дело"
           cancelHref={lockedClient ? `/clients/${lockedClient.id}` : '/cases'}
           canEditRates={canEditRates}
-          canCreateClient={canCreateClients(user.profile.role)}
+          canCreateClient={user.caps.create_clients}
         />
       </Card>
     </main>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { requireRole } from '@/lib/auth/require-role';
+import { requireRole, requireCap } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CASE_CATEGORIES, type CaseCategory } from '@/lib/types/db';
@@ -16,14 +16,14 @@ function isCaseCategory(value: string): value is CaseCategory {
   return (CASE_CATEGORIES as readonly string[]).includes(value);
 }
 
-// Обновление ставок % по категориям. Только owner (RLS payroll_rates_write_owner
-// дублирует это на стороне БД). Форма шлёт по полю на каждую категорию:
-// percent_<category>.
+// Обновление ставок % по категориям. Право edit_payroll_rates (по умолчанию
+// только owner; RLS payroll_rates_write_owner дублирует это на стороне БД).
+// Форма шлёт по полю на каждую категорию: percent_<category>.
 export async function updatePayrollRatesAction(
   _prev: PayrollRatesActionState,
   formData: FormData,
 ): Promise<PayrollRatesActionState> {
-  await requireRole(['owner']);
+  await requireCap('edit_payroll_rates');
   const supabase = await createSupabaseServerClient();
 
   // Парсит и валидирует процент из поля формы (0..100, запятая/точка).

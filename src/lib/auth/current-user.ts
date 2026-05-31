@@ -2,12 +2,15 @@ import 'server-only';
 
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import type { UserProfile } from '@/lib/types/db';
+import { resolveCaps, type UserProfile, type EffectiveCaps } from '@/lib/types/db';
 
 export type CurrentUser = {
   authId: string;
   email: string;
   profile: UserProfile;
+  // Эффективные права (роль + персональные оверрайды). Для гейтинга UI/actions.
+  // БД остаётся источником правды (RLS); это производная для удобства.
+  caps: EffectiveCaps;
 };
 
 // Один источник правды о текущем пользователе.
@@ -31,7 +34,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
   const { data: profile, error: profileError } = await supabase
     .from('users')
-    .select('id, full_name, email, role, is_active, created_at')
+    .select('id, full_name, email, role, is_active, created_at, perm_overrides')
     .eq('id', authData.user.id)
     .maybeSingle<UserProfile>();
 
@@ -41,6 +44,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   return {
     authId: authData.user.id,
     email: authData.user.email ?? profile.email,
-    profile,
+    profile: { ...profile, perm_overrides: profile.perm_overrides ?? {} },
+    caps: resolveCaps(profile.role, profile.perm_overrides),
   };
 });

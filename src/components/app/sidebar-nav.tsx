@@ -12,12 +12,11 @@ import {
   FileText,
   Wallet,
   Settings,
-  UserCog,
   type LucideIcon,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type { Role } from '@/lib/types/db';
+import type { Capability, EffectiveCaps } from '@/lib/types/db';
 
 export type SidebarCounts = {
   tasksOpen: number;
@@ -30,10 +29,8 @@ type NavItem = {
   enabled: boolean;
   /** Ключ счётчика из counts. */
   counterKey?: keyof SidebarCounts;
-  /** Пункт виден только владельцу (системные настройки). */
-  ownerOnly?: boolean;
-  /** Пункт виден владельцу и админу (управление пользователями). */
-  managerOnly?: boolean;
+  /** Пункт виден, если у пользователя есть хотя бы одно из этих прав. */
+  requiredCaps?: ReadonlyArray<Capability>;
 };
 
 // Рабочая область — основные разделы (видны всем активным сотрудникам).
@@ -48,11 +45,17 @@ const WORK_ITEMS: ReadonlyArray<NavItem> = [
   { href: '/finance',   label: 'Счета',      icon: Wallet,          enabled: false },
 ];
 
-// Администрирование. «Пользователи» — owner+admin (управление сотрудниками);
-// «Настройки» (системные, ставки) — только владелец.
+// Администрирование. Единый вход — «Настройки». Пункт виден обладателям права
+// управления пользователями ИЛИ системных настроек (ставок). Внутри хаба каждая
+// карточка дополнительно гейтится своим правом; RLS дублирует на стороне БД.
 const ADMIN_ITEMS: ReadonlyArray<NavItem> = [
-  { href: '/settings/users', label: 'Пользователи', icon: UserCog,  enabled: true, managerOnly: true },
-  { href: '/settings',       label: 'Настройки',    icon: Settings, enabled: true, ownerOnly: true },
+  {
+    href: '/settings',
+    label: 'Настройки',
+    icon: Settings,
+    enabled: true,
+    requiredCaps: ['manage_users', 'edit_payroll_rates'],
+  },
 ];
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
@@ -65,11 +68,11 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 
 export function SidebarNav({
   counts,
-  role,
+  caps,
   collapsed = false,
 }: {
   counts: SidebarCounts;
-  role: Role;
+  caps: EffectiveCaps;
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
@@ -155,11 +158,9 @@ export function SidebarNav({
     );
   };
 
-  const adminItems = ADMIN_ITEMS.filter((item) => {
-    if (item.ownerOnly && role !== 'owner') return false;
-    if (item.managerOnly && role !== 'owner' && role !== 'admin') return false;
-    return true;
-  });
+  const adminItems = ADMIN_ITEMS.filter(
+    (item) => !item.requiredCaps || item.requiredCaps.some((c) => caps[c]),
+  );
 
   return (
     <nav className="flex-1 overflow-x-hidden overflow-y-auto px-3 pb-3 flex flex-col gap-0.5">

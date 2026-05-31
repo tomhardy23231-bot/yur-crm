@@ -13,7 +13,7 @@ export async function listManagedUsers(): Promise<UserProfile[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('users')
-    .select('id, full_name, email, role, is_active, created_at')
+    .select('id, full_name, email, role, is_active, created_at, perm_overrides')
     .order('is_active', { ascending: false })
     .order('full_name', { ascending: true });
 

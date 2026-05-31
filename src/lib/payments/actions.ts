@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { requireRole, requireUser } from '@/lib/auth/require-role';
+import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { dbErrorMessage } from '@/lib/errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -165,12 +165,12 @@ export async function createPaymentAction(
   return { ok: true };
 }
 
-// Bare action: удаление платежа. RLS DELETE = is_staff() only.
-// requireRole — первая линия защиты: иначе specialist, форсящий POST вручную,
-// проходит мимо silent-RLS-deny (supabase возвращает rows=0, error=null) и
-// пишет фейковый `payment_deleted` в activity_log на видимое ему дело.
+// Bare action: удаление платежа. RLS UPDATE/DELETE = private.can('edit_payments').
+// requireCap — первая линия защиты: иначе пользователь без права, форсящий POST
+// вручную, прошёл бы мимо silent-RLS-deny (rows=0, error=null) и записал бы
+// фейковый `payment_deleted` в activity_log на видимое ему дело.
 export async function deletePaymentAction(formData: FormData): Promise<void> {
-  await requireRole(['owner', 'admin']);
+  await requireCap('edit_payments');
   const payment_id = String(formData.get('payment_id') ?? '').trim();
   const case_id = String(formData.get('case_id') ?? '').trim();
 

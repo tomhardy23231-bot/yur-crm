@@ -2,7 +2,7 @@ import 'server-only';
 
 import { redirect } from 'next/navigation';
 import { getCurrentUser, type CurrentUser } from '@/lib/auth/current-user';
-import type { Role } from '@/lib/types/db';
+import type { Role, Capability } from '@/lib/types/db';
 
 // Стражи доступа для Server Components, Server Actions, Route Handlers.
 // CLAUDE.md §4: матрица доступа.
@@ -25,5 +25,14 @@ export async function requireRole(
 ): Promise<CurrentUser> {
   const user = await requireUser();
   if (!allowed.includes(user.profile.role)) redirect('/forbidden');
+  return user;
+}
+
+// `requireCap(cap)` — поверх requireUser, плюс проверка ЭФФЕКТИВНОГО права
+// (роль + персональные оверрайды). Если права нет — редирект на /forbidden.
+// БД (RLS) дублирует проверку — это лишь ранний и понятный отказ в UI.
+export async function requireCap(cap: Capability): Promise<CurrentUser> {
+  const user = await requireUser();
+  if (!user.caps[cap]) redirect('/forbidden');
   return user;
 }

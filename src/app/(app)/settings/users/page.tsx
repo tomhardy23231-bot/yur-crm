@@ -12,28 +12,27 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { requireRole } from '@/lib/auth/require-role';
+import { requireCap } from '@/lib/auth/require-role';
 import { listManagedUsers } from '@/lib/users/queries';
-import { assignableRoles, canManageRole } from '@/lib/types/db';
+import { assignableRoles, canManageTargetUser } from '@/lib/types/db';
 import { UserCreateForm } from '@/components/users/user-create-form';
 import {
   UserRoleControl,
   UserActiveControl,
 } from '@/components/users/user-row-controls';
+import { UserPermsEditor } from '@/components/users/user-perms-editor';
 
-// Управление пользователями и ролями (Задача 4). Доступ: owner + admin.
-// Ступенчатые права: admin управляет только не-админскими ролями. Проверки
-// продублированы в RLS (private.can_manage_target_user) и server-actions.
+// Управление пользователями, ролями и персональными правами. Доступ — обладатель
+// права manage_users (по умолчанию owner/admin). Ступенчатые права: не-owner
+// управляет только не-админскими ролями. Проверки продублированы в RLS
+// (private.can_manage_target_user) и server-actions.
 export default async function UsersSettingsPage() {
-  const actor = await requireRole(['owner', 'admin']);
+  const actor = await requireCap('manage_users');
   const users = await listManagedUsers();
-  const assignable = assignableRoles(actor.profile.role);
+  const assignable = assignableRoles(actor.profile.role, actor.caps.manage_users);
 
-  // K1: страница /settings — owner-only. Для admin крошка «‹ Настройки» вела в
-  // /forbidden (хотя сам пункт в меню скрыт). Ведём админа на дашборд, владельца
-  // — в общие настройки.
-  const backHref = actor.profile.role === 'owner' ? '/settings' : '/';
-  const backLabel = actor.profile.role === 'owner' ? 'Настройки' : 'На главную';
+  const backHref = '/settings';
+  const backLabel = 'Настройки';
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
@@ -54,10 +53,14 @@ export default async function UsersSettingsPage() {
         <Card className="p-5">
           <p className="mb-4 text-[13px] text-text-muted">
             {actor.profile.role === 'owner'
-              ? 'Создавайте сотрудников и назначайте любые роли.'
-              : 'Вы можете заводить и менять роли офис-менеджеров, юристов и экспертов. Владельцев и администраторов меняет только владелец.'}
+              ? 'Создавайте сотрудников, назначайте роли и персональные права.'
+              : 'Вы можете заводить и менять роли офис-менеджеров, юристов и экспертов, а также их персональные права. Владельцев и администраторов меняет только владелец.'}
           </p>
-          <UserCreateForm assignableRoles={assignable} />
+          <UserCreateForm
+            assignableRoles={assignable}
+            actorRole={actor.profile.role}
+            actorCaps={actor.caps}
+          />
         </Card>
       </section>
 
@@ -69,6 +72,7 @@ export default async function UsersSettingsPage() {
               <TableHead>Сотрудник</TableHead>
               <TableHead>Роль</TableHead>
               <TableHead>Статус</TableHead>
+              <TableHead className="text-right">Права</TableHead>
               <TableHead className="text-right">Действие</TableHead>
             </TableRow>
           </TableHeader>
@@ -77,7 +81,8 @@ export default async function UsersSettingsPage() {
               const isSelf = u.id === actor.profile.id;
               // Менять можно, если роль цели в зоне актора И это не он сам.
               const manageable =
-                !isSelf && canManageRole(actor.profile.role, u.role);
+                !isSelf &&
+                canManageTargetUser(actor.profile.role, actor.caps.manage_users, u.role);
               return (
                 <TableRow key={u.id} className={u.is_active ? undefined : 'opacity-60'}>
                   <TableCell>
@@ -109,6 +114,22 @@ export default async function UsersSettingsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end">
+                      {manageable && u.is_active ? (
+                        <UserPermsEditor
+                          userId={u.id}
+                          userName={u.full_name}
+                          targetRole={u.role}
+                          current={u.perm_overrides}
+                          actorRole={actor.profile.role}
+                          actorCaps={actor.caps}
+                        />
+                      ) : (
+                        <span className="text-[12px] text-text-subtle">—</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end">
                       <UserActiveControl
                         userId={u.id}
                         isActive={u.is_active}
@@ -134,7 +155,7 @@ export default async function UsersSettingsPage() {
 
       <p className="text-[12px] text-text-subtle">
         Деактивация не удаляет данные: сотрудник теряет доступ, но его дела,
-        платежи и начисления сохраняются. Роль каждого пользователя меняется по
+        платежи и начисления сохраняются. Роль и персональные права меняются по
         правилам доступа — администратор не управляет владельцами и админами.
       </p>
     </main>

@@ -72,8 +72,150 @@ export function canManageRole(actorRole: Role, targetRole: Role): boolean {
 }
 
 // Роли, которые актор вправе назначать/создавать (для Select на экране users).
-export function assignableRoles(actorRole: Role): Role[] {
-  return ALL_ROLES.filter((r) => canManageRole(actorRole, r));
+// hasManageUsers по умолчанию выводится из роли (owner/admin); можно передать
+// эффективное право manage_users — тогда учитывается выданное персональное право.
+export function assignableRoles(
+  actorRole: Role,
+  hasManageUsers: boolean = (MANAGER_ROLES as readonly Role[]).includes(actorRole),
+): Role[] {
+  if (!hasManageUsers) return [];
+  if (actorRole === 'owner') return [...ALL_ROLES];
+  return ['office_manager', 'lawyer', 'expert'];
+}
+
+// Cap-aware «может ли актор управлять пользователем с такой ролью» — зеркало
+// private.can_manage_target_user (SQL). owner-по-роли → любой; иной обладатель
+// права manage_users → только office_manager/lawyer/expert (не owner/admin).
+export function canManageTargetUser(
+  actorRole: Role,
+  actorHasManageUsers: boolean,
+  targetRole: Role,
+): boolean {
+  if (!actorHasManageUsers) return false;
+  if (actorRole === 'owner') return true;
+  return targetRole !== 'owner' && targetRole !== 'admin';
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Персональные права поверх ролей (per-user permission overrides).
+// Зеркало supabase/migrations/20260601100000_permission_overrides.sql.
+// БД — источник правды (RLS/триггеры зовут private.can/can_grant_cap);
+// эти функции нужны для гейтинга UI и предпроверок в server actions.
+// ВНИМАНИЕ: CAP_ROLE_DEFAULTS обязан совпадать с private.cap_role_default (SQL).
+// ────────────────────────────────────────────────────────────────────────
+
+export const CAPABILITIES = [
+  'view_all_cases',
+  'create_cases',
+  'delete_cases',
+  'create_clients',
+  'delete_clients',
+  'delete_documents',
+  'edit_payments',
+  'view_all_payroll',
+  'edit_rate_overrides',
+  'manage_users',
+  'edit_payroll_rates',
+] as const;
+
+export type Capability = (typeof CAPABILITIES)[number];
+export type PermOverrides = Partial<Record<Capability, boolean>>;
+export type EffectiveCaps = Record<Capability, boolean>;
+
+// Дефолт права по роли — ЕДИНСТВЕННЫЙ источник в TS (сверен с SQL cap_role_default).
+// Record<Capability, ...> заставляет перечислить все права (иначе ошибка типов).
+export const CAP_ROLE_DEFAULTS: Record<Capability, readonly Role[]> = {
+  view_all_cases: ['owner', 'admin', 'office_manager'],
+  create_cases: ['owner', 'admin', 'office_manager'],
+  delete_cases: ['owner', 'admin'],
+  create_clients: ['owner', 'admin', 'office_manager', 'lawyer'],
+  delete_clients: ['owner', 'admin'],
+  delete_documents: ['owner', 'admin'],
+  edit_payments: ['owner', 'admin'],
+  view_all_payroll: ['owner', 'admin', 'office_manager'],
+  edit_rate_overrides: ['owner', 'admin'],
+  manage_users: ['owner', 'admin'],
+  edit_payroll_rates: ['owner'],
+};
+
+// Право, которое выдаёт ТОЛЬКО владелец (системные настройки).
+export const OWNER_ONLY_CAPABILITIES: readonly Capability[] = ['edit_payroll_rates'];
+
+// Подписи прав для UI настроек (русский).
+export const CAPABILITY_LABELS: Record<Capability, string> = {
+  view_all_cases: 'Видеть все дела',
+  create_cases: 'Создавать дела',
+  delete_cases: 'Удалять дела',
+  create_clients: 'Создавать клиентов',
+  delete_clients: 'Удалять клиентов',
+  delete_documents: 'Удалять документы',
+  edit_payments: 'Изменять и удалять платежи',
+  view_all_payroll: 'Видеть зарплату всех',
+  edit_rate_overrides: 'Менять % зарплаты на деле',
+  manage_users: 'Управление пользователями',
+  edit_payroll_rates: 'Системные настройки (ставки)',
+};
+
+export const CAPABILITY_HINTS: Record<Capability, string> = {
+  view_all_cases:
+    'Доступ ко всем делам (и их клиентам, документам, задачам, платежам), а не только к своим.',
+  create_cases: 'Заводить новые дела.',
+  delete_cases: 'Удалять дела.',
+  create_clients: 'Заводить новых клиентов.',
+  delete_clients: 'Удалять клиентов.',
+  delete_documents: 'Удалять документы по делам.',
+  edit_payments: 'Изменять и удалять платежи клиентов.',
+  view_all_payroll: 'Видеть начисления и выплаты зарплаты всех сотрудников.',
+  edit_rate_overrides: 'Задавать индивидуальный % зарплаты на конкретном деле.',
+  manage_users: 'Создавать сотрудников и менять их роли и права.',
+  edit_payroll_rates: 'Менять базовые ставки зарплаты по категориям дел.',
+};
+
+// Дефолт права по роли. Зеркало private.cap_role_default.
+export function capRoleDefault(cap: Capability, role: Role): boolean {
+  return CAP_ROLE_DEFAULTS[cap].includes(role);
+}
+
+// Эффективное право: оверрайд (если задан и булев) важнее дефолта роли.
+export function effectiveCap(
+  cap: Capability,
+  role: Role,
+  overrides: PermOverrides | null | undefined,
+): boolean {
+  const ov = overrides?.[cap];
+  if (typeof ov === 'boolean') return ov;
+  return capRoleDefault(cap, role);
+}
+
+// Полная карта эффективных прав (для CurrentUser.caps).
+export function resolveCaps(
+  role: Role,
+  overrides: PermOverrides | null | undefined,
+): EffectiveCaps {
+  return Object.fromEntries(
+    CAPABILITIES.map((cap) => [cap, effectiveCap(cap, role, overrides)]),
+  ) as EffectiveCaps;
+}
+
+// Может ли актор ВЫДАТЬ/СНЯТЬ право cap целевому пользователю.
+// Зеркало private.can_grant_cap (UI-предпроверка; финальный страж — БД-триггер).
+export function canGrantCapability(
+  cap: Capability,
+  actorRole: Role,
+  actorCaps: EffectiveCaps,
+  targetRole: Role,
+  isSelf: boolean,
+): boolean {
+  if (isSelf) return false; // нельзя править свои права
+  if (!canManageTargetUser(actorRole, actorCaps.manage_users, targetRole)) {
+    return false; // вне зоны управления / нет manage_users
+  }
+  if (cap === 'edit_payroll_rates' && actorRole !== 'owner') return false; // owner-only
+  if (cap === 'manage_users' && actorRole !== 'owner' && actorRole !== 'admin') {
+    return false; // manage_users выдают только owner/admin по роли
+  }
+  if (actorRole !== 'owner' && !actorCaps[cap]) return false; // анти-амплификация
+  return true;
 }
 
 export type UserProfile = {
@@ -83,6 +225,8 @@ export type UserProfile = {
   role: Role;
   is_active: boolean;
   created_at: string;
+  // Персональные права поверх роли (tri-state по ключу). Пусто {} = как у роли.
+  perm_overrides: PermOverrides;
 };
 
 // =====================================================================

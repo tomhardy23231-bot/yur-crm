@@ -25,7 +25,7 @@ import {
 } from '@/lib/dashboard/queries';
 import { getPayrollRates, listPayrollBySpecialist } from '@/lib/payroll/queries';
 import { listCases } from '@/lib/cases/queries';
-import { canCreateClients, STAFF_ROLES, type Role } from '@/lib/types/db';
+import { STAFF_ROLES, type Role } from '@/lib/types/db';
 import { formatMoney } from '@/lib/utils';
 
 // Подпись месяца — в часовом поясе фирмы (как и границы окна в getRevenueThisMonth).
@@ -54,7 +54,11 @@ export default async function HomePage() {
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       {isEmpty ? (
-        <EmptyDashboard role={profile.role} name={profile.full_name} />
+        <EmptyDashboard
+          role={profile.role}
+          name={profile.full_name}
+          canCreateClient={user.caps.create_clients}
+        />
       ) : staff ? (
         <StaffDashboard stats={stats} recent={recent} />
       ) : (
@@ -77,7 +81,15 @@ export default async function HomePage() {
 // эксперт ждёт назначения.
 // ============================================================================
 
-function EmptyDashboard({ role, name }: { role: Role; name: string }) {
+function EmptyDashboard({
+  role,
+  name,
+  canCreateClient,
+}: {
+  role: Role;
+  name: string;
+  canCreateClient: boolean;
+}) {
   const staff = STAFF_ROLES.includes(role);
   const firstName = name.trim().split(/\s+/)[0] ?? name;
 
@@ -110,7 +122,7 @@ function EmptyDashboard({ role, name }: { role: Role; name: string }) {
             </Link>
           </Button>
         )}
-        {canCreateClients(role) && (
+        {canCreateClient && (
           <Button asChild variant={staff ? 'secondary' : 'primary'}>
             <Link href="/clients/new">
               <Plus size={16} strokeWidth={2} />

@@ -12,12 +12,7 @@ import {
   listLawyersForAssignment,
 } from '@/lib/cases/queries';
 import { requireUser } from '@/lib/auth/require-role';
-import {
-  allowedStagesFor,
-  canCreateClients,
-  MANAGER_ROLES,
-  STAFF_ROLES,
-} from '@/lib/types/db';
+import { allowedStagesFor, STAFF_ROLES } from '@/lib/types/db';
 
 export default async function EditCasePage({
   params,
@@ -69,8 +64,8 @@ export default async function EditCasePage({
           submitLabel="Сохранить"
           cancelHref={`/cases/${id}`}
           allowedStages={allowedStages}
-          canEditRates={MANAGER_ROLES.includes(user.profile.role)}
-          canCreateClient={canCreateClients(user.profile.role)}
+          canEditRates={user.caps.edit_rate_overrides}
+          canCreateClient={user.caps.create_clients}
         />
       </Card>
     </main>

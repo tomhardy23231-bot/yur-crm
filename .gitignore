@@ -10,6 +10,9 @@
 !.yarn/releases
 !.yarn/versions
 
+# local dev server log (created when restarting `npm run dev` via tooling)
+.devserver.log
+
 # testing
 /coverage
 

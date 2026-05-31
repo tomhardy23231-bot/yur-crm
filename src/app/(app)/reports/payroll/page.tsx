@@ -29,7 +29,6 @@ import {
   CASE_CATEGORY_LABEL,
   LEDGER_STATUS_LABEL,
   MANAGER_ROLES,
-  STAFF_ROLES,
 } from '@/lib/types/db';
 
 const MONEY_FMT = new Intl.NumberFormat('ru-RU', {
@@ -53,12 +52,14 @@ export default async function PayrollReportPage({
   // U3: фильтр «только к выплате» (показывает лишь то, что ещё не выплачено).
   const onlyDue = due === '1';
 
-  const isOwner = user.profile.role === 'owner';
+  // Право редактировать ставки (по умолчанию owner) — кнопка «Настроить ставки».
+  const canEditRates = user.caps.edit_payroll_rates;
+  // Отметка «выплачено»/откат в леджере — owner/admin по роли (не настраиваемое).
   const canManage = MANAGER_ROLES.includes(user.profile.role);
-  const isStaff = STAFF_ROLES.includes(user.profile.role);
-  // Не-staff (юрист/Експерт) видит в карточке ставок только свою колонку.
-  const showLawyerRate = isStaff || user.profile.role === 'lawyer';
-  const showExpertRate = isStaff || user.profile.role === 'expert';
+  // «Видит зарплату всех» → обе колонки ставок; иначе только свою.
+  const seeAll = user.caps.view_all_payroll;
+  const showLawyerRate = seeAll || user.profile.role === 'lawyer';
+  const showExpertRate = seeAll || user.profile.role === 'expert';
 
   const [rows, rates, ledger, payoutRows] = await Promise.all([
     listPayrollBySpecialist(),
@@ -97,7 +98,7 @@ export default async function PayrollReportPage({
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      {isOwner && (
+      {canEditRates && (
         <div className="flex justify-end">
           <Button asChild variant="secondary" size="sm">
             <Link href="/settings/payroll">

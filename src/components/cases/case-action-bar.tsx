@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { CreditCard, FilePlus2, Pencil } from 'lucide-react';
+import { ChevronLeft, Pencil } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { DeleteCaseForm } from '@/components/cases/delete-case-form';
 import { cn } from '@/lib/utils';
 
-// Задача 4: закреплённая (sticky) панель карточки дела — быстрые ссылки-якоря на
-// секции + ключевые действия. Остаётся видимой при прокрутке длинной карточки,
-// чтобы действия не «закапывались» внизу. Подсветка активной секции — scrollspy.
+// Закреплённая (sticky) панель карточки дела — единственный дом действий дела:
+// ссылки-якоря на секции слева + действия (Редактировать, Удалить) справа.
+// Остаётся видимой при прокрутке длинной карточки, поэтому действия не нужно
+// дублировать в шапке. Подсветка активной секции — scrollspy.
 
 const SECTIONS = [
   { id: 'overview', label: 'Обзор' },
@@ -22,9 +24,13 @@ const SECTIONS = [
 export function CaseActionBar({
   caseId,
   canEdit,
+  canDelete,
+  caseTitle,
 }: {
   caseId: string;
   canEdit: boolean;
+  canDelete: boolean;
+  caseTitle: string;
 }) {
   const [active, setActive] = useState<string>('overview');
 
@@ -51,8 +57,22 @@ export function CaseActionBar({
   return (
     <div className="sticky top-0 z-30 -mx-3 border-b border-border bg-surface/85 px-3 py-2 backdrop-blur sm:-mx-4 sm:px-4">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <nav className="flex min-w-0 items-center gap-1 overflow-x-auto">
-          {SECTIONS.map((s) => (
+        <div className="flex min-w-0 items-center gap-2.5">
+          {/* «К списку дел» переехал сюда — одна строка с навигацией, без
+              отдельной полосы сверху. */}
+          <Link
+            href="/cases"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-[12.5px] font-medium text-text-muted shadow-sm transition-colors hover:border-border-strong hover:text-text"
+          >
+            <ChevronLeft size={14} strokeWidth={1.75} />
+            <span className="hidden sm:inline">К списку дел</span>
+          </Link>
+          <span
+            aria-hidden
+            className="hidden h-5 w-px shrink-0 bg-border sm:block"
+          />
+          <nav className="flex min-w-0 items-center gap-1 overflow-x-auto">
+            {SECTIONS.map((s) => (
             <a
               key={s.id}
               href={`#${s.id}`}
@@ -66,29 +86,23 @@ export function CaseActionBar({
             >
               {s.label}
             </a>
-          ))}
-        </nav>
+            ))}
+          </nav>
+        </div>
 
-        {canEdit && (
+        {(canEdit || canDelete) && (
           <div className="flex shrink-0 items-center gap-2">
-            <Button asChild variant="ghost" size="sm">
-              <a href="#finance">
-                <CreditCard size={14} strokeWidth={1.75} />
-                Платёж
-              </a>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <a href="#documents">
-                <FilePlus2 size={14} strokeWidth={1.75} />
-                Документ
-              </a>
-            </Button>
-            <Button asChild variant="secondary" size="sm">
-              <Link href={`/cases/${caseId}/edit`}>
-                <Pencil size={14} strokeWidth={1.75} />
-                Редактировать
-              </Link>
-            </Button>
+            {canEdit && (
+              <Button asChild variant="secondary" size="sm">
+                <Link href={`/cases/${caseId}/edit`}>
+                  <Pencil size={14} strokeWidth={1.75} />
+                  Редактировать
+                </Link>
+              </Button>
+            )}
+            {canDelete && (
+              <DeleteCaseForm caseId={caseId} caseTitle={caseTitle} />
+            )}
           </div>
         )}
       </div>

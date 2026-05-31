@@ -7,7 +7,7 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { LogoutButton } from '@/components/logout-button';
 import { cn } from '@/lib/utils';
-import type { Role } from '@/lib/types/db';
+import type { EffectiveCaps } from '@/lib/types/db';
 
 import { SidebarNav, type SidebarCounts } from './sidebar-nav';
 
@@ -16,13 +16,13 @@ const BRAND_SHADOW = 'var(--shadow-brand-tile)';
 export function Sidebar({
   userName,
   roleLabel,
-  role,
+  caps,
   counts,
   defaultCollapsed,
 }: {
   userName: string;
   roleLabel: string;
-  role: Role;
+  caps: EffectiveCaps;
   counts: SidebarCounts;
   defaultCollapsed: boolean;
 }) {
@@ -104,7 +104,7 @@ export function Sidebar({
         </button>
       )}
 
-      <SidebarNav counts={counts} role={role} collapsed={collapsed} />
+      <SidebarNav counts={counts} caps={caps} collapsed={collapsed} />
 
       {/* Пользователь */}
       <div className="shrink-0 border-t border-sidebar-border p-3.5">
