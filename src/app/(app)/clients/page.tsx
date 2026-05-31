@@ -11,6 +11,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { Avatar } from '@/components/ui/avatar';
+import { ClickableRow } from '@/components/ui/clickable-row';
 import { ClientKindBadge } from '@/components/clients/client-kind-badge';
 import { ClientsSearch } from '@/components/clients/clients-search';
 import { cn } from '@/lib/utils';
@@ -63,7 +64,7 @@ export default async function ClientsPage({
     sp.dir && isSortDir(sp.dir) ? sp.dir : CLIENTS_DEFAULT_SORT.dir;
 
   const result = await listClients({ q, kind, page, sort, dir });
-  const { items, total, pageCount } = result;
+  const { items, pageCount } = result;
 
   const KIND_OPTIONS: ReadonlyArray<{ value: ClientKind | 'all'; label: string }> = [
     { value: 'all', label: 'Все' },
@@ -110,20 +111,6 @@ export default async function ClientsPage({
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-text-muted">
-          {total === 0
-            ? 'Пока нет клиентов'
-            : `Всего: ${total} ${plural(total, ['клиент', 'клиента', 'клиентов'])}`}
-        </p>
-        <Button asChild>
-          <Link href="/clients/new">
-            <Plus size={16} strokeWidth={2} />
-            Добавить клиента
-          </Link>
-        </Button>
-      </header>
-
       {deleted && (
         <div className="text-[13px] text-success bg-success-bg border border-success/20 rounded-md px-3 py-2 max-w-md">
           Клиент удалён.
@@ -154,6 +141,12 @@ export default async function ClientsPage({
             );
           })}
         </div>
+        <Button asChild className="ml-auto">
+          <Link href="/clients/new">
+            <Plus size={16} strokeWidth={2} />
+            Добавить клиента
+          </Link>
+        </Button>
       </div>
 
       {items.length === 0 ? (
@@ -187,11 +180,20 @@ export default async function ClientsPage({
             </TableHeader>
             <TableBody>
               {items.map((c) => (
-                <TableRow key={c.id} className="group cursor-pointer">
-                  <TableCell>
+                <ClickableRow
+                  key={c.id}
+                  href={`/clients/${c.id}`}
+                  className="group cursor-pointer"
+                >
+                  <TableCell className="relative">
+                    {/* Латунная полоска слева — заполняется из центра при наведении на строку */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 rounded-l-lg [box-shadow:inset_3px_0_0_var(--primary)] [clip-path:inset(50%_0)] transition-[clip-path] duration-[400ms] ease-out group-hover:[clip-path:inset(0)]"
+                    />
                     <Link
                       href={`/clients/${c.id}`}
-                      className="flex items-center gap-3 -my-1 -mx-2 px-2 py-1 rounded-md focus-visible:outline-none focus-visible:bg-primary-subtle"
+                      className="relative flex items-center gap-3 -my-1 -mx-2 px-2 py-1 rounded-md transition-transform duration-200 ease-out group-hover:translate-x-1 focus-visible:outline-none focus-visible:bg-primary-subtle"
                     >
                       <Avatar name={c.name} size="sm" />
                       <span className="font-medium text-text group-hover:text-primary transition-colors">
@@ -212,7 +214,7 @@ export default async function ClientsPage({
                   <TableCell className="font-mono text-[12.5px] text-text-muted">
                     {DATE_FMT.format(new Date(c.created_at))}
                   </TableCell>
-                </TableRow>
+                </ClickableRow>
               ))}
             </TableBody>
           </Table>
@@ -294,14 +296,4 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
       )}
     </div>
   );
-}
-
-// Простой плюрализатор для русских числительных.
-function plural(n: number, forms: [string, string, string]): string {
-  const abs = Math.abs(n) % 100;
-  const n1 = abs % 10;
-  if (abs > 10 && abs < 20) return forms[2];
-  if (n1 > 1 && n1 < 5) return forms[1];
-  if (n1 === 1) return forms[0];
-  return forms[2];
 }

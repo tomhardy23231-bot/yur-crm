@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import Link from 'next/link';
 
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import type { ClientActionState, ClientFormFields } from '@/lib/clients/actions';
 import {
   CLIENT_KIND_LABEL,
@@ -38,6 +39,8 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
     action,
     INITIAL,
   );
+  const formRef = useRef<HTMLFormElement>(null);
+  useShakeInvalidFields(formRef, state);
 
   // Приоритет: то, что прислал action (после ошибки валидации) → исходный клиент.
   function value(field: ClientFormFields): string {
@@ -63,7 +66,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form ref={formRef} action={formAction} className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field label="Имя или наименование" htmlFor="name" error={err('name')} required>
           <Input
@@ -194,7 +197,7 @@ function Field({
       </Label>
       {children}
       {error && (
-        <p className="text-[12px] text-error" role="alert">
+        <p className="text-[12px] text-error animate-field-error" role="alert">
           {error}
         </p>
       )}

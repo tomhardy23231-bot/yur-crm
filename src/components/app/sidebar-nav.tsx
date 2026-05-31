@@ -12,6 +12,7 @@ import {
   FileText,
   Wallet,
   Settings,
+  UserCog,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -31,6 +32,8 @@ type NavItem = {
   counterKey?: keyof SidebarCounts;
   /** Пункт виден только владельцу (системные настройки). */
   ownerOnly?: boolean;
+  /** Пункт виден владельцу и админу (управление пользователями). */
+  managerOnly?: boolean;
 };
 
 // Рабочая область — основные разделы (видны всем активным сотрудникам).
@@ -45,9 +48,11 @@ const WORK_ITEMS: ReadonlyArray<NavItem> = [
   { href: '/finance',   label: 'Счета',      icon: Wallet,          enabled: false },
 ];
 
-// Администрирование — системные настройки (только владелец).
+// Администрирование. «Пользователи» — owner+admin (управление сотрудниками);
+// «Настройки» (системные, ставки) — только владелец.
 const ADMIN_ITEMS: ReadonlyArray<NavItem> = [
-  { href: '/settings',  label: 'Настройки',  icon: Settings,        enabled: true, ownerOnly: true },
+  { href: '/settings/users', label: 'Пользователи', icon: UserCog,  enabled: true, managerOnly: true },
+  { href: '/settings',       label: 'Настройки',    icon: Settings, enabled: true, ownerOnly: true },
 ];
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
@@ -61,40 +66,53 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 export function SidebarNav({
   counts,
   role,
+  collapsed = false,
 }: {
   counts: SidebarCounts;
   role: Role;
+  collapsed?: boolean;
 }) {
   const pathname = usePathname();
 
   const renderItem = ({ href, label, icon: Icon, enabled, counterKey }: NavItem) => {
+    const counter = counterKey ? counts[counterKey] : 0;
+
     if (!enabled) {
       return (
         <span
           key={href}
-          className="flex items-center gap-3 px-3 h-10 rounded-[10px] text-[14px] text-sidebar-text-disabled cursor-not-allowed select-none"
+          title={collapsed ? `${label} — скоро` : undefined}
+          className={cn(
+            'flex items-center h-10 rounded-[10px] text-[14px] text-sidebar-text-disabled cursor-not-allowed select-none',
+            collapsed ? 'justify-center px-0' : 'gap-3 px-3',
+          )}
           aria-disabled="true"
         >
           <Icon size={19} strokeWidth={1.7} />
-          <span className="flex-1">{label}</span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.05em] font-semibold">
-            скоро
-          </span>
+          {!collapsed && (
+            <>
+              <span className="flex-1">{label}</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.05em] font-semibold">
+                скоро
+              </span>
+            </>
+          )}
         </span>
       );
     }
 
     const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
-    const counter = counterKey ? counts[counterKey] : 0;
 
     return (
       <Link
         key={href}
         href={href}
+        title={collapsed ? label : undefined}
         aria-current={active ? 'page' : undefined}
         className={cn(
-          'group relative flex items-center gap-3 px-3 h-10 rounded-[10px] text-[14px] font-medium',
+          'group relative flex items-center h-10 rounded-[10px] text-[14px] font-medium',
           'transition-colors duration-[160ms] ease-out',
+          collapsed ? 'justify-center px-0' : 'gap-3 px-3',
           active
             ? 'bg-sidebar-active-bg text-sidebar-active-text'
             : 'text-sidebar-text hover:bg-sidebar-hover-bg hover:text-sidebar-text-strong',
@@ -106,35 +124,54 @@ export function SidebarNav({
             className="absolute -left-3 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-[3px] bg-sidebar-accent"
           />
         )}
-        <Icon size={19} strokeWidth={1.7} />
-        <span className="flex-1">{label}</span>
-        {counter > 0 && (
-          <span
-            className={cn(
-              'inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-mono font-semibold',
-              active
-                ? 'bg-sidebar-accent/20 text-sidebar-accent-bright'
-                : 'bg-white/[0.07] text-sidebar-text',
+        <span className="relative inline-flex">
+          <Icon size={19} strokeWidth={1.7} />
+          {/* В свёрнутом виде число не помещается → показываем точку-индикатор. */}
+          {collapsed && counter > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full bg-sidebar-accent"
+            />
+          )}
+        </span>
+        {!collapsed && (
+          <>
+            <span className="flex-1">{label}</span>
+            {counter > 0 && (
+              <span
+                className={cn(
+                  'inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-mono font-semibold',
+                  active
+                    ? 'bg-sidebar-accent/20 text-sidebar-accent-bright'
+                    : 'bg-white/[0.07] text-sidebar-text',
+                )}
+              >
+                {counter}
+              </span>
             )}
-          >
-            {counter}
-          </span>
+          </>
         )}
       </Link>
     );
   };
 
-  const adminItems = ADMIN_ITEMS.filter(
-    (item) => !item.ownerOnly || role === 'owner',
-  );
+  const adminItems = ADMIN_ITEMS.filter((item) => {
+    if (item.ownerOnly && role !== 'owner') return false;
+    if (item.managerOnly && role !== 'owner' && role !== 'admin') return false;
+    return true;
+  });
 
   return (
-    <nav className="flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-0.5">
-      <GroupLabel>Рабочая область</GroupLabel>
+    <nav className="flex-1 overflow-x-hidden overflow-y-auto px-3 pb-3 flex flex-col gap-0.5">
+      {collapsed ? <div className="h-3" /> : <GroupLabel>Рабочая область</GroupLabel>}
       {WORK_ITEMS.map(renderItem)}
       {adminItems.length > 0 && (
         <>
-          <GroupLabel>Администрирование</GroupLabel>
+          {collapsed ? (
+            <div className="mx-auto my-2 h-px w-7 bg-sidebar-border" aria-hidden="true" />
+          ) : (
+            <GroupLabel>Администрирование</GroupLabel>
+          )}
           {adminItems.map(renderItem)}
         </>
       )}

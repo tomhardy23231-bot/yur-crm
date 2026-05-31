@@ -1,8 +1,10 @@
 import Link from 'next/link';
-import { Coins, ShieldCheck, Users, ChevronRight } from 'lucide-react';
+import { cookies } from 'next/headers';
+import { Coins, Palette, ShieldCheck, Users, ChevronRight } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ThemeSwitcher, type Theme } from '@/components/app/theme-switcher';
 import { requireRole } from '@/lib/auth/require-role';
 
 // Хаб системных настроек — ТОЛЬКО владелец (CLAUDE.md §4: системные настройки
@@ -10,11 +12,24 @@ import { requireRole } from '@/lib/auth/require-role';
 export default async function SettingsPage() {
   await requireRole(['owner']);
 
+  const theme: Theme =
+    (await cookies()).get('theme')?.value === 'brass' ? 'brass' : 'teal';
+
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4 max-w-5xl">
-      <p className="text-[13px] text-text-muted">
-        Системные настройки доступны только владельцу.
-      </p>
+      {/* Оформление — цветовая тема */}
+      <section className="flex flex-col gap-3">
+        <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
+          <Palette size={16} strokeWidth={1.75} className="text-text-muted" />
+          Оформление
+        </h2>
+        <Card className="p-5">
+          <p className="mb-3.5 text-[13px] text-text-muted">
+            Цветовая тема интерфейса. Выбор сохраняется в этом браузере.
+          </p>
+          <ThemeSwitcher current={theme} />
+        </Card>
+      </section>
 
       {/* Доступные настройки */}
       <section className="flex flex-col gap-3">
@@ -40,8 +55,11 @@ export default async function SettingsPage() {
           />
         </Link>
 
-        <div className="flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm opacity-80">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-surface-muted text-text-muted">
+        <Link
+          href="/settings/users"
+          className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+        >
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
             <Users size={20} strokeWidth={1.75} />
           </span>
           <span className="flex-1">
@@ -52,8 +70,12 @@ export default async function SettingsPage() {
               Управление сотрудниками и правами доступа.
             </span>
           </span>
-          <Badge tone="neutral">скоро</Badge>
-        </div>
+          <ChevronRight
+            size={18}
+            strokeWidth={1.75}
+            className="text-text-subtle transition-transform group-hover:translate-x-0.5"
+          />
+        </Link>
       </section>
 
       {/* Сводный список прав (P3.1) */}

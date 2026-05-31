@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { requireRole, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
+import { dbErrorMessage } from '@/lib/errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   ACCRUAL_MODES,
@@ -331,7 +332,7 @@ export async function createCaseAction(
       ok: false,
       values: result.values,
       selectedBillingTypes: result.selectedBillingTypes,
-      message: error?.message ?? 'Не удалось создать дело',
+      message: dbErrorMessage('createCaseAction', error, 'Не удалось создать дело.'),
     };
   }
 
@@ -470,17 +471,28 @@ export async function updateCaseAction(
 
   if (error) {
     // Триггер `cases_validate_stage_forward` бросает 'stage_backward_forbidden'
-    // когда юрист/Експерт пытается откатить этап. Подменяем системное
-    // сообщение Postgres на человеческое.
+    // (откат) или 'stage_skip_forbidden' (прыжок через этап, Задача 8) для
+    // юриста/Експерта. Подменяем системное сообщение Postgres на человеческое.
     const isStageBackward = error.message?.includes('stage_backward_forbidden');
+    const isStageSkip = error.message?.includes('stage_skip_forbidden');
+    const stageMsg = isStageBackward
+      ? 'Возврат на предыдущий этап разрешён только администратору.'
+      : isStageSkip
+        ? 'Этапы переключаются строго по порядку — нельзя перепрыгнуть через этап.'
+        : null;
+    const stageFieldErr = isStageBackward
+      ? 'Возврат на предыдущий этап запрещён'
+      : isStageSkip
+        ? 'Только следующий этап по порядку'
+        : null;
     return {
       ok: false,
       values: result.values,
       selectedBillingTypes: result.selectedBillingTypes,
-      fieldErrors: isStageBackward ? { stage: 'Возврат на предыдущий этап запрещён' } : undefined,
-      message: isStageBackward
-        ? 'Возврат на предыдущий этап разрешён только администратору.'
-        : error.message,
+      fieldErrors: stageFieldErr ? { stage: stageFieldErr } : undefined,
+      message:
+        stageMsg ??
+        dbErrorMessage('updateCaseAction', error, 'Не удалось сохранить дело.'),
     };
   }
 
@@ -550,6 +562,75 @@ export async function updateCaseAction(
   revalidatePath(`/cases/${caseId}`);
   revalidatePath(`/clients/${result.data.client_id}`);
   redirect(`/cases/${caseId}`);
+}
+
+// ── Быстрая смена этапа прямо на карточке (без полной формы) ──────────────
+// Лёгкий action под inline-select в шапке дела. Правило «только вперёд» и
+// логирование отката (`stage_corrected`) обеспечивает БД-триггер
+// cases_validate_stage_forward; здесь синхронизируем только closed_at
+// (CHECK cases_closed_consistency — отдельного триггера для него нет).
+export type StageActionState = { ok: boolean; message?: string };
+
+export async function updateCaseStageAction(
+  caseId: string,
+  _prev: StageActionState,
+  formData: FormData,
+): Promise<StageActionState> {
+  await requireUser();
+
+  if (!UUID_RE.test(caseId)) return { ok: false, message: 'Некорректное дело' };
+
+  const stage_raw = getString(formData, 'stage');
+  if (!isCaseStage(stage_raw)) return { ok: false, message: 'Недопустимый этап' };
+  const stage = stage_raw as CaseStage;
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: before } = await supabase
+    .from('cases')
+    .select('stage, closed_at, client_id')
+    .eq('id', caseId)
+    .maybeSingle<{
+      stage: string;
+      closed_at: string | null;
+      client_id: string;
+    }>();
+
+  // RLS отрезала дело (или его нет) → ничего не делаем.
+  if (!before) return { ok: false, message: 'Дело не найдено' };
+  if (before.stage === stage) return { ok: true }; // no-op
+
+  // closed_at синхронен stage='closed'. При входе в closed ставим сегодня;
+  // при выходе — null. (Если дело уже было закрыто — сюда не попадём из-за
+  // no-op выше, кроме staff-отката, где closed_at всё равно надо снять.)
+  const closed_at = stage === 'closed' ? todayIso() : null;
+
+  const { error } = await supabase
+    .from('cases')
+    .update({ stage, closed_at })
+    .eq('id', caseId);
+
+  if (error) {
+    const isStageBackward = error.message?.includes('stage_backward_forbidden');
+    const isStageSkip = error.message?.includes('stage_skip_forbidden');
+    return {
+      ok: false,
+      message: isStageBackward
+        ? 'Возврат на предыдущий этап разрешён только администратору.'
+        : isStageSkip
+          ? 'Этапы переключаются строго по порядку — нельзя перепрыгнуть через этап.'
+          : dbErrorMessage(
+              'updateCaseStageAction',
+              error,
+              'Не удалось сменить этап.',
+            ),
+    };
+  }
+
+  revalidatePath('/cases');
+  revalidatePath(`/cases/${caseId}`);
+  if (before.client_id) revalidatePath(`/clients/${before.client_id}`);
+  return { ok: true };
 }
 
 export async function deleteCaseAction(formData: FormData): Promise<void> {

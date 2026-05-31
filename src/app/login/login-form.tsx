@@ -1,10 +1,11 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import { loginAction, type LoginFormState } from './actions';
 
 type Props = {
@@ -19,9 +20,12 @@ export function LoginForm({ next }: Props) {
     INITIAL_STATE,
   );
   const [showPassword, setShowPassword] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  // Неверный вход помечает оба поля aria-invalid → красный бордер + тряска.
+  useShakeInvalidFields(formRef, state);
 
   return (
-    <form action={action} className="flex flex-col gap-5 w-full" noValidate>
+    <form ref={formRef} action={action} className="flex flex-col gap-5 w-full" noValidate>
       <input type="hidden" name="next" value={next} />
 
       <div className="flex flex-col gap-1.5">
@@ -34,6 +38,7 @@ export function LoginForm({ next }: Props) {
           autoComplete="email"
           autoFocus
           placeholder="you@firm.local"
+          aria-invalid={state?.error ? 'true' : undefined}
         />
       </div>
 
@@ -48,6 +53,7 @@ export function LoginForm({ next }: Props) {
             autoComplete="current-password"
             placeholder="••••••••"
             className="pr-10"
+            aria-invalid={state?.error ? 'true' : undefined}
           />
           <button
             type="button"
@@ -69,7 +75,7 @@ export function LoginForm({ next }: Props) {
       {state?.error && (
         <p
           role="alert"
-          className="rounded-md bg-error-bg px-3 py-2 text-[13px] text-error font-medium"
+          className="rounded-md bg-error-bg px-3 py-2 text-[13px] text-error font-medium animate-field-error"
         >
           {state.error}
         </p>

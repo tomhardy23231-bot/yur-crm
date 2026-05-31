@@ -8,6 +8,7 @@ import type {
   PayrollBySpecialist,
   PayrollLedgerEntry,
   PayrollLedgerWithRefs,
+  PayrollPayoutBySpecialist,
   PayrollRate,
 } from '@/lib/types/db';
 
@@ -108,6 +109,7 @@ type LedgerRaw = {
   status: LedgerStatus;
   accrued_at: string;
   paid_at: string | null;
+  paid_by: string | null;
 };
 
 function normalizeLedger(r: LedgerRaw): PayrollLedgerEntry {
@@ -122,6 +124,7 @@ function normalizeLedger(r: LedgerRaw): PayrollLedgerEntry {
     status: r.status,
     accrued_at: r.accrued_at,
     paid_at: r.paid_at,
+    paid_by: r.paid_by,
   };
 }
 
@@ -133,10 +136,11 @@ export async function listLedgerByCase(
   const { data, error } = await supabase
     .from('payroll_ledger')
     .select(
-      'id, case_id, user_id, role_in_case, base_amount, percent, amount, status, accrued_at, paid_at',
+      'id, case_id, user_id, role_in_case, base_amount, percent, amount, status, accrued_at, paid_at, paid_by',
     )
     .eq('case_id', caseId)
-    .order('role_in_case', { ascending: true });
+    .order('role_in_case', { ascending: true })
+    .order('accrued_at', { ascending: true });
   if (error) {
     throw new Error(`listLedgerByCase failed: ${error.message}`);
   }
@@ -149,7 +153,7 @@ export async function listLedger(): Promise<PayrollLedgerWithRefs[]> {
   const { data, error } = await supabase
     .from('payroll_ledger')
     .select(
-      'id, case_id, user_id, role_in_case, base_amount, percent, amount, status, accrued_at, paid_at, ' +
+      'id, case_id, user_id, role_in_case, base_amount, percent, amount, status, accrued_at, paid_at, paid_by, ' +
         'user:user_id(id, full_name), case:case_id(id, number_title)',
     )
     .order('status', { ascending: true })
@@ -174,4 +178,33 @@ export async function listLedger(): Promise<PayrollLedgerWithRefs[]> {
     const caseRef = Array.isArray(r.case) ? (r.case[0] ?? null) : r.case;
     return { ...normalizeLedger(r), user, case: caseRef };
   });
+}
+
+// Сводка по леджеру: начислено всего / выплачено / к выплате (Задача 5).
+// SECURITY INVOKER на RPC → RLS payroll_ledger режет строки (staff — все,
+// специалист — только свои).
+export async function listPayrollPayoutBySpecialist(): Promise<
+  PayrollPayoutBySpecialist[]
+> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('payroll_payout_by_specialist');
+  if (error) {
+    throw new Error(`listPayrollPayoutBySpecialist failed: ${error.message}`);
+  }
+  type Row = {
+    user_id: string;
+    full_name: string;
+    role_in_case: 'lawyer' | 'expert';
+    total: number | string;
+    paid: number | string;
+    outstanding: number | string;
+  };
+  return ((data ?? []) as Row[]).map((r) => ({
+    user_id: r.user_id,
+    full_name: r.full_name,
+    role_in_case: r.role_in_case,
+    total: Number(r.total),
+    paid: Number(r.paid),
+    outstanding: Number(r.outstanding),
+  }));
 }

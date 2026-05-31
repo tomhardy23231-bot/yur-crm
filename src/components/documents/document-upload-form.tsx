@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import {
   uploadDocumentAction,
   type UploadDocumentFields,
@@ -33,6 +34,8 @@ export function DocumentUploadForm({ caseId }: Props) {
       formRef.current?.reset();
     }
   }, [state.ok]);
+
+  useShakeInvalidFields(formRef, state);
 
   function err(field: UploadDocumentFields): string | undefined {
     return state.fieldErrors?.[field];
@@ -138,7 +141,7 @@ function Field({
       </Label>
       {children}
       {error && (
-        <p className="text-[12px] text-error" role="alert">
+        <p className="text-[12px] text-error animate-field-error" role="alert">
           {error}
         </p>
       )}

@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 
 import { requireRole, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
+import { dbErrorMessage } from '@/lib/errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { DOC_TYPES, type DocType } from '@/lib/types/db';
 
@@ -123,7 +124,11 @@ export async function uploadDocumentAction(
   if (uploadErr) {
     return {
       ok: false,
-      message: `Не удалось загрузить файл: ${uploadErr.message}`,
+      message: dbErrorMessage(
+        'uploadDocumentAction.storage',
+        uploadErr,
+        'Не удалось загрузить файл.',
+      ),
     };
   }
 
@@ -150,7 +155,11 @@ export async function uploadDocumentAction(
       });
     return {
       ok: false,
-      message: `Файл загружен, но не удалось создать запись: ${insertErr?.message ?? 'unknown'}`,
+      message: dbErrorMessage(
+        'uploadDocumentAction.insert',
+        insertErr,
+        'Не удалось сохранить документ. Попробуйте ещё раз.',
+      ),
     };
   }
 

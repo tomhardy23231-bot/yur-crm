@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Briefcase, LayoutGrid, Plus } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { StageBadge } from '@/components/ui/stage-badge';
 import { CategoryBadge } from '@/components/ui/category-badge';
@@ -14,11 +15,12 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
+import { ClickableRow } from '@/components/ui/clickable-row';
 import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { requireUser } from '@/lib/auth/require-role';
-import { formatMoney } from '@/lib/utils';
+import { daysSince, formatMoney, pluralDays } from '@/lib/utils';
 import { SortableHeader, type SortDir } from '@/components/ui/sortable-header';
 import {
   CASES_DEFAULT_SORT,
@@ -26,7 +28,9 @@ import {
   CASES_SORTABLE_COLUMNS,
   type CasesSortColumn,
   listCases,
-  listExpertsForAssignment,
+  listClientsForSelect,
+  listExpertsForFilter,
+  listLawyersForFilter,
 } from '@/lib/cases/queries';
 import {
   CASE_CATEGORIES,
@@ -46,6 +50,9 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   month: '2-digit',
   year: 'numeric',
 });
+
+// U6: порог «застоя» дела на этапе — дольше подсвечиваем предупреждающим цветом.
+const STALE_STAGE_DAYS = 14;
 
 function isCaseStage(value: string): value is CaseStage {
   return (CASE_STAGES as readonly string[]).includes(value);
@@ -76,6 +83,8 @@ export default async function CasesPage({
     type?: string;
     category?: string;
     responsible?: string;
+    lawyer?: string;
+    client?: string;
     page?: string;
     deleted?: string;
     sort?: string;
@@ -92,6 +101,10 @@ export default async function CasesPage({
     sp.category && isCaseCategory(sp.category) ? sp.category : undefined;
   const responsibleId =
     sp.responsible && UUID_RE.test(sp.responsible) ? sp.responsible : undefined;
+  const lawyerId =
+    sp.lawyer && UUID_RE.test(sp.lawyer) ? sp.lawyer : undefined;
+  const clientId =
+    sp.client && UUID_RE.test(sp.client) ? sp.client : undefined;
   const page = sp.page ? Math.max(1, Number(sp.page) || 1) : 1;
   const deleted = sp.deleted === '1';
   const sort: CasesSortColumn =
@@ -101,12 +114,21 @@ export default async function CasesPage({
 
   const isStaff = STAFF_ROLES.includes(user.profile.role);
 
-  // Список Експертов для staff-фильтра по ответственному (юристам/Експертам он
-  // не нужен: они и так видят только свои дела).
-  const experts = isStaff ? await listExpertsForAssignment() : [];
+  // Списки для staff-фильтров (юрист / эксперт / клиент). Юристам/Експертам они
+  // не нужны: те и так видят только свои дела. Эксперты/юристы — только «реальные»
+  // роли (без owner/admin) — U3.
+  const [experts, lawyers, clients] = isStaff
+    ? await Promise.all([
+        listExpertsForFilter(),
+        listLawyersForFilter(),
+        listClientsForSelect(),
+      ])
+    : [[], [], []];
 
-  const result = await listCases({ q, stage, caseType, category, responsibleId, page, sort, dir });
-  const { items, total, pageCount } = result;
+  const result = await listCases({
+    q, stage, caseType, category, responsibleId, lawyerId, clientId, page, sort, dir,
+  });
+  const { items, pageCount } = result;
 
   function buildHref(
     overrides: Partial<{
@@ -115,6 +137,8 @@ export default async function CasesPage({
       type: string;
       category: string;
       responsible: string;
+      lawyer: string;
+      client: string;
       page: number;
       sort: string;
       dir: string;
@@ -126,6 +150,8 @@ export default async function CasesPage({
     const nextType = overrides.type ?? caseType ?? '';
     const nextCategory = overrides.category ?? category ?? '';
     const nextResp = overrides.responsible ?? responsibleId ?? '';
+    const nextLawyer = overrides.lawyer ?? lawyerId ?? '';
+    const nextClient = overrides.client ?? clientId ?? '';
     const nextPage = overrides.page ?? page;
     const nextSort = overrides.sort ?? sort;
     const nextDir = overrides.dir ?? dir;
@@ -134,6 +160,8 @@ export default async function CasesPage({
     if (nextType) params.set('type', nextType);
     if (nextCategory) params.set('category', nextCategory);
     if (nextResp) params.set('responsible', nextResp);
+    if (nextLawyer) params.set('lawyer', nextLawyer);
+    if (nextClient) params.set('client', nextClient);
     if (nextPage > 1) params.set('page', String(nextPage));
     // Не шумим в URL дефолтным sort'ом — храним только когда отличается.
     if (nextSort !== CASES_DEFAULT_SORT.sort || nextDir !== CASES_DEFAULT_SORT.dir) {
@@ -160,30 +188,6 @@ export default async function CasesPage({
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-text-muted">
-          {total === 0
-            ? 'Пока нет дел'
-            : `Всего: ${total} ${plural(total, ['дело', 'дела', 'дел'])}`}
-        </p>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="secondary">
-            <Link href={boardHref()}>
-              <LayoutGrid size={16} strokeWidth={1.75} />
-              Доска
-            </Link>
-          </Button>
-          {isStaff && (
-            <Button asChild>
-              <Link href="/cases/new">
-                <Plus size={16} strokeWidth={2} />
-                Новое дело
-              </Link>
-            </Button>
-          )}
-        </div>
-      </header>
-
       {deleted && (
         <div className="text-[13px] text-success bg-success-bg border border-success/20 rounded-md px-3 py-2 max-w-md">
           Дело удалено.
@@ -247,19 +251,70 @@ export default async function CasesPage({
           />
         )}
 
-        {(stage || caseType || category || responsibleId) && (
+        {isStaff && (
+          <CasesFilterSelect
+            name="lawyer"
+            value={lawyerId ?? ''}
+            ariaLabel="Юрист"
+            options={[
+              { value: '', label: 'Все юристы' },
+              ...lawyers.map((s) => ({
+                value: s.id,
+                label: s.full_name,
+              })),
+            ]}
+          />
+        )}
+
+        {isStaff && (
+          <CasesFilterSelect
+            name="client"
+            value={clientId ?? ''}
+            ariaLabel="Клиент"
+            options={[
+              { value: '', label: 'Все клиенты' },
+              ...clients.map((c) => ({
+                value: c.id,
+                label: c.name,
+              })),
+            ]}
+          />
+        )}
+
+        {(stage || caseType || category || responsibleId || lawyerId || clientId) && (
           <Link
-            href={buildHref({ stage: '', type: '', category: '', responsible: '', page: 1 })}
+            href={buildHref({
+              stage: '', type: '', category: '', responsible: '',
+              lawyer: '', client: '', page: 1,
+            })}
             className="text-[13px] text-text-muted hover:text-text underline-offset-2 hover:underline"
           >
             Сбросить
           </Link>
         )}
+        <div className="flex items-center gap-2 ml-auto">
+          <Button asChild variant="secondary">
+            <Link href={boardHref()}>
+              <LayoutGrid size={16} strokeWidth={1.75} />
+              Доска
+            </Link>
+          </Button>
+          {isStaff && (
+            <Button asChild>
+              <Link href="/cases/new">
+                <Plus size={16} strokeWidth={2} />
+                Новое дело
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {items.length === 0 ? (
         <EmptyState
-          hasFilters={Boolean(q || stage || caseType || category || responsibleId)}
+          hasFilters={Boolean(
+            q || stage || caseType || category || responsibleId || lawyerId || clientId,
+          )}
           isStaff={isStaff}
         />
       ) : (
@@ -311,11 +366,20 @@ export default async function CasesPage({
             </TableHeader>
             <TableBody>
               {items.map((c) => (
-                <TableRow key={c.id} className="group cursor-pointer">
-                  <TableCell>
+                <ClickableRow
+                  key={c.id}
+                  href={`/cases/${c.id}`}
+                  className="group cursor-pointer"
+                >
+                  <TableCell className="relative">
+                    {/* Латунная полоска слева — заполняется из центра при наведении на строку */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 rounded-l-lg [box-shadow:inset_3px_0_0_var(--primary)] [clip-path:inset(50%_0)] transition-[clip-path] duration-[400ms] ease-out group-hover:[clip-path:inset(0)]"
+                    />
                     <Link
                       href={`/cases/${c.id}`}
-                      className="font-medium text-text group-hover:text-primary transition-colors focus-visible:outline-none focus-visible:text-primary"
+                      className="relative inline-block font-medium text-text transition-[color,transform] duration-200 ease-out group-hover:translate-x-1 group-hover:text-primary focus-visible:outline-none focus-visible:text-primary"
                     >
                       {c.number_title}
                     </Link>
@@ -333,7 +397,21 @@ export default async function CasesPage({
                     )}
                   </TableCell>
                   <TableCell>
-                    <StageBadge stage={c.stage} />
+                    <span className="inline-flex items-center gap-1.5">
+                      <StageBadge stage={c.stage} />
+                      {c.closed_without_act && (
+                        <Badge
+                          tone="warning"
+                          title="Дело завершено без акта приёма-передачи"
+                        >
+                          без акта
+                        </Badge>
+                      )}
+                    </span>
+                    {/* U6: сколько дней дело на текущем этапе (видно зависшие). */}
+                    {c.stage !== 'closed' && (
+                      <StageDays days={daysSince(c.stage_changed_at)} />
+                    )}
                   </TableCell>
                   <TableCell className="text-[13px] text-text-muted">
                     {CASE_TYPE_LABEL[c.case_type]}
@@ -371,12 +449,20 @@ export default async function CasesPage({
                       />
                     </div>
                   </TableCell>
-                  <TableCell
-                    className={`text-right font-mono tabular-nums whitespace-nowrap ${c.debt > 0 ? 'text-error' : 'text-text-muted'}`}
-                  >
-                    {formatMoney(c.debt)} ₴
+                  {/* U7: долг ИЛИ переплата (взаимоисключающи). Переплата —
+                      info-цветом со знаком +, чтобы её было видно (раньше показывался 0). */}
+                  <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
+                    {c.overpaid > 0 ? (
+                      <span className="text-info" title="Переплата клиента">
+                        +{formatMoney(c.overpaid)} ₴
+                      </span>
+                    ) : (
+                      <span className={c.debt > 0 ? 'text-error' : 'text-text-muted'}>
+                        {formatMoney(c.debt)} ₴
+                      </span>
+                    )}
                   </TableCell>
-                </TableRow>
+                </ClickableRow>
               ))}
             </TableBody>
           </Table>
@@ -478,11 +564,15 @@ function Empty() {
   return <span className="text-[13px] text-text-subtle">—</span>;
 }
 
-function plural(n: number, forms: [string, string, string]): string {
-  const abs = Math.abs(n) % 100;
-  const n1 = abs % 10;
-  if (abs > 10 && abs < 20) return forms[2];
-  if (n1 > 1 && n1 < 5) return forms[1];
-  if (n1 === 1) return forms[0];
-  return forms[2];
+// U6: «N дней на этапе» под бейджем этапа. Застой (≥ порога) — предупреждающий цвет.
+function StageDays({ days }: { days: number }) {
+  const stale = days >= STALE_STAGE_DAYS;
+  return (
+    <div
+      className={`mt-1 text-[11px] tabular-nums ${stale ? 'font-medium text-warning' : 'text-text-subtle'}`}
+      title={`Дело на текущем этапе ${days} ${pluralDays(days)}`}
+    >
+      {days} {pluralDays(days)} на этапе
+    </div>
+  );
 }

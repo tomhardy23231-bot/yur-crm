@@ -2,8 +2,12 @@ import { History } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
-import { listCaseActivity } from '@/lib/activity-log/queries';
-import { formatActivity, formatActivityTime } from '@/lib/activity-log/format';
+import { listCaseActivity, resolveActivityNames } from '@/lib/activity-log/queries';
+import {
+  formatActivity,
+  formatActivityTime,
+  collectActivityIds,
+} from '@/lib/activity-log/format';
 
 interface CaseActivityBlockProps {
   caseId: string;
@@ -16,6 +20,9 @@ export async function CaseActivityBlock({
   limit = 20,
 }: CaseActivityBlockProps) {
   const entries = await listCaseActivity(caseId, limit);
+  // Резолвим UUID юристов/Експертов/клиентов из записей в имена (Задача 3).
+  const { userIds, clientIds } = collectActivityIds(entries);
+  const nameById = await resolveActivityNames(userIds, clientIds);
 
   return (
     <Card>
@@ -39,7 +46,7 @@ export async function CaseActivityBlock({
       ) : (
         <ul className="divide-y divide-border">
           {entries.map((entry) => {
-            const f = formatActivity(entry);
+            const f = formatActivity(entry, nameById);
             return (
               <li
                 key={entry.id}

@@ -35,12 +35,45 @@ export const STAFF_ROLES: ReadonlyArray<Role> = ['owner', 'admin', 'office_manag
 // Управление пользователями + деструктивные операции (удаление, правка платежей).
 export const MANAGER_ROLES: ReadonlyArray<Role> = ['owner', 'admin'];
 
+// Кто вправе заводить клиентов (Задача 1): все роли, КРОМЕ expert (он работает
+// только по назначенным делам). Совпадает с private.can_create_clients() в БД.
+export const CLIENT_CREATOR_ROLES: ReadonlyArray<Role> = [
+  'owner',
+  'admin',
+  'office_manager',
+  'lawyer',
+];
+
+export function canCreateClients(role: Role): boolean {
+  return (CLIENT_CREATOR_ROLES as readonly Role[]).includes(role);
+}
+
 export function isRole(value: unknown): value is Role {
   return typeof value === 'string' && (ALL_ROLES as readonly string[]).includes(value);
 }
 
 export function isStaff(role: Role): boolean {
   return (STAFF_ROLES as readonly Role[]).includes(role);
+}
+
+// Ступенчатые права на управление пользователем (Задача 4 «плюшка владельца»):
+//   owner — управляет любой ролью; admin — только office_manager/lawyer/expert
+//   (НЕ owner/admin). Совпадает с private.can_manage_target_user в БД (RLS).
+export function canManageRole(actorRole: Role, targetRole: Role): boolean {
+  if (actorRole === 'owner') return true;
+  if (actorRole === 'admin') {
+    return (
+      targetRole === 'office_manager' ||
+      targetRole === 'lawyer' ||
+      targetRole === 'expert'
+    );
+  }
+  return false;
+}
+
+// Роли, которые актор вправе назначать/создавать (для Select на экране users).
+export function assignableRoles(actorRole: Role): Role[] {
+  return ALL_ROLES.filter((r) => canManageRole(actorRole, r));
 }
 
 export type UserProfile = {
@@ -56,13 +89,19 @@ export type UserProfile = {
 // Clients
 // =====================================================================
 
-export type ClientKind = 'individual' | 'company';
+// entrepreneur — ФОП (фізична особа-підприємець), отдельный статус для Украины.
+export type ClientKind = 'individual' | 'company' | 'entrepreneur';
 
-export const CLIENT_KINDS: ReadonlyArray<ClientKind> = ['individual', 'company'];
+export const CLIENT_KINDS: ReadonlyArray<ClientKind> = [
+  'individual',
+  'company',
+  'entrepreneur',
+];
 
 export const CLIENT_KIND_LABEL: Record<ClientKind, string> = {
   individual: 'Физлицо',
   company: 'Компания',
+  entrepreneur: 'ФОП',
 };
 
 // Источник клиента (новая Концепция, раздел 7).
@@ -128,6 +167,20 @@ export const CASE_STAGE_LABEL: Record<CaseStage, string> = {
   awaiting_decision: 'Ожидание решения',
   closed: 'Завершено',
 };
+
+// Этапы, на которые роль может перевести дело с текущего (Задача 8):
+//   staff — все 5 (могут скорректировать/перескочить/откатить — §7-2);
+//   не-staff — только ТЕКУЩИЙ и строго СЛЕДУЮЩИЙ (без прыжков и отката).
+// БД-триггер cases_validate_stage_forward — жёсткая защита; это UI-фильтр.
+export function allowedStagesFor(
+  current: CaseStage,
+  staff: boolean,
+): CaseStage[] {
+  if (staff) return [...CASE_STAGES];
+  const idx = CASE_STAGES.indexOf(current);
+  if (idx < 0) return [...CASE_STAGES];
+  return CASE_STAGES.slice(idx, idx + 2); // текущий + следующий
+}
 
 export type CaseType =
   | 'civil'
@@ -245,6 +298,8 @@ export type Case = {
   contract_sum: number;
   paid_total: number;
   debt: number;
+  // Дериватив: max(0, paid_total − contract_sum). Переплата клиента (Задача 3).
+  overpaid: number;
   billing_types: BillingType[];
   // Индивидуальные % по делу (null → ставка категории). Меняет только owner/admin.
   lawyer_rate_override: number | null;
@@ -254,6 +309,10 @@ export type Case = {
   court_case_number: string | null;
   court: string | null;
   closed_at: string | null;
+  // true, если дело closed без документа doc_type='act' (Задача 4). Мягкая пометка.
+  closed_without_act: boolean;
+  // Момент входа в текущий этап — для «N дней на этапе» (U6).
+  stage_changed_at: string;
   created_at: string;
 };
 
@@ -375,6 +434,9 @@ export type PaymentRow = {
   note: string | null;
   created_by: string;
   created_at: string;
+  // Ключ идемпотентности отправки формы (Задача 2). Уникален среди не-NULL;
+  // защищает от дубля платежа при мульти-сабмите. В UI не отображается.
+  idempotency_key: string | null;
 };
 
 export type PaymentWithCreator = PaymentRow & {
@@ -420,8 +482,10 @@ export type PayrollBySpecialist = {
 // Запись леджера начислений/выплат (P1.3).
 export type LedgerStatus = 'accrued' | 'paid';
 
+// U2: «accrued» = зафиксировано в леджере, но ещё не выплачено → «К выплате»
+// (однозначно и согласовано с колонкой «К выплате» в отчёте). «paid» = «Выплачено».
 export const LEDGER_STATUS_LABEL: Record<LedgerStatus, string> = {
-  accrued: 'Начислено',
+  accrued: 'К выплате',
   paid: 'Выплачено',
 };
 
@@ -436,10 +500,23 @@ export type PayrollLedgerEntry = {
   status: LedgerStatus;
   accrued_at: string;
   paid_at: string | null;
+  // Кто (owner/admin) отметил выплату. NULL пока accrued / после отката (Задача 5).
+  paid_by: string | null;
 };
 
 // Запись леджера с join'ами сотрудника и дела — для отчёта выплат.
 export type PayrollLedgerWithRefs = PayrollLedgerEntry & {
   user: { id: string; full_name: string } | null;
   case: { id: string; number_title: string } | null;
+};
+
+// Строка сводки по леджеру (public.payroll_payout_by_specialist): начислено
+// всего / выплачено / к выплате (остаток). Задача 5.
+export type PayrollPayoutBySpecialist = {
+  user_id: string;
+  full_name: string;
+  role_in_case: 'lawyer' | 'expert';
+  total: number;
+  paid: number;
+  outstanding: number;
 };

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { requireRole, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
+import { dbErrorMessage } from '@/lib/errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export type CreatePaymentFields =
@@ -55,6 +56,11 @@ export async function createPaymentAction(
   const paid_at = String(formData.get('paid_at') ?? '').trim();
   const method_raw = String(formData.get('method') ?? '').trim();
   const note_raw = String(formData.get('note') ?? '').trim();
+  // Ключ идемпотентности (Задача 2). Если форма прислала валидный UUID — кладём
+  // его в payments.idempotency_key; уникальный индекс отвергнет дубль. Невалидный
+  // / отсутствующий ключ → null (вставка без защиты — мягкая деградация).
+  const idem_raw = String(formData.get('idempotency_key') ?? '').trim();
+  const idempotency_key = UUID_RE.test(idem_raw) ? idem_raw : null;
 
   const fieldErrors: CreatePaymentState['fieldErrors'] = {};
 
@@ -87,6 +93,26 @@ export async function createPaymentAction(
 
   const supabase = await createSupabaseServerClient();
 
+  // Задача 2 (defense-in-depth): серверный дедуп-гард. Если за последние ~3 секунды
+  // от того же пользователя по тому же делу уже прошёл платёж на ту же сумму —
+  // считаем это повторной отправкой и тихо отдаём успех, не плодя строку и не
+  // показывая ошибку. Основная (атомарная) защита — стабильный idempotency_key +
+  // уникальный индекс; этот гард страхует на случай разных ключей (refresh формы).
+  const dedupSince = new Date(Date.now() - 3000).toISOString();
+  const { data: recentDup } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('case_id', case_id)
+    .eq('created_by', user.profile.id)
+    .eq('amount', amount)
+    .gte('created_at', dedupSince)
+    .limit(1)
+    .maybeSingle();
+  if (recentDup) {
+    revalidatePath(`/cases/${case_id}`);
+    return { ok: true };
+  }
+
   // RLS WITH CHECK: payments_insert_via_case требует
   // can_write_case(case_id) AND created_by = active_uid().
   const { data: insertedPay, error } = await supabase
@@ -98,14 +124,26 @@ export async function createPaymentAction(
       method,
       note,
       created_by: user.profile.id,
+      idempotency_key,
     })
     .select('id')
     .single();
 
   if (error || !insertedPay) {
+    // Задача 2: дубль по idempotency_key (мульти-сабмит) → нарушение уникального
+    // индекса (SQLSTATE 23505). Первый платёж уже прошёл — тихо отдаём успех,
+    // ошибку не показываем. Логировать/ревалидировать тоже не нужно: запись одна.
+    if (error?.code === '23505') {
+      revalidatePath(`/cases/${case_id}`);
+      return { ok: true };
+    }
     return {
       ok: false,
-      message: `Не удалось сохранить платёж: ${error?.message ?? 'unknown'}`,
+      message: dbErrorMessage(
+        'createPaymentAction',
+        error,
+        'Не удалось сохранить платёж.',
+      ),
     };
   }
 

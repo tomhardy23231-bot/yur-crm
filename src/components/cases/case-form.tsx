@@ -1,8 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import Link from 'next/link';
+import { Plus } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import {
+  InlineClientCreate,
+  type CreatedClient,
+} from '@/components/cases/inline-client-create';
 import type { CaseActionState, CaseFormFields } from '@/lib/cases/actions';
 import type { AssigneeOption, ClientOption } from '@/lib/cases/queries';
 import {
@@ -56,10 +62,12 @@ interface CaseFormProps {
   canEditRates?: boolean;
   /**
    * Какие этапы показывать в Select. По умолчанию — все 5. Для не-staff
-   * передаём только текущий и все «вперёд» (CLAUDE.md §7-2). Триггер
+   * передаём только текущий и следующий (Задача 8, CLAUDE.md §7-2). Триггер
    * `cases_validate_stage_forward` всё равно защитит на стороне БД.
    */
   allowedStages?: ReadonlyArray<CaseStage>;
+  /** Можно ли создавать клиента «на месте» (Задача 5). Эксперту — нельзя. */
+  canCreateClient?: boolean;
 }
 
 export function CaseForm({
@@ -74,12 +82,38 @@ export function CaseForm({
   defaultResponsibleId,
   allowedStages,
   canEditRates = false,
+  canCreateClient = false,
 }: CaseFormProps) {
   const stageOptions = allowedStages ?? CASE_STAGES;
   const [state, formAction] = useActionState<CaseActionState, FormData>(
     action,
     INITIAL,
   );
+  const formRef = useRef<HTMLFormElement>(null);
+  useShakeInvalidFields(formRef, state);
+
+  // Задача 5: список клиентов и выбранный клиент — управляемые, чтобы созданный
+  // «на месте» клиент сразу добавлялся в селект и выбирался.
+  const [clientOptions, setClientOptions] = useState<ClientOption[]>(
+    clients ?? [],
+  );
+  const [showNewClient, setShowNewClient] = useState(false);
+  const initialClientId =
+    (state.values?.client_id ?? caseRow?.client_id) || '';
+  const [selectedClientId, setSelectedClientId] =
+    useState<string>(initialClientId);
+
+  function handleClientCreated(client: CreatedClient) {
+    setClientOptions((prev) =>
+      prev.some((c) => c.id === client.id)
+        ? prev
+        : [...prev, { id: client.id, name: client.name, client_kind: client.client_kind }].sort(
+            (a, b) => a.name.localeCompare(b.name, 'ru'),
+          ),
+    );
+    setSelectedClientId(client.id);
+    setShowNewClient(false);
+  }
 
   function value(field: CaseFormFields): string {
     if (state.values && state.values[field] !== undefined) {
@@ -126,9 +160,6 @@ export function CaseForm({
   const checkedBilling: BillingType[] =
     state.selectedBillingTypes ?? caseRow?.billing_types ?? [];
 
-  const defaultClientId =
-    lockedClient?.id ?? value('client_id') ?? '';
-
   const defaultResponsible =
     value('responsible_id') || defaultResponsibleId || '';
 
@@ -137,7 +168,8 @@ export function CaseForm({
   const defaultOpenedAt = value('opened_at') || todayIso();
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <>
+      <form ref={formRef} action={formAction} className="flex flex-col gap-6">
       {/* Базовый блок */}
       <Section title="Основное">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -176,20 +208,36 @@ export function CaseForm({
                 </div>
               </>
             ) : (
-              <Select
-                id="client_id"
-                name="client_id"
-                defaultValue={defaultClientId}
-                required
-                aria-invalid={err('client_id') ? 'true' : undefined}
-              >
-                <option value="">— выберите клиента —</option>
-                {(clients ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select
+                  id="client_id"
+                  name="client_id"
+                  value={selectedClientId}
+                  onChange={(e) => setSelectedClientId(e.currentTarget.value)}
+                  required
+                  aria-invalid={err('client_id') ? 'true' : undefined}
+                  className="flex-1"
+                >
+                  <option value="">— выберите клиента —</option>
+                  {clientOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+                {canCreateClient && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setShowNewClient(true)}
+                  >
+                    <Plus size={14} strokeWidth={2} />
+                    Новый
+                  </Button>
+                )}
+              </div>
             )}
           </Field>
 
@@ -526,7 +574,15 @@ export function CaseForm({
           <Link href={cancelHref}>Отмена</Link>
         </Button>
       </div>
-    </form>
+      </form>
+
+      {showNewClient && (
+        <InlineClientCreate
+          onClose={() => setShowNewClient(false)}
+          onCreated={handleClientCreated}
+        />
+      )}
+    </>
   );
 }
 
@@ -573,7 +629,7 @@ function Field({
       </Label>
       {children}
       {error && (
-        <p className="text-[12px] text-error" role="alert">
+        <p className="text-[12px] text-error animate-field-error" role="alert">
           {error}
         </p>
       )}

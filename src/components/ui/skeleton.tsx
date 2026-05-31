@@ -41,33 +41,22 @@ export function TableRowSkeleton({
 // Skeleton для табличного listing-экрана. Используется в loading.tsx —
 // показывает заголовок страницы + панель фильтров + табличный каркас.
 export function ListingSkeleton({
-  title,
   filterCount = 3,
   columns,
   rows = 8,
 }: {
-  title: string;
   filterCount?: number;
   columns: number;
   rows?: number;
 }) {
   return (
-    <main className="flex flex-col gap-6 px-8 py-10 sm:px-12" aria-busy="true">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-            {title}
-          </h1>
-          <Skeleton className="h-3.5 w-28" />
-        </div>
-        <Skeleton className="h-9 w-36" />
-      </header>
-
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4" aria-busy="true">
       <div className="flex flex-wrap items-center gap-3">
         <Skeleton className="h-9 w-64" />
         {Array.from({ length: filterCount }).map((_, i) => (
           <Skeleton key={i} className="h-9 w-36" />
         ))}
+        <Skeleton className="h-9 w-36 ml-auto" />
       </div>
 
       <div className="bg-surface rounded-lg border border-border shadow-sm overflow-hidden">

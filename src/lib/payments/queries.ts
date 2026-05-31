@@ -14,7 +14,7 @@ export async function listPaymentsByCase(
   const { data, error } = await supabase
     .from('payments')
     .select(
-      'id, case_id, amount, paid_at, method, note, created_by, created_at, ' +
+      'id, case_id, amount, paid_at, method, note, created_by, created_at, idempotency_key, ' +
         'creator:created_by(id, full_name)',
     )
     .eq('case_id', caseId)
@@ -60,6 +60,7 @@ function normalizePayments(
       note: r.note,
       created_by: r.created_by,
       created_at: r.created_at,
+      idempotency_key: r.idempotency_key ?? null,
       creator,
     };
   });

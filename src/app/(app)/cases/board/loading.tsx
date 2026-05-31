@@ -4,25 +4,14 @@ import { CASE_STAGES, CASE_STAGE_LABEL } from '@/lib/types/db';
 export default function CasesBoardLoading() {
   return (
     <main
-      className="flex flex-col gap-5 px-8 py-10 sm:px-12 min-h-0"
+      className="flex flex-col gap-5 px-3 py-2 sm:px-4 min-h-0"
       aria-busy="true"
     >
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-            Доска дел
-          </h1>
-          <Skeleton className="h-3.5 w-64" />
-        </div>
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-8 w-24" />
-          <Skeleton className="h-8 w-32" />
-        </div>
-      </header>
-
       <div className="flex flex-wrap items-center gap-3">
         <Skeleton className="h-9 w-36" />
         <Skeleton className="h-9 w-44" />
+        <Skeleton className="h-9 w-24 ml-auto" />
+        <Skeleton className="h-9 w-32" />
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2">

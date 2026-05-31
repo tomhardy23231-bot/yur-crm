@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
+import { dbErrorMessage } from '@/lib/errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   TASK_KINDS,
@@ -162,7 +163,7 @@ export async function createTaskAction(
     return {
       ok: false,
       values: result.values,
-      message: error?.message ?? 'Не удалось создать задачу',
+      message: dbErrorMessage('createTaskAction', error, 'Не удалось создать задачу.'),
     };
   }
 
@@ -232,7 +233,7 @@ export async function updateTaskAction(
     return {
       ok: false,
       values: result.values,
-      message: error.message,
+      message: dbErrorMessage('updateTaskAction', error, 'Не удалось сохранить задачу.'),
     };
   }
 

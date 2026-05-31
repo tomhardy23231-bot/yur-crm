@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import type { TaskActionState, TaskFormFields } from '@/lib/tasks/actions';
 import type { AssigneeOption } from '@/lib/tasks/queries';
 import {
@@ -90,8 +91,12 @@ export function TaskForm({
 
   const caseIdValue = lockedCaseId ?? value('case_id');
 
+  const formRef = useRef<HTMLFormElement>(null);
+  useShakeInvalidFields(formRef, state);
+
   return (
     <form
+      ref={formRef}
       action={formAction}
       className={
         compact
@@ -234,7 +239,7 @@ function Field({
       </Label>
       {children}
       {error && (
-        <p className="text-[12px] text-error" role="alert">
+        <p className="text-[12px] text-error animate-field-error" role="alert">
           {error}
         </p>
       )}

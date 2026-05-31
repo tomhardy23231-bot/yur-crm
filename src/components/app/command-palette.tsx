@@ -29,7 +29,7 @@ import {
   EMPTY_RESULTS,
   type PaletteResults,
 } from '@/lib/search/types';
-import { STAFF_ROLES, type Role } from '@/lib/types/db';
+import { CLIENT_KIND_LABEL, STAFF_ROLES, type Role } from '@/lib/types/db';
 
 // ============================================================================
 // Context — sidebar-trigger открывает палитру без prop-drilling.
@@ -290,7 +290,7 @@ export function CommandPaletteProvider({
                   onSelect={() => go(`/clients/${c.id}`)}
                   icon={<Users size={15} strokeWidth={1.75} />}
                   label={c.name}
-                  hint={c.client_kind === 'company' ? 'Компания' : 'Физлицо'}
+                  hint={CLIENT_KIND_LABEL[c.client_kind]}
                 />
               ))}
             </PaletteGroup>

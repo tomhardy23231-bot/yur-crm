@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:seed": "node --env-file=.env.local --import tsx scripts/seed.ts",
+    "db:seed:demo": "node --env-file=.env.local --import tsx scripts/seed-demo.ts",
+    "db:seed:more": "node --env-file=.env.local --import tsx scripts/seed-more.ts",
     "smoke:rls": "node --env-file=.env.local --import tsx scripts/smoke-rls.ts"
   },
   "dependencies": {

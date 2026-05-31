@@ -7,19 +7,10 @@ export default function TasksLoading() {
       className="flex flex-col gap-5 px-3 py-2 sm:px-4"
       aria-busy="true"
     >
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
-            Задачи
-          </h1>
-          <Skeleton className="h-3.5 w-28" />
-        </div>
-        <Skeleton className="h-8 w-28" />
-      </header>
-
       <div className="flex flex-wrap items-center gap-3">
         <Skeleton className="h-9 w-32" />
         <Skeleton className="h-9 w-36" />
+        <Skeleton className="h-9 w-28 ml-auto" />
       </div>
 
       {Array.from({ length: 3 }).map((_, groupIdx) => (

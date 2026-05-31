@@ -8,7 +8,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 // ВАЖНО: эта функция НИКОГДА не должна выбрасывать исключение наружу —
 // логирование вторично, не должно ломать основной серверный action.
 // Ошибки заглушаются и пишутся в console.error.
-export type ActivityEntityType = 'case' | 'client';
+export type ActivityEntityType = 'case' | 'client' | 'user';
 
 export type LogActivityInput = {
   entity_type: ActivityEntityType;

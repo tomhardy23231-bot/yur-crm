@@ -1,11 +1,16 @@
+import Link from 'next/link';
 import {
   AlertTriangle,
   Briefcase,
   Coins,
+  Plus,
+  Sparkles,
   TrendingUp,
 } from 'lucide-react';
 
 import { requireUser } from '@/lib/auth/require-role';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { KpiTile } from '@/components/dashboard/kpi-tile';
 import { StageFunnel } from '@/components/dashboard/stage-funnel';
 import { CategoryRevenue } from '@/components/dashboard/category-revenue';
@@ -20,7 +25,7 @@ import {
 } from '@/lib/dashboard/queries';
 import { getPayrollRates, listPayrollBySpecialist } from '@/lib/payroll/queries';
 import { listCases } from '@/lib/cases/queries';
-import { STAFF_ROLES } from '@/lib/types/db';
+import { canCreateClients, STAFF_ROLES, type Role } from '@/lib/types/db';
 import { formatMoney } from '@/lib/utils';
 
 // Подпись месяца — в часовом поясе фирмы (как и границы окна в getRevenueThisMonth).
@@ -34,8 +39,6 @@ export default async function HomePage() {
   const { profile } = user;
   const staff = STAFF_ROLES.includes(profile.role);
 
-  const firstName = profile.full_name.split(' ')[0];
-
   // База для всех ролей — RLS уже ограничивает видимость по роли.
   const [cases, recentResult] = await Promise.all([
     getDashboardCases(),
@@ -44,20 +47,15 @@ export default async function HomePage() {
   const stats = computeDashboardStats(cases);
   const recent = recentResult.items.slice(0, 6);
 
+  // U4: новичок без видимых дел получает онбординг вместо «нулевого» дашборда
+  // (KPI/воронка/таблицы были бы пустыми и выглядели как поломка).
+  const isEmpty = cases.length === 0;
+
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      <header className="flex flex-col gap-1.5">
-        <h1 className="text-[24px] font-bold leading-[1.15] tracking-[-0.02em] text-text">
-          Добрый день, {firstName}.
-        </h1>
-        <p className="text-[14px] text-text-muted">
-          {staff
-            ? 'Сводка по компании на сегодня.'
-            : 'Ваши дела и начисления на сегодня.'}
-        </p>
-      </header>
-
-      {staff ? (
+      {isEmpty ? (
+        <EmptyDashboard role={profile.role} name={profile.full_name} />
+      ) : staff ? (
         <StaffDashboard stats={stats} recent={recent} />
       ) : (
         <PersonalDashboard
@@ -70,6 +68,58 @@ export default async function HomePage() {
 
       <UpcomingDeadlinesBlock />
     </main>
+  );
+}
+
+// ============================================================================
+// U4 — онбординг для пустого состояния (нет ни одного видимого дела).
+// Текст и действия зависят от роли: staff заводит дело, юрист — клиента,
+// эксперт ждёт назначения.
+// ============================================================================
+
+function EmptyDashboard({ role, name }: { role: Role; name: string }) {
+  const staff = STAFF_ROLES.includes(role);
+  const firstName = name.trim().split(/\s+/)[0] ?? name;
+
+  const message = staff
+    ? 'Здесь появится сводка по делам, финансам и срокам. Заведите клиента и создайте первое дело — дашборд оживёт.'
+    : role === 'lawyer'
+      ? 'За вами пока нет дел. Заведите клиента или дождитесь, пока вас назначат на дело.'
+      : 'За вами пока нет дел. Они появятся здесь, как только вас назначат экспертом по делу.';
+
+  return (
+    <Card className="flex flex-col items-center gap-3 px-6 py-14 text-center animate-fade-in-up">
+      <span
+        className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary-subtle text-primary"
+        aria-hidden="true"
+      >
+        <Sparkles size={26} strokeWidth={1.75} />
+      </span>
+      <h1 className="text-[20px] font-bold tracking-[-0.01em] text-text">
+        Добро пожаловать, {firstName}!
+      </h1>
+      <p className="max-w-md text-[13.5px] leading-relaxed text-text-muted">
+        {message}
+      </p>
+      <div className="mt-1 flex flex-wrap items-center justify-center gap-2.5">
+        {staff && (
+          <Button asChild>
+            <Link href="/cases/new">
+              <Plus size={16} strokeWidth={2} />
+              Новое дело
+            </Link>
+          </Button>
+        )}
+        {canCreateClients(role) && (
+          <Button asChild variant={staff ? 'secondary' : 'primary'}>
+            <Link href="/clients/new">
+              <Plus size={16} strokeWidth={2} />
+              Новый клиент
+            </Link>
+          </Button>
+        )}
+      </div>
+    </Card>
   );
 }
 

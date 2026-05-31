@@ -29,6 +29,12 @@
   --brass-bright:   #D8AA55;
   --brass-glow:     rgba(184, 138, 62, 0.16);
 
+  /* Бренд-плашка (логотип «Ю») и бейдж «Дело» — тема может переопределить.
+     На латуни (светлое золото) текст тёмный; на тёмном teal — белый. */
+  --brand-tile-fg:      #1A140A;
+  --shadow-brand-tile:  0 4px 14px rgba(184, 138, 62, .35), inset 0 1px 0 rgba(255, 255, 255, .25);
+  --shadow-brand-badge: 0 2px 8px rgba(184, 138, 62, .32), inset 0 1px 0 rgba(255, 255, 255, .2);
+
   /* Градиенты — латунь для CTA/бренд-плашки + hero-шапки карточек */
   --grad-brass:  linear-gradient(150deg, #B88A3E 0%, #8F6A2C 100%);
   --grad-indigo: linear-gradient(135deg, #2F6FE0 0%, #7A52C9 100%);
@@ -114,6 +120,87 @@
   --dur-micro:   80ms;
   --dur-short:  180ms;
   --dur-medium: 320ms;
+}
+
+/* ============================================================
+   ТЕМА «TEAL» (изумруд + хвоя + крем) — переопределение бренда
+   ------------------------------------------------------------
+   Активируется атрибутом data-theme="teal" на <html>.
+   ОТКАТ: убрать этот атрибут — система вернётся к латуни (:root выше).
+   Перекрываются ТОЛЬКО бренд/ink/фон + один конфликтный семантический
+   токен (--cat-document). Остальная семантика (success/warning/error,
+   этапы, приоритеты) наследуется из :root — она универсальна.
+
+   Палитра-источник (свотчи заказчика):
+     #0D9488 teal · #5EEAD4 мята · #15302B хвоя · #F4F2EC крем
+   Контраст выверен под WCAG AA (см. примечания у токенов).
+   ============================================================ */
+
+:root[data-theme="teal"] {
+  /* Сырые свотчи палитры — переиспользуемые акценты */
+  --teal-bright: #0D9488;  /* яркий бренд-тон (декор, не под мелкий текст) */
+  --teal-mint:   #5EEAD4;  /* мятный хайлайт */
+  --pine:        #15302B;  /* хвоя — база сайдбара */
+  --cream:       #F4F2EC;  /* крем — бумага */
+
+  /* ── Paper — тёплая светлая зона ───────────────────────────── */
+  --bg:             #F4F2EC;  /* крем */
+  --surface:        #FFFFFF;  /* белые карточки чётко «всплывают» на креме */
+  --surface-muted:  #FAF8F2;  /* зебра/hover — тёплый off-white */
+  --surface-sunken: #EAE7DC;  /* поля поиска, чипы, прогресс-трек */
+  --border:         #E6E2D6;  /* тёплая линия */
+  --border-strong:  #D3CEBE;
+
+  /* Текст — тёплый near-ink (контраст на креме > 12:1) */
+  --text:           #1A2420;
+  --text-muted:     #55615B;
+  --text-subtle:    #8A938D;
+
+  /* ── Brand — teal ─────────────────────────────────────────── */
+  /* --primary нуджнут с #0D9488 → #0C8478 ради AA: 4.58:1 и под белый
+     текст на заливке, и под teal-ссылку на белом. Сырой #0D9488 (3.74:1)
+     живёт в --teal-bright для декоративных акцентов. */
+  --primary:        #0C8478;
+  --primary-hover:  #0A746A;
+  --primary-pressed:#085C54;
+  --primary-fg:     #FFFFFF;
+  --primary-subtle: #DBF3EF;  /* светлый teal-фон акцента/выделенной строки */
+  --primary-border: #A6DED6;
+  --brass-bright:   #2DD4BF;  /* «bright»-акцент → яркий teal */
+  --brass-glow:     rgba(13, 148, 136, 0.18);
+
+  /* Бренд-плашка на тёмном teal-градиенте → текст белый, свечение teal */
+  --brand-tile-fg:      #FFFFFF;
+  --shadow-brand-tile:  0 4px 14px rgba(13, 148, 136, .40), inset 0 1px 0 rgba(255, 255, 255, .18);
+  --shadow-brand-badge: 0 2px 8px rgba(13, 148, 136, .34), inset 0 1px 0 rgba(255, 255, 255, .16);
+
+  /* Градиент CTA/бренд-плашки: светлый стоп = #0C8478 (AA с белым),
+     тёмный — к хвое. Текст читаем по всей длине кнопки. */
+  --grad-brass:  linear-gradient(150deg, #0C8478 0%, #0A5F56 100%);
+
+  /* ── Ink — сайдбар «хвоя» ─────────────────────────────────── */
+  --ink-950: #0E211C;
+  --ink-900: #15302B;
+  --ink-850: #1B3A33;
+  --ink-800: #21443C;
+  --sidebar-bg:           #15302B;
+  --sidebar-bg-gradient:  linear-gradient(180deg, #1B3A33 0%, #15302B 100%);
+  --sidebar-elevated:     #1E3F37;
+  --sidebar-border:       #2A4F46;
+  --sidebar-text:         #9DB0A9;  /* 6.2:1 на хвое — AA ✓ */
+  --sidebar-text-disabled:#6E827B;
+  --sidebar-text-strong:  #FFFFFF;
+  --sidebar-hover-bg:     rgba(255, 255, 255, 0.05);
+  --sidebar-active-bg:    rgba(94, 234, 212, 0.14);  /* мятный тинт активного */
+  --sidebar-active-text:  #FFFFFF;
+  --sidebar-accent:       #2DD4BF;  /* полоса/счётчик активного пункта */
+  --sidebar-accent-bright:#5EEAD4;  /* мята — фокус-кольцо в сайдбаре */
+
+  /* ── Деконфликт семантики ─────────────────────────────────── */
+  /* «Документ» была teal #0AA593 — почти = новый бренд. Уводим в индиго,
+     чтобы категория не сливалась с primary. Иск/Представительство — без
+     изменений (оранжевый/маджента). */
+  --cat-document:    #4F46E5; --cat-document-bg:    #ECEAFD;
 }
 
 /* ============================================================
@@ -323,11 +410,70 @@ body {
   animation: bar-grow 560ms var(--ease-out) both;
 }
 
+/* ------------------------------------------------------------
+   Валидация формы: тряска поля + мягкое появление текста ошибки
+   (Transitions.dev — Error state shake). Каждый сегмент keyframe
+   несёт свой timing-function, чтобы каждая «нога» тряски шла по
+   своей кривой. %-стопы — накопленные доли от 280ms (80+60+80+60):
+   28.57 / 57.14 / 78.57.
+   ------------------------------------------------------------ */
+:root {
+  --shake-distance: 6px;
+  --shake-overshoot: 4px;
+  --shake-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes field-shake {
+  0%      { transform: translateX(0);                                animation-timing-function: var(--shake-ease); }
+  28.57%  { transform: translateX(var(--shake-distance));            animation-timing-function: var(--shake-ease); }
+  57.14%  { transform: translateX(calc(var(--shake-distance) * -1)); animation-timing-function: var(--shake-ease); }
+  78.57%  { transform: translateX(var(--shake-overshoot));           animation-timing-function: var(--shake-ease); }
+  100%    { transform: translateX(0); }
+}
+
+/* Ставится императивно (с reflow) при сабмите формы с ошибкой —
+   см. useShakeInvalidFields. Бордер краснеет отдельно (aria-invalid). */
+.shake {
+  animation: field-shake 280ms linear;
+  will-change: transform;
+}
+
+@keyframes field-error-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Мягкое появление текста ошибки (поле + баннер формы). */
+.animate-field-error {
+  animation: field-error-in 220ms var(--ease-out) both;
+}
+
+/* ------------------------------------------------------------
+   Плавное изменение ширины — свернуть/развернуть сайдбар.
+   (Transitions.dev — Card resize.) Тянется только между ЯВНЫМИ
+   значениями ширины (классы w-[…]), не от/к auto.
+   ------------------------------------------------------------ */
+:root {
+  --resize-dur: 280ms;
+  --resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.t-resize {
+  transition:
+    width var(--resize-dur) var(--resize-ease),
+    height var(--resize-dur) var(--resize-ease);
+  will-change: width, height;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up,
   .animate-screen-in,
-  .animate-bar-grow {
+  .animate-bar-grow,
+  .shake,
+  .animate-field-error {
     animation: none;
   }
+  .shake { transform: none; }
+  .t-resize { transition: none; }
   .stage-dot-live::after { animation: none; opacity: 0; }
 }

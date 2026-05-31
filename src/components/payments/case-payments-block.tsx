@@ -12,6 +12,8 @@ interface CasePaymentsBlockProps {
   canWrite: boolean;
   /** Может ли удалять (RLS DELETE = staff-only). */
   canManage: boolean;
+  /** Переплата клиента (max(0, paid_total − contract_sum)). Показываем, если > 0. */
+  overpaid?: number;
 }
 
 const MONEY_FMT = new Intl.NumberFormat('ru-RU', {
@@ -24,6 +26,7 @@ export async function CasePaymentsBlock({
   caseId,
   canWrite,
   canManage,
+  overpaid = 0,
 }: CasePaymentsBlockProps) {
   const payments = await listPaymentsByCase(caseId);
   const total = payments.reduce((s, p) => s + p.amount, 0);
@@ -37,14 +40,24 @@ export async function CasePaymentsBlock({
           · {payments.length}{' '}
           {plural(payments.length, ['платёж', 'платежа', 'платежей'])}
         </span>
-        {payments.length > 0 && (
-          <span className="ml-auto text-[13px] font-mono tabular-nums text-text">
-            итого{' '}
-            <span className="font-bold text-success">
-              {MONEY_FMT.format(total)} ₴
+        <span className="ml-auto inline-flex items-center gap-3">
+          {overpaid > 0 && (
+            <span
+              className="rounded-full bg-info-bg px-2.5 py-0.5 text-[12px] font-semibold text-info"
+              title="Оплачено больше суммы договора"
+            >
+              переплата +{MONEY_FMT.format(overpaid)} ₴
             </span>
-          </span>
-        )}
+          )}
+          {payments.length > 0 && (
+            <span className="text-[13px] font-mono tabular-nums text-text">
+              итого{' '}
+              <span className="font-bold text-success">
+                {MONEY_FMT.format(total)} ₴
+              </span>
+            </span>
+          )}
+        </span>
       </div>
 
       {canWrite && (

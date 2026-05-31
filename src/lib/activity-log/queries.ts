@@ -65,3 +65,39 @@ export async function listCaseActivity(
     };
   });
 }
+
+// Резолв UUID пользователей/клиентов в имена для журнала (Задача 3): чтобы в
+// истории показывать имена, а не «1025f252… → e1faf739…». Один батч-запрос на
+// users и один на clients. RLS режет невидимое (имя просто не найдётся —
+// formatActivity мягко покажет усечённый id). Возвращает общую карту id → имя.
+export async function resolveActivityNames(
+  userIds: ReadonlyArray<string>,
+  clientIds: ReadonlyArray<string>,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (userIds.length === 0 && clientIds.length === 0) return map;
+
+  const supabase = await createSupabaseServerClient();
+
+  if (userIds.length > 0) {
+    const { data } = await supabase
+      .from('users')
+      .select('id, full_name')
+      .in('id', userIds as string[]);
+    for (const u of (data ?? []) as Array<{ id: string; full_name: string }>) {
+      map.set(u.id, u.full_name);
+    }
+  }
+
+  if (clientIds.length > 0) {
+    const { data } = await supabase
+      .from('clients')
+      .select('id, name')
+      .in('id', clientIds as string[]);
+    for (const c of (data ?? []) as Array<{ id: string; name: string }>) {
+      map.set(c.id, c.name);
+    }
+  }
+
+  return map;
+}

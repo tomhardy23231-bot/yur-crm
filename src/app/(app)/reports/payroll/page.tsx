@@ -14,10 +14,12 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { requireUser } from '@/lib/auth/require-role';
+import { cn } from '@/lib/utils';
 import {
   getPayrollRates,
   listLedger,
   listPayrollBySpecialist,
+  listPayrollPayoutBySpecialist,
 } from '@/lib/payroll/queries';
 import {
   markLedgerPaidAction,
@@ -41,8 +43,16 @@ const ROLE_IN_CASE_LABEL: Record<'lawyer' | 'expert', string> = {
   expert: 'Эксперт',
 };
 
-export default async function PayrollReportPage() {
+export default async function PayrollReportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ due?: string }>;
+}) {
   const user = await requireUser();
+  const { due } = await searchParams;
+  // U3: фильтр «только к выплате» (показывает лишь то, что ещё не выплачено).
+  const onlyDue = due === '1';
+
   const isOwner = user.profile.role === 'owner';
   const canManage = MANAGER_ROLES.includes(user.profile.role);
   const isStaff = STAFF_ROLES.includes(user.profile.role);
@@ -50,13 +60,24 @@ export default async function PayrollReportPage() {
   const showLawyerRate = isStaff || user.profile.role === 'lawyer';
   const showExpertRate = isStaff || user.profile.role === 'expert';
 
-  const [rows, rates, ledger] = await Promise.all([
+  const [rows, rates, ledger, payoutRows] = await Promise.all([
     listPayrollBySpecialist(),
     getPayrollRates(),
     listLedger(),
+    listPayrollPayoutBySpecialist(),
   ]);
 
   const totalEarned = rows.reduce((sum, r) => sum + r.earned, 0);
+
+  // Итоги по леджеру (Задача 5): зафиксировано всего / выплачено / к выплате.
+  const payoutTotals = payoutRows.reduce(
+    (acc, r) => ({
+      total: acc.total + r.total,
+      paid: acc.paid + r.paid,
+      outstanding: acc.outstanding + r.outstanding,
+    }),
+    { total: 0, paid: 0, outstanding: 0 },
+  );
 
   const ledgerAccrued = ledger
     .filter((l) => l.status === 'accrued')
@@ -65,22 +86,27 @@ export default async function PayrollReportPage() {
     .filter((l) => l.status === 'paid')
     .reduce((s, l) => s + l.amount, 0);
 
+  // U3: применяем фильтр «только к выплате» к секции «Выплаты» (леджер).
+  // Сводка по сотрудникам (расчётная, блок выше) фильтром не затрагивается.
+  const shownPayoutRows = onlyDue
+    ? payoutRows.filter((r) => r.outstanding > 0)
+    : payoutRows;
+  const shownLedger = onlyDue
+    ? ledger.filter((l) => l.status === 'accrued')
+    : ledger;
+
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-[13px] text-text-muted">
-          Начисления — процент от оплаченной суммы по делу, по категории.
-          Юрист и Эксперт получают полный процент каждый.
-        </p>
-        {isOwner && (
+      {isOwner && (
+        <div className="flex justify-end">
           <Button asChild variant="secondary" size="sm">
             <Link href="/settings/payroll">
               <Settings size={14} strokeWidth={1.75} />
               Настроить ставки
             </Link>
           </Button>
-        )}
-      </header>
+        </div>
+      )}
 
       {/* Ставки по категориям */}
       <Card className="p-5">
@@ -120,68 +146,97 @@ export default async function PayrollReportPage() {
         </div>
       </Card>
 
-      {/* Сводка по сотрудникам */}
-      {rows.length === 0 ? (
-        <Card className="py-12 px-6 text-center">
-          <p className="text-[14px] font-semibold text-text mb-1">
-            Пока нет начислений
+      {/* ── Блок 1: РАСЧЁТНО по текущей ставке (live) ──────────────────────
+          U2: это live-расчёт «% действующей ставки × оплачено по делам». Может
+          расходиться с зафиксированным в леджере, если ставку меняли после
+          фиксации — это нормально, поэтому термин явно помечен «расчётно». */}
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-[18px] font-semibold text-text">
+            Начислено по текущей ставке (расчётно)
+          </h2>
+          <p className="mt-0.5 text-[12.5px] text-text-muted">
+            Live-расчёт: действующая ставка × оплачено клиентом. К фактической
+            выплате суммы фиксируются в леджере ниже — там цифры могут отличаться,
+            если ставку меняли после фиксации.
           </p>
-          <p className="text-[13px] text-text-muted">
-            Начисления появятся, когда по делам поступят оплаты.
-          </p>
-        </Card>
-      ) : (
-        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-surface">
-                <TableHead>Сотрудник</TableHead>
-                <TableHead>Роль</TableHead>
-                <TableHead className="text-right">Дел</TableHead>
-                <TableHead className="text-right">Оплачено по делам</TableHead>
-                <TableHead className="text-right">Начислено</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => (
-                <TableRow key={`${r.user_id}-${r.role_in_case}`}>
-                  <TableCell>
-                    <span className="inline-flex items-center gap-2">
-                      <Avatar name={r.full_name} size="sm" />
-                      <span className="text-[13px] text-text">{r.full_name}</span>
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-[13px] text-text-muted">
-                    {ROLE_IN_CASE_LABEL[r.role_in_case]}
-                  </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums text-[13px] text-text-muted">
-                    {r.case_count}
-                  </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums whitespace-nowrap text-[13px] text-text-muted">
-                    {MONEY_FMT.format(r.paid_base)} ₴
-                  </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums whitespace-nowrap font-semibold text-success">
-                    {MONEY_FMT.format(r.earned)} ₴
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface-muted/50">
-            <span className="text-[12px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
-              Итого начислено
-            </span>
-            <span className="font-mono tabular-nums font-bold text-text">
-              {MONEY_FMT.format(totalEarned)} ₴
-            </span>
-          </div>
         </div>
-      )}
 
-      {/* Леджер выплат (P1.3) */}
+        {rows.length === 0 ? (
+          <Card className="py-12 px-6 text-center">
+            <p className="text-[14px] font-semibold text-text mb-1">
+              Пока нет начислений
+            </p>
+            <p className="text-[13px] text-text-muted">
+              Начисления появятся, когда по делам поступят оплаты.
+            </p>
+          </Card>
+        ) : (
+          <div className="bg-surface rounded-lg border border-border shadow-sm overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-surface">
+                  <TableHead>Сотрудник</TableHead>
+                  <TableHead>Роль</TableHead>
+                  <TableHead className="text-right">Дел</TableHead>
+                  <TableHead className="text-right">Оплачено по делам</TableHead>
+                  <TableHead
+                    className="text-right"
+                    title="Расчётно: действующая ставка × оплачено. Не равно «выплачено»."
+                  >
+                    Начислено (расчётно)
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={`${r.user_id}-${r.role_in_case}`}>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2">
+                        <Avatar name={r.full_name} size="sm" />
+                        <span className="text-[13px] text-text">{r.full_name}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-[13px] text-text-muted">
+                      {ROLE_IN_CASE_LABEL[r.role_in_case]}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums text-[13px] text-text-muted">
+                      {r.case_count}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums whitespace-nowrap text-[13px] text-text-muted">
+                      {MONEY_FMT.format(r.paid_base)} ₴
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums whitespace-nowrap font-semibold text-success">
+                      {MONEY_FMT.format(r.earned)} ₴
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface-muted/50">
+              <span className="text-[12px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
+                Итого (расчётно)
+              </span>
+              <span className="font-mono tabular-nums font-bold text-text">
+                {MONEY_FMT.format(totalEarned)} ₴
+              </span>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── Блок 2: ВЫПЛАТЫ по леджеру (зафиксированные факты) ─────────────
+          U2: здесь суммы зафиксированы в леджере (со ставкой на момент фиксации).
+          «Зафиксировано» = начислено в леджере (выплачено + к выплате). */}
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
-          <h2 className="text-[18px] font-semibold text-text">Выплаты</h2>
+          <div>
+            <h2 className="text-[18px] font-semibold text-text">Выплаты (леджер)</h2>
+            <p className="mt-0.5 text-[12.5px] text-text-muted">
+              Зафиксированные начисления и факт выплат. Отметку «выплачено» и откат
+              делает owner/admin.
+            </p>
+          </div>
           <div className="flex items-baseline gap-4 font-mono tabular-nums text-[13px]">
             <span className="text-text-muted">
               к выплате{' '}
@@ -198,11 +253,90 @@ export default async function PayrollReportPage() {
           </div>
         </div>
 
-        {ledger.length === 0 ? (
+        {/* U3: фильтр «только к выплате» (кому ещё не выплачено). */}
+        <div className="flex items-center gap-1.5">
+          <FilterPill href="/reports/payroll" active={!onlyDue}>
+            Все
+          </FilterPill>
+          <FilterPill href="/reports/payroll?due=1" active={onlyDue}>
+            Только к выплате
+          </FilterPill>
+        </div>
+
+        {/* Сводка по сотрудникам: зафиксировано / выплачено / к выплате (Задача 5). */}
+        {shownPayoutRows.length > 0 && (
+          <div className="bg-surface rounded-lg border border-border shadow-sm overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-surface">
+                  <TableHead>Сотрудник</TableHead>
+                  <TableHead>Роль</TableHead>
+                  <TableHead
+                    className="text-right"
+                    title="Зафиксировано в леджере = выплачено + к выплате."
+                  >
+                    Зафиксировано
+                  </TableHead>
+                  <TableHead className="text-right">Выплачено</TableHead>
+                  <TableHead className="text-right">К выплате</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {shownPayoutRows.map((r) => (
+                  <TableRow key={`${r.user_id}-${r.role_in_case}`}>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2">
+                        <Avatar name={r.full_name} size="sm" />
+                        <span className="text-[13px] text-text">
+                          {r.full_name}
+                        </span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-[13px] text-text-muted">
+                      {ROLE_IN_CASE_LABEL[r.role_in_case]}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums whitespace-nowrap text-[13px] text-text">
+                      {MONEY_FMT.format(r.total)} ₴
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums whitespace-nowrap font-semibold text-success">
+                      {MONEY_FMT.format(r.paid)} ₴
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums whitespace-nowrap font-semibold text-warning">
+                      {MONEY_FMT.format(r.outstanding)} ₴
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="flex items-center justify-end gap-6 px-4 py-3 border-t border-border bg-surface-muted/50 font-mono tabular-nums text-[13px]">
+              <span className="text-text-muted">
+                зафиксировано{' '}
+                <span className="font-bold text-text">
+                  {MONEY_FMT.format(payoutTotals.total)} ₴
+                </span>
+              </span>
+              <span className="text-text-muted">
+                выплачено{' '}
+                <span className="font-bold text-success">
+                  {MONEY_FMT.format(payoutTotals.paid)} ₴
+                </span>
+              </span>
+              <span className="text-text-muted">
+                к выплате{' '}
+                <span className="font-bold text-warning">
+                  {MONEY_FMT.format(payoutTotals.outstanding)} ₴
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {shownLedger.length === 0 ? (
           <Card className="py-10 px-6 text-center">
             <p className="text-[13px] text-text-muted">
-              Начислений пока нет. Они появляются при завершении дела (или по мере
-              оплат, если дело так настроено).
+              {onlyDue
+                ? 'Нет начислений к выплате — всё выплачено.'
+                : 'Начислений пока нет. Они появляются при завершении дела (или по мере оплат, если дело так настроено).'}
             </p>
           </Card>
         ) : (
@@ -213,13 +347,13 @@ export default async function PayrollReportPage() {
                   <TableHead>Сотрудник</TableHead>
                   <TableHead>Дело</TableHead>
                   <TableHead>Роль</TableHead>
-                  <TableHead className="text-right">Начислено</TableHead>
+                  <TableHead className="text-right">Сумма</TableHead>
                   <TableHead>Статус</TableHead>
                   {canManage && <TableHead className="text-right">Действие</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ledger.map((l) => (
+                {shownLedger.map((l) => (
                   <TableRow key={l.id}>
                     <TableCell>
                       <span className="inline-flex items-center gap-2">
@@ -279,5 +413,30 @@ export default async function PayrollReportPage() {
         )}
       </section>
     </main>
+  );
+}
+
+// Переключатель-пилюля для фильтра леджера (U3). Серверный — обычные ссылки.
+function FilterPill({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        'inline-flex items-center rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors',
+        active
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-border bg-surface text-text-muted hover:border-border-strong hover:text-text',
+      )}
+    >
+      {children}
+    </Link>
   );
 }

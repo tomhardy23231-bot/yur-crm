@@ -9,6 +9,14 @@
 //   - activity_log writer (allowlist, CSO #1, MED#7)
 //   - cases_validate_assignees (active-check для lawyer_id и responsible_id)
 //   - payroll: ставки 7/10/25, case_payroll, изменение ставок только owner
+//   - Задача 1: payroll_by_specialist не светит чужие начисления (фильтр зрителя)
+//   - Задача 4: управление пользователями — ступенчатые права (owner vs admin)
+//
+// Доработки по итогам симуляции (нумерация секций 20–22):
+//   - Задача 1 (нов.): юрист создаёт клиента и сразу видит его; эксперт — не может
+//   - Задача 2 (нов.): дубль платежа по idempotency_key отвергается (23505)
+//   - Задача 8 (нов.): не-staff только +1 (прыжок → stage_skip_forbidden);
+//                      staff может перескочить с записью stage_corrected
 //
 // Запуск: npm run smoke:rls (env через --env-file=.env.local)
 
@@ -57,6 +65,7 @@ async function main() {
   const expert1Uid = await uid('expert@yur.local');
   const expert2Uid = await uid('expert2@yur.local');
   const adminUid = await uid('admin@yur.local');
+  const ownerUid = await uid('owner@yur.local');
 
   const caseAId = await caseId('CRM-2026-001'); // lawyer1 + expert1, representation
   const caseBId = await caseId('CRM-2026-002'); // lawyer2 + expert2, claim
@@ -520,6 +529,583 @@ async function main() {
   if (ownerRateErr) fail(`owner не смог изменить ставку: ${ownerRateErr.message}`);
   await owner.from('payroll_rates').update({ lawyer_percent: 7 }).eq('category', 'document'); // cleanup
   ok('owner может менять ставки');
+
+  // 16.6 — Задача 1: payroll_by_specialist не должен светить чужие начисления.
+  // Специалист видит ТОЛЬКО строки со своим user_id; staff — всех.
+  const { data: l1Specialist } = await lawyer1.rpc('payroll_by_specialist');
+  const rowsL1 = (l1Specialist ?? []) as Array<{ user_id: string }>;
+  if (rowsL1.length === 0) {
+    fail('Задача 1: lawyer1 не получил ни одной строки сводки (ожидалась своя)');
+  }
+  if (rowsL1.some((r) => r.user_id !== lawyer1Uid)) {
+    fail(`Задача 1: lawyer1 видит чужие строки в payroll_by_specialist: ${JSON.stringify(rowsL1)}`);
+  }
+  ok('Задача 1: lawyer1 в сводке видит только свои начисления (чужих нет)');
+
+  const { data: adminSpecialist } = await adminUser.rpc('payroll_by_specialist');
+  const uidsAdmin = new Set(
+    ((adminSpecialist ?? []) as Array<{ user_id: string }>).map((r) => r.user_id),
+  );
+  if (uidsAdmin.size < 2) {
+    fail(`Задача 1: staff должен видеть начисления нескольких сотрудников, uids: ${uidsAdmin.size}`);
+  }
+  ok('Задача 1: staff видит начисления всех сотрудников (сводка не отфильтрована)');
+
+  console.log('\n17. Payroll payouts / overpaid / act-flag / overrides (Задачи 1–5):');
+
+  // 17.0 — переводим дело A в per_payment → леджер начислит accrued
+  // (representation 25%, paid 10000 → lawyer 2500, expert 2500).
+  await adminUser.from('cases').update({ accrual_mode: 'per_payment' }).eq('id', caseAId);
+  const { data: accruedRows } = await admin
+    .from('payroll_ledger')
+    .select('id, user_id, role_in_case, amount, status')
+    .eq('case_id', caseAId);
+  const lawyerLedger = (accruedRows ?? []).find((r) => r.role_in_case === 'lawyer');
+  const expertLedger = (accruedRows ?? []).find((r) => r.role_in_case === 'expert');
+  if (
+    !lawyerLedger || !expertLedger ||
+    Number(lawyerLedger.amount) !== 2500 || Number(expertLedger.amount) !== 2500 ||
+    lawyerLedger.status !== 'accrued' || expertLedger.status !== 'accrued'
+  ) {
+    fail(`per_payment должен создать accrued 2500/2500, факт: ${JSON.stringify(accruedRows)}`);
+  }
+  ok('per_payment начислил accrued 2500 (юрист) + 2500 (Експерт)');
+
+  // 17.1 — Задача 5: специалист НЕ может сам себе отметить выплату.
+  await lawyer1
+    .from('payroll_ledger')
+    .update({ status: 'paid', paid_at: new Date().toISOString() })
+    .eq('id', lawyerLedger.id);
+  const { data: afterSelfPay } = await admin
+    .from('payroll_ledger').select('status').eq('id', lawyerLedger.id).single();
+  if (afterSelfPay!.status === 'paid') fail('Задача 5: lawyer смог отметить себе выплату — RLS дыра');
+  ok('Задача 5: специалист не может отметить выплату (update managers-only)');
+
+  // 17.2 — owner отмечает выплату (status=paid, paid_by фиксируется).
+  const { error: ownerPayErr } = await owner
+    .from('payroll_ledger')
+    .update({ status: 'paid', paid_at: new Date().toISOString(), paid_by: ownerUid })
+    .eq('id', lawyerLedger.id);
+  if (ownerPayErr) fail(`owner не смог отметить выплату: ${ownerPayErr.message}`);
+  const { data: afterOwnerPay } = await admin
+    .from('payroll_ledger').select('status, paid_by').eq('id', lawyerLedger.id).single();
+  if (afterOwnerPay!.status !== 'paid' || afterOwnerPay!.paid_by !== ownerUid) {
+    fail(`Задача 5: выплата owner'ом не зафиксирована, факт: ${JSON.stringify(afterOwnerPay)}`);
+  }
+  ok('Задача 5: owner отметил выплату (status=paid, paid_by=owner)');
+
+  // 17.3 — Задача 1: доплата клиента после выплаты → новая accrued-строка на разницу.
+  // paid_total 10000 → 14000 (target lawyer 3500), уже выплачено 2500 → остаток 1000.
+  const { data: topupPay } = await adminUser
+    .from('payments')
+    .insert({ case_id: caseAId, amount: 4000, paid_at: '2026-05-28', created_by: adminUid })
+    .select('id').single();
+  const { data: lawyerTopup } = await admin
+    .from('payroll_ledger')
+    .select('amount, status')
+    .eq('case_id', caseAId).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer')
+    .eq('status', 'accrued');
+  if (!lawyerTopup || lawyerTopup.length !== 1 || Number(lawyerTopup[0]!.amount) !== 1000) {
+    fail(`Задача 1: доплата должна создать accrued 1000, факт: ${JSON.stringify(lawyerTopup)}`);
+  }
+  // и paid-строка 2500 не переписана.
+  const { data: lawyerPaidRow } = await admin
+    .from('payroll_ledger')
+    .select('amount')
+    .eq('case_id', caseAId).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer')
+    .eq('status', 'paid');
+  if (!lawyerPaidRow || lawyerPaidRow.length !== 1 || Number(lawyerPaidRow[0]!.amount) !== 2500) {
+    fail(`Задача 1: paid-строка 2500 не должна переписываться, факт: ${JSON.stringify(lawyerPaidRow)}`);
+  }
+  ok('Задача 1: доплата после выплаты → новая accrued 1000, paid 2500 нетронут');
+
+  // откат доплаты → остаток снова 0 → accrued-строка удалена (paid 2500 остаётся).
+  await adminUser.from('payments').delete().eq('id', topupPay!.id);
+  const { data: lawyerAfterRevert } = await admin
+    .from('payroll_ledger').select('status')
+    .eq('case_id', caseAId).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer');
+  if ((lawyerAfterRevert ?? []).some((r) => r.status === 'accrued')) {
+    fail('Задача 1: после отката доплаты accrued должен исчезнуть');
+  }
+  ok('Задача 1: откат доплаты убрал accrued-остаток, paid сохранён');
+
+  // 17.4 — Задача 2: смена эксперта удаляет accrued прежнего, paid сохраняет.
+  // Сначала выплачиваем accrued эксперта1 (станет фактом истории).
+  await owner.from('payroll_ledger')
+    .update({ status: 'paid', paid_at: new Date().toISOString(), paid_by: ownerUid })
+    .eq('id', expertLedger.id);
+  await adminUser.from('cases').update({ responsible_id: expert2Uid }).eq('id', caseAId);
+  // paid прежнего эксперта (expert1) сохранён.
+  const { data: e1PaidSurvive } = await admin
+    .from('payroll_ledger').select('id').eq('id', expertLedger.id).maybeSingle();
+  if (!e1PaidSurvive) fail('Задача 2: paid-строка прежнего Експерта удалена — потеря факта выплаты');
+  ok('Задача 2: paid прежнего Експерта сохранён при снятии с дела');
+  // accrued нового эксперта (expert2) создан.
+  const { data: e2New } = await admin
+    .from('payroll_ledger').select('amount')
+    .eq('case_id', caseAId).eq('user_id', expert2Uid).eq('role_in_case', 'expert').eq('status', 'accrued');
+  if (!e2New || e2New.length !== 1 || Number(e2New[0]!.amount) !== 2500) {
+    fail(`Задача 2: accrued нового Експерта (2500) не создан, факт: ${JSON.stringify(e2New)}`);
+  }
+  ok('Задача 2: accrued нового Експерта создан (2500)');
+  // возвращаем эксперта1 → accrued expert2 (осиротевший) удаляется.
+  await adminUser.from('cases').update({ responsible_id: expert1Uid }).eq('id', caseAId);
+  const { data: e2Orphan } = await admin
+    .from('payroll_ledger').select('status')
+    .eq('case_id', caseAId).eq('user_id', expert2Uid).eq('role_in_case', 'expert');
+  if ((e2Orphan ?? []).some((r) => r.status === 'accrued')) {
+    fail('Задача 2: accrued снятого Експерта2 не удалён');
+  }
+  ok('Задача 2: при возврате Експерта1 осиротевший accrued Експерта2 удалён');
+
+  // 17.5 — специалист не может менять override (guard trigger).
+  const { error: ovErr } = await lawyer1
+    .from('cases').update({ lawyer_rate_override: 50 }).eq('id', caseAId);
+  if (!ovErr || !/override/i.test(ovErr.message)) {
+    fail(`специалист не должен менять rate_override, факт: ${ovErr?.message ?? 'no error'}`);
+  }
+  ok('специалист не может менять rate_override (guard trigger)');
+
+  // cleanup леджера дела A + возврат accrual_mode.
+  await admin.from('payroll_ledger').delete().eq('case_id', caseAId);
+  await adminUser.from('cases').update({ accrual_mode: 'on_completion' }).eq('id', caseAId);
+  ok('cleanup: леджер дела A очищен, accrual_mode → on_completion');
+
+  // 17.6 — Задача 3: переплата клиента (overpaid) видна.
+  // Дело B: contract_sum 120000, paid 0. Платёж 130000 → overpaid 10000, debt 0.
+  const { data: opPay } = await adminUser
+    .from('payments')
+    .insert({ case_id: caseBId, amount: 130000, paid_at: '2026-05-28', created_by: adminUid })
+    .select('id').single();
+  const { data: bOver } = await admin
+    .from('cases').select('debt, overpaid').eq('id', caseBId).single();
+  if (Number(bOver!.overpaid) !== 10000 || Number(bOver!.debt) !== 0) {
+    fail(`Задача 3: ожидался overpaid=10000, debt=0, факт: ${JSON.stringify(bOver)}`);
+  }
+  ok('Задача 3: overpaid=10000, debt=0 при переплате');
+  await adminUser.from('payments').delete().eq('id', opPay!.id);
+  const { data: bOverReset } = await admin
+    .from('cases').select('overpaid, debt').eq('id', caseBId).single();
+  if (Number(bOverReset!.overpaid) !== 0 || Number(bOverReset!.debt) !== 120000) {
+    fail(`Задача 3: после отката overpaid=0, debt=120000, факт: ${JSON.stringify(bOverReset)}`);
+  }
+  ok('Задача 3: откат платежа вернул overpaid=0, debt=120000');
+
+  // 17.7 — Задача 4: закрытие без акта помечает closed_without_act; догрузка акта сбрасывает.
+  const { data: actCase, error: actCaseErr } = await admin.from('cases').insert({
+    number_title: `SMOKE-ACT-${SMOKE_RUN_ID}`, client_id: anyClient!.id,
+    lawyer_id: lawyer1Uid, responsible_id: expert1Uid, opened_at: '2026-05-28',
+    case_type: 'civil', category: 'document', stage: 'closed', closed_at: '2026-05-28',
+    priority: 'normal', contract_sum: 0,
+  }).select('id, closed_without_act').single();
+  if (actCaseErr || !actCase) fail(`setup act-case: ${actCaseErr?.message}`);
+  if (!actCase.closed_without_act) fail('Задача 4: closed без акта не помечен (closed_without_act=false)');
+  ok('Задача 4: дело закрыто без акта → closed_without_act=true');
+
+  const actKey = `cases/${actCase.id}/${crypto.randomUUID()}--act.txt`;
+  await admin.storage.from('case-documents').upload(actKey, payload, { contentType: 'text/plain', upsert: false });
+  await admin.from('documents').insert({
+    case_id: actCase.id, file_name: 'act.txt', storage_key: actKey, doc_type: 'act', uploaded_by: adminUid,
+  });
+  const { data: actCaseAfter } = await admin
+    .from('cases').select('closed_without_act').eq('id', actCase.id).single();
+  if (actCaseAfter!.closed_without_act) fail('Задача 4: догрузка акта не сбросила closed_without_act');
+  ok('Задача 4: догрузка акта сбросила closed_without_act');
+
+  // cleanup act-case.
+  await admin.from('documents').delete().eq('case_id', actCase.id);
+  await admin.storage.from('case-documents').remove([actKey]);
+  await admin.from('cases').delete().eq('id', actCase.id);
+  ok('cleanup: временное дело акта удалено');
+
+  console.log('\n18. Проблема 1 — откат выплаты сливается с существующим остатком (revert_payout):');
+  // Сценарий из промта (адаптирован под дело A: representation 25%, paid 10000):
+  //   accrued 2500 → выплата 2500 → доплата клиента → откат первой выплаты.
+  // Простой update paid→accrued упал бы на payroll_ledger_one_accrued_idx,
+  // revert_payout должен слить суммы и не создать дубль accrued.
+  await adminUser.from('cases').update({ accrual_mode: 'per_payment' }).eq('id', caseAId);
+  const { data: p1Lawyer } = await admin
+    .from('payroll_ledger')
+    .select('id, amount, status')
+    .eq('case_id', caseAId).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer');
+  const p1Accrued = (p1Lawyer ?? [])[0];
+  if (!p1Accrued || Number(p1Accrued.amount) !== 2500 || p1Accrued.status !== 'accrued') {
+    fail(`Проблема 1: ожидался accrued 2500 у юриста, факт: ${JSON.stringify(p1Lawyer)}`);
+  }
+  const paidRowId = p1Accrued.id as string;
+
+  // owner отмечает выплату 2500 → paid-строка, accrued больше нет.
+  const { error: p1PayErr } = await owner
+    .from('payroll_ledger')
+    .update({ status: 'paid', paid_at: new Date().toISOString(), paid_by: ownerUid })
+    .eq('id', paidRowId);
+  if (p1PayErr) fail(`Проблема 1: owner не смог отметить выплату: ${p1PayErr.message}`);
+
+  // доплата клиента +4000 → paid_total 14000, target юриста 3500, выплачено 2500 →
+  // создаётся НОВАЯ accrued = 1000 (отдельная строка, другой id).
+  const { data: p1Topup } = await adminUser
+    .from('payments')
+    .insert({ case_id: caseAId, amount: 4000, paid_at: '2026-05-28', created_by: adminUid })
+    .select('id').single();
+  const { data: p1AfterTopup } = await admin
+    .from('payroll_ledger').select('amount, status')
+    .eq('case_id', caseAId).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer');
+  const p1TopupAccrued = (p1AfterTopup ?? []).filter((r) => r.status === 'accrued');
+  if (p1TopupAccrued.length !== 1 || Number(p1TopupAccrued[0]!.amount) !== 1000) {
+    fail(`Проблема 1: доплата должна создать accrued 1000, факт: ${JSON.stringify(p1AfterTopup)}`);
+  }
+  ok('setup: выплата 2500 + доплата клиента → accrued 1000 рядом с paid 2500');
+
+  // КЛЮЧЕВОЙ откат: НЕ должен упасть на unique-индекс; суммы должны слиться.
+  const { error: revertErr } = await owner.rpc('revert_payout', { p_ledger_id: paidRowId });
+  if (revertErr) fail(`Проблема 1: revert_payout упал с ошибкой: ${revertErr.message}`);
+  const { data: p1AfterRevert } = await admin
+    .from('payroll_ledger').select('id, amount, status')
+    .eq('case_id', caseAId).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer');
+  const p1RevAccrued = (p1AfterRevert ?? []).filter((r) => r.status === 'accrued');
+  const p1RevPaid = (p1AfterRevert ?? []).filter((r) => r.status === 'paid');
+  if (p1RevAccrued.length !== 1 || Number(p1RevAccrued[0]!.amount) !== 3500 || p1RevPaid.length !== 0) {
+    fail(`Проблема 1: после отката ожидался ОДИН accrued=3500 без paid, факт: ${JSON.stringify(p1AfterRevert)}`);
+  }
+  ok('Проблема 1: откат слил выплату с остатком → один accrued 3500, дублей нет, индекс цел');
+
+  // Право: специалист не может вызвать revert_payout (owner/admin only).
+  // Отмечаем accrued 3500 выплаченным и пробуем откатить из-под lawyer.
+  await owner.from('payroll_ledger')
+    .update({ status: 'paid', paid_at: new Date().toISOString(), paid_by: ownerUid })
+    .eq('id', p1RevAccrued[0]!.id);
+  const { data: p1PaidNow } = await admin.from('payroll_ledger').select('id')
+    .eq('case_id', caseAId).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer').eq('status', 'paid').single();
+  const { error: lawyerRevertErr } = await lawyer1.rpc('revert_payout', { p_ledger_id: p1PaidNow!.id });
+  if (!lawyerRevertErr) fail('Проблема 1: lawyer смог вызвать revert_payout — должно быть owner/admin');
+  const { data: p1StillPaid } = await admin
+    .from('payroll_ledger').select('status').eq('id', p1PaidNow!.id).single();
+  if (p1StillPaid!.status !== 'paid') fail('Проблема 1: откат из-под lawyer изменил строку — guard пробит');
+  ok('Проблема 1: специалист не может вызвать revert_payout (can_manage_users отверг)');
+
+  // cleanup дела A.
+  await adminUser.from('payments').delete().eq('id', p1Topup!.id);
+  await admin.from('payroll_ledger').delete().eq('case_id', caseAId);
+  await adminUser.from('cases').update({ accrual_mode: 'on_completion' }).eq('id', caseAId);
+  ok('cleanup: леджер дела A очищен (Проблема 1), accrual_mode → on_completion');
+
+  console.log('\n19. Задача 4 — управление пользователями (ступенчатые права, RLS):');
+
+  // 19.1 — admin НЕ может повысить юриста до admin (RLS WITH CHECK на новую роль).
+  await adminUser.from('users').update({ role: 'admin' }).eq('email', 'lawyer@yur.local');
+  const { data: l1RoleAfter } = await admin
+    .from('users').select('role').eq('email', 'lawyer@yur.local').single();
+  if (l1RoleAfter!.role !== 'lawyer') {
+    fail(`Задача 4: admin смог повысить юриста до ${l1RoleAfter!.role} — RLS дыра`);
+  }
+  ok('Задача 4: admin не может повысить юриста до admin (RLS WITH CHECK отверг)');
+
+  // 19.2 — admin НЕ может менять строку владельца (RLS USING на старую роль).
+  await adminUser.from('users')
+    .update({ full_name: 'Hacked owner by admin' }).eq('email', 'owner@yur.local');
+  const { data: ownerNameAfter } = await admin
+    .from('users').select('full_name').eq('email', 'owner@yur.local').single();
+  if (ownerNameAfter!.full_name === 'Hacked owner by admin') {
+    fail('Задача 4: admin смог изменить строку владельца — RLS дыра');
+  }
+  ok('Задача 4: admin не может изменять строку владельца');
+
+  // 19.3 — admin НЕ может менять admin-строки (в т. ч. свою) — только не-админские.
+  await adminUser.from('users')
+    .update({ full_name: 'Self-edit admin' }).eq('email', 'admin@yur.local');
+  const { data: adminNameAfter } = await admin
+    .from('users').select('full_name').eq('email', 'admin@yur.local').single();
+  if (adminNameAfter!.full_name === 'Self-edit admin') {
+    fail('Задача 4: admin смог изменить admin-строку — RLS дыра');
+  }
+  ok('Задача 4: admin не может изменять admin-строки');
+
+  // 19.4 — owner МОЖЕТ назначать/снимать admin-уровень (плюшка владельца).
+  const { error: ownerToAdminErr } = await owner
+    .from('users').update({ role: 'admin' }).eq('email', 'office@yur.local');
+  if (ownerToAdminErr) fail(`Задача 4: owner не смог назначить admin: ${ownerToAdminErr.message}`);
+  await owner.from('users').update({ role: 'office_manager' }).eq('email', 'office@yur.local'); // restore
+  const { data: officeRoleNow } = await admin
+    .from('users').select('role').eq('email', 'office@yur.local').single();
+  if (officeRoleNow!.role !== 'office_manager') {
+    fail('Задача 4: восстановление роли office_manager не удалось');
+  }
+  ok('Задача 4: owner может назначать и снимать admin-уровень');
+
+  // 19.5 — admin НЕ может ВСТАВИТЬ admin, но МОЖЕТ — не-админскую роль.
+  const newUserEmail = `smoke-newuser-${SMOKE_RUN_ID}@yur.local`;
+  const { data: newUserAuth, error: newUserAuthErr } = await admin.auth.admin.createUser({
+    email: newUserEmail, password: PASSWORD, email_confirm: true,
+  });
+  if (newUserAuthErr || !newUserAuth.user) fail(`setup newUser auth: ${newUserAuthErr?.message}`);
+  const newUserId = newUserAuth.user.id;
+
+  const { error: adminInsAdminErr } = await adminUser.from('users').insert({
+    id: newUserId, full_name: 'Smoke NewAdmin', email: newUserEmail, role: 'admin', is_active: true,
+  });
+  if (!adminInsAdminErr) fail('Задача 4: admin смог создать admin-пользователя — RLS дыра');
+  ok('Задача 4: admin не может создать admin-пользователя (RLS WITH CHECK отверг)');
+
+  const { error: adminInsLawyerErr } = await adminUser.from('users').insert({
+    id: newUserId, full_name: 'Smoke NewLawyer', email: newUserEmail, role: 'lawyer', is_active: true,
+  });
+  if (adminInsLawyerErr) fail(`Задача 4: admin не смог создать lawyer-пользователя: ${adminInsLawyerErr.message}`);
+  ok('Задача 4: admin может создать не-админскую роль (lawyer)');
+
+  // 19.6 — обычная роль (lawyer) вообще не имеет доступа к управлению users.
+  await lawyer1.from('users')
+    .update({ full_name: 'Hacked by lawyer' }).eq('email', 'expert@yur.local');
+  const { data: e1NameAfter } = await admin
+    .from('users').select('full_name').eq('email', 'expert@yur.local').single();
+  if (e1NameAfter!.full_name === 'Hacked by lawyer') {
+    fail('Задача 4: lawyer смог менять users — RLS дыра');
+  }
+  ok('Задача 4: lawyer не имеет доступа к управлению пользователями');
+
+  // cleanup временного пользователя.
+  await admin.from('users').delete().eq('id', newUserId);
+  await admin.auth.admin.deleteUser(newUserId);
+  ok('cleanup: временный пользователь Задачи 4 удалён');
+
+  console.log('\n20. Задача 1 — создание клиента: юрист может, эксперт нет:');
+  // lawyer1 создаёт клиента и СРАЗУ читает его обратно (RETURNING). Раньше падало
+  // на clients_select_visible (нет связанного дела) — теперь select-политика
+  // пускает создателя (created_by = active_uid()).
+  const { data: lawyerClient, error: lawyerClientErr } = await lawyer1
+    .from('clients')
+    .insert({
+      name: `SMOKE Client ${SMOKE_RUN_ID}`,
+      client_kind: 'individual',
+      created_by: lawyer1Uid,
+    })
+    .select('id, name')
+    .single();
+  if (lawyerClientErr || !lawyerClient) {
+    fail(`Задача 1: юрист не смог создать/прочитать клиента: ${lawyerClientErr?.message ?? 'no data'}`);
+  }
+  const smokeClientId = lawyerClient.id as string;
+  ok('Задача 1: юрист создал клиента и сразу его видит (RETURNING прошёл)');
+
+  const { data: lawyerSees } = await lawyer1
+    .from('clients').select('id').eq('id', smokeClientId).maybeSingle();
+  if (!lawyerSees) fail('Задача 1: юрист не видит созданного им клиента');
+  ok('Задача 1: созданный клиент виден создателю в списке');
+
+  // expert1 НЕ может создать клиента (can_create_clients отверг).
+  const { error: expertClientErr } = await expert1
+    .from('clients')
+    .insert({
+      name: `SMOKE Expert Client ${SMOKE_RUN_ID}`,
+      client_kind: 'individual',
+      created_by: expert1Uid,
+    })
+    .select('id')
+    .single();
+  if (!expertClientErr) fail('Задача 1: эксперт смог создать клиента — RLS дыра');
+  ok('Задача 1: эксперт не может создать клиента (clients_insert_creators отверг)');
+
+  await admin.from('clients').delete().eq('id', smokeClientId);
+  ok('cleanup: smoke-клиент удалён');
+
+  console.log('\n21. Задача 2 — идемпотентность платежа (уникальный ключ):');
+  const idemKey = crypto.randomUUID();
+  const { data: pay1, error: pay1Err } = await adminUser
+    .from('payments')
+    .insert({
+      case_id: caseBId, amount: 1234.5, paid_at: '2026-05-28',
+      created_by: adminUid, idempotency_key: idemKey,
+    })
+    .select('id').single();
+  if (pay1Err || !pay1) fail(`Задача 2: первый платёж не прошёл: ${pay1Err?.message}`);
+  ok('Задача 2: первый платёж с ключом сохранён');
+
+  // Повторная отправка того же ключа (мульти-сабмит) → 23505.
+  const { error: pay2Err } = await adminUser
+    .from('payments')
+    .insert({
+      case_id: caseBId, amount: 1234.5, paid_at: '2026-05-28',
+      created_by: adminUid, idempotency_key: idemKey,
+    })
+    .select('id').single();
+  if (!pay2Err || pay2Err.code !== '23505') {
+    fail(`Задача 2: дубль по idempotency_key должен дать 23505, факт: ${pay2Err?.code ?? 'no error'}`);
+  }
+  ok('Задача 2: повторная вставка того же ключа отвергнута (23505)');
+
+  // Ровно одна строка с ключом; paid_total дела B вырос ровно на 1234.5.
+  const { data: keyRows } = await admin.from('payments').select('id').eq('idempotency_key', idemKey);
+  if ((keyRows ?? []).length !== 1) fail(`Задача 2: ожидалась 1 строка с ключом, факт ${keyRows?.length}`);
+  const { data: bPaid } = await admin.from('cases').select('paid_total').eq('id', caseBId).single();
+  if (Number(bPaid!.paid_total) !== 1234.5) {
+    fail(`Задача 2: paid_total дела B ожидался 1234.5, факт ${bPaid!.paid_total}`);
+  }
+  ok('Задача 2: ровно одна строка платежа, paid_total не задвоился');
+
+  await admin.from('payments').delete().eq('id', pay1.id);
+  const { data: bPaidReset } = await admin.from('cases').select('paid_total').eq('id', caseBId).single();
+  if (Number(bPaidReset!.paid_total) !== 0) {
+    fail(`Задача 2: после cleanup paid_total дела B ожидался 0, факт ${bPaidReset!.paid_total}`);
+  }
+  ok('cleanup: smoke-платёж удалён, paid_total дела B = 0');
+
+  console.log('\n22. Задача 8 — запрет «прыжков» по этапам (строго +1):');
+  const { data: a8Before } = await admin
+    .from('cases').select('stage, closed_at').eq('id', caseAId).single();
+  const a8Stage = a8Before!.stage as string;
+  const a8Closed = a8Before!.closed_at as string | null;
+
+  // Чистый старт: new_request (closed_at null). От staff — разрешено.
+  await adminUser.from('cases').update({ stage: 'new_request', closed_at: null }).eq('id', caseAId);
+
+  // lawyer1: прыжок new_request → in_progress (через consultation) запрещён.
+  const { error: skipErr } = await lawyer1
+    .from('cases').update({ stage: 'in_progress' }).eq('id', caseAId);
+  if (!skipErr || !skipErr.message.includes('stage_skip_forbidden')) {
+    fail(`Задача 8: юрист должен получить stage_skip_forbidden, факт: ${skipErr?.message ?? 'no error'}`);
+  }
+  ok('Задача 8: юрист не может перепрыгнуть этап (stage_skip_forbidden)');
+
+  // lawyer1: шаг строго +1 new_request → consultation разрешён.
+  const { error: fwd1Err } = await lawyer1
+    .from('cases').update({ stage: 'consultation' }).eq('id', caseAId);
+  if (fwd1Err) fail(`Задача 8: юрист не смог сделать шаг +1: ${fwd1Err.message}`);
+  const { data: a8After1 } = await admin.from('cases').select('stage').eq('id', caseAId).single();
+  if (a8After1!.stage !== 'consultation') fail(`Задача 8: ожидался consultation, факт ${a8After1!.stage}`);
+  ok('Задача 8: юрист делает шаг строго +1 (new_request → consultation)');
+
+  // staff (admin): прыжок consultation → awaiting_decision (через in_progress) — ок + лог.
+  const { count: beforeCorr } = await admin
+    .from('activity_log').select('id', { count: 'exact', head: true })
+    .eq('entity_type', 'case').eq('entity_id', caseAId).eq('action', 'stage_corrected');
+  const { error: staffSkipErr } = await adminUser
+    .from('cases').update({ stage: 'awaiting_decision' }).eq('id', caseAId);
+  if (staffSkipErr) fail(`Задача 8: admin должен мочь перескочить этап: ${staffSkipErr.message}`);
+  const { count: afterCorr } = await admin
+    .from('activity_log').select('id', { count: 'exact', head: true })
+    .eq('entity_type', 'case').eq('entity_id', caseAId).eq('action', 'stage_corrected');
+  if ((afterCorr ?? 0) !== (beforeCorr ?? 0) + 1) {
+    fail(`Задача 8: ожидалась +1 запись stage_corrected при прыжке staff, было ${beforeCorr}, стало ${afterCorr}`);
+  }
+  ok('Задача 8: staff может перескочить этап с записью stage_corrected');
+
+  // cleanup: возвращаем исходный этап и closed_at.
+  await adminUser.from('cases').update({ stage: a8Stage, closed_at: a8Closed }).eq('id', caseAId);
+  ok(`cleanup: дело A возвращено в ${a8Stage}`);
+
+  console.log('\n23. C1 — гонка «выплата + платёж» не задваивает леджер:');
+  // Воспроизведение бага дела 006 (иск 10%): отметка выплаты юристу и новый
+  // платёж клиента приходят почти одновременно. До фикса остаток accrued
+  // считался без блокировки строк леджера → под READ COMMITTED можно было
+  // прочитать устаревший Σ(paid)=0 и вставить дубль-accrued на полный target
+  // (paid 3000 + accrued 4000 = 7000 вместо 4000). FOR UPDATE в
+  // private.upsert_ledger_entry сериализует пересчёт с отметкой выплаты.
+  //
+  // Инвариант (любой порядок операций): Σ(paid)+Σ(accrued) по роли = target,
+  // где target = round(paid_total × percent). Для claim 10% и 40 000 → 4 000.
+
+  // Временное дело: claim (10%), per_payment, lawyer1 + expert1.
+  const { data: c1Case, error: c1CaseErr } = await admin.from('cases').insert({
+    number_title: `SMOKE-C1-${SMOKE_RUN_ID}`, client_id: anyClient!.id,
+    lawyer_id: lawyer1Uid, responsible_id: expert1Uid, opened_at: '2026-05-28',
+    case_type: 'civil', category: 'claim', stage: 'in_progress',
+    priority: 'normal', contract_sum: 100000, accrual_mode: 'per_payment',
+  }).select('id').single();
+  if (c1CaseErr || !c1Case) fail(`C1 setup: не удалось создать дело: ${c1CaseErr?.message}`);
+  const c1Id = c1Case.id as string;
+
+  // Чистый старт дела: убрать платежи (→ paid_total 0) и строки леджера.
+  async function c1Reset(): Promise<void> {
+    await admin.from('payments').delete().eq('case_id', c1Id);
+    await admin.from('payroll_ledger').delete().eq('case_id', c1Id);
+  }
+  // Вставка платежа от staff (триггер пересчёта + sync леджера).
+  async function c1Pay(amount: number): Promise<void> {
+    const { error } = await adminUser.from('payments')
+      .insert({ case_id: c1Id, amount, paid_at: '2026-05-28', created_by: adminUid });
+    if (error) fail(`C1: платёж ${amount} не прошёл: ${error.message}`);
+  }
+  // id текущей accrued-строки юриста (для отметки выплаты).
+  async function c1LawyerAccruedId(): Promise<string> {
+    const { data } = await admin.from('payroll_ledger')
+      .select('id').eq('case_id', c1Id).eq('user_id', lawyer1Uid)
+      .eq('role_in_case', 'lawyer').eq('status', 'accrued').maybeSingle();
+    if (!data) fail('C1: ожидалась accrued-строка юриста, её нет');
+    return data.id as string;
+  }
+  // Owner отмечает строку выплаченной (только из status=accrued, идемпотентно).
+  async function c1MarkPaid(ledgerId: string): Promise<void> {
+    await owner.from('payroll_ledger')
+      .update({ status: 'paid', paid_at: new Date().toISOString(), paid_by: ownerUid })
+      .eq('id', ledgerId).eq('status', 'accrued');
+  }
+  // Σ(paid)+Σ(accrued) по роли (то, что реально начислено сотруднику).
+  async function c1RoleTotal(userId: string, role: 'lawyer' | 'expert'): Promise<number> {
+    const { data } = await admin.from('payroll_ledger')
+      .select('amount, status').eq('case_id', c1Id).eq('user_id', userId).eq('role_in_case', role);
+    return (data ?? []).reduce((s, r) => s + Number(r.amount), 0);
+  }
+
+  // 23.1 — порядок «выплата раньше платежа» (последовательно): инвариант неттинга.
+  await c1Reset();
+  await c1Pay(30000);                       // accrued юрист 3000, эксперт 3000
+  await c1MarkPaid(await c1LawyerAccruedId()); // юрист paid 3000
+  await c1Pay(10000);                        // paid_total 40000 → юрист accrued 1000
+  {
+    const { data: rows } = await admin.from('payroll_ledger')
+      .select('amount, status').eq('case_id', c1Id).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer');
+    const paid = (rows ?? []).filter((r) => r.status === 'paid');
+    const accr = (rows ?? []).filter((r) => r.status === 'accrued');
+    const total = (rows ?? []).reduce((s, r) => s + Number(r.amount), 0);
+    if (total !== 4000 || paid.length !== 1 || Number(paid[0]!.amount) !== 3000 ||
+        accr.length !== 1 || Number(accr[0]!.amount) !== 1000) {
+      fail(`C1: «выплата раньше» ожидалось paid 3000 + accrued 1000 = 4000, факт: ${JSON.stringify(rows)}`);
+    }
+    const expertTotal = await c1RoleTotal(expert1Uid, 'expert');
+    if (expertTotal !== 4000) fail(`C1: эксперт (без гонки) должен быть 4000, факт ${expertTotal}`);
+  }
+  ok('C1: порядок «выплата раньше» → юрист 4000 (paid 3000 + accrued 1000), не 7000');
+
+  // 23.2 — порядок «платёж раньше выплаты» (последовательно): тоже ровно target.
+  await c1Reset();
+  await c1Pay(30000);                        // accrued юрист 3000
+  await c1Pay(10000);                        // paid_total 40000 → accrued 4000
+  await c1MarkPaid(await c1LawyerAccruedId()); // юрист paid 4000
+  {
+    const total = await c1RoleTotal(lawyer1Uid, 'lawyer');
+    const { data: rows } = await admin.from('payroll_ledger')
+      .select('status').eq('case_id', c1Id).eq('user_id', lawyer1Uid).eq('role_in_case', 'lawyer');
+    const accruedLeft = (rows ?? []).filter((r) => r.status === 'accrued').length;
+    if (total !== 4000 || accruedLeft !== 0) {
+      fail(`C1: «платёж раньше» ожидалось paid 4000 + accrued 0 = 4000, факт total=${total}, accrued осталось ${accruedLeft}`);
+    }
+  }
+  ok('C1: порядок «платёж раньше» → юрист 4000 (paid 4000 + accrued 0)');
+
+  // 23.3 — КОНКУРЕНТНАЯ гонка: отметка выплаты и платёж летят одновременно
+  // (Promise.all → отдельные транзакции в БД). Несколько прогонов, чтобы
+  // зацепить разные интерливинги. Инвариант: Σ юриста = 4000, без задвоения.
+  const C1_ROUNDS = 8;
+  for (let i = 0; i < C1_ROUNDS; i++) {
+    await c1Reset();
+    await c1Pay(30000);                         // accrued юрист 3000
+    const accruedId = await c1LawyerAccruedId();
+    // Гонка: выплата 3000 ⟷ платёж +10000 (target становится 4000).
+    await Promise.all([
+      c1MarkPaid(accruedId),
+      c1Pay(10000),
+    ]);
+    const total = await c1RoleTotal(lawyer1Uid, 'lawyer');
+    if (total !== 4000) {
+      fail(`C1 гонка (прогон ${i + 1}/${C1_ROUNDS}): Σ юриста ожидалось 4000, факт ${total} (задвоение/потеря)`);
+    }
+  }
+  ok(`C1: ${C1_ROUNDS} конкурентных прогонов «выплата ⟷ платёж» → юрист всегда 4000, без задвоения`);
+
+  // cleanup временного дела C1 (леджер и платежи раньше дела — FK restrict).
+  await admin.from('payroll_ledger').delete().eq('case_id', c1Id);
+  await admin.from('payments').delete().eq('case_id', c1Id);
+  await admin.from('cases').delete().eq('id', c1Id);
+  ok('cleanup: временное дело C1 удалено');
 
   console.log('\n✓ Все RLS-проверки пройдены.');
 }

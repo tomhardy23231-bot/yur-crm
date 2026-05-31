@@ -71,29 +71,6 @@ export default async function CasesBoardPage({
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4 min-h-0">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-text-muted">
-          Воронка 5 этапов · движение только вперёд · {all.length}{' '}
-          {plural(all.length, ['дело', 'дела', 'дел'])}
-        </p>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="secondary" size="sm">
-            <Link href={listHref()}>
-              <List size={14} strokeWidth={1.75} />
-              Список
-            </Link>
-          </Button>
-          {isStaff && (
-            <Button asChild size="sm">
-              <Link href="/cases/new">
-                <Plus size={14} strokeWidth={2} />
-                Новое дело
-              </Link>
-            </Button>
-          )}
-        </div>
-      </header>
-
       <div className="flex flex-wrap items-center gap-3">
         <CasesFilterSelect
           name="type"
@@ -129,6 +106,22 @@ export default async function CasesBoardPage({
             Сбросить
           </Link>
         )}
+        <div className="flex items-center gap-2 ml-auto">
+          <Button asChild variant="secondary" size="sm">
+            <Link href={listHref()}>
+              <List size={14} strokeWidth={1.75} />
+              Список
+            </Link>
+          </Button>
+          {isStaff && (
+            <Button asChild size="sm">
+              <Link href="/cases/new">
+                <Plus size={14} strokeWidth={2} />
+                Новое дело
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2">
@@ -160,13 +153,4 @@ function groupByStage(items: BoardCaseItem[]): Record<CaseStage, BoardCaseItem[]
     }
   }
   return map;
-}
-
-function plural(n: number, forms: [string, string, string]): string {
-  const abs = Math.abs(n) % 100;
-  const n1 = abs % 10;
-  if (abs > 10 && abs < 20) return forms[2];
-  if (n1 > 1 && n1 < 5) return forms[1];
-  if (n1 === 1) return forms[0];
-  return forms[2];
 }

@@ -12,7 +12,12 @@ import {
   listLawyersForAssignment,
 } from '@/lib/cases/queries';
 import { requireUser } from '@/lib/auth/require-role';
-import { CASE_STAGES, MANAGER_ROLES, STAFF_ROLES } from '@/lib/types/db';
+import {
+  allowedStagesFor,
+  canCreateClients,
+  MANAGER_ROLES,
+  STAFF_ROLES,
+} from '@/lib/types/db';
 
 export default async function EditCasePage({
   params,
@@ -34,14 +39,12 @@ export default async function EditCasePage({
   // bind на Server Action сохраняет server-action-маркировку (см. Шаг 4 баг).
   const boundAction = updateCaseAction.bind(null, id);
 
-  // Воронка только вперёд (CLAUDE.md §7-2). Staff видит все 5 этапов,
-  // не-staff — текущий и все «вперёд». На БД дополнительно стоит триггер
-  // cases_validate_stage_forward, так что UI-фильтр — для UX, не для безопасности.
+  // Воронка только вперёд (CLAUDE.md §7-2, Задача 8). Staff видит все 5 этапов
+  // (может скорректировать), не-staff — только текущий и СЛЕДУЮЩИЙ (без прыжков).
+  // На БД дополнительно стоит триггер cases_validate_stage_forward — UI-фильтр
+  // лишь для UX, не для безопасности.
   const isStaff = STAFF_ROLES.includes(user.profile.role);
-  const currentStageIdx = CASE_STAGES.indexOf(c.stage);
-  const allowedStages = isStaff
-    ? CASE_STAGES
-    : CASE_STAGES.slice(currentStageIdx >= 0 ? currentStageIdx : 0);
+  const allowedStages = allowedStagesFor(c.stage, isStaff);
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
@@ -70,6 +73,7 @@ export default async function EditCasePage({
           cancelHref={`/cases/${id}`}
           allowedStages={allowedStages}
           canEditRates={MANAGER_ROLES.includes(user.profile.role)}
+          canCreateClient={canCreateClients(user.profile.role)}
         />
       </Card>
     </main>

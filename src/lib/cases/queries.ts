@@ -31,6 +31,12 @@ export type CaseListItem = {
   opened_at: string;
   contract_sum: number;
   debt: number;
+  // Переплата клиента max(0, paid_total − contract_sum) — для индикатора (U7).
+  overpaid: number;
+  // Момент входа в текущий этап — для «N дней на этапе» (U6).
+  stage_changed_at: string;
+  // Дело closed без акта (Задача 4) — для бейджа «без акта» в списке.
+  closed_without_act: boolean;
   client: { id: string; name: string } | null;
   lawyer: { id: string; full_name: string } | null;
   responsible: { id: string; full_name: string } | null;
@@ -57,6 +63,8 @@ export type ListCasesParams = {
   caseType?: CaseType;
   category?: CaseCategory;
   responsibleId?: string;
+  lawyerId?: string;
+  clientId?: string;
   page?: number;
   sort?: CasesSortColumn;
   dir?: SortDir;
@@ -101,6 +109,9 @@ export async function listCases(
     opened_at: string;
     contract_sum: number | string;
     debt: number | string;
+    overpaid: number | string;
+    stage_changed_at: string;
+    closed_without_act: boolean;
     client:
       | ReadonlyArray<{ id: string; name: string }>
       | { id: string; name: string }
@@ -116,7 +127,7 @@ export async function listCases(
   };
 
   const SELECT =
-    'id, number_title, stage, case_type, category, priority, opened_at, contract_sum, debt, ' +
+    'id, number_title, stage, case_type, category, priority, opened_at, contract_sum, debt, overpaid, stage_changed_at, closed_without_act, ' +
     'client:client_id(id, name), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)';
 
   if (q) {
@@ -131,6 +142,8 @@ export async function listCases(
         p_case_type: params.caseType ?? null,
         p_responsible_id: params.responsibleId ?? null,
         p_category: params.category ?? null,
+        p_lawyer_id: params.lawyerId ?? null,
+        p_client_id: params.clientId ?? null,
         p_limit: CASES_PAGE_SIZE,
         p_offset: offset,
         p_sort: sortColumn,
@@ -192,6 +205,8 @@ export async function listCases(
   if (params.category) query = query.eq('category', params.category);
   if (params.responsibleId)
     query = query.eq('responsible_id', params.responsibleId);
+  if (params.lawyerId) query = query.eq('lawyer_id', params.lawyerId);
+  if (params.clientId) query = query.eq('client_id', params.clientId);
 
   const { data, error, count } = await query;
   if (error) {
@@ -219,6 +234,9 @@ function normalizeRow(r: {
   opened_at: string;
   contract_sum: number | string;
   debt: number | string;
+  overpaid: number | string;
+  stage_changed_at: string;
+  closed_without_act: boolean;
   client:
     | ReadonlyArray<{ id: string; name: string }>
     | { id: string; name: string }
@@ -247,6 +265,9 @@ function normalizeRow(r: {
     opened_at: r.opened_at,
     contract_sum: Number(r.contract_sum),
     debt: Number(r.debt),
+    overpaid: Number(r.overpaid),
+    stage_changed_at: r.stage_changed_at,
+    closed_without_act: Boolean(r.closed_without_act),
     client,
     lawyer,
     responsible,
@@ -259,7 +280,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     .from('cases')
     .select(
       'id, number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, priority, tags, ' +
-        'contract_sum, paid_total, debt, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, created_at, ' +
+        'contract_sum, paid_total, debt, overpaid, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, closed_without_act, stage_changed_at, created_at, ' +
         'client:client_id(id, name, client_kind), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
     )
     .eq('id', id)
@@ -272,11 +293,17 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
 
   type Row = Omit<
     Case,
-    'contract_sum' | 'paid_total' | 'debt' | 'lawyer_rate_override' | 'expert_rate_override'
+    | 'contract_sum'
+    | 'paid_total'
+    | 'debt'
+    | 'overpaid'
+    | 'lawyer_rate_override'
+    | 'expert_rate_override'
   > & {
     contract_sum: number | string;
     paid_total: number | string;
     debt: number | string;
+    overpaid: number | string;
     lawyer_rate_override: number | string | null;
     expert_rate_override: number | string | null;
     client:
@@ -316,6 +343,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     contract_sum: Number(r.contract_sum),
     paid_total: Number(r.paid_total),
     debt: Number(r.debt),
+    overpaid: Number(r.overpaid),
     billing_types: (r.billing_types ?? []) as BillingType[],
     lawyer_rate_override:
       r.lawyer_rate_override == null ? null : Number(r.lawyer_rate_override),
@@ -326,6 +354,8 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     court_case_number: r.court_case_number,
     court: r.court,
     closed_at: r.closed_at,
+    closed_without_act: Boolean(r.closed_without_act),
+    stage_changed_at: r.stage_changed_at,
     created_at: r.created_at,
     client,
     lawyer,
@@ -461,6 +491,16 @@ export function listExpertsForAssignment(): Promise<AssigneeOption[]> {
 // Юристы-продажники (lawyer_id). owner/admin тоже могут заключать договор.
 export function listLawyersForAssignment(): Promise<AssigneeOption[]> {
   return listUsersByRoles(['lawyer', 'admin', 'owner']);
+}
+
+// Списки для ФИЛЬТРОВ списка дел (U3). В отличие от *ForAssignment здесь только
+// «реальные» роли — без owner/admin, которые экспертами/юристами не бывают
+// (owner/admin ведут дела как исключение, но в фильтре их быть не должно).
+export function listExpertsForFilter(): Promise<AssigneeOption[]> {
+  return listUsersByRoles(['expert']);
+}
+export function listLawyersForFilter(): Promise<AssigneeOption[]> {
+  return listUsersByRoles(['lawyer']);
 }
 
 export type ClientOption = {

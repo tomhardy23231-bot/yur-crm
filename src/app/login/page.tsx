@@ -37,9 +37,8 @@ export default async function LoginPage({
               className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] text-[18px] font-bold leading-none"
               style={{
                 background: 'var(--grad-brass)',
-                color: '#1A140A',
-                boxShadow:
-                  '0 4px 14px rgba(184,138,62,.35), inset 0 1px 0 rgba(255,255,255,.25)',
+                color: 'var(--brand-tile-fg)',
+                boxShadow: 'var(--shadow-brand-tile)',
               }}
               aria-hidden="true"
             >

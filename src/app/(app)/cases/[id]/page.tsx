@@ -18,6 +18,8 @@ import { Card } from '@/components/ui/card';
 import { StageBadge } from '@/components/ui/stage-badge';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { StageStepper } from '@/components/cases/stage-stepper';
+import { CaseStageStepper } from '@/components/cases/case-stage-stepper';
+import { CaseActionBar } from '@/components/cases/case-action-bar';
 import { BillingTypesBadges } from '@/components/cases/billing-types-badges';
 import { PaymentProgress } from '@/components/cases/payment-progress';
 import { CaseLedgerBlock } from '@/components/payroll/case-ledger-block';
@@ -28,11 +30,12 @@ import { CaseDocumentsBlock } from '@/components/documents/case-documents-block'
 import { CasePaymentsBlock } from '@/components/payments/case-payments-block';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { requireUser } from '@/lib/auth/require-role';
-import { cn, formatMoney, formatPercent } from '@/lib/utils';
+import { cn, daysSince, formatMoney, formatPercent, pluralDays } from '@/lib/utils';
 import { getCase } from '@/lib/cases/queries';
 import { getCasePayroll, listLedgerByCase } from '@/lib/payroll/queries';
 import { caseHasDocOfType } from '@/lib/documents/queries';
 import {
+  allowedStagesFor,
   CASE_CATEGORY_LABEL,
   CASE_TYPE_LABEL,
   CLIENT_KIND_LABEL,
@@ -82,6 +85,11 @@ export default async function CaseDetailPage({
     c.lawyer_id === user.profile.id;
   // Удаление дела — только owner/admin (RLS cases_delete_managers).
   const canDelete = user.profile.role === 'owner' || user.profile.role === 'admin';
+
+  // Воронка только вперёд (CLAUDE.md §7-2, Задача 8): staff видит все 5 этапов
+  // (может скорректировать), не-staff — только текущий и следующий (без прыжков).
+  // БД-триггер защищает в любом случае; это фильтр для UX степпера в шапке.
+  const allowedStages = allowedStagesFor(c.stage, isStaff);
   const errorMessage = error ? ERROR_MESSAGES[error] : undefined;
 
   // Начисление зарплаты (live) + зафиксированные записи леджера (P1.3).
@@ -111,11 +119,15 @@ export default async function CaseDetailPage({
         ? 'expert'
         : null;
 
-  // Мягкое предупреждение: дело завершено, но акт приёма-передачи не загружен.
-  const missingAct =
-    c.stage === 'closed' ? !(await caseHasDocOfType(c.id, 'act')) : false;
+  // Есть ли акт приёма-передачи. Нужен и для мягкого предупреждения (дело уже
+  // закрыто без акта), и для подтверждения при попытке закрыть без акта (степпер).
+  const hasAct = await caseHasDocOfType(c.id, 'act');
+  const missingAct = c.stage === 'closed' && !hasAct;
 
   const isClosed = c.stage === 'closed';
+  // U6: дни на текущем этапе (для незакрытых дел) + признак «застоя».
+  const stageDays = isClosed ? null : daysSince(c.stage_changed_at);
+  const stageStale = stageDays !== null && stageDays >= 14;
 
   // Участники «вознаграждения», с учётом видимости начислений по роли зрителя.
   const participants: Participant[] = [];
@@ -151,6 +163,9 @@ export default async function CaseDetailPage({
         <ChevronLeft size={14} strokeWidth={1.75} />К списку дел
       </Link>
 
+      {/* ── Закреплённая панель: навигация по секциям + быстрые действия (Задача 4) ── */}
+      <CaseActionBar caseId={c.id} canEdit={canEdit} />
+
       {errorMessage && (
         <div
           role="alert"
@@ -168,7 +183,7 @@ export default async function CaseDetailPage({
       )}
 
       {/* ── Шапка дела ─────────────────────────────────────────── */}
-      <Card className="p-4 sm:p-5">
+      <Card id="overview" className="scroll-mt-16 p-4 sm:p-5">
         {/* Верхняя панель: мета слева, этап + действия справа — одна линия */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -176,8 +191,7 @@ export default async function CaseDetailPage({
               className="inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[12px] font-extrabold tracking-[0.01em] text-white shadow-sm"
               style={{
                 background: 'var(--grad-brass)',
-                boxShadow:
-                  '0 2px 8px rgba(184,138,62,.32), inset 0 1px 0 rgba(255,255,255,.2)',
+                boxShadow: 'var(--shadow-brand-badge)',
               }}
             >
               <Briefcase size={12} strokeWidth={2.2} />
@@ -185,6 +199,14 @@ export default async function CaseDetailPage({
             </span>
             <CategoryBadge category={c.category} percent={payroll?.lawyer_percent} />
             <PriorityBadge priority={c.priority} />
+            {c.closed_without_act && (
+              <Badge
+                tone="warning"
+                title="Дело завершено без акта приёма-передачи"
+              >
+                без акта
+              </Badge>
+            )}
             {c.client && (
               <span className="inline-flex items-center gap-1.5 text-[13px] text-text-muted">
                 <Building2 size={14} strokeWidth={1.75} />
@@ -202,12 +224,23 @@ export default async function CaseDetailPage({
           </div>
 
           <div className="flex items-center gap-2.5">
-            <span className="hidden text-[11px] text-text-subtle sm:inline">
-              Текущий этап
-            </span>
-            <StageBadge stage={c.stage} />
+            {/* Для редактора этап ставится кликом по степперу ниже; в шапке
+                бейдж нужен только тем, кто менять не может. */}
+            {!canEdit && (
+              <>
+                <span className="hidden text-[11px] text-text-subtle sm:inline">
+                  Текущий этап
+                </span>
+                <StageBadge stage={c.stage} />
+              </>
+            )}
             {(canEdit || canDelete) && (
-              <div className="flex items-center gap-2 border-l border-border pl-2.5">
+              <div
+                className={cn(
+                  'flex items-center gap-2',
+                  !canEdit && 'border-l border-border pl-2.5',
+                )}
+              >
                 {canEdit && (
                   <Button asChild variant="secondary" size="sm">
                     <Link href={`/cases/${c.id}/edit`}>
@@ -247,10 +280,33 @@ export default async function CaseDetailPage({
           </div>
         )}
 
-        {/* Степпер воронки — движение только вперёд (CLAUDE.md §6). */}
+        {/* Степпер воронки — движение только вперёд (CLAUDE.md §6).
+            Редактору кликабелен (смена этапа), остальным — read-only. */}
         <div className="mt-3.5">
-          <StageStepper stage={c.stage} />
+          {canEdit ? (
+            <CaseStageStepper
+              caseId={c.id}
+              stage={c.stage}
+              allowedStages={allowedStages}
+              hasAct={hasAct}
+            />
+          ) : (
+            <StageStepper stage={c.stage} />
+          )}
         </div>
+
+        {/* U6: сколько дней дело на текущем этапе (видно «зависшие»). */}
+        {stageDays !== null && (
+          <p
+            className={cn(
+              'mt-2.5 inline-flex items-center gap-1.5 text-[12px]',
+              stageStale ? 'font-medium text-warning' : 'text-text-subtle',
+            )}
+          >
+            <Clock size={13} strokeWidth={1.75} />
+            На текущем этапе {stageDays} {pluralDays(stageDays)}
+          </p>
+        )}
       </Card>
 
       {/* ── Две колонки ────────────────────────────────────────── */}
@@ -293,6 +349,13 @@ export default async function CaseDetailPage({
                 {formatMoney(c.debt)} ₴
               </span>
             </KV>
+            {c.overpaid > 0 && (
+              <KV k="Переплата">
+                <span className="font-mono tabular-nums text-info">
+                  +{formatMoney(c.overpaid)} ₴
+                </span>
+              </KV>
+            )}
             {c.opponent && <KV k="Оппонент">{c.opponent}</KV>}
             {c.court && <KV k="Суд">{c.court}</KV>}
             {c.court_case_number && (
@@ -320,18 +383,22 @@ export default async function CaseDetailPage({
           </Card>
 
           {/* Документы (Шаг 8) */}
-          <CaseDocumentsBlock
-            caseId={c.id}
-            canWrite={canEdit}
-            canDelete={canDelete}
-          />
+          <section id="documents" className="scroll-mt-16">
+            <CaseDocumentsBlock
+              caseId={c.id}
+              canWrite={canEdit}
+              canDelete={canDelete}
+            />
+          </section>
 
           {/* Задачи и заседания (Шаг 7) */}
-          <CaseTasksBlock
-            caseId={c.id}
-            canWrite={canEdit}
-            currentUserId={user.profile.id}
-          />
+          <section id="tasks" className="scroll-mt-16">
+            <CaseTasksBlock
+              caseId={c.id}
+              canWrite={canEdit}
+              currentUserId={user.profile.id}
+            />
+          </section>
         </div>
 
         {/* Правая: вознаграждение команды + команда дела */}
@@ -351,10 +418,18 @@ export default async function CaseDetailPage({
                   {formatMoney(c.paid_total)} ₴
                 </RewardStat>
                 <RewardStat
-                  label="Долг"
-                  valueClassName={c.debt > 0 ? 'text-error' : 'text-text-muted'}
+                  label={c.overpaid > 0 ? 'Переплата' : 'Долг'}
+                  valueClassName={
+                    c.overpaid > 0
+                      ? 'text-info'
+                      : c.debt > 0
+                        ? 'text-error'
+                        : 'text-text-muted'
+                  }
                 >
-                  {formatMoney(c.debt)} ₴
+                  {c.overpaid > 0
+                    ? `+${formatMoney(c.overpaid)} ₴`
+                    : `${formatMoney(c.debt)} ₴`}
                 </RewardStat>
               </div>
 
@@ -448,9 +523,18 @@ export default async function CaseDetailPage({
       </div>
 
       {/* ── Во всю ширину: платежи и история ───────────────────── */}
-      <CasePaymentsBlock caseId={c.id} canWrite={canEdit} canManage={canDelete} />
+      <section id="finance" className="scroll-mt-16">
+        <CasePaymentsBlock
+          caseId={c.id}
+          canWrite={canEdit}
+          canManage={canDelete}
+          overpaid={c.overpaid}
+        />
+      </section>
 
-      <CaseActivityBlock caseId={c.id} />
+      <section id="history" className="scroll-mt-16">
+        <CaseActivityBlock caseId={c.id} />
+      </section>
     </main>
   );
 }

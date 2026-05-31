@@ -117,14 +117,9 @@ export default async function CalendarPage({
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text capitalize">
-            {monthLabel}
-          </h1>
-          <p className="text-[13px] text-text-muted">
-            Заседания, задачи и дедлайны
-          </p>
-        </div>
+        <h1 className="text-[24px] leading-[1.2] tracking-[-0.015em] font-semibold text-text capitalize">
+          {monthLabel}
+        </h1>
         <Button asChild variant="secondary" size="sm">
           <Link href="/tasks">
             <List size={14} strokeWidth={1.75} />

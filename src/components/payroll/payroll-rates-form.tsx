@@ -89,7 +89,7 @@ export function PayrollRatesForm({
           className={
             state.ok
               ? 'text-[13px] text-success bg-success-bg border border-success/20 rounded-md px-3 py-2'
-              : 'text-[13px] text-error bg-error-bg border border-error/20 rounded-md px-3 py-2'
+              : 'text-[13px] text-error bg-error-bg border border-error/20 rounded-md px-3 py-2 animate-field-error'
           }
         >
           {state.message}

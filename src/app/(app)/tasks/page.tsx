@@ -41,7 +41,7 @@ export default async function TasksPage({
   // что = их же задачам. Поэтому не показываем переключатель.
   const showModeToggle = isStaff;
 
-  const { items, total, pageCount } = await listTasksForUser({
+  const { items, pageCount } = await listTasksForUser({
     userId: user.profile.id,
     status,
     assigneeMode: mode,
@@ -66,20 +66,6 @@ export default async function TasksPage({
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-text-muted">
-          {total === 0
-            ? 'Пока нет задач'
-            : `Всего: ${total} ${plural(total, ['задача', 'задачи', 'задач'])}`}
-        </p>
-        <Button asChild variant="secondary" size="sm">
-          <Link href="/calendar">
-            <Calendar size={14} strokeWidth={1.75} />
-            Календарь
-          </Link>
-        </Button>
-      </header>
-
       <div className="flex flex-wrap items-center gap-3">
         {showModeToggle && (
           <div className="inline-flex rounded-md bg-surface-muted p-1 gap-1">
@@ -120,6 +106,12 @@ export default async function TasksPage({
             Сбросить
           </Link>
         )}
+        <Button asChild variant="secondary" size="sm" className="ml-auto">
+          <Link href="/calendar">
+            <Calendar size={14} strokeWidth={1.75} />
+            Календарь
+          </Link>
+        </Button>
       </div>
 
       {items.length === 0 ? (
@@ -329,13 +321,4 @@ function addDays(d: Date, n: number): Date {
   const r = new Date(d);
   r.setDate(r.getDate() + n);
   return r;
-}
-
-function plural(n: number, forms: [string, string, string]): string {
-  const abs = Math.abs(n) % 100;
-  const n1 = abs % 10;
-  if (abs > 10 && abs < 20) return forms[2];
-  if (n1 > 1 && n1 < 5) return forms[1];
-  if (n1 === 1) return forms[0];
-  return forms[2];
 }

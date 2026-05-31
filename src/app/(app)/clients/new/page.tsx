@@ -25,10 +25,6 @@ export default async function NewClientPage() {
         <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
           Новый клиент
         </h1>
-        <p className="text-[13px] text-text-muted">
-          После создания вы попадёте в карточку — оттуда можно завести дело и
-          загружать документы.
-        </p>
       </div>
 
       <Card className="max-w-3xl p-6 sm:p-8">

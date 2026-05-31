@@ -6,8 +6,10 @@ import { redirect } from 'next/navigation';
 import { requireRole, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
+import { dbErrorMessage } from '@/lib/errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
+  canCreateClients,
   CLIENT_KINDS,
   CLIENT_SOURCES,
   isStaff,
@@ -124,6 +126,17 @@ export async function createClientAction(
   formData: FormData,
 ): Promise<ClientActionState> {
   const user = await requireUser();
+
+  // Задача 1: клиентов заводят owner/admin/office_manager/lawyer. Експерт — нет.
+  // RLS (clients_insert_creators) — жёсткая защита; здесь даём дружелюбный ответ
+  // вместо сырого RLS-отказа.
+  if (!canCreateClients(user.profile.role)) {
+    return {
+      ok: false,
+      message: 'Недостаточно прав: эксперт не создаёт клиентов.',
+    };
+  }
+
   const result = validate(formData);
   if (!result.ok) return result.state;
 
@@ -141,7 +154,11 @@ export async function createClientAction(
     return {
       ok: false,
       values: result.values,
-      message: error?.message ?? 'Не удалось создать клиента',
+      message: dbErrorMessage(
+        'createClientAction',
+        error,
+        'Не удалось создать клиента.',
+      ),
     };
   }
 
@@ -223,7 +240,11 @@ export async function updateClientAction(
     return {
       ok: false,
       values: result.values,
-      message: error.message,
+      message: dbErrorMessage(
+        'updateClientAction',
+        error,
+        'Не удалось сохранить изменения клиента.',
+      ),
     };
   }
 
@@ -258,6 +279,79 @@ export async function updateClientAction(
   revalidatePath('/clients');
   revalidatePath(`/clients/${clientId}`);
   redirect(`/clients/${clientId}`);
+}
+
+// ============================================================================
+// Задача 5: создание клиента «на месте» из формы дела.
+// В отличие от createClientAction НЕ делает redirect — возвращает созданного
+// клиента, чтобы форма дела сразу подставила его в селект. Права и валидация —
+// те же (canCreateClients + validate), RLS на стороне БД дублирует защиту.
+// ============================================================================
+
+export type InlineClientState = {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Partial<Record<ClientFormFields, string>>;
+  values?: Partial<Record<ClientFormFields, string>>;
+  client?: { id: string; name: string; client_kind: ClientKind };
+};
+
+export async function createClientInlineAction(
+  _prev: InlineClientState,
+  formData: FormData,
+): Promise<InlineClientState> {
+  const user = await requireUser();
+
+  if (!canCreateClients(user.profile.role)) {
+    return {
+      ok: false,
+      message: 'Недостаточно прав: эксперт не создаёт клиентов.',
+    };
+  }
+
+  const result = validate(formData);
+  if (!result.ok) return result.state;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({
+      ...result.data,
+      created_by: user.profile.id,
+    })
+    .select('id, name, client_kind')
+    .single();
+
+  if (error || !data) {
+    return {
+      ok: false,
+      values: result.values,
+      message: dbErrorMessage(
+        'createClientInlineAction',
+        error,
+        'Не удалось создать клиента.',
+      ),
+    };
+  }
+
+  await logActivity({
+    entity_type: 'client',
+    entity_id: data.id,
+    action: 'client_created',
+    changes: {
+      after: { name: result.data.name, client_kind: result.data.client_kind },
+    },
+  });
+
+  revalidatePath('/clients');
+  return {
+    ok: true,
+    client: {
+      id: data.id as string,
+      name: data.name as string,
+      client_kind: data.client_kind as ClientKind,
+    },
+  };
 }
 
 export async function deleteClientAction(formData: FormData): Promise<void> {

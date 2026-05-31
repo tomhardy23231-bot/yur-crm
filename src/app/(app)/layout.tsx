@@ -1,3 +1,5 @@
+import { cookies } from 'next/headers';
+
 import { CommandPaletteProvider } from '@/components/app/command-palette';
 import { Sidebar } from '@/components/app/sidebar';
 import { Topbar } from '@/components/app/topbar';
@@ -19,17 +21,28 @@ export default async function AppLayout({
   const user = await requireUser();
   const tasksOpen = await countOpenTasksAssignedTo(user.profile.id);
 
+  // Состояние «свёрнутый сайдбар» — из cookie (читается на сервере → без мигания).
+  const cookieStore = await cookies();
+  const sidebarCollapsed = cookieStore.get('sidebar_collapsed')?.value === '1';
+
   return (
     <CommandPaletteProvider role={user.profile.role}>
-      <div className="flex flex-1 min-h-full">
-        <Sidebar user={user} counts={{ tasksOpen }} />
-        <div className="flex-1 min-w-0 flex flex-col">
+      {/* App-shell: высота вьюпорта, скролл внутри контента → сайдбар и топбар закреплены. */}
+      <div className="flex h-dvh overflow-hidden">
+        <Sidebar
+          userName={user.profile.full_name}
+          roleLabel={ROLE_LABEL[user.profile.role]}
+          role={user.profile.role}
+          counts={{ tasksOpen }}
+          defaultCollapsed={sidebarCollapsed}
+        />
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           <Topbar
             userName={user.profile.full_name}
             roleLabel={ROLE_LABEL[user.profile.role]}
             tasksOpen={tasksOpen}
           />
-          <div className="flex-1 min-w-0">{children}</div>
+          <div className="flex-1 min-w-0 overflow-y-auto">{children}</div>
         </div>
       </div>
     </CommandPaletteProvider>

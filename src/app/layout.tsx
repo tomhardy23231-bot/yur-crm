@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Golos_Text, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -23,14 +24,19 @@ export const metadata: Metadata = {
   description: "CRM-система для юридической компании",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Тема из cookie (читается на сервере → без мигания). По умолчанию — teal.
+  // teal → data-theme="teal"; brass → атрибут отсутствует (база :root = латунь).
+  const theme = (await cookies()).get("theme")?.value === "brass" ? "brass" : "teal";
+
   return (
     <html
       lang="ru"
+      data-theme={theme === "teal" ? "teal" : undefined}
       className={`${golosText.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>

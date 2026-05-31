@@ -1,12 +1,12 @@
 'use client';
 
-import { useActionState, useRef, useEffect } from 'react';
-import { useFormStatus } from 'react-dom';
+import { useActionState, useRef, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import {
   createPaymentAction,
   type CreatePaymentFields,
@@ -28,25 +28,70 @@ function todayISO(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Задача 9c: клиентская валидация суммы — зеркалит серверную parseAmount.
+// Допускаем точку и запятую, до 2 знаков, строго > 0 и в пределах numeric(14,2).
+function parseAmountClient(raw: string): number | null {
+  const normalized = raw.replace(',', '.').trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n <= 0 || n >= 1_000_000_000_000) return null;
+  return n;
+}
+
 export function PaymentForm({ caseId }: Props) {
-  const [state, formAction] = useActionState<CreatePaymentState, FormData>(
+  const [state, formAction, isPending] = useActionState<CreatePaymentState, FormData>(
     createPaymentAction,
     INITIAL,
   );
   const formRef = useRef<HTMLFormElement>(null);
+  // Ключ идемпотентности (Задача 2): СТАБИЛЕН на один экземпляр формы. Генерится
+  // один раз (лениво, в момент первой отправки — без hydration-mismatch) и
+  // переиспользуется при повторных кликах, пока платёж не сохранён успешно.
+  // Тогда мульти-сабмит (несколько кликов за <16 мс) уходит с ОДНИМ ключом →
+  // уникальный индекс payments.idempotency_key отсекает дубль на уровне БД.
+  const idemKeyRef = useRef<string | null>(null);
+  // Клиентская ошибка суммы (Задача 9c) — до обращения к серверу.
+  const [amountError, setAmountError] = useState<string | undefined>();
 
   useEffect(() => {
     if (state.ok) {
       formRef.current?.reset();
+      // Платёж сохранён — следующий получит свежий ключ идемпотентности.
+      // (amountError сюда не сбрасываем: успешный submit возможен только когда
+      // сумма уже валидна, т.е. amountError и так undefined — см. submit-хендлер.)
+      idemKeyRef.current = null;
     }
   }, [state.ok]);
 
+  useShakeInvalidFields(formRef, state);
+
+  function submitWithIdempotencyKey(formData: FormData) {
+    // Клиентская валидация суммы: не пускаем «мусор» и неположительные значения.
+    const amountRaw = String(formData.get('amount') ?? '');
+    if (parseAmountClient(amountRaw) === null) {
+      setAmountError('Введите сумму больше 0 (до 2 знаков после запятой).');
+      return;
+    }
+    setAmountError(undefined);
+    // Ленивая генерация стабильного ключа (один раз на экземпляр формы).
+    if (idemKeyRef.current === null) {
+      idemKeyRef.current = crypto.randomUUID();
+    }
+    formData.set('idempotency_key', idemKeyRef.current);
+    return formAction(formData);
+  }
+
   function err(field: CreatePaymentFields): string | undefined {
+    if (field === 'amount') return state.fieldErrors?.amount ?? amountError;
     return state.fieldErrors?.[field];
   }
 
   return (
-    <form ref={formRef} action={formAction} className="flex flex-col gap-3">
+    <form
+      ref={formRef}
+      action={submitWithIdempotencyKey}
+      className="flex flex-col gap-3"
+    >
       <input type="hidden" name="case_id" value={caseId} />
 
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-[1fr_1fr_1fr]">
@@ -63,6 +108,16 @@ export function PaymentForm({ caseId }: Props) {
             inputMode="decimal"
             placeholder="0.00"
             required
+            maxLength={16}
+            // Задача 9c: пускаем только цифры и разделитель — «мусор» (буквы,
+            // символы) отсекается прямо при вводе; полная проверка — на submit.
+            onChange={(e) => {
+              const cleaned = e.currentTarget.value.replace(/[^\d.,]/g, '');
+              if (cleaned !== e.currentTarget.value) {
+                e.currentTarget.value = cleaned;
+              }
+              if (amountError) setAmountError(undefined);
+            }}
             aria-invalid={err('amount') ? 'true' : undefined}
             className="font-mono tabular-nums"
           />
@@ -135,7 +190,7 @@ export function PaymentForm({ caseId }: Props) {
       )}
 
       <div className="flex items-center gap-3">
-        <SubmitButton />
+        <SubmitButton pending={isPending} />
       </div>
     </form>
   );
@@ -165,7 +220,7 @@ function Field({
       </Label>
       {children}
       {error && (
-        <p className="text-[12px] text-error" role="alert">
+        <p className="text-[12px] text-error animate-field-error" role="alert">
           {error}
         </p>
       )}
@@ -173,8 +228,7 @@ function Field({
   );
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
+function SubmitButton({ pending }: { pending: boolean }) {
   return (
     <Button type="submit" disabled={pending} size="sm">
       {pending ? 'Сохранение…' : 'Добавить платёж'}

@@ -11,7 +11,7 @@ import {
 } from '@/lib/cases/queries';
 import { getClient } from '@/lib/clients/queries';
 import { requireRole } from '@/lib/auth/require-role';
-import { MANAGER_ROLES } from '@/lib/types/db';
+import { canCreateClients, MANAGER_ROLES } from '@/lib/types/db';
 
 // Дела заводит staff: owner/admin/office_manager (RLS-политика cases_insert_staff).
 // Для юриста/Експерта — /forbidden.
@@ -49,10 +49,6 @@ export default async function NewCasePage({
         <h1 className="text-[28px] leading-[1.2] tracking-[-0.015em] font-semibold text-text">
           Новое дело
         </h1>
-        <p className="text-[13px] text-text-muted">
-          Заполните основные данные. Документы, задачи и платежи добавите потом —
-          в карточке дела.
-        </p>
       </div>
 
       <Card className="max-w-3xl p-6 sm:p-8">
@@ -65,6 +61,7 @@ export default async function NewCasePage({
           submitLabel="Создать дело"
           cancelHref={lockedClient ? `/clients/${lockedClient.id}` : '/cases'}
           canEditRates={canEditRates}
+          canCreateClient={canCreateClients(user.profile.role)}
         />
       </Card>
     </main>
