@@ -12,6 +12,7 @@ import {
   FileText,
   Wallet,
   Settings,
+  HelpCircle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -31,16 +32,18 @@ type NavItem = {
   counterKey?: keyof SidebarCounts;
   /** Пункт виден, если у пользователя есть хотя бы одно из этих прав. */
   requiredCaps?: ReadonlyArray<Capability>;
+  /** Якорь для гайд-тура (data-tour). */
+  tourId?: string;
 };
 
 // Рабочая область — основные разделы (видны всем активным сотрудникам).
 const WORK_ITEMS: ReadonlyArray<NavItem> = [
-  { href: '/',          label: 'Главная',    icon: LayoutDashboard, enabled: true  },
-  { href: '/clients',   label: 'Клиенты',    icon: Users,           enabled: true  },
-  { href: '/cases',     label: 'Дела',       icon: Briefcase,       enabled: true  },
-  { href: '/tasks',     label: 'Задачи',     icon: CheckSquare,     enabled: true, counterKey: 'tasksOpen' },
-  { href: '/calendar',  label: 'Календарь',  icon: Calendar,        enabled: true  },
-  { href: '/reports/payroll', label: 'Финансы и ЗП', icon: Coins,   enabled: true  },
+  { href: '/',          label: 'Главная',    icon: LayoutDashboard, enabled: true, tourId: 'nav-home'     },
+  { href: '/clients',   label: 'Клиенты',    icon: Users,           enabled: true, tourId: 'nav-clients'  },
+  { href: '/cases',     label: 'Дела',       icon: Briefcase,       enabled: true, tourId: 'nav-cases'    },
+  { href: '/tasks',     label: 'Задачи',     icon: CheckSquare,     enabled: true, counterKey: 'tasksOpen', tourId: 'nav-tasks' },
+  { href: '/calendar',  label: 'Календарь',  icon: Calendar,        enabled: true, tourId: 'nav-calendar' },
+  { href: '/reports/payroll', label: 'Финансы и ЗП', icon: Coins,   enabled: true, tourId: 'nav-payroll'  },
   { href: '/documents', label: 'Документы',  icon: FileText,        enabled: false },
   { href: '/finance',   label: 'Счета',      icon: Wallet,          enabled: false },
 ];
@@ -55,8 +58,18 @@ const ADMIN_ITEMS: ReadonlyArray<NavItem> = [
     icon: Settings,
     enabled: true,
     requiredCaps: ['manage_users', 'edit_payroll_rates'],
+    tourId: 'nav-settings',
   },
 ];
+
+// «Справка» — отдельный служебный пункт внизу (вне групп). Виден всем.
+const HELP_ITEM: NavItem = {
+  href: '/help',
+  label: 'Справка',
+  icon: HelpCircle,
+  enabled: true,
+  tourId: 'nav-help',
+};
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -77,7 +90,7 @@ export function SidebarNav({
 }) {
   const pathname = usePathname();
 
-  const renderItem = ({ href, label, icon: Icon, enabled, counterKey }: NavItem) => {
+  const renderItem = ({ href, label, icon: Icon, enabled, counterKey, tourId }: NavItem) => {
     const counter = counterKey ? counts[counterKey] : 0;
 
     if (!enabled) {
@@ -110,6 +123,7 @@ export function SidebarNav({
       <Link
         key={href}
         href={href}
+        data-tour={tourId}
         title={collapsed ? label : undefined}
         aria-current={active ? 'page' : undefined}
         className={cn(
@@ -176,6 +190,14 @@ export function SidebarNav({
           {adminItems.map(renderItem)}
         </>
       )}
+
+      {/* «Справка» — прижата к низу навигации, отделена от групп. */}
+      <div className="mt-auto pt-1">
+        {collapsed && (
+          <div className="mx-auto mb-2 h-px w-7 bg-sidebar-border" aria-hidden="true" />
+        )}
+        {renderItem(HELP_ITEM)}
+      </div>
     </nav>
   );
 }

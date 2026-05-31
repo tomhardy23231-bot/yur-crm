@@ -117,7 +117,7 @@ export default async function ClientsPage({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div data-tour="clients-toolbar" className="flex flex-wrap items-center gap-3">
         <ClientsSearch initial={q} />
         <div role="tablist" aria-label="Тип клиента" className="flex items-center gap-1.5">
           {KIND_OPTIONS.map(({ value, label }) => {
@@ -142,7 +142,7 @@ export default async function ClientsPage({
           })}
         </div>
         <Button asChild className="ml-auto">
-          <Link href="/clients/new">
+          <Link href="/clients/new" data-tour="clients-new">
             <Plus size={16} strokeWidth={2} />
             Добавить клиента
           </Link>

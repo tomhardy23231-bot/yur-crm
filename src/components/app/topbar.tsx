@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bell, Search } from 'lucide-react';
+import { Bell, HelpCircle, Search } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { useCommandPalette } from './command-palette';
@@ -59,6 +59,7 @@ export function Topbar({
       <button
         type="button"
         onClick={open}
+        data-tour="topbar-search"
         className="hidden h-9 w-[260px] items-center gap-2 rounded-md border border-border bg-surface-sunken px-3 text-[13px] text-text-subtle transition-colors hover:border-border-strong hover:bg-surface md:flex lg:w-[300px]"
         aria-label="Поиск по делам, клиентам"
       >
@@ -70,6 +71,16 @@ export function Topbar({
           Ctrl K
         </kbd>
       </button>
+
+      {/* Справка и онбординг-тур. */}
+      <Link
+        href="/help"
+        data-tour="topbar-help"
+        aria-label="Справка и обучающий тур"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text"
+      >
+        <HelpCircle size={17} strokeWidth={1.75} />
+      </Link>
 
       {/* Уведомления → задачи (точка, если есть открытые задачи на мне). */}
       <Link

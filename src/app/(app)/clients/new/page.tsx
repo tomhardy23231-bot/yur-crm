@@ -24,7 +24,7 @@ export default async function NewClientPage() {
         </Link>
       </div>
 
-      <Card className="p-6 sm:p-8">
+      <Card data-tour="client-form" className="p-6 sm:p-8">
         <ClientForm
           action={createClientAction}
           submitLabel="Создать клиента"

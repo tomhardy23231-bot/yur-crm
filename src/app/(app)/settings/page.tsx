@@ -37,7 +37,10 @@ export default async function SettingsPage() {
       </section>
 
       {/* Доступные настройки */}
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <section
+        data-tour="settings-content"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+      >
         {canEditRates && (
           <Link
             href="/settings/payroll"

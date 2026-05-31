@@ -194,7 +194,7 @@ export default async function CasesPage({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div data-tour="cases-toolbar" className="flex flex-wrap items-center gap-3">
         <CasesSearch initial={q} />
 
         <CasesFilterSelect
@@ -294,14 +294,14 @@ export default async function CasesPage({
         )}
         <div className="flex items-center gap-2 ml-auto">
           <Button asChild variant="secondary">
-            <Link href={boardHref()}>
+            <Link href={boardHref()} data-tour="cases-board">
               <LayoutGrid size={16} strokeWidth={1.75} />
               Доска
             </Link>
           </Button>
           {isStaff && (
             <Button asChild>
-              <Link href="/cases/new">
+              <Link href="/cases/new" data-tour="cases-new">
                 <Plus size={16} strokeWidth={2} />
                 Новое дело
               </Link>
@@ -365,10 +365,11 @@ export default async function CasesPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((c) => (
+              {items.map((c, i) => (
                 <ClickableRow
                   key={c.id}
                   href={`/cases/${c.id}`}
+                  data-tour={i === 0 ? 'first-case-row' : undefined}
                   className="group cursor-pointer"
                 >
                   <TableCell className="relative">
