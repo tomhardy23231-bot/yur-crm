@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import {
   Briefcase,
   Building2,
+  Check,
   Clock,
   TriangleAlert,
 } from 'lucide-react';
@@ -15,7 +16,6 @@ import { StageStepper } from '@/components/cases/stage-stepper';
 import { CaseStageStepper } from '@/components/cases/case-stage-stepper';
 import { CaseActionBar } from '@/components/cases/case-action-bar';
 import { BillingTypesBadges } from '@/components/cases/billing-types-badges';
-import { CaseLedgerBlock } from '@/components/payroll/case-ledger-block';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { CaseActivityBlock } from '@/components/activity/case-activity-block';
 import { CaseDocumentsBlock } from '@/components/documents/case-documents-block';
@@ -24,7 +24,7 @@ import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { requireUser } from '@/lib/auth/require-role';
 import { cn, daysSince, formatMoney, formatPercent, pluralDays } from '@/lib/utils';
 import { getCase } from '@/lib/cases/queries';
-import { getCasePayroll, listLedgerByCase } from '@/lib/payroll/queries';
+import { getCasePayroll, getCasePaidByRole } from '@/lib/payroll/queries';
 import { caseHasDocOfType } from '@/lib/documents/queries';
 import {
   allowedStagesFor,
@@ -51,6 +51,8 @@ type Participant = {
   roleLabel: 'Юрист-менеджер' | 'Эксперт';
   percent: number;
   amount: number;
+  paid: number;
+  outstanding: number;
   override: boolean;
 };
 
@@ -80,9 +82,6 @@ export default async function CaseDetailPage({
   const canDelete = user.caps.delete_cases;
   const canDeleteDoc = user.caps.delete_documents;
   const canManagePay = user.caps.edit_payments;
-  // Отметка «выплачено»/откат в леджере — owner/admin по роли (не настраиваемое право).
-  const canManageLedger =
-    user.profile.role === 'owner' || user.profile.role === 'admin';
 
   // Воронка только вперёд (CLAUDE.md §7-2, Задача 8): staff видит все 5 этапов
   // (может скорректировать), не-staff — только текущий и следующий (без прыжков).
@@ -90,23 +89,11 @@ export default async function CaseDetailPage({
   const allowedStages = allowedStagesFor(c.stage, isStaff);
   const errorMessage = error ? ERROR_MESSAGES[error] : undefined;
 
-  // Начисление зарплаты (live) + зафиксированные записи леджера (P1.3).
-  const [payroll, ledger] = await Promise.all([
+  // Начисление зарплаты (live) + сколько уже выплачено по делу (по ролям).
+  const [payroll, paidByRole] = await Promise.all([
     getCasePayroll(c.id),
-    listLedgerByCase(c.id),
+    getCasePaidByRole(c.id),
   ]);
-
-  // Имена для строк леджера (берём из join'ов дела, без лишних запросов).
-  const ledgerNames: Record<string, string> = {};
-  if (c.lawyer) ledgerNames[c.lawyer.id] = c.lawyer.full_name;
-  if (c.responsible) ledgerNames[c.responsible.id] = c.responsible.full_name;
-
-  const ledgerEmptyHint =
-    c.accrual_mode === 'per_payment'
-      ? 'Начисляется по мере оплат.'
-      : c.stage === 'closed'
-        ? 'Начислений нет (нет оплат по делу).'
-        : 'Начисление зафиксируется при завершении дела.';
 
   // Роль зрителя в этом деле — чтобы не-staff видел ТОЛЬКО своё начисление,
   // а не сумму/ставку коллеги (CLAUDE.md §4: «свои начисления»).
@@ -131,20 +118,26 @@ export default async function CaseDetailPage({
   const participants: Participant[] = [];
   if (payroll) {
     if ((seeAllPayroll || myRole === 'lawyer') && c.lawyer) {
+      const paid = Math.min(paidByRole.lawyer, payroll.lawyer_amount);
       participants.push({
         name: c.lawyer.full_name,
         roleLabel: 'Юрист-менеджер',
         percent: payroll.lawyer_percent,
         amount: payroll.lawyer_amount,
+        paid: paidByRole.lawyer,
+        outstanding: Math.max(0, payroll.lawyer_amount - paid),
         override: c.lawyer_rate_override != null,
       });
     }
     if ((seeAllPayroll || myRole === 'expert') && c.responsible) {
+      const paid = Math.min(paidByRole.expert, payroll.expert_amount);
       participants.push({
         name: c.responsible.full_name,
         roleLabel: 'Эксперт',
         percent: payroll.expert_percent,
         amount: payroll.expert_amount,
+        paid: paidByRole.expert,
+        outstanding: Math.max(0, payroll.expert_amount - paid),
         override: c.expert_rate_override != null,
       });
     }
@@ -383,25 +376,46 @@ export default async function CaseDetailPage({
               )}
 
               <div className="mt-2">
-                {participants.map((p) => (
-                  <div
-                    key={p.roleLabel}
-                    className="flex items-center gap-2.5 border-b border-border py-2 last:border-0"
-                  >
-                    <Avatar name={p.name} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold text-text">
-                        {p.name}
-                      </p>
-                      <p className="text-[11.5px] font-medium text-text-muted">
-                        {p.roleLabel} · {formatPercent(p.percent)}%
-                      </p>
+                {participants.map((p) => {
+                  const fullyPaid = p.amount > 0 && p.outstanding <= 0.001;
+                  return (
+                    <div
+                      key={p.roleLabel}
+                      className="flex items-center gap-2.5 border-b border-border py-2 last:border-0"
+                    >
+                      <Avatar name={p.name} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-bold text-text">
+                          {p.name}
+                        </p>
+                        <p className="text-[11.5px] font-medium text-text-muted">
+                          {p.roleLabel} · {formatPercent(p.percent)}%
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="whitespace-nowrap rounded-md bg-surface-sunken px-2.5 py-1 font-mono text-[14px] font-bold tabular-nums text-text">
+                          {formatMoney(p.amount)} ₴
+                        </span>
+                        {p.amount > 0 &&
+                          (fullyPaid ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success">
+                              <Check size={11} strokeWidth={2.5} />
+                              выплачено
+                            </span>
+                          ) : p.paid > 0 ? (
+                            <span className="whitespace-nowrap text-[11px] font-medium text-warning">
+                              выплачено {formatMoney(p.paid)} · осталось{' '}
+                              {formatMoney(p.outstanding)} ₴
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-text-subtle">
+                              не выплачено
+                            </span>
+                          ))}
+                      </div>
                     </div>
-                    <span className="whitespace-nowrap rounded-md bg-success-bg px-2.5 py-1 font-mono text-[14px] font-bold tabular-nums text-success">
-                      {formatMoney(p.amount)} ₴
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-2.5 flex items-center justify-between border-t-2 border-surface-sunken pt-2.5">
@@ -413,15 +427,31 @@ export default async function CaseDetailPage({
                 </span>
               </div>
 
-              {/* Зафиксированные начисления/выплаты (P1.3). */}
-              <div className="-mx-4 mt-3">
-                <CaseLedgerBlock
-                  entries={ledger}
-                  canManage={canManageLedger}
-                  names={ledgerNames}
-                  emptyHint={ledgerEmptyHint}
-                />
-              </div>
+              {/* Выплаты больше не «фиксируются при закрытии»: их отмечает
+                  owner/admin на карточке сотрудника (Финансы и ЗП). */}
+              {(() => {
+                const shownPaid = participants.reduce((s, p) => s + Math.min(p.paid, p.amount), 0);
+                const shownOutstanding = participants.reduce((s, p) => s + p.outstanding, 0);
+                return (
+                  <div className="mt-2 flex items-center justify-between rounded-[8px] bg-surface-sunken px-3 py-2 font-mono text-[12px] tabular-nums">
+                    <span className="text-text-muted">
+                      Выплачено{' '}
+                      <span className="font-bold text-success">
+                        {formatMoney(shownPaid)} ₴
+                      </span>
+                    </span>
+                    <span className="text-text-muted">
+                      Осталось{' '}
+                      <span className="font-bold text-warning">
+                        {formatMoney(shownOutstanding)} ₴
+                      </span>
+                    </span>
+                  </div>
+                );
+              })()}
+              <p className="mt-2 text-[11px] leading-snug text-text-subtle">
+                Выплаты отмечаются в разделе «Финансы и ЗП» → карточка сотрудника.
+              </p>
             </Card>
           )}
         </div>

@@ -48,7 +48,6 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
       className={cn(
         'border-b border-border last:border-0',
         'transition-colors duration-[80ms] ease-out',
-        'hover:bg-surface-muted',
         className,
       )}
       {...props}

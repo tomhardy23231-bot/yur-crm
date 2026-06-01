@@ -4,12 +4,18 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type {
   CaseCategory,
   CasePayroll,
+  CaseStage,
   LedgerStatus,
   PayrollBySpecialist,
+  PayrollEmployeeCase,
+  PayrollEmployeeSummary,
   PayrollLedgerEntry,
   PayrollLedgerWithRefs,
   PayrollPayoutBySpecialist,
   PayrollRate,
+  PayrollTransaction,
+  PayrollTxKind,
+  RoleInCase,
 } from '@/lib/types/db';
 
 // Начисление по конкретному делу (public.case_payroll). SECURITY INVOKER →
@@ -206,5 +212,157 @@ export async function listPayrollPayoutBySpecialist(): Promise<
     total: Number(r.total),
     paid: Number(r.paid),
     outstanding: Number(r.outstanding),
+  }));
+}
+
+// ============================================================================
+// Ручные движения зарплаты (правка №1): сводка по сотрудникам, разбивка по делам,
+// история движений. RPC — SECURITY DEFINER с фильтром зрителя (staff — все,
+// сотрудник — только себя). Прямые select по RLS — для истории движений.
+// ============================================================================
+
+// Список сотрудников с итогами (для /reports/payroll).
+export async function getPayrollEmployeeSummary(): Promise<
+  PayrollEmployeeSummary[]
+> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('payroll_employee_summary');
+  if (error) {
+    throw new Error(`getPayrollEmployeeSummary failed: ${error.message}`);
+  }
+  type Row = {
+    user_id: string;
+    full_name: string;
+    earned: number | string;
+    bonus: number | string;
+    payout: number | string;
+    balance: number | string;
+  };
+  return ((data ?? []) as Row[]).map((r) => ({
+    user_id: r.user_id,
+    full_name: r.full_name,
+    earned: Number(r.earned),
+    bonus: Number(r.bonus),
+    payout: Number(r.payout),
+    balance: Number(r.balance),
+  }));
+}
+
+// Разбивка ЗП сотрудника по делам (для карточки). RPC режет видимость.
+export async function getPayrollEmployeeCases(
+  userId: string,
+): Promise<PayrollEmployeeCase[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('payroll_employee_cases', {
+    p_user_id: userId,
+  });
+  if (error) {
+    throw new Error(`getPayrollEmployeeCases failed: ${error.message}`);
+  }
+  type Row = {
+    case_id: string;
+    number_title: string;
+    stage: CaseStage;
+    role_in_case: RoleInCase;
+    paid_total: number | string;
+    percent: number | string;
+    earned: number | string;
+    paid: number | string;
+    outstanding: number | string;
+  };
+  return ((data ?? []) as Row[]).map((r) => ({
+    case_id: r.case_id,
+    number_title: r.number_title,
+    stage: r.stage,
+    role_in_case: r.role_in_case,
+    paid_total: Number(r.paid_total),
+    percent: Number(r.percent),
+    earned: Number(r.earned),
+    paid: Number(r.paid),
+    outstanding: Number(r.outstanding),
+  }));
+}
+
+// Сколько уже ВЫПЛАЧЕНО по делу в разрезе роли (сумма аллокаций выплат).
+// Для карточки дела: показать «выплачено/осталось» по юристу и эксперту.
+// RLS payout_allocations: staff видит все, специалист — только свои выплаты,
+// поэтому не-staff увидит только сумму по своей роли (чужая = 0) — это норма.
+export async function getCasePaidByRole(
+  caseId: string,
+): Promise<{ lawyer: number; expert: number }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('payout_allocations')
+    .select('role_in_case, amount')
+    .eq('case_id', caseId);
+  if (error) {
+    throw new Error(`getCasePaidByRole failed: ${error.message}`);
+  }
+  const acc = { lawyer: 0, expert: 0 };
+  for (const r of (data ?? []) as Array<{
+    role_in_case: RoleInCase;
+    amount: number | string;
+  }>) {
+    acc[r.role_in_case] += Number(r.amount);
+  }
+  return acc;
+}
+
+// История движений сотрудника (выплаты + премии) с аллокациями по делам.
+// RLS payroll_transactions/payout_allocations: staff — все, сотрудник — свои.
+export async function getPayrollTransactions(
+  userId: string,
+): Promise<PayrollTransaction[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('payroll_transactions')
+    .select(
+      'id, user_id, kind, amount, comment, occurred_on, created_at, ' +
+        'allocations:payout_allocations(case_id, role_in_case, amount, case:case_id(number_title))',
+    )
+    .eq('user_id', userId)
+    .order('occurred_on', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) {
+    throw new Error(`getPayrollTransactions failed: ${error.message}`);
+  }
+
+  type AllocRow = {
+    case_id: string;
+    role_in_case: RoleInCase;
+    amount: number | string;
+    case:
+      | { number_title: string }
+      | ReadonlyArray<{ number_title: string }>
+      | null;
+  };
+  type Row = {
+    id: string;
+    user_id: string;
+    kind: PayrollTxKind;
+    amount: number | string;
+    comment: string | null;
+    occurred_on: string;
+    created_at: string;
+    allocations: AllocRow[] | null;
+  };
+
+  return ((data ?? []) as unknown as Row[]).map((r) => ({
+    id: r.id,
+    user_id: r.user_id,
+    kind: r.kind,
+    amount: Number(r.amount),
+    comment: r.comment,
+    occurred_on: r.occurred_on,
+    created_at: r.created_at,
+    allocations: (r.allocations ?? []).map((a) => {
+      const caseRef = Array.isArray(a.case) ? (a.case[0] ?? null) : a.case;
+      return {
+        case_id: a.case_id,
+        number_title: caseRef?.number_title ?? '—',
+        role_in_case: a.role_in_case,
+        amount: Number(a.amount),
+      };
+    }),
   }));
 }

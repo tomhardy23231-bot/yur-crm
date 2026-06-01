@@ -664,3 +664,65 @@ export type PayrollPayoutBySpecialist = {
   paid: number;
   outstanding: number;
 };
+
+// ============================================================================
+// Ручные движения зарплаты (правка №1): выплаты с распределением по делам и премии.
+// «Начислено» считается вживую; «выплачено»/«премии» — записи payroll_transactions.
+// ============================================================================
+
+export type PayrollTxKind = 'payout' | 'bonus';
+
+export const PAYROLL_TX_KIND_LABEL: Record<PayrollTxKind, string> = {
+  payout: 'Выплата',
+  bonus: 'Премия',
+};
+
+// Роль сотрудника в деле (для разбивки заработка). Уже встречается выше как
+// inline-тип; выносим лейблы сюда для переиспользования в отчёте ЗП.
+export type RoleInCase = 'lawyer' | 'expert';
+
+export const ROLE_IN_CASE_LABEL: Record<RoleInCase, string> = {
+  lawyer: 'Юрист',
+  expert: 'Эксперт',
+};
+
+// Строка списка сотрудников в отчёте ЗП (public.payroll_employee_summary).
+export type PayrollEmployeeSummary = {
+  user_id: string;
+  full_name: string;
+  earned: number;   // начислено за дела (live, обе роли)
+  bonus: number;    // премии (+)
+  payout: number;   // выплачено (−)
+  balance: number;  // earned + bonus − payout = «к выплате»
+};
+
+// Строка разбивки по делам в карточке сотрудника (public.payroll_employee_cases).
+export type PayrollEmployeeCase = {
+  case_id: string;
+  number_title: string;
+  stage: CaseStage;
+  role_in_case: RoleInCase;
+  paid_total: number;
+  percent: number;
+  earned: number;       // paid_total × percent (live)
+  paid: number;         // сумма аллокаций выплат по делу+роли
+  outstanding: number;  // earned − paid (что ещё не выплачено)
+};
+
+// Движение зарплаты (payroll_transactions) с аллокациями по делам (для истории).
+export type PayrollTransaction = {
+  id: string;
+  user_id: string;
+  kind: PayrollTxKind;
+  amount: number;
+  comment: string | null;
+  occurred_on: string;
+  created_at: string;
+  // Дела, вошедшие в выплату (для kind=payout). Для bonus — пустой массив.
+  allocations: ReadonlyArray<{
+    case_id: string;
+    number_title: string;
+    role_in_case: RoleInCase;
+    amount: number;
+  }>;
+};

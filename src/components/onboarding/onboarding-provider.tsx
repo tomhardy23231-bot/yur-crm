@@ -16,6 +16,8 @@ import { driver, type Driver } from 'driver.js';
 // перекрытия темы шли после него по порядку каскада.
 
 import { WelcomeModal } from './welcome-modal';
+import { ReleaseModal } from '@/components/releases/release-modal';
+import { CURRENT_RELEASE } from '@/lib/releases/releases';
 import {
   buildTourSteps,
   FIRST_CASE_ROUTE,
@@ -27,11 +29,17 @@ import {
 // чтобы при будущем редизайне тура можно было показать его заново всем.
 const SEEN_KEY = 'yk_onboarding_v1';
 
+// localStorage-ключ: «модалка обновления показана в этом браузере» — по версии.
+// Новая версия → новый ключ → модалка покажется снова (на каждом устройстве раз).
+const RELEASE_SEEN_KEY = `yk_release_seen_${CURRENT_RELEASE.version}`;
+
 type Ctx = {
   /** Открыть приветственную модалку (например, из «Справки»). */
   openWelcome: () => void;
   /** Сразу запустить пошаговый тур, минуя модалку. */
   startTour: () => void;
+  /** Открыть модалку «Что нового» (текущее обновление) вручную. */
+  openWhatsNew: () => void;
 };
 
 const OnboardingContext = createContext<Ctx | null>(null);
@@ -74,6 +82,14 @@ function markSeen() {
   }
 }
 
+function markReleaseSeen() {
+  try {
+    window.localStorage.setItem(RELEASE_SEEN_KEY, '1');
+  } catch {
+    /* приватный режим / отключённое хранилище — не критично */
+  }
+}
+
 export function OnboardingProvider({
   ctx,
   children,
@@ -85,6 +101,7 @@ export function OnboardingProvider({
   const pathname = usePathname();
 
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [releaseOpen, setReleaseOpen] = useState(false);
 
   // Живые зависимости в ref'ах — движок тура (создаётся один раз) читает их
   // на момент вызова, а не на момент создания. Синхронизируются эффектами,
@@ -218,7 +235,9 @@ export function OnboardingProvider({
 
   const startTour = useCallback(() => {
     setWelcomeOpen(false);
+    setReleaseOpen(false);
     markSeen();
+    markReleaseSeen();
 
     if (driverRef.current) driverRef.current.destroy();
 
@@ -246,28 +265,46 @@ export function OnboardingProvider({
   }, []);
 
   const openWelcome = useCallback(() => setWelcomeOpen(true), []);
+  const openWhatsNew = useCallback(() => setReleaseOpen(true), []);
 
   const skipWelcome = useCallback(() => {
     setWelcomeOpen(false);
     markSeen();
   }, []);
 
-  // Авто-показ приветствия при первом визите в этом браузере.
+  const closeRelease = useCallback(() => {
+    setReleaseOpen(false);
+    markReleaseSeen();
+  }, []);
+
+  // Авто-показ при первом визите в этом браузере:
+  //   • новичок (онбординг не показан) → приветствие + тур;
+  //   • остальные, не видевшие текущее обновление → модалка «Что нового».
+  // Приветствие имеет приоритет; пройдя его, пользователь не получит ещё и
+  // модалку обновления (startTour/skipWelcome помечают релиз показанным).
   useEffect(() => {
-    let seen = true;
+    let onboardingSeen = true;
+    let releaseSeen = true;
     try {
-      seen = window.localStorage.getItem(SEEN_KEY) === '1';
+      onboardingSeen = window.localStorage.getItem(SEEN_KEY) === '1';
+      releaseSeen = window.localStorage.getItem(RELEASE_SEEN_KEY) === '1';
     } catch {
-      seen = false;
+      onboardingSeen = false;
+      releaseSeen = false;
     }
-    if (seen) return;
-    const t = window.setTimeout(() => setWelcomeOpen(true), 650);
-    return () => window.clearTimeout(t);
+    if (!onboardingSeen) {
+      const t = window.setTimeout(() => setWelcomeOpen(true), 650);
+      return () => window.clearTimeout(t);
+    }
+    if (!releaseSeen) {
+      const t = window.setTimeout(() => setReleaseOpen(true), 650);
+      return () => window.clearTimeout(t);
+    }
   }, []);
 
   const value = useMemo<Ctx>(
-    () => ({ openWelcome, startTour }),
-    [openWelcome, startTour],
+    () => ({ openWelcome, startTour, openWhatsNew }),
+    [openWelcome, startTour, openWhatsNew],
   );
 
   return (
@@ -278,6 +315,12 @@ export function OnboardingProvider({
         userCtx={ctx}
         onStartTour={startTour}
         onSkip={skipWelcome}
+      />
+      <ReleaseModal
+        open={releaseOpen}
+        release={CURRENT_RELEASE}
+        onClose={closeRelease}
+        onStartTour={startTour}
       />
     </OnboardingContext.Provider>
   );

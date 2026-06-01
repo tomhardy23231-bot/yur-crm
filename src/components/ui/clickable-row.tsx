@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import * as React from 'react';
 
 import { TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 interface ClickableRowProps
   extends React.HTMLAttributes<HTMLTableRowElement> {
@@ -24,6 +25,7 @@ export function ClickableRow({
   href,
   onClick,
   children,
+  className,
   ...props
 }: ClickableRowProps) {
   const router = useRouter();
@@ -43,7 +45,14 @@ export function ClickableRow({
   };
 
   return (
-    <TableRow onClick={handleClick} {...props}>
+    <TableRow
+      onClick={handleClick}
+      className={cn(
+        'cursor-pointer hover:bg-surface-sunken',
+        className,
+      )}
+      {...props}
+    >
       {children}
     </TableRow>
   );
