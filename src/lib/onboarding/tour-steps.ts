@@ -44,6 +44,10 @@ export type TourStep = {
 };
 
 export const FIRST_CASE_ROUTE = 'FIRST_CASE';
+// Динамический маршрут карточки сотрудника — берётся из первой строки списка
+// /reports/payroll (захватывается на шаге `payroll-list`). Нет сотрудников →
+// шаги карточки (optional) пропускаются.
+export const FIRST_EMPLOYEE_ROUTE = 'FIRST_EMPLOYEE';
 
 // Полный сценарий. Порядок = порядок прохождения.
 const ALL_STEPS: ReadonlyArray<TourStep> = [
@@ -283,4 +287,79 @@ const ALL_STEPS: ReadonlyArray<TourStep> = [
 /** Отфильтрованный под роль/права сценарий. */
 export function buildTourSteps(ctx: TourCtx): TourStep[] {
   return ALL_STEPS.filter((s) => !s.show || s.show(ctx));
+}
+
+// ============================================================================
+// Тур ПО ФИЧЕ «Зарплата и выплаты» (релиз 1.0). Запускается из модалки «Что
+// нового», ведёт только по новому разделу (а не по всему приложению).
+// ============================================================================
+
+const PAYROLL_STEPS: ReadonlyArray<TourStep> = [
+  {
+    id: 'pay-nav',
+    route: '/reports/payroll',
+    element: '[data-tour="nav-payroll"]',
+    title: 'Раздел «Финансы и ЗП»',
+    body:
+      'Здесь всё про зарплату команды: сколько начислено, сколько выплачено и ' +
+      'сколько ещё к выплате — по каждому сотруднику.',
+    side: 'right',
+    align: 'center',
+  },
+  {
+    id: 'payroll-list',
+    route: '/reports/payroll',
+    element: '[data-tour="payroll-list"]',
+    title: 'Сотрудники и суммы',
+    body:
+      'По каждому сотруднику: <b>начислено</b> (процент от оплат по делам), ' +
+      '<b>премии</b>, <b>выплачено</b> и <b>к выплате</b>. Клик по строке открывает ' +
+      'карточку сотрудника — сейчас откроем.',
+    side: 'top',
+    align: 'center',
+  },
+  {
+    id: 'pay-summary',
+    route: FIRST_EMPLOYEE_ROUTE,
+    element: '[data-tour="payroll-summary"]',
+    title: 'Сводка по сотруднику',
+    body:
+      'Крупно — <b>сколько ещё к выплате</b>, рядом разбивка: заработано за дела, ' +
+      'премии и сколько уже выплачено.',
+    side: 'bottom',
+    align: 'center',
+    optional: true,
+  },
+  {
+    id: 'pay-cases',
+    route: FIRST_EMPLOYEE_ROUTE,
+    element: '[data-tour="payroll-cases"]',
+    title: 'Заработок по делам',
+    body:
+      'По каждому делу видно: сколько заработано (процент от оплат клиента), сколько ' +
+      'уже выплачено и сколько осталось. Учитываются и открытые дела в работе.',
+    side: 'top',
+    align: 'center',
+    optional: true,
+  },
+  {
+    id: 'pay-actions',
+    route: FIRST_EMPLOYEE_ROUTE,
+    element: '[data-tour="payroll-actions"]',
+    title: 'Выплаты и премии',
+    body:
+      '<b>Выплата</b> — отмечаете галочками, за какие дела платите (и невыплаченные ' +
+      'премии), сумма складывается сама; можно указать дату (например, 15-е и конец ' +
+      'месяца). <b>Премия</b> — бонус сверх заработка по делам. Доступно владельцу и ' +
+      'администратору.',
+    side: 'bottom',
+    align: 'end',
+    optional: true,
+    show: (c) => c.role === 'owner' || c.role === 'admin',
+  },
+];
+
+/** Сценарий тура по разделу ЗП, отфильтрованный под роль/права. */
+export function buildPayrollTourSteps(ctx: TourCtx): TourStep[] {
+  return PAYROLL_STEPS.filter((s) => !s.show || s.show(ctx));
 }

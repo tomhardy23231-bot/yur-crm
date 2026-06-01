@@ -32,7 +32,7 @@ export function ReleaseModal({
 
   if (!open || typeof document === 'undefined') return null;
 
-  const showTour = Boolean(release.major && onStartTour);
+  const showTour = Boolean(onStartTour);
 
   return createPortal(
     <div

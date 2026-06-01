@@ -20,7 +20,9 @@ import { ReleaseModal } from '@/components/releases/release-modal';
 import { CURRENT_RELEASE } from '@/lib/releases/releases';
 import {
   buildTourSteps,
+  buildPayrollTourSteps,
   FIRST_CASE_ROUTE,
+  FIRST_EMPLOYEE_ROUTE,
   type TourCtx,
   type TourStep,
 } from '@/lib/onboarding/tour-steps';
@@ -36,8 +38,10 @@ const RELEASE_SEEN_KEY = `yk_release_seen_${CURRENT_RELEASE.version}`;
 type Ctx = {
   /** Открыть приветственную модалку (например, из «Справки»). */
   openWelcome: () => void;
-  /** Сразу запустить пошаговый тур, минуя модалку. */
+  /** Сразу запустить общий пошаговый тур, минуя модалку. */
   startTour: () => void;
+  /** Запустить тур по фиче текущего обновления (если у релиза есть tourId). */
+  startReleaseTour: () => void;
   /** Открыть модалку «Что нового» (текущее обновление) вручную. */
   openWhatsNew: () => void;
 };
@@ -125,6 +129,9 @@ export function OnboardingProvider({
   // Маршрут карточки дела — берётся из первой строки списка дел на шаге
   // `cases-open`. null → дел нет, шаги карточки пропускаются.
   const firstCaseHrefRef = useRef<string | null>(null);
+  // Маршрут карточки сотрудника — из первой строки /reports/payroll на шаге
+  // `payroll-list`. null → сотрудников нет, шаги карточки пропускаются.
+  const firstEmployeeHrefRef = useRef<string | null>(null);
 
   // Стабильные функции движка — присваиваются один раз в эффекте ниже.
   const goToRef = useRef<(i: number, dir: 1 | -1) => Promise<void>>(
@@ -141,8 +148,11 @@ export function OnboardingProvider({
       if (d) d.destroy();
     };
 
-    const resolveRoute = (step: TourStep): string | null =>
-      step.route === FIRST_CASE_ROUTE ? firstCaseHrefRef.current : step.route;
+    const resolveRoute = (step: TourStep): string | null => {
+      if (step.route === FIRST_CASE_ROUTE) return firstCaseHrefRef.current;
+      if (step.route === FIRST_EMPLOYEE_ROUTE) return firstEmployeeHrefRef.current;
+      return step.route;
+    };
 
     const buildPopover = (i: number, step: TourStep) => {
       const total = stepsRef.current.length;
@@ -221,6 +231,12 @@ export function OnboardingProvider({
         );
         firstCaseHrefRef.current = link?.getAttribute('href') ?? null;
       }
+      // На шаге списка ЗП запоминаем маршрут карточки первого сотрудника
+      // (строка — кликабельный <tr> без <a>, поэтому ссылку кладём в data-href).
+      if (step.id === 'payroll-list') {
+        const rowEl = document.querySelector('[data-tour="payroll-first-row"]');
+        firstEmployeeHrefRef.current = rowEl?.getAttribute('data-href') ?? null;
+      }
 
       d.highlight({ element: step.element, popover: buildPopover(i, step) });
     };
@@ -233,7 +249,10 @@ export function OnboardingProvider({
     };
   }, []);
 
-  const startTour = useCallback(() => {
+  // steps — кастомный сценарий (тур по фиче). Без него — общий онбординг.
+  // Защита: при использовании как onClick-хендлера сюда прилетит событие — его
+  // игнорируем (берём общий тур), кастомный сценарий принимаем только массивом.
+  const startTour = useCallback((steps?: TourStep[] | unknown) => {
     setWelcomeOpen(false);
     setReleaseOpen(false);
     markSeen();
@@ -241,8 +260,11 @@ export function OnboardingProvider({
 
     if (driverRef.current) driverRef.current.destroy();
 
-    stepsRef.current = buildTourSteps(ctxRef.current);
+    stepsRef.current = Array.isArray(steps)
+      ? (steps as TourStep[])
+      : buildTourSteps(ctxRef.current);
     firstCaseHrefRef.current = null;
+    firstEmployeeHrefRef.current = null;
 
     driverRef.current = driver({
       animate: true,
@@ -263,6 +285,15 @@ export function OnboardingProvider({
       void goToRef.current(0, 1);
     }, 180);
   }, []);
+
+  // Тур по фиче текущего релиза. Сейчас единственный сценарий — 'payroll'.
+  const startReleaseTour = useCallback(() => {
+    const steps =
+      CURRENT_RELEASE.tourId === 'payroll'
+        ? buildPayrollTourSteps(ctxRef.current)
+        : undefined;
+    startTour(steps);
+  }, [startTour]);
 
   const openWelcome = useCallback(() => setWelcomeOpen(true), []);
   const openWhatsNew = useCallback(() => setReleaseOpen(true), []);
@@ -303,8 +334,8 @@ export function OnboardingProvider({
   }, []);
 
   const value = useMemo<Ctx>(
-    () => ({ openWelcome, startTour, openWhatsNew }),
-    [openWelcome, startTour, openWhatsNew],
+    () => ({ openWelcome, startTour, startReleaseTour, openWhatsNew }),
+    [openWelcome, startTour, startReleaseTour, openWhatsNew],
   );
 
   return (
@@ -320,7 +351,8 @@ export function OnboardingProvider({
         open={releaseOpen}
         release={CURRENT_RELEASE}
         onClose={closeRelease}
-        onStartTour={startTour}
+        // Тур по самой фиче (а не общий онбординг) — только если у релиза есть tourId.
+        onStartTour={CURRENT_RELEASE.tourId ? startReleaseTour : undefined}
       />
     </OnboardingContext.Provider>
   );

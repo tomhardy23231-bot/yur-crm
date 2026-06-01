@@ -116,7 +116,10 @@ export default async function PayrollReportPage() {
           </p>
         </Card>
       ) : (
-        <div className="overflow-auto rounded-lg border border-border bg-surface shadow-sm">
+        <div
+          data-tour="payroll-list"
+          className="overflow-auto rounded-lg border border-border bg-surface shadow-sm"
+        >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
@@ -129,11 +132,14 @@ export default async function PayrollReportPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => (
+              {rows.map((r, i) => (
                 <ClickableRow
                   key={r.user_id}
                   href={`/reports/payroll/${r.user_id}`}
                   className="cursor-pointer"
+                  // Якорь тура: маршрут карточки первого сотрудника читается из data-href.
+                  data-tour={i === 0 ? 'payroll-first-row' : undefined}
+                  data-href={`/reports/payroll/${r.user_id}`}
                 >
                   <TableCell>
                     <span className="inline-flex items-center gap-2">

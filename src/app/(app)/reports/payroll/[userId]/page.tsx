@@ -157,17 +157,22 @@ export default async function PayrollEmployeePage({
           </div>
         </div>
         {canManage && (
-          <PayrollActions
-            userId={userId}
-            userName={fullName}
-            buckets={buckets}
-            bonusOutstanding={bonusOutstanding}
-          />
+          <div data-tour="payroll-actions">
+            <PayrollActions
+              userId={userId}
+              userName={fullName}
+              buckets={buckets}
+              bonusOutstanding={bonusOutstanding}
+            />
+          </div>
         )}
       </div>
 
       {/* Сводка: «к выплате» крупно + разбивка */}
-      <Card className="flex flex-col gap-0 overflow-hidden sm:flex-row sm:items-stretch sm:divide-x sm:divide-border">
+      <Card
+        data-tour="payroll-summary"
+        className="flex flex-col gap-0 overflow-hidden sm:flex-row sm:items-stretch sm:divide-x sm:divide-border"
+      >
         <div className="flex flex-col justify-center gap-1 bg-warning-bg/40 px-6 py-5 sm:w-[34%]">
           <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-[0.05em] text-text-muted">
             <Wallet size={13} strokeWidth={2} />К выплате сейчас
@@ -201,7 +206,7 @@ export default async function PayrollEmployeePage({
       </Card>
 
       {/* Дела */}
-      <section className="flex flex-col gap-3">
+      <section data-tour="payroll-cases" className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <Briefcase size={16} strokeWidth={1.75} className="text-text-muted" />
           <h2 className="text-[16px] font-semibold text-text">Заработок по делам</h2>
