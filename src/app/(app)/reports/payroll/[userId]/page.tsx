@@ -28,6 +28,8 @@ import {
   DeleteTransactionButton,
   type PayoutBucket,
 } from '@/components/payroll/payroll-actions';
+import { MonthPicker } from '@/components/payroll/month-picker';
+import { normalizeMonth, monthLabel, nextMonth } from '@/lib/payroll/month';
 import { MANAGER_ROLES, ROLE_IN_CASE_LABEL } from '@/lib/types/db';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
@@ -44,11 +46,16 @@ function formatDate(s: string): string {
 
 export default async function PayrollEmployeePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ userId: string }>;
+  searchParams: Promise<{ month?: string }>;
 }) {
   const user = await requireUser();
   const { userId } = await params;
+  const { month: monthRaw } = await searchParams;
+  const month = normalizeMonth(monthRaw);
+  const monthEnd = nextMonth(month);
 
   const seeAll = user.caps.view_all_payroll;
   // Сотрудник видит только свою карточку; staff — любую.
@@ -57,49 +64,66 @@ export default async function PayrollEmployeePage({
   const canManage = MANAGER_ROLES.includes(user.profile.role);
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: userRow }, summary, cases, transactions] = await Promise.all([
-    supabase
-      .from('users')
-      .select('full_name')
-      .eq('id', userId)
-      .maybeSingle<{ full_name: string }>(),
-    getPayrollEmployeeSummary(),
-    getPayrollEmployeeCases(userId),
-    getPayrollTransactions(userId),
-  ]);
+  // За месяц — для цифр секций; за всё время — для накопленного долга и модалки выплаты.
+  const [{ data: userRow }, summary, monthCases, allCases, monthTx, allTx] =
+    await Promise.all([
+      supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', userId)
+        .maybeSingle<{ full_name: string }>(),
+      getPayrollEmployeeSummary(month),
+      getPayrollEmployeeCases(userId, month),
+      getPayrollEmployeeCases(userId),
+      getPayrollTransactions(userId, month),
+      getPayrollTransactions(userId),
+    ]);
 
   const row = summary.find((r) => r.user_id === userId);
   const fullName = userRow?.full_name ?? row?.full_name ?? 'Сотрудник';
 
-  // Итоги.
-  const earned = row?.earned ?? cases.reduce((s, c) => s + c.earned, 0);
-  const bonusTotal = row?.bonus ?? 0;
-  const payoutTotal = row?.payout ?? 0;
-  const balance = row?.balance ?? earned + bonusTotal - payoutTotal;
+  // Итоги ЗА МЕСЯЦ (из сводки).
+  const earnedMonth = row?.earned ?? monthCases.reduce((s, c) => s + c.earned, 0);
+  const bonusMonth = row?.bonus ?? 0;
+  const payoutMonth = row?.payout ?? 0;
+  // Накопленный общий долг (за всё время) — «К выплате сейчас».
+  const balance = row?.balance ?? 0;
 
-  // Доля выплат, ушедшая на дела (распределённая по аллокациям) и на премии.
-  const caseAllocatedTotal = cases.reduce((s, c) => s + c.paid, 0);
-  const bonusPaid = Math.max(0, Math.round((payoutTotal - caseAllocatedTotal) * 100) / 100);
-  const bonusOutstanding = Math.max(0, Math.round((bonusTotal - bonusPaid) * 100) / 100);
-  const casesOutstanding = cases.reduce((s, c) => s + Math.max(0, c.outstanding), 0);
+  // Накопленные разбивки (за всё время) — для карточки долга и модалки выплаты.
+  const caseAllocatedAll = allCases.reduce((s, c) => s + c.paid, 0);
+  const payoutTotalAll = allTx
+    .filter((t) => t.kind === 'payout')
+    .reduce((s, t) => s + t.amount, 0);
+  const bonusTotalAll = allTx
+    .filter((t) => t.kind === 'bonus')
+    .reduce((s, t) => s + t.amount, 0);
+  const bonusPaidAll = Math.max(0, Math.round((payoutTotalAll - caseAllocatedAll) * 100) / 100);
+  const bonusOutstandingAll = Math.max(0, Math.round((bonusTotalAll - bonusPaidAll) * 100) / 100);
+  const casesOutstandingAll = allCases.reduce((s, c) => s + Math.max(0, c.outstanding), 0);
 
-  // Роли сотрудника (для подзаголовка).
-  const lawyerCount = cases.filter((c) => c.role_in_case === 'lawyer').length;
-  const expertCount = cases.filter((c) => c.role_in_case === 'expert').length;
+  // Месячная разбивка выплаты (подпись ячейки «Выплачено за месяц»).
+  const monthCaseAllocated = monthCases.reduce((s, c) => s + c.paid, 0);
+  const monthBonusPaid = Math.max(0, Math.round((payoutMonth - monthCaseAllocated) * 100) / 100);
+
+  // Роли сотрудника (по всем делам, не только за месяц).
+  const lawyerCount = allCases.filter((c) => c.role_in_case === 'lawyer').length;
+  const expertCount = allCases.filter((c) => c.role_in_case === 'expert').length;
   const roleBits: string[] = [];
   if (lawyerCount > 0) roleBits.push(`юрист — ${lawyerCount}`);
   if (expertCount > 0) roleBits.push(`эксперт — ${expertCount}`);
 
-  // Дела: незакрытые/с остатком — выше; затем по остатку.
-  const sortedCases = [...cases].sort((a, b) => {
+  // Дела за месяц: только те, по которым в этом месяце были оплаты (есть начисление).
+  // Закрытые ниже, затем по убыванию начисления.
+  const monthCasesShown = monthCases.filter((c) => c.paid_total > 0 || c.earned > 0);
+  const sortedCases = [...monthCasesShown].sort((a, b) => {
     const ac = a.stage === 'closed' ? 1 : 0;
     const bc = b.stage === 'closed' ? 1 : 0;
     if (ac !== bc) return ac - bc;
-    return b.outstanding - a.outstanding;
+    return b.earned - a.earned;
   });
 
-  // Невыплаченные дела для модалки выплаты.
-  const buckets: PayoutBucket[] = cases
+  // Невыплаченные дела для модалки выплаты — по НАКОПЛЕННОМУ остатку (за всё время).
+  const buckets: PayoutBucket[] = allCases
     .filter((c) => c.outstanding > 0)
     .map((c) => ({
       case_id: c.case_id,
@@ -108,28 +132,30 @@ export default async function PayrollEmployeePage({
       outstanding: c.outstanding,
     }));
 
-  // Премии (FIFO: старые гасятся первыми) + история выплат.
-  const bonusTxAsc = transactions
+  // Премии: статус «выплачено» (FIFO, старые гасятся первыми) считаем по ВСЕМ премиям
+  // накопленно, а показываем только премии выбранного месяца.
+  const bonusTxAsc = allTx
     .filter((t) => t.kind === 'bonus')
     .slice()
     .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on));
-  // FIFO без мутации внешней переменной: для премии i выплачено = сколько из пула
-  // bonusPaid осталось после погашения всех предыдущих премий.
   const bonusRows = bonusTxAsc
     .map((t, i) => {
-      const before = bonusTxAsc
-        .slice(0, i)
-        .reduce((s, x) => s + x.amount, 0);
-      const paid = Math.min(Math.max(0, bonusPaid - before), t.amount);
+      const before = bonusTxAsc.slice(0, i).reduce((s, x) => s + x.amount, 0);
+      const paid = Math.min(Math.max(0, bonusPaidAll - before), t.amount);
       return {
         ...t,
         paid: Math.round(paid * 100) / 100,
         outstanding: Math.round((t.amount - paid) * 100) / 100,
       };
     })
+    .filter((t) => t.occurred_on >= month && t.occurred_on < monthEnd)
     .reverse(); // показываем новые сверху
 
-  const payouts = transactions.filter((t) => t.kind === 'payout');
+  // Итоги секции «Премии» за месяц.
+  const bonusMonthPaid = bonusRows.reduce((s, b) => s + b.paid, 0);
+  const bonusMonthOutstanding = bonusRows.reduce((s, b) => s + b.outstanding, 0);
+
+  const payouts = monthTx.filter((t) => t.kind === 'payout');
 
   return (
     <main className="flex flex-col gap-6 px-3 py-2 sm:px-4">
@@ -156,16 +182,19 @@ export default async function PayrollEmployeePage({
             )}
           </div>
         </div>
-        {canManage && (
-          <div data-tour="payroll-actions">
-            <PayrollActions
-              userId={userId}
-              userName={fullName}
-              buckets={buckets}
-              bonusOutstanding={bonusOutstanding}
-            />
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthPicker month={month} />
+          {canManage && (
+            <div data-tour="payroll-actions">
+              <PayrollActions
+                userId={userId}
+                userName={fullName}
+                buckets={buckets}
+                bonusOutstanding={bonusOutstandingAll}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Сводка: «к выплате» крупно + разбивка */}
@@ -181,26 +210,26 @@ export default async function PayrollEmployeePage({
             {MONEY.format(balance)} ₴
           </span>
           <span className="text-[12px] text-text-muted">
-            дела {MONEY.format(casesOutstanding)} ₴ · премии{' '}
-            {MONEY.format(bonusOutstanding)} ₴
+            всего · дела {MONEY.format(casesOutstandingAll)} ₴ · премии{' '}
+            {MONEY.format(bonusOutstandingAll)} ₴
           </span>
         </div>
         <div className="grid flex-1 grid-cols-3 divide-x divide-border">
           <SummaryCell
-            label="Заработано за дела"
-            value={`${MONEY.format(earned)} ₴`}
+            label="Заработано за месяц"
+            value={`${MONEY.format(earnedMonth)} ₴`}
             tone="text"
           />
           <SummaryCell
-            label="Премии начислено"
-            value={`${bonusTotal > 0 ? '+' : ''}${MONEY.format(bonusTotal)} ₴`}
+            label="Премии за месяц"
+            value={`${bonusMonth > 0 ? '+' : ''}${MONEY.format(bonusMonth)} ₴`}
             tone="muted"
           />
           <SummaryCell
-            label="Выплачено всего"
-            value={`${MONEY.format(payoutTotal)} ₴`}
+            label="Выплачено за месяц"
+            value={`${MONEY.format(payoutMonth)} ₴`}
             tone="success"
-            caption={`дела ${MONEY.format(caseAllocatedTotal)} · премии ${MONEY.format(bonusPaid)}`}
+            caption={`дела ${MONEY.format(monthCaseAllocated)} · премии ${MONEY.format(monthBonusPaid)}`}
           />
         </div>
       </Card>
@@ -209,15 +238,18 @@ export default async function PayrollEmployeePage({
       <section data-tour="payroll-cases" className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <Briefcase size={16} strokeWidth={1.75} className="text-text-muted" />
-          <h2 className="text-[16px] font-semibold text-text">Заработок по делам</h2>
+          <h2 className="text-[16px] font-semibold text-text">
+            Заработок по делам — {monthLabel(month)}
+          </h2>
           <span className="text-[12.5px] text-text-subtle">
-            {cases.length} {cases.length === 1 ? 'дело' : 'дел'}
+            {monthCasesShown.length}{' '}
+            {monthCasesShown.length === 1 ? 'дело' : 'дел'}
           </span>
         </div>
-        {cases.length === 0 ? (
+        {monthCasesShown.length === 0 ? (
           <Card className="px-6 py-10 text-center">
             <p className="text-[13px] text-text-muted">
-              Сотрудник пока не назначен ни на одно дело.
+              За {monthLabel(month)} оплат по делам не было — начислений нет.
             </p>
           </Card>
         ) : (
@@ -303,26 +335,28 @@ export default async function PayrollEmployeePage({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Gift size={16} strokeWidth={1.75} className="text-text-muted" />
-            <h2 className="text-[16px] font-semibold text-text">Премии</h2>
+            <h2 className="text-[16px] font-semibold text-text">
+              Премии — {monthLabel(month)}
+            </h2>
           </div>
-          {bonusTotal > 0 && (
+          {bonusMonth > 0 && (
             <div className="flex items-baseline gap-4 font-mono text-[12.5px] tabular-nums">
               <span className="text-text-muted">
                 начислено{' '}
                 <span className="font-semibold text-text">
-                  {MONEY.format(bonusTotal)} ₴
+                  {MONEY.format(bonusMonth)} ₴
                 </span>
               </span>
               <span className="text-text-muted">
                 выплачено{' '}
                 <span className="font-semibold text-success">
-                  {MONEY.format(bonusPaid)} ₴
+                  {MONEY.format(bonusMonthPaid)} ₴
                 </span>
               </span>
               <span className="text-text-muted">
                 осталось{' '}
                 <span className="font-semibold text-warning">
-                  {MONEY.format(bonusOutstanding)} ₴
+                  {MONEY.format(bonusMonthOutstanding)} ₴
                 </span>
               </span>
             </div>
@@ -331,7 +365,8 @@ export default async function PayrollEmployeePage({
         {bonusRows.length === 0 ? (
           <Card className="px-6 py-8 text-center">
             <p className="text-[13px] text-text-muted">
-              Премий пока нет. Кнопка «Премия» — начислить бонус сверх заработка по делам.
+              За {monthLabel(month)} премий нет. Кнопка «Премия» — начислить бонус сверх
+              заработка по делам.
             </p>
           </Card>
         ) : (
@@ -385,13 +420,15 @@ export default async function PayrollEmployeePage({
       <section className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <Coins size={16} strokeWidth={1.75} className="text-text-muted" />
-          <h2 className="text-[16px] font-semibold text-text">История выплат</h2>
+          <h2 className="text-[16px] font-semibold text-text">
+            Выплаты — {monthLabel(month)}
+          </h2>
         </div>
         {payouts.length === 0 ? (
           <Card className="px-6 py-8 text-center">
             <p className="text-[13px] text-text-muted">
-              Выплат пока нет. Кнопка «Выплата» — отметить, что выдали сотруднику (за
-              дела и/или премии).
+              За {monthLabel(month)} выплат не было. Кнопка «Выплата» — отметить, что
+              выдали сотруднику (за дела и/или премии).
             </p>
           </Card>
         ) : (

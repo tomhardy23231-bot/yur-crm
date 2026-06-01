@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { nextMonth } from '@/lib/payroll/month';
 import type {
   CaseCategory,
   CasePayroll,
@@ -221,12 +222,15 @@ export async function listPayrollPayoutBySpecialist(): Promise<
 // сотрудник — только себя). Прямые select по RLS — для истории движений.
 // ============================================================================
 
-// Список сотрудников с итогами (для /reports/payroll).
-export async function getPayrollEmployeeSummary(): Promise<
-  PayrollEmployeeSummary[]
-> {
+// Список сотрудников с итогами (для /reports/payroll). month — первый день месяца
+// ('YYYY-MM-01') для помесячного режима; null/undefined → за всё время.
+export async function getPayrollEmployeeSummary(
+  month?: string | null,
+): Promise<PayrollEmployeeSummary[]> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('payroll_employee_summary');
+  const { data, error } = await supabase.rpc('payroll_employee_summary', {
+    p_month: month ?? null,
+  });
   if (error) {
     throw new Error(`getPayrollEmployeeSummary failed: ${error.message}`);
   }
@@ -249,12 +253,15 @@ export async function getPayrollEmployeeSummary(): Promise<
 }
 
 // Разбивка ЗП сотрудника по делам (для карточки). RPC режет видимость.
+// month — первый день месяца ('YYYY-MM-01'); null/undefined → за всё время.
 export async function getPayrollEmployeeCases(
   userId: string,
+  month?: string | null,
 ): Promise<PayrollEmployeeCase[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('payroll_employee_cases', {
     p_user_id: userId,
+    p_month: month ?? null,
   });
   if (error) {
     throw new Error(`getPayrollEmployeeCases failed: ${error.message}`);
@@ -312,15 +319,22 @@ export async function getCasePaidByRole(
 // RLS payroll_transactions/payout_allocations: staff — все, сотрудник — свои.
 export async function getPayrollTransactions(
   userId: string,
+  month?: string | null,
 ): Promise<PayrollTransaction[]> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('payroll_transactions')
     .select(
       'id, user_id, kind, amount, comment, occurred_on, created_at, ' +
         'allocations:payout_allocations(case_id, role_in_case, amount, case:case_id(number_title))',
     )
-    .eq('user_id', userId)
+    .eq('user_id', userId);
+  // Помесячный режим: только движения с occurred_on внутри месяца.
+  if (month) {
+    const next = nextMonth(month);
+    query = query.gte('occurred_on', month).lt('occurred_on', next);
+  }
+  const { data, error } = await query
     .order('occurred_on', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) {

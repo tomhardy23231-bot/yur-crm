@@ -16,6 +16,8 @@ import { ClickableRow } from '@/components/ui/clickable-row';
 import { requireUser } from '@/lib/auth/require-role';
 import { getPayrollEmployeeSummary, getPayrollRates } from '@/lib/payroll/queries';
 import { CASE_CATEGORY_LABEL } from '@/lib/types/db';
+import { MonthPicker } from '@/components/payroll/month-picker';
+import { normalizeMonth, monthLabel } from '@/lib/payroll/month';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
@@ -23,8 +25,14 @@ const MONEY = new Intl.NumberFormat('ru-RU', {
   maximumFractionDigits: 2,
 });
 
-export default async function PayrollReportPage() {
+export default async function PayrollReportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>;
+}) {
   const user = await requireUser();
+  const { month: monthParam } = await searchParams;
+  const month = normalizeMonth(monthParam);
 
   const canEditRates = user.caps.edit_payroll_rates;
   const seeAll = user.caps.view_all_payroll;
@@ -32,7 +40,7 @@ export default async function PayrollReportPage() {
   const showExpertRate = seeAll || user.profile.role === 'expert';
 
   const [rows, rates] = await Promise.all([
-    getPayrollEmployeeSummary(),
+    getPayrollEmployeeSummary(month),
     getPayrollRates(),
   ]);
 
@@ -52,19 +60,22 @@ export default async function PayrollReportPage() {
         <div>
           <h1 className="text-[20px] font-bold text-text">Финансы и ЗП</h1>
           <p className="mt-0.5 text-[13px] text-text-muted">
-            {seeAll
-              ? 'Начислено, выплачено и остаток по каждому сотруднику. Откройте сотрудника — там разбивка по делам, премии и выплаты.'
-              : 'Ваши начисления по делам, премии и выплаты. Откройте карточку — там подробно по каждому делу.'}
+            Начислено, премии и выплаты за{' '}
+            <span className="font-medium text-text">{monthLabel(month)}</span>.
+            «К выплате» — общий накопленный долг за всё время.
           </p>
         </div>
-        {canEditRates && (
-          <Button asChild variant="secondary" size="sm">
-            <Link href="/settings/payroll">
-              <Settings size={14} strokeWidth={1.75} />
-              Настроить ставки
-            </Link>
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthPicker month={month} />
+          {canEditRates && (
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/settings/payroll">
+                <Settings size={14} strokeWidth={1.75} />
+                Настроить ставки
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Ставки по категориям */}
@@ -124,10 +135,10 @@ export default async function PayrollReportPage() {
             <TableHeader>
               <TableRow className="hover:bg-surface">
                 <TableHead>Сотрудник</TableHead>
-                <TableHead className="text-right">Начислено</TableHead>
-                <TableHead className="text-right">Премии</TableHead>
-                <TableHead className="text-right">Выплачено</TableHead>
-                <TableHead className="text-right">К выплате</TableHead>
+                <TableHead className="text-right">Начислено за месяц</TableHead>
+                <TableHead className="text-right">Премии за месяц</TableHead>
+                <TableHead className="text-right">Выплачено за месяц</TableHead>
+                <TableHead className="text-right">К выплате (всего)</TableHead>
                 <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
@@ -170,19 +181,19 @@ export default async function PayrollReportPage() {
           </Table>
           <div className="flex items-center justify-end gap-6 border-t border-border bg-surface-muted/50 px-4 py-3 font-mono tabular-nums text-[13px]">
             <span className="text-text-muted">
-              начислено{' '}
+              начислено за месяц{' '}
               <span className="font-bold text-text">
                 {MONEY.format(totals.earned + totals.bonus)} ₴
               </span>
             </span>
             <span className="text-text-muted">
-              выплачено{' '}
+              выплачено за месяц{' '}
               <span className="font-bold text-success">
                 {MONEY.format(totals.payout)} ₴
               </span>
             </span>
             <span className="text-text-muted">
-              к выплате{' '}
+              к выплате всего{' '}
               <span className="font-bold text-warning">
                 {MONEY.format(totals.balance)} ₴
               </span>
