@@ -276,6 +276,13 @@ export type Client = {
   id: string;
   name: string;
   client_kind: ClientKind;
+  // ФИО раздельно — для физлиц/ФОП. У компаний пустые, отображаемое имя = name.
+  last_name: string | null;
+  first_name: string | null;
+  middle_name: string | null;
+  birth_date: string | null;
+  inn: string | null;
+  contract_number: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
@@ -284,6 +291,11 @@ export type Client = {
   created_by: string;
   created_at: string;
 };
+
+// У физлица и ФОП есть ФИО (раздельные поля); у компании — только наименование.
+export function clientKindHasFullName(kind: ClientKind): boolean {
+  return kind === 'individual' || kind === 'entrepreneur';
+}
 
 // =====================================================================
 // Cases — центральная сущность (CLAUDE.md §5, §6).

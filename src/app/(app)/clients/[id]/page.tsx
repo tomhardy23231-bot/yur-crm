@@ -21,6 +21,7 @@ import { requireUser } from '@/lib/auth/require-role';
 import {
   CLIENT_KIND_LABEL,
   CLIENT_SOURCE_LABEL,
+  clientKindHasFullName,
 } from '@/lib/types/db';
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
@@ -116,6 +117,34 @@ export default async function ClientDetailPage({
         <div className="grid grid-cols-1 gap-6 p-6 sm:grid-cols-2">
           <Section title="Тип клиента">
             <ClientKindBadge kind={client.client_kind} />
+          </Section>
+
+          {clientKindHasFullName(client.client_kind) && (
+            <Section title="Дата рождения">
+              {client.birth_date ? (
+                <span className="font-mono text-[13.5px] text-text">
+                  {DATE_FMT.format(new Date(client.birth_date))}
+                </span>
+              ) : (
+                <Empty />
+              )}
+            </Section>
+          )}
+
+          <Section title={clientKindHasFullName(client.client_kind) ? 'ИНН' : 'ИНН / ЕДРПОУ'}>
+            {client.inn ? (
+              <span className="font-mono text-[13.5px] text-text">{client.inn}</span>
+            ) : (
+              <Empty />
+            )}
+          </Section>
+
+          <Section title="Номер договора">
+            {client.contract_number ? (
+              <span className="font-mono text-[13.5px] text-text">{client.contract_number}</span>
+            ) : (
+              <Empty />
+            )}
           </Section>
 
           <Section title="Телефон">

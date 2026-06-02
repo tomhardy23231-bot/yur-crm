@@ -63,7 +63,7 @@ export async function listClients(
   let query = supabase
     .from('clients')
     .select(
-      'id, name, client_kind, phone, email, address, source, notes, created_by, created_at, cases(count)',
+      'id, name, client_kind, last_name, first_name, middle_name, birth_date, inn, contract_number, phone, email, address, source, notes, created_by, created_at, cases(count)',
       { count: 'exact' },
     )
     .order(sortColumn, { ascending })
@@ -73,7 +73,7 @@ export async function listClients(
   const q = params.q ? sanitizeSearch(params.q) : '';
   if (q) {
     query = query.or(
-      `name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`,
+      `name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,inn.ilike.%${q}%,contract_number.ilike.%${q}%`,
     );
   }
   if (params.kind) {
@@ -96,6 +96,12 @@ export async function listClients(
       id: r.id,
       name: r.name,
       client_kind: r.client_kind,
+      last_name: r.last_name,
+      first_name: r.first_name,
+      middle_name: r.middle_name,
+      birth_date: r.birth_date,
+      inn: r.inn,
+      contract_number: r.contract_number,
       phone: r.phone,
       email: r.email,
       address: r.address,
@@ -117,7 +123,9 @@ export async function getClient(id: string): Promise<Client | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('clients')
-    .select('id, name, client_kind, phone, email, address, source, notes, created_by, created_at')
+    .select(
+      'id, name, client_kind, last_name, first_name, middle_name, birth_date, inn, contract_number, phone, email, address, source, notes, created_by, created_at',
+    )
     .eq('id', id)
     .maybeSingle<Client>();
 

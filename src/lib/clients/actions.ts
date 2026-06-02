@@ -11,6 +11,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   CLIENT_KINDS,
   CLIENT_SOURCES,
+  clientKindHasFullName,
   type ClientKind,
   type ClientSource,
 } from '@/lib/types/db';
@@ -18,6 +19,12 @@ import {
 export type ClientFormFields =
   | 'name'
   | 'client_kind'
+  | 'last_name'
+  | 'first_name'
+  | 'middle_name'
+  | 'birth_date'
+  | 'inn'
+  | 'contract_number'
   | 'phone'
   | 'email'
   | 'address'
@@ -49,9 +56,21 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// ИНН/ЕДРПОУ — только цифры. В Украине ИПН физлица = 10 цифр, ЕДРПОУ компании =
+// 8 цифр; допускаем диапазон 8–12, чтобы не упираться в юрисдикционные нюансы.
+const INN_RE = /^\d{8,12}$/;
+// Дата рождения из <input type="date"> приходит как YYYY-MM-DD.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 type Validated = {
   name: string;
   client_kind: ClientKind;
+  last_name: string | null;
+  first_name: string | null;
+  middle_name: string | null;
+  birth_date: string | null;
+  inn: string | null;
+  contract_number: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
@@ -62,8 +81,14 @@ type Validated = {
 function validate(formData: FormData):
   | { ok: true; data: Validated; values: Record<ClientFormFields, string> }
   | { ok: false; state: ClientActionState } {
-  const name = getString(formData, 'name');
+  const nameRaw = getString(formData, 'name');
   const kindRaw = getString(formData, 'client_kind');
+  const lastName = getString(formData, 'last_name');
+  const firstName = getString(formData, 'first_name');
+  const middleName = getString(formData, 'middle_name');
+  const birthDate = getString(formData, 'birth_date');
+  const inn = getString(formData, 'inn');
+  const contractNumber = getString(formData, 'contract_number');
   const phone = getString(formData, 'phone');
   const email = getString(formData, 'email');
   const address = getString(formData, 'address');
@@ -71,8 +96,14 @@ function validate(formData: FormData):
   const notes = getString(formData, 'notes');
 
   const values: Record<ClientFormFields, string> = {
-    name,
+    name: nameRaw,
     client_kind: kindRaw,
+    last_name: lastName,
+    first_name: firstName,
+    middle_name: middleName,
+    birth_date: birthDate,
+    inn,
+    contract_number: contractNumber,
     phone,
     email,
     address,
@@ -81,11 +112,43 @@ function validate(formData: FormData):
   };
 
   const fieldErrors: ClientActionState['fieldErrors'] = {};
-  if (!name) fieldErrors.name = 'Укажите имя клиента';
-  else if (name.length > 200) fieldErrors.name = 'Слишком длинное (макс 200)';
 
+  const kindValid = isClientKind(kindRaw);
   if (!kindRaw) fieldErrors.client_kind = 'Выберите тип';
-  else if (!isClientKind(kindRaw)) fieldErrors.client_kind = 'Недопустимый тип';
+  else if (!kindValid) fieldErrors.client_kind = 'Недопустимый тип';
+
+  // У физлица/ФОП собираем отображаемое имя из ФИО; у компании name = наименование.
+  const hasFullName = kindValid && clientKindHasFullName(kindRaw as ClientKind);
+  let name = nameRaw;
+  if (hasFullName) {
+    if (!lastName) fieldErrors.last_name = 'Укажите фамилию';
+    else if (lastName.length > 100) fieldErrors.last_name = 'Слишком длинно (макс 100)';
+    if (!firstName) fieldErrors.first_name = 'Укажите имя';
+    else if (firstName.length > 100) fieldErrors.first_name = 'Слишком длинно (макс 100)';
+    if (middleName.length > 100) fieldErrors.middle_name = 'Слишком длинно (макс 100)';
+    name = [lastName, firstName, middleName].filter(Boolean).join(' ');
+  } else {
+    if (!nameRaw) fieldErrors.name = 'Укажите наименование';
+    else if (nameRaw.length > 200) fieldErrors.name = 'Слишком длинное (макс 200)';
+  }
+
+  if (birthDate) {
+    if (!DATE_RE.test(birthDate)) {
+      fieldErrors.birth_date = 'Неверная дата';
+    } else {
+      const d = new Date(`${birthDate}T00:00:00Z`);
+      if (Number.isNaN(d.getTime())) fieldErrors.birth_date = 'Неверная дата';
+      else if (d.getTime() > Date.now()) fieldErrors.birth_date = 'Дата в будущем';
+    }
+  }
+
+  if (inn && !INN_RE.test(inn)) {
+    fieldErrors.inn = 'ИНН — только цифры (8–12)';
+  }
+
+  if (contractNumber && contractNumber.length > 100) {
+    fieldErrors.contract_number = 'Слишком длинно (макс 100)';
+  }
 
   if (email && !EMAIL_RE.test(email)) {
     fieldErrors.email = 'Похоже на ошибку в e-mail';
@@ -109,6 +172,12 @@ function validate(formData: FormData):
     data: {
       name,
       client_kind: kindRaw as ClientKind,
+      last_name: hasFullName ? lastName || null : null,
+      first_name: hasFullName ? firstName || null : null,
+      middle_name: hasFullName ? middleName || null : null,
+      birth_date: birthDate || null,
+      inn: inn || null,
+      contract_number: contractNumber || null,
       phone: phone || null,
       email: email || null,
       address: address || null,
@@ -182,6 +251,12 @@ export async function createClientAction(
 const CLIENT_DIFF_FIELDS = [
   'name',
   'client_kind',
+  'last_name',
+  'first_name',
+  'middle_name',
+  'birth_date',
+  'inn',
+  'contract_number',
   'phone',
   'email',
   'address',
@@ -191,6 +266,12 @@ const CLIENT_DIFF_FIELDS = [
 type ClientDiffShape = {
   name: string;
   client_kind: ClientKind;
+  last_name: string | null;
+  first_name: string | null;
+  middle_name: string | null;
+  birth_date: string | null;
+  inn: string | null;
+  contract_number: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
@@ -213,7 +294,9 @@ export async function updateClientAction(
   // (0 строк, error=null) → ложный «сохранено». Поле notes намеренно не логируем.
   const { data: before } = await supabase
     .from('clients')
-    .select('name, client_kind, phone, email, address, source, created_by')
+    .select(
+      'name, client_kind, last_name, first_name, middle_name, birth_date, inn, contract_number, phone, email, address, source, created_by',
+    )
     .eq('id', clientId)
     .maybeSingle();
 
@@ -251,6 +334,12 @@ export async function updateClientAction(
     const beforeShape: ClientDiffShape = {
       name: String(before.name ?? ''),
       client_kind: before.client_kind as ClientKind,
+      last_name: (before.last_name as string | null) ?? null,
+      first_name: (before.first_name as string | null) ?? null,
+      middle_name: (before.middle_name as string | null) ?? null,
+      birth_date: (before.birth_date as string | null) ?? null,
+      inn: (before.inn as string | null) ?? null,
+      contract_number: (before.contract_number as string | null) ?? null,
       phone: (before.phone as string | null) ?? null,
       email: (before.email as string | null) ?? null,
       address: (before.address as string | null) ?? null,
@@ -259,6 +348,12 @@ export async function updateClientAction(
     const afterShape: Partial<ClientDiffShape> = {
       name: result.data.name,
       client_kind: result.data.client_kind,
+      last_name: result.data.last_name,
+      first_name: result.data.first_name,
+      middle_name: result.data.middle_name,
+      birth_date: result.data.birth_date,
+      inn: result.data.inn,
+      contract_number: result.data.contract_number,
       phone: result.data.phone,
       email: result.data.email,
       address: result.data.address,

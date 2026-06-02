@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useRef } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import Link from 'next/link';
 
@@ -16,7 +16,9 @@ import {
   CLIENT_KINDS,
   CLIENT_SOURCE_LABEL,
   CLIENT_SOURCES,
+  clientKindHasFullName,
   type Client,
+  type ClientKind,
 } from '@/lib/types/db';
 
 const INITIAL: ClientActionState = { ok: false };
@@ -51,6 +53,12 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
       switch (field) {
         case 'name': return client.name;
         case 'client_kind': return client.client_kind;
+        case 'last_name': return client.last_name ?? '';
+        case 'first_name': return client.first_name ?? '';
+        case 'middle_name': return client.middle_name ?? '';
+        case 'birth_date': return client.birth_date ?? '';
+        case 'inn': return client.inn ?? '';
+        case 'contract_number': return client.contract_number ?? '';
         case 'phone': return client.phone ?? '';
         case 'email': return client.email ?? '';
         case 'address': return client.address ?? '';
@@ -65,27 +73,22 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
     return state.fieldErrors?.[field];
   }
 
+  // Тип клиента контролируем стейтом: от него зависит, показывать ФИО (физлицо/ФОП)
+  // или единое «Наименование» (компания).
+  const [kind, setKind] = useState<ClientKind>(
+    (value('client_kind') || 'individual') as ClientKind,
+  );
+  const hasFullName = clientKindHasFullName(kind);
+
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="Имя или наименование" htmlFor="name" error={err('name')} required>
-          <Input
-            id="name"
-            name="name"
-            defaultValue={value('name')}
-            autoFocus
-            required
-            maxLength={200}
-            aria-invalid={err('name') ? 'true' : undefined}
-            placeholder="Иванов Иван Иванович / ООО «Ромашка»"
-          />
-        </Field>
-
         <Field label="Тип клиента" htmlFor="client_kind" error={err('client_kind')} required>
           <Select
             id="client_kind"
             name="client_kind"
-            defaultValue={value('client_kind') || 'individual'}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as ClientKind)}
             aria-invalid={err('client_kind') ? 'true' : undefined}
           >
             {CLIENT_KINDS.map((k) => (
@@ -94,6 +97,102 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
               </option>
             ))}
           </Select>
+        </Field>
+
+        {hasFullName ? (
+          <>
+            <Field label="Фамилия" htmlFor="last_name" error={err('last_name')} required>
+              <Input
+                id="last_name"
+                name="last_name"
+                defaultValue={value('last_name')}
+                autoFocus
+                required
+                maxLength={100}
+                aria-invalid={err('last_name') ? 'true' : undefined}
+                placeholder="Иванов"
+              />
+            </Field>
+            <Field label="Имя" htmlFor="first_name" error={err('first_name')} required>
+              <Input
+                id="first_name"
+                name="first_name"
+                defaultValue={value('first_name')}
+                required
+                maxLength={100}
+                aria-invalid={err('first_name') ? 'true' : undefined}
+                placeholder="Иван"
+              />
+            </Field>
+            <Field label="Отчество" htmlFor="middle_name" error={err('middle_name')}>
+              <Input
+                id="middle_name"
+                name="middle_name"
+                defaultValue={value('middle_name')}
+                maxLength={100}
+                aria-invalid={err('middle_name') ? 'true' : undefined}
+                placeholder="Иванович"
+              />
+            </Field>
+            <Field label="Дата рождения" htmlFor="birth_date" error={err('birth_date')}>
+              <Input
+                id="birth_date"
+                name="birth_date"
+                type="date"
+                defaultValue={value('birth_date')}
+                aria-invalid={err('birth_date') ? 'true' : undefined}
+                className="font-mono"
+              />
+            </Field>
+          </>
+        ) : (
+          <Field
+            label="Наименование"
+            htmlFor="name"
+            error={err('name')}
+            required
+            className="sm:col-span-2"
+          >
+            <Input
+              id="name"
+              name="name"
+              defaultValue={value('name')}
+              autoFocus
+              required
+              maxLength={200}
+              aria-invalid={err('name') ? 'true' : undefined}
+              placeholder="ООО «Ромашка»"
+            />
+          </Field>
+        )}
+
+        <Field
+          label={hasFullName ? 'ИНН' : 'ИНН / ЕДРПОУ'}
+          htmlFor="inn"
+          error={err('inn')}
+        >
+          <Input
+            id="inn"
+            name="inn"
+            defaultValue={value('inn')}
+            inputMode="numeric"
+            maxLength={12}
+            aria-invalid={err('inn') ? 'true' : undefined}
+            placeholder="1234567890"
+            className="font-mono"
+          />
+        </Field>
+
+        <Field label="Номер договора" htmlFor="contract_number" error={err('contract_number')}>
+          <Input
+            id="contract_number"
+            name="contract_number"
+            defaultValue={value('contract_number')}
+            maxLength={100}
+            aria-invalid={err('contract_number') ? 'true' : undefined}
+            placeholder="№ 2026/001"
+            className="font-mono"
+          />
         </Field>
 
         <Field label="Телефон" htmlFor="phone" error={err('phone')}>

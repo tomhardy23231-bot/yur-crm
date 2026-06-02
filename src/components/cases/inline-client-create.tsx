@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { UserPlus, X } from 'lucide-react';
 
@@ -19,6 +19,7 @@ import {
   CLIENT_KIND_LABEL,
   CLIENT_SOURCES,
   CLIENT_SOURCE_LABEL,
+  clientKindHasFullName,
   type ClientKind,
 } from '@/lib/types/db';
 
@@ -40,6 +41,9 @@ export function InlineClientCreate({
   onCreated: (client: CreatedClient) => void;
 }) {
   const [state, formAction] = useActionState(createClientInlineAction, INITIAL);
+  // Тип клиента определяет, показывать ФИО (физлицо/ФОП) или «Наименование» (компания).
+  const [kind, setKind] = useState<ClientKind>('individual');
+  const hasFullName = clientKindHasFullName(kind);
 
   // Успех → отдаём клиента родителю (он подставит в селект и закроет модалку).
   useEffect(() => {
@@ -88,20 +92,13 @@ export function InlineClientCreate({
         </div>
 
         <form action={formAction} className="flex flex-col gap-3">
-          <Field label="Имя или наименование" htmlFor="ic-name" error={err('name')} required>
-            <Input
-              id="ic-name"
-              name="name"
-              autoFocus
-              required
-              maxLength={200}
-              aria-invalid={err('name') ? 'true' : undefined}
-              placeholder="Иванов Иван Иванович / ООО «Ромашка»"
-            />
-          </Field>
-
           <Field label="Тип клиента" htmlFor="ic-kind" error={err('client_kind')} required>
-            <Select id="ic-kind" name="client_kind" defaultValue="individual">
+            <Select
+              id="ic-kind"
+              name="client_kind"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as ClientKind)}
+            >
               {CLIENT_KINDS.map((k) => (
                 <option key={k} value={k}>
                   {CLIENT_KIND_LABEL[k]}
@@ -109,6 +106,92 @@ export function InlineClientCreate({
               ))}
             </Select>
           </Field>
+
+          {hasFullName ? (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Фамилия" htmlFor="ic-last" error={err('last_name')} required>
+                  <Input
+                    id="ic-last"
+                    name="last_name"
+                    autoFocus
+                    required
+                    maxLength={100}
+                    aria-invalid={err('last_name') ? 'true' : undefined}
+                    placeholder="Иванов"
+                  />
+                </Field>
+                <Field label="Имя" htmlFor="ic-first" error={err('first_name')} required>
+                  <Input
+                    id="ic-first"
+                    name="first_name"
+                    required
+                    maxLength={100}
+                    aria-invalid={err('first_name') ? 'true' : undefined}
+                    placeholder="Иван"
+                  />
+                </Field>
+                <Field label="Отчество" htmlFor="ic-middle" error={err('middle_name')}>
+                  <Input
+                    id="ic-middle"
+                    name="middle_name"
+                    maxLength={100}
+                    aria-invalid={err('middle_name') ? 'true' : undefined}
+                    placeholder="Иванович"
+                  />
+                </Field>
+                <Field label="Дата рождения" htmlFor="ic-birth" error={err('birth_date')}>
+                  <Input
+                    id="ic-birth"
+                    name="birth_date"
+                    type="date"
+                    className="font-mono"
+                    aria-invalid={err('birth_date') ? 'true' : undefined}
+                  />
+                </Field>
+              </div>
+            </>
+          ) : (
+            <Field label="Наименование" htmlFor="ic-name" error={err('name')} required>
+              <Input
+                id="ic-name"
+                name="name"
+                autoFocus
+                required
+                maxLength={200}
+                aria-invalid={err('name') ? 'true' : undefined}
+                placeholder="ООО «Ромашка»"
+              />
+            </Field>
+          )}
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field
+              label={hasFullName ? 'ИНН' : 'ИНН / ЕДРПОУ'}
+              htmlFor="ic-inn"
+              error={err('inn')}
+            >
+              <Input
+                id="ic-inn"
+                name="inn"
+                inputMode="numeric"
+                maxLength={12}
+                className="font-mono"
+                aria-invalid={err('inn') ? 'true' : undefined}
+                placeholder="1234567890"
+              />
+            </Field>
+            <Field label="Номер договора" htmlFor="ic-contract" error={err('contract_number')}>
+              <Input
+                id="ic-contract"
+                name="contract_number"
+                maxLength={100}
+                className="font-mono"
+                aria-invalid={err('contract_number') ? 'true' : undefined}
+                placeholder="№ 2026/001"
+              />
+            </Field>
+          </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Телефон" htmlFor="ic-phone" error={err('phone')}>
