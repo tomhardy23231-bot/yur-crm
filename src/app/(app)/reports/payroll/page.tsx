@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronRight, Coins, Settings } from 'lucide-react';
+import { ChevronRight, Coins, FileText, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,7 +17,7 @@ import { requireUser } from '@/lib/auth/require-role';
 import { getPayrollEmployeeSummary, getPayrollRates } from '@/lib/payroll/queries';
 import { CASE_CATEGORY_LABEL } from '@/lib/types/db';
 import { MonthPicker } from '@/components/payroll/month-picker';
-import { normalizeMonth, monthLabel } from '@/lib/payroll/month';
+import { normalizeMonth, monthLabel, monthParam as toMonthParam } from '@/lib/payroll/month';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
@@ -67,6 +67,14 @@ export default async function PayrollReportPage({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <MonthPicker month={month} />
+          {seeAll && rows.length > 0 && (
+            <Button asChild size="sm">
+              <Link href={`/reports/summary?month=${toMonthParam(month)}`}>
+                <FileText size={14} strokeWidth={1.75} />
+                Сводный отчёт
+              </Link>
+            </Button>
+          )}
           {canEditRates && (
             <Button asChild variant="secondary" size="sm">
               <Link href="/settings/payroll">

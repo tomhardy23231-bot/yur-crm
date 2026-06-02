@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowLeft, Briefcase, Coins, Gift, Wallet } from 'lucide-react';
+import { ArrowLeft, Briefcase, Coins, FileText, Gift, Wallet } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +30,7 @@ import {
   type PayoutBucket,
 } from '@/components/payroll/payroll-actions';
 import { MonthPicker } from '@/components/payroll/month-picker';
-import { normalizeMonth, monthLabel, nextMonth } from '@/lib/payroll/month';
+import { normalizeMonth, monthLabel, monthParam, nextMonth } from '@/lib/payroll/month';
 import { MANAGER_ROLES, ROLE_IN_CASE_LABEL } from '@/lib/types/db';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
@@ -184,6 +185,12 @@ export default async function PayrollEmployeePage({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <MonthPicker month={month} />
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/reports/employee/${userId}?month=${monthParam(month)}`}>
+              <FileText size={14} strokeWidth={1.75} />
+              Сформировать отчёт
+            </Link>
+          </Button>
           {canManage && (
             <div data-tour="payroll-actions">
               <PayrollActions
