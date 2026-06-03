@@ -18,9 +18,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: [
-          // Золотая (латунь) CTA с градиентом — фирменный акцент «ЮрКейс».
-          "bg-primary text-primary-fg [background-image:var(--grad-brass)] shadow-sm",
-          "hover:-translate-y-px hover:shadow-primary-hover",
+          // Сплошная синяя CTA (эталон): один акцентный цвет, мягкий lift на hover.
+          "bg-primary text-primary-fg shadow-sm",
+          "hover:bg-primary-hover hover:-translate-y-px hover:shadow-primary-hover",
           "active:translate-y-0 active:shadow-none active:brightness-95",
         ],
         secondary:

@@ -9,88 +9,87 @@
    ============================================================ */
 
 :root {
-  /* ── Paper — светлая рабочая зона ──────────────────────────── */
-  --bg:             #EEF1F6;  /* paper */
+  /* ── Paper — строгая светлая зона (эталон ЮрКейс) ──────────── */
+  --bg:             #F1F4F9;  /* paper */
   --surface:        #FFFFFF;  /* карточки, таблицы */
   --surface-muted:  #F8FAFC;  /* surface-2 — зебра/hover строки */
   --surface-sunken: #EEF1F6;  /* surface-3 — поля поиска, чипы, прогресс-трек */
-  --border:         #E3E8EF;  /* line */
-  --border-strong:  #CFD6E0;  /* line-strong */
+  --border:         #E4E8EF;  /* line */
+  --border-strong:  #D3DBE6;  /* line-strong */
 
   /* Text */
   --text:           #161A22;
   --text-muted:     #525A68;  /* text-2 */
   --text-subtle:    #858D9C;  /* text-3 */
 
-  /* ── Brand — латунь / legal gold ──────────────────────────── */
-  --primary:        #B88A3E;  /* brass */
-  --primary-hover:  #A87D35;
-  --primary-pressed:#8F6A2C;  /* brass-deep */
+  /* ── Brand — ОДИН синий акцент ─────────────────────────────── */
+  --primary:        #2563EB;  /* blue */
+  --primary-hover:  #1D4ED8;
+  --primary-pressed:#1E40AF;
   --primary-fg:     #FFFFFF;
-  --primary-subtle: #F7EED9;  /* тёплый светлый фон акцента */
-  --primary-border: #E3CFA3;
-  --brass-bright:   #D8AA55;
-  --brass-glow:     rgba(184, 138, 62, 0.16);
+  --primary-subtle: #DBE7FE;  /* светлый синий фон акцента/выделенной строки */
+  --primary-border: #C9D6F4;
+  --brass-bright:   #5B8DEF;  /* устаревшее имя — теперь светлый синий */
+  --brass-glow:     rgba(37, 99, 235, 0.16);
 
-  /* Бренд-плашка (логотип «Ю») и бейдж «Дело» — тема может переопределить.
-     На латуни (светлое золото) текст тёмный; на тёмном teal — белый. */
-  --brand-tile-fg:      #1A140A;
-  --shadow-brand-tile:  0 4px 14px rgba(184, 138, 62, .35), inset 0 1px 0 rgba(255, 255, 255, .25);
-  --shadow-brand-badge: 0 2px 8px rgba(184, 138, 62, .32), inset 0 1px 0 rgba(255, 255, 255, .2);
+  /* Бренд-плашка (логотип «Ю») и бейдж «Дело» — синий градиент, белый текст. */
+  --brand-tile-fg:      #FFFFFF;
+  --shadow-brand-tile:  0 5px 16px rgba(47, 95, 224, .40), inset 0 1px 0 rgba(255, 255, 255, .22);
+  --shadow-brand-badge: 0 2px 8px rgba(47, 95, 224, .32), inset 0 1px 0 rgba(255, 255, 255, .18);
 
-  /* Градиенты — латунь для CTA/бренд-плашки + hero-шапки карточек */
-  --grad-brass:  linear-gradient(150deg, #B88A3E 0%, #8F6A2C 100%);
-  --grad-indigo: linear-gradient(135deg, #2F6FE0 0%, #7A52C9 100%);
-  --grad-rose:   linear-gradient(135deg, #CF4242 0%, #B134D4 100%);
-  --grad-amber:  linear-gradient(135deg, #C08A2E 0%, #EF7518 100%);
+  /* Градиенты — синий для бренд-плашки + hero-шапки. CTA-кнопки — СПЛОШНОЙ синий. */
+  --grad-brass:  linear-gradient(150deg, #3A72F7 0%, #2347C2 100%);
+  --grad-indigo: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
+  --grad-rose:   linear-gradient(135deg, #EC4899 0%, #D946EF 100%);
+  --grad-amber:  linear-gradient(135deg, #F97316 0%, #EA580C 100%);
 
-  /* ── Ink — тёмный сайдбар ─────────────────────────────────── */
-  --ink-950: #161A23;
-  --ink-900: #1C212C;
-  --ink-850: #232834;
-  --ink-800: #2A303E;
-  --sidebar-bg:           #1C212C;  /* ink-900 (база, поверх — градиент) */
-  --sidebar-bg-gradient:  linear-gradient(180deg, #232834 0%, #1C212C 100%);
-  --sidebar-elevated:     #232834;  /* me-card, поиск-триггер */
-  --sidebar-border:       #2A3040;  /* разделители внутри тёмной зоны */
-  --sidebar-text:         #8E97AB;  /* неактивные пункты (ink-txt-dim) */
-  --sidebar-text-disabled:#69728A;  /* «скоро»-пункты (ink-txt-faint) */
+  /* ── Ink — тёмный navy рейл/сайдбар (эталон) ──────────────── */
+  --ink-950: #141D2E;
+  --ink-900: #172033;
+  --ink-850: #1D2942;
+  --ink-800: #202C45;
+  --sidebar-bg:           #172033;  /* navy (база, поверх — градиент) */
+  --sidebar-bg-gradient:  linear-gradient(180deg, #1D2942 0%, #141D2E 100%);
+  --sidebar-elevated:     #202C45;  /* me-card, hover */
+  --sidebar-border:       #28344E;  /* разделители внутри тёмной зоны */
+  --sidebar-text:         #8B97AD;  /* неактивные пункты */
+  --sidebar-text-disabled:#5D6986;  /* «скоро»-пункты */
   --sidebar-text-strong:  #FFFFFF;  /* логотип, hover, имя пользователя */
-  --sidebar-hover-bg:     rgba(255, 255, 255, 0.045);
-  --sidebar-active-bg:    rgba(184, 138, 62, 0.13);  /* латунный тинт активного пункта */
+  --sidebar-hover-bg:     rgba(255, 255, 255, 0.05);
+  --sidebar-active-bg:    rgba(37, 99, 235, 0.22);  /* синий тинт активного пункта */
   --sidebar-active-text:  #FFFFFF;
-  --sidebar-accent:       #B88A3E;  /* латунная полоса/счётчик активного пункта */
-  --sidebar-accent-bright:#D8AA55;
+  --sidebar-accent:       #2563EB;  /* синяя полоса/счётчик активного пункта */
+  --sidebar-accent-bright:#7EA6FF;  /* светлый синий — иконка/фокус активного */
 
   /* ── Semantic ─────────────────────────────────────────────── */
-  --success:    #1F8A5B;  /* money — деньги/успех */
-  --success-bg: #E6F4EC;
-  --warning:    #C08A2E;
-  --warning-bg: #F7EED9;
-  --error:      #CF4242;  /* debt — задолженность/удаление */
-  --error-bg:   #FBE9E9;
-  --info:       #2F6FE0;
-  --info-bg:    #E4ECFC;
+  --success:    #16A34A;  /* money — деньги/успех/завершено */
+  --success-bg: #DCFCE7;
+  --warning:    #C2410C;  /* тёмно-оранжевый (AA на белом), НЕ золото */
+  --warning-bg: #FFEDD5;
+  --error:      #DC2626;  /* debt — задолженность/удаление/срочность */
+  --error-bg:   #FEE2E2;
+  --info:       #2563EB;  /* = primary (синий) */
+  --info-bg:    #DBE7FE;
 
-  /* Priority */
-  --prio-low:     #1F8A5B;
-  --prio-low-bg:  #E6F4EC;
-  --prio-mid:     #C08A2E;
-  --prio-mid-bg:  #F7EED9;
-  --prio-high:    #CF4242;
-  --prio-high-bg: #FBE9E9;
+  /* Priority (в БД normal|urgent; mid оставлен на будущее) */
+  --prio-low:     #16A34A;
+  --prio-low-bg:  #DCFCE7;
+  --prio-mid:     #C2410C;
+  --prio-mid-bg:  #FFEDD5;
+  --prio-high:    #DC2626;
+  --prio-high-bg: #FEE2E2;
 
-  /* Stage colors (5 этапов воронки) — эталон «ЮрКейс» */
-  --stage-new:             #6B7589; --stage-new-bg:             #ECEEF2;
-  --stage-consultation:    #C08A2E; --stage-consultation-bg:    #F7EED9;
-  --stage-in-progress:     #2F6FE0; --stage-in-progress-bg:     #E4ECFC;
-  --stage-awaiting:        #7A52C9; --stage-awaiting-bg:        #EDE6FA;
-  --stage-closed:          #1F8A5B; --stage-closed-bg:          #E2F2EA;
+  /* Stage colors (5 этапов воронки) — яркая чистая шкала эталона */
+  --stage-new:             #64748B; --stage-new-bg:             #EEF2F7;
+  --stage-consultation:    #8B5CF6; --stage-consultation-bg:    #F1EBFE;
+  --stage-in-progress:     #2563EB; --stage-in-progress-bg:     #DBE7FE;
+  --stage-awaiting:        #F97316; --stage-awaiting-bg:        #FFEAD8;
+  --stage-closed:          #16A34A; --stage-closed-bg:          #DCFCE7;
 
-  /* Категории дел (3) — несут % зарплаты (7/10/25). Яркая семантика эталона. */
-  --cat-document:       #0AA593; --cat-document-bg:       #D3F3EE;  /* teal — Документ */
-  --cat-claim:          #EF7518; --cat-claim-bg:          #FDE6D3;  /* orange — Иск */
-  --cat-representation: #B134D4; --cat-representation-bg: #F4DDFA;  /* magenta — Представительство */
+  /* Категории дел (3) — несут % зарплаты (7/10/25). Яркая чистая семантика. */
+  --cat-document:       #06B6D4; --cat-document-bg:       #CFF6FC;  /* cyan — Документ */
+  --cat-claim:          #EC4899; --cat-claim-bg:          #FCE7F3;  /* pink — Иск */
+  --cat-representation: #D946EF; --cat-representation-bg: #FAE3FD;  /* magenta — Представительство */
 
   /* Brand integrations */
   --brand-gmail:    #EA4335;
@@ -98,22 +97,21 @@
   --brand-whatsapp: #25D366;
   --brand-viber:    #7360F2;
 
-  /* Радиусы — «пузырьковые» скругления эталона */
+  /* Радиусы — карточки ~11px, контролы 8–9px (эталон) */
   --r-sm:   8px;
-  --r-md:  12px;
-  --r-lg:  16px;
-  --r-xl:  22px;
+  --r-md:   9px;
+  --r-lg:  11px;
+  --r-xl:  16px;
   --r-full: 9999px;
 
-  /* Тени — мягкие, объёмные (ink-tint) */
-  --shadow-sm: 0 1px 2px rgba(20, 22, 30, 0.05), 0 1px 3px rgba(20, 22, 30, 0.04);
-  --shadow-md: 0 2px 6px rgba(20, 22, 30, 0.06), 0 8px 24px rgba(20, 22, 30, 0.06);
-  --shadow-lg: 0 12px 40px rgba(20, 22, 30, 0.12);
-  --shadow-pop: 0 18px 50px rgba(13, 15, 21, 0.28);
+  /* Тени — мягкие, почти незаметные; глубину дают границы, не тени */
+  --shadow-sm: 0 1px 2px rgba(20, 22, 30, 0.05);
+  --shadow-md: 0 1px 2px rgba(20, 22, 30, 0.05), 0 4px 16px rgba(20, 22, 30, 0.05);
+  --shadow-lg: 0 12px 40px rgba(20, 22, 30, 0.10);
+  --shadow-pop: 0 18px 50px rgba(13, 15, 21, 0.22);
 
-  /* Hover-тени привязаны к --primary/--error через color-mix → при смене
-     цветовых токенов тени автоматически следуют. */
-  --shadow-primary-hover:     0 6px 18px color-mix(in oklab, var(--primary) 40%, transparent);
+  /* Hover-тени привязаны к --primary/--error через color-mix → следуют за токенами. */
+  --shadow-primary-hover:     0 6px 18px color-mix(in oklab, var(--primary) 32%, transparent);
   --shadow-destructive-hover: 0 4px 12px color-mix(in oklab, var(--error)   25%, transparent);
 
   /* Motion */
@@ -125,86 +123,8 @@
   --dur-medium: 320ms;
 }
 
-/* ============================================================
-   ТЕМА «TEAL» (изумруд + хвоя + крем) — переопределение бренда
-   ------------------------------------------------------------
-   Активируется атрибутом data-theme="teal" на <html>.
-   ОТКАТ: убрать этот атрибут — система вернётся к латуни (:root выше).
-   Перекрываются ТОЛЬКО бренд/ink/фон + один конфликтный семантический
-   токен (--cat-document). Остальная семантика (success/warning/error,
-   этапы, приоритеты) наследуется из :root — она универсальна.
-
-   Палитра-источник (свотчи заказчика):
-     #0D9488 teal · #5EEAD4 мята · #15302B хвоя · #F4F2EC крем
-   Контраст выверен под WCAG AA (см. примечания у токенов).
-   ============================================================ */
-
-:root[data-theme="teal"] {
-  /* Сырые свотчи палитры — переиспользуемые акценты */
-  --teal-bright: #0D9488;  /* яркий бренд-тон (декор, не под мелкий текст) */
-  --teal-mint:   #5EEAD4;  /* мятный хайлайт */
-  --pine:        #15302B;  /* хвоя — база сайдбара */
-  --cream:       #F4F2EC;  /* крем — бумага */
-
-  /* ── Paper — тёплая светлая зона ───────────────────────────── */
-  --bg:             #F4F2EC;  /* крем */
-  --surface:        #FFFFFF;  /* белые карточки чётко «всплывают» на креме */
-  --surface-muted:  #FAF8F2;  /* зебра/hover — тёплый off-white */
-  --surface-sunken: #EAE7DC;  /* поля поиска, чипы, прогресс-трек */
-  --border:         #E6E2D6;  /* тёплая линия */
-  --border-strong:  #D3CEBE;
-
-  /* Текст — тёплый near-ink (контраст на креме > 12:1) */
-  --text:           #1A2420;
-  --text-muted:     #55615B;
-  --text-subtle:    #8A938D;
-
-  /* ── Brand — teal ─────────────────────────────────────────── */
-  /* --primary нуджнут с #0D9488 → #0C8478 ради AA: 4.58:1 и под белый
-     текст на заливке, и под teal-ссылку на белом. Сырой #0D9488 (3.74:1)
-     живёт в --teal-bright для декоративных акцентов. */
-  --primary:        #0C8478;
-  --primary-hover:  #0A746A;
-  --primary-pressed:#085C54;
-  --primary-fg:     #FFFFFF;
-  --primary-subtle: #DBF3EF;  /* светлый teal-фон акцента/выделенной строки */
-  --primary-border: #A6DED6;
-  --brass-bright:   #2DD4BF;  /* «bright»-акцент → яркий teal */
-  --brass-glow:     rgba(13, 148, 136, 0.18);
-
-  /* Бренд-плашка на тёмном teal-градиенте → текст белый, свечение teal */
-  --brand-tile-fg:      #FFFFFF;
-  --shadow-brand-tile:  0 4px 14px rgba(13, 148, 136, .40), inset 0 1px 0 rgba(255, 255, 255, .18);
-  --shadow-brand-badge: 0 2px 8px rgba(13, 148, 136, .34), inset 0 1px 0 rgba(255, 255, 255, .16);
-
-  /* Градиент CTA/бренд-плашки: светлый стоп = #0C8478 (AA с белым),
-     тёмный — к хвое. Текст читаем по всей длине кнопки. */
-  --grad-brass:  linear-gradient(150deg, #0C8478 0%, #0A5F56 100%);
-
-  /* ── Ink — сайдбар «хвоя» ─────────────────────────────────── */
-  --ink-950: #0E211C;
-  --ink-900: #15302B;
-  --ink-850: #1B3A33;
-  --ink-800: #21443C;
-  --sidebar-bg:           #15302B;
-  --sidebar-bg-gradient:  linear-gradient(180deg, #1B3A33 0%, #15302B 100%);
-  --sidebar-elevated:     #1E3F37;
-  --sidebar-border:       #2A4F46;
-  --sidebar-text:         #9DB0A9;  /* 6.2:1 на хвое — AA ✓ */
-  --sidebar-text-disabled:#6E827B;
-  --sidebar-text-strong:  #FFFFFF;
-  --sidebar-hover-bg:     rgba(255, 255, 255, 0.05);
-  --sidebar-active-bg:    rgba(94, 234, 212, 0.14);  /* мятный тинт активного */
-  --sidebar-active-text:  #FFFFFF;
-  --sidebar-accent:       #2DD4BF;  /* полоса/счётчик активного пункта */
-  --sidebar-accent-bright:#5EEAD4;  /* мята — фокус-кольцо в сайдбаре */
-
-  /* ── Деконфликт семантики ─────────────────────────────────── */
-  /* «Документ» была teal #0AA593 — почти = новый бренд. Уводим в индиго,
-     чтобы категория не сливалась с primary. Иск/Представительство — без
-     изменений (оранжевый/маджента). */
-  --cat-document:    #4F46E5; --cat-document-bg:    #ECEAFD;
-}
+/* Тема «Латунь»/«Изумруд» удалена при редизайне 2026-06-03 — теперь единый
+   строгий светлый вид с одним синим акцентом (см. :root выше). */
 
 /* ============================================================
    Tailwind 4 theme: мапим переменные в utility-классы

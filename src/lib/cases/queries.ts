@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { CASE_STAGES } from '@/lib/types/db';
 import type {
   BillingType,
   Case,
@@ -65,6 +66,8 @@ export type ListCasesParams = {
   responsibleId?: string;
   lawyerId?: string;
   clientId?: string;
+  /** Только дела с непогашенным долгом (KPI «Задолженность» → /cases?debt=true). */
+  debtOnly?: boolean;
   page?: number;
   sort?: CasesSortColumn;
   dir?: SortDir;
@@ -207,6 +210,7 @@ export async function listCases(
     query = query.eq('responsible_id', params.responsibleId);
   if (params.lawyerId) query = query.eq('lawyer_id', params.lawyerId);
   if (params.clientId) query = query.eq('client_id', params.clientId);
+  if (params.debtOnly) query = query.gt('debt', 0);
 
   const { data, error, count } = await query;
   if (error) {
@@ -221,6 +225,34 @@ export async function listCases(
   const pageCount = Math.max(1, Math.ceil(total / CASES_PAGE_SIZE));
 
   return { items, total, page, pageSize: CASES_PAGE_SIZE, pageCount };
+}
+
+// Счётчики дел по этапам для строки статус-фильтров (бриф §6). Применяет те же
+// НЕ-этапные фильтры, что и список, чтобы цифры на чипах совпадали с тем, что
+// откроется по клику. Поиск (q) в подсчёте не участвует. RLS ограничивает видимость.
+export async function countCasesByStage(
+  params: Omit<ListCasesParams, 'stage' | 'page' | 'sort' | 'dir' | 'q'> = {},
+): Promise<Record<CaseStage, number>> {
+  const supabase = await createSupabaseServerClient();
+  let query = supabase.from('cases').select('stage');
+  if (params.caseType) query = query.eq('case_type', params.caseType);
+  if (params.category) query = query.eq('category', params.category);
+  if (params.responsibleId) query = query.eq('responsible_id', params.responsibleId);
+  if (params.lawyerId) query = query.eq('lawyer_id', params.lawyerId);
+  if (params.clientId) query = query.eq('client_id', params.clientId);
+  if (params.debtOnly) query = query.gt('debt', 0);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`countCasesByStage failed: ${error.message}`);
+
+  const counts = Object.fromEntries(CASE_STAGES.map((s) => [s, 0])) as Record<
+    CaseStage,
+    number
+  >;
+  for (const r of (data ?? []) as Array<{ stage: CaseStage }>) {
+    counts[r.stage] = (counts[r.stage] ?? 0) + 1;
+  }
+  return counts;
 }
 
 // Сворачивает PostgREST-массив-join в одиночный объект.

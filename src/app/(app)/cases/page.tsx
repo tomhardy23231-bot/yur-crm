@@ -16,6 +16,10 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { ClickableRow } from '@/components/ui/clickable-row';
+import {
+  StatusFilterStrip,
+  type StatusChip,
+} from '@/components/ui/status-filter-strip';
 import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { PriorityBadge } from '@/components/cases/priority-badge';
@@ -27,6 +31,7 @@ import {
   CASES_PAGE_SIZE,
   CASES_SORTABLE_COLUMNS,
   type CasesSortColumn,
+  countCasesByStage,
   listCases,
   listClientsForSelect,
   listExpertsForFilter,
@@ -53,6 +58,15 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 
 // U6: порог «застоя» дела на этапе — дольше подсвечиваем предупреждающим цветом.
 const STALE_STAGE_DAYS = 14;
+
+// Цвет точки этапа для строки статус-фильтров.
+const STAGE_DOT: Record<CaseStage, string> = {
+  new_request: 'bg-stage-new',
+  consultation: 'bg-stage-consultation',
+  in_progress: 'bg-stage-in-progress',
+  awaiting_decision: 'bg-stage-awaiting',
+  closed: 'bg-stage-closed',
+};
 
 function isCaseStage(value: string): value is CaseStage {
   return (CASE_STAGES as readonly string[]).includes(value);
@@ -85,6 +99,7 @@ export default async function CasesPage({
     responsible?: string;
     lawyer?: string;
     client?: string;
+    debt?: string;
     page?: string;
     deleted?: string;
     sort?: string;
@@ -96,6 +111,7 @@ export default async function CasesPage({
 
   const q = sp.q?.trim() ?? '';
   const stage = sp.stage && isCaseStage(sp.stage) ? sp.stage : undefined;
+  const debtOnly = sp.debt === 'true';
   const caseType = sp.type && isCaseType(sp.type) ? sp.type : undefined;
   const category =
     sp.category && isCaseCategory(sp.category) ? sp.category : undefined;
@@ -125,10 +141,14 @@ export default async function CasesPage({
       ])
     : [[], [], []];
 
-  const result = await listCases({
-    q, stage, caseType, category, responsibleId, lawyerId, clientId, page, sort, dir,
-  });
+  const [result, stageCounts] = await Promise.all([
+    listCases({
+      q, stage, caseType, category, responsibleId, lawyerId, clientId, debtOnly, page, sort, dir,
+    }),
+    countCasesByStage({ caseType, category, responsibleId, lawyerId, clientId, debtOnly }),
+  ]);
   const { items, pageCount } = result;
+  const totalByStage = CASE_STAGES.reduce((sum, s) => sum + stageCounts[s], 0);
 
   function buildHref(
     overrides: Partial<{
@@ -139,6 +159,7 @@ export default async function CasesPage({
       responsible: string;
       lawyer: string;
       client: string;
+      debt: string;
       page: number;
       sort: string;
       dir: string;
@@ -152,6 +173,7 @@ export default async function CasesPage({
     const nextResp = overrides.responsible ?? responsibleId ?? '';
     const nextLawyer = overrides.lawyer ?? lawyerId ?? '';
     const nextClient = overrides.client ?? clientId ?? '';
+    const nextDebt = overrides.debt ?? (debtOnly ? 'true' : '');
     const nextPage = overrides.page ?? page;
     const nextSort = overrides.sort ?? sort;
     const nextDir = overrides.dir ?? dir;
@@ -162,6 +184,7 @@ export default async function CasesPage({
     if (nextResp) params.set('responsible', nextResp);
     if (nextLawyer) params.set('lawyer', nextLawyer);
     if (nextClient) params.set('client', nextClient);
+    if (nextDebt) params.set('debt', nextDebt);
     if (nextPage > 1) params.set('page', String(nextPage));
     // Не шумим в URL дефолтным sort'ом — храним только когда отличается.
     if (nextSort !== CASES_DEFAULT_SORT.sort || nextDir !== CASES_DEFAULT_SORT.dir) {
@@ -186,6 +209,25 @@ export default async function CasesPage({
     return s ? `/cases/board?${s}` : '/cases/board';
   }
 
+  // Строка статус-фильтров по этапам (бриф §6): «Все» + 5 этапов со счётчиками.
+  const stageChips: StatusChip[] = [
+    {
+      key: 'all',
+      label: 'Все',
+      count: totalByStage,
+      href: buildHref({ stage: '', page: 1 }),
+      active: !stage,
+    },
+    ...CASE_STAGES.map((s) => ({
+      key: s,
+      label: CASE_STAGE_LABEL[s],
+      count: stageCounts[s],
+      dotClass: STAGE_DOT[s],
+      href: buildHref({ stage: s, page: 1 }),
+      active: stage === s,
+    })),
+  ];
+
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       {deleted && (
@@ -196,19 +238,6 @@ export default async function CasesPage({
 
       <div data-tour="cases-toolbar" className="flex flex-wrap items-center gap-3">
         <CasesSearch initial={q} />
-
-        <CasesFilterSelect
-          name="stage"
-          value={stage ?? ''}
-          ariaLabel="Этап"
-          options={[
-            { value: '', label: 'Все этапы' },
-            ...CASE_STAGES.map((s) => ({
-              value: s,
-              label: CASE_STAGE_LABEL[s],
-            })),
-          ]}
-        />
 
         <CasesFilterSelect
           name="type"
@@ -281,11 +310,11 @@ export default async function CasesPage({
           />
         )}
 
-        {(stage || caseType || category || responsibleId || lawyerId || clientId) && (
+        {(stage || caseType || category || responsibleId || lawyerId || clientId || debtOnly) && (
           <Link
             href={buildHref({
               stage: '', type: '', category: '', responsible: '',
-              lawyer: '', client: '', page: 1,
+              lawyer: '', client: '', debt: '', page: 1,
             })}
             className="text-[13px] text-text-muted hover:text-text underline-offset-2 hover:underline"
           >
@@ -309,6 +338,20 @@ export default async function CasesPage({
           )}
         </div>
       </div>
+
+      <StatusFilterStrip chips={stageChips} />
+
+      {debtOnly && (
+        <p className="-mt-2 text-[12.5px] text-text-muted">
+          Показаны только дела с непогашенным долгом ·{' '}
+          <Link
+            href={buildHref({ debt: '', page: 1 })}
+            className="font-semibold text-primary hover:text-primary-hover"
+          >
+            показать все
+          </Link>
+        </p>
+      )}
 
       {items.length === 0 ? (
         <EmptyState
@@ -380,7 +423,7 @@ export default async function CasesPage({
                     />
                     <Link
                       href={`/cases/${c.id}`}
-                      className="relative inline-block font-medium text-text transition-[color,transform] duration-200 ease-out group-hover:translate-x-1 group-hover:text-primary focus-visible:outline-none focus-visible:text-primary"
+                      className="relative inline-block font-semibold text-primary transition-[color,transform] duration-200 ease-out group-hover:translate-x-1 group-hover:text-primary-hover focus-visible:text-primary-hover focus-visible:outline-none"
                     >
                       {c.number_title}
                     </Link>
@@ -399,7 +442,7 @@ export default async function CasesPage({
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex items-center gap-1.5">
-                      <StageBadge stage={c.stage} />
+                      <StageBadge stage={c.stage} quiet />
                       {c.closed_without_act && (
                         <Badge
                           tone="warning"
@@ -418,7 +461,7 @@ export default async function CasesPage({
                     {CASE_TYPE_LABEL[c.case_type]}
                   </TableCell>
                   <TableCell>
-                    <CategoryBadge category={c.category} />
+                    <CategoryBadge category={c.category} quiet />
                   </TableCell>
                   <TableCell>
                     <PriorityBadge priority={c.priority} />
@@ -426,7 +469,7 @@ export default async function CasesPage({
                   <TableCell>
                     {c.responsible ? (
                       <span className="inline-flex items-center gap-2">
-                        <Avatar name={c.responsible.full_name} size="sm" />
+                        <Avatar name={c.responsible.full_name} size="sm" shape="square" />
                         <span className="text-[13px] text-text">
                           {c.responsible.full_name}
                         </span>

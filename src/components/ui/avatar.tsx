@@ -5,27 +5,28 @@ import { cn, initials } from "@/lib/utils";
 interface AvatarProps extends React.HTMLAttributes<HTMLSpanElement> {
   name: string;
   src?: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  /** circle — навигация/команда; square — скруглённый квадрат для таблиц (бриф §6). */
+  shape?: "circle" | "square";
 }
 
 const SIZES: Record<NonNullable<AvatarProps["size"]>, string> = {
+  xs: "w-5 h-5 text-[9px]",
   sm: "w-6 h-6 text-[10px]",
   md: "w-8 h-8 text-xs",
   lg: "w-10 h-10 text-sm",
   xl: "w-12 h-12 text-base",
 };
 
-// Палитра аватаров (эталон «ЮрКейс»): у каждого сотрудника — свой устойчивый
-// цвет, чтобы команда читалась цветовыми якорями, а не «стеной индиго».
+// Единый набор приглушённо-ярких цветов аватара по хэшу имени (бриф §6):
+// без золота/латуни. Совпадает со свотчами аватаров в эталон-вёрстке.
 const AVATAR_COLORS = [
-  "#B88A3E", // brass
-  "#2F6FE0", // blue
-  "#0E8D80", // teal
-  "#9A3FB0", // violet
-  "#D96A2C", // orange
-  "#C0497A", // rose
-  "#3A8F6D", // green
-  "#7A52C9", // purple
+  "#2563EB", // blue
+  "#8B5CF6", // violet
+  "#EC4899", // rose
+  "#F97316", // amber
+  "#14B8A6", // teal
+  "#64748B", // slate
 ] as const;
 
 function colorForName(name: string): string {
@@ -41,12 +42,20 @@ function colorForName(name: string): string {
  * Аватар: фото если есть, иначе инициалы на сплошном цвете, устойчиво
  * выведенном из имени. Используется в таблицах, командах, навигации.
  */
-export function Avatar({ name, src, size = "md", className, ...props }: AvatarProps) {
+export function Avatar({
+  name,
+  src,
+  size = "md",
+  shape = "circle",
+  className,
+  ...props
+}: AvatarProps) {
   return (
     <span
       className={cn(
         "inline-flex items-center justify-center shrink-0",
-        "rounded-full text-white font-semibold select-none",
+        "text-white font-semibold select-none",
+        shape === "square" ? "rounded-[8px]" : "rounded-full",
         SIZES[size],
         className,
       )}

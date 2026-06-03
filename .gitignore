@@ -12,6 +12,7 @@
 
 # local dev server log (created when restarting `npm run dev` via tooling)
 .devserver.log
+.gstack-dev.log
 
 # testing
 /coverage

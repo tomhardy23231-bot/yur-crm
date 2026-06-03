@@ -5,10 +5,22 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Инициалы аватара (бриф §6 «фикс инициалов»). Берём первые буквы значимых
+// слов, отбрасывая скобочные/служебные части: «Владелец (owner)» → «В»,
+// «Юрист (продажник)» → «Ю», «Тест Клиент №2» → «ТК». Раньше в инициалы
+// попадала открывающая скобка («В(»).
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  const cleaned = name
+    .replace(/\([^)]*\)/g, " ") // убрать «(...)»
+    .replace(/\[[^\]]*\]/g, " ") // убрать «[...]»
+    .trim();
+  // Значимые слова — те, что начинаются с буквы (отсекаем «№2», цифры, тире).
+  const parts = cleaned.split(/\s+/).filter((p) => /^\p{L}/u.test(p));
+  if (parts.length === 0) {
+    const fallback = name.trim();
+    return fallback ? fallback.slice(0, 1).toUpperCase() : "?";
+  }
+  if (parts.length === 1) return parts[0]!.slice(0, 1).toUpperCase();
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 

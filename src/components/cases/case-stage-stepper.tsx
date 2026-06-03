@@ -6,14 +6,11 @@ import { cn } from '@/lib/utils';
 import { updateCaseStageAction } from '@/lib/cases/actions';
 import { CASE_STAGES, CASE_STAGE_LABEL, type CaseStage } from '@/lib/types/db';
 
-// CSS-переменная цвета этапа (см. globals.css --stage-*).
-const STAGE_VAR: Record<CaseStage, string> = {
-  new_request: 'var(--stage-new)',
-  consultation: 'var(--stage-consultation)',
-  in_progress: 'var(--stage-in-progress)',
-  awaiting_decision: 'var(--stage-awaiting)',
-  closed: 'var(--stage-closed)',
-};
+// Синяя «лента» прогресса (бриф §7): текущий — синий, пройденные — серые,
+// будущие — бледные; превью при наведении на доступный этап — синее.
+const PASSED = 'var(--border-strong)';
+const CURRENT = 'var(--primary)';
+const FUTURE = 'var(--surface-sunken)';
 
 // Глубина «носа»/выемки стрелки (px). Воронка-стрелки: сегменты-шевроны встык,
 // каждый указывает на следующий этап — визуально читается как воронка дела.
@@ -78,9 +75,14 @@ export function CaseStageStepper({
   return (
     <div className="flex items-stretch gap-1">
       {CASE_STAGES.map((s, i) => {
-        const done = i <= current;
         const isCurrent = i === current;
-        const color = STAGE_VAR[s];
+        const fill = i < current ? PASSED : isCurrent ? CURRENT : FUTURE;
+        const labelColor =
+          i < current
+            ? 'var(--text-muted)'
+            : isCurrent
+              ? 'var(--primary)'
+              : 'var(--text-subtle)';
         const selectable = allowed.has(s) && !pending && !isCurrent;
 
         return (
@@ -107,8 +109,8 @@ export function CaseStageStepper({
               style={
                 {
                   clipPath: arrowClip(i, last),
-                  '--seg': color,
-                  '--seg-bg': done ? color : 'var(--surface-sunken)',
+                  '--seg': CURRENT,
+                  '--seg-bg': fill,
                 } as React.CSSProperties
               }
               className={cn(
@@ -119,11 +121,11 @@ export function CaseStageStepper({
                   'group-hover:[background:var(--seg)] group-hover:shadow-sm',
               )}
             />
-            {/* Подпись под стрелкой — всегда читаема (цвет этапа на светлой карте). */}
+            {/* Подпись под стрелкой. */}
             <span
               className="px-1 text-center text-[11px] leading-tight transition-colors"
               style={{
-                color: done ? color : 'var(--text-subtle)',
+                color: labelColor,
                 fontWeight: isCurrent ? 700 : 500,
               }}
             >

@@ -1,5 +1,3 @@
-import { cookies } from 'next/headers';
-
 import { CommandPaletteProvider } from '@/components/app/command-palette';
 import { OnboardingProvider } from '@/components/onboarding/onboarding-provider';
 import { Sidebar } from '@/components/app/sidebar';
@@ -22,10 +20,6 @@ export default async function AppLayout({
   const user = await requireUser();
   const tasksOpen = await countOpenTasksAssignedTo(user.profile.id);
 
-  // Состояние «свёрнутый сайдбар» — из cookie (читается на сервере → без мигания).
-  const cookieStore = await cookies();
-  const sidebarCollapsed = cookieStore.get('sidebar_collapsed')?.value === '1';
-
   return (
     <CommandPaletteProvider caps={user.caps}>
       <OnboardingProvider
@@ -42,7 +36,6 @@ export default async function AppLayout({
             roleLabel={ROLE_LABEL[user.profile.role]}
             caps={user.caps}
             counts={{ tasksOpen }}
-            defaultCollapsed={sidebarCollapsed}
           />
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <Topbar

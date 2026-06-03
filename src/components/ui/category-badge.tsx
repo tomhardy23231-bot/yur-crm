@@ -3,10 +3,8 @@ import * as React from "react";
 import { cn, formatPercent } from "@/lib/utils";
 import { CASE_CATEGORY_LABEL, type CaseCategory } from "@/lib/types/db";
 
-// Бейдж категории дела. Тёплая/глубокая гамма (см. globals.css --cat-*),
-// форма-чип со скруглённым КВАДРАТНЫМ маркером — намеренно отличается от
-// этап-пилюль (круглый dot, rounded-full), чтобы в соседних колонках таблицы
-// их нельзя было перепутать. Опционально показывает % зарплаты по категории.
+// Бейдж категории дела. Яркая чистая гамма (см. globals.css --cat-*). Опционально
+// показывает % зарплаты по категории. Вариант quiet — для плотных таблиц.
 
 const CATEGORY_CLASS: Record<CaseCategory, string> = {
   document: "text-cat-document bg-cat-document-bg",
@@ -14,18 +12,52 @@ const CATEGORY_CLASS: Record<CaseCategory, string> = {
   representation: "text-cat-representation bg-cat-representation-bg",
 };
 
+// Цвет точки категории (для .quiet — точка несёт семантику при тёмном тексте).
+const CATEGORY_DOT: Record<CaseCategory, string> = {
+  document: "bg-cat-document",
+  claim: "bg-cat-claim",
+  representation: "bg-cat-representation",
+};
+
 interface CategoryBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   category: CaseCategory;
   /** Если задан — показывает «· N%» (процент зарплаты по категории). */
   percent?: number;
+  /** Тихий вариант для плотных таблиц: цветная точка + тёмный текст, без заливки. */
+  quiet?: boolean;
 }
 
 export function CategoryBadge({
   category,
   percent,
+  quiet = false,
   className,
   ...props
 }: CategoryBadgeProps) {
+  if (quiet) {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5",
+          "text-xs font-semibold leading-none whitespace-nowrap text-text",
+          className,
+        )}
+        {...props}
+      >
+        <span
+          aria-hidden="true"
+          className={cn("w-[7px] h-[7px] rounded-full shrink-0", CATEGORY_DOT[category])}
+        />
+        {CASE_CATEGORY_LABEL[category]}
+        {percent != null && (
+          <span className="font-mono tabular-nums text-text-subtle">
+            {formatPercent(percent)}%
+          </span>
+        )}
+      </span>
+    );
+  }
+
   return (
     <span
       className={cn(

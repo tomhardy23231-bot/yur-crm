@@ -161,9 +161,9 @@ export default async function PayrollReportPage({
                   data-href={`/reports/payroll/${r.user_id}`}
                 >
                   <TableCell>
-                    <span className="inline-flex items-center gap-2">
-                      <Avatar name={r.full_name} size="sm" />
-                      <span className="text-[13px] font-medium text-text">
+                    <span className="inline-flex items-center gap-2.5">
+                      <Avatar name={r.full_name} size="sm" shape="square" />
+                      <span className="text-[13px] font-semibold text-text">
                         {r.full_name}
                       </span>
                     </span>

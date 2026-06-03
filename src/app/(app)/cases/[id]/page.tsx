@@ -378,41 +378,56 @@ export default async function CaseDetailPage({
               <div className="mt-2">
                 {participants.map((p) => {
                   const fullyPaid = p.amount > 0 && p.outstanding <= 0.001;
+                  const paidPct =
+                    p.amount > 0
+                      ? Math.min(100, Math.round((Math.min(p.paid, p.amount) / p.amount) * 100))
+                      : 0;
                   return (
                     <div
                       key={p.roleLabel}
-                      className="flex items-center gap-2.5 border-b border-border py-2 last:border-0"
+                      className="border-b border-border py-2 last:border-0"
                     >
-                      <Avatar name={p.name} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-bold text-text">
-                          {p.name}
-                        </p>
-                        <p className="text-[11.5px] font-medium text-text-muted">
-                          {p.roleLabel} · {formatPercent(p.percent)}%
-                        </p>
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={p.name} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-bold text-text">
+                            {p.name}
+                          </p>
+                          <p className="text-[11.5px] font-medium text-text-muted">
+                            {p.roleLabel} · {formatPercent(p.percent)}%
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="whitespace-nowrap rounded-md bg-surface-sunken px-2.5 py-1 font-mono text-[14px] font-bold tabular-nums text-text">
+                            {formatMoney(p.amount)} ₴
+                          </span>
+                          {p.amount > 0 &&
+                            (fullyPaid ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success">
+                                <Check size={11} strokeWidth={2.5} />
+                                выплачено
+                              </span>
+                            ) : p.paid > 0 ? (
+                              <span className="whitespace-nowrap text-[11px] font-medium text-warning">
+                                выплачено {formatMoney(p.paid)} · осталось{' '}
+                                {formatMoney(p.outstanding)} ₴
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-text-subtle">
+                                не выплачено
+                              </span>
+                            ))}
+                        </div>
                       </div>
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span className="whitespace-nowrap rounded-md bg-surface-sunken px-2.5 py-1 font-mono text-[14px] font-bold tabular-nums text-text">
-                          {formatMoney(p.amount)} ₴
-                        </span>
-                        {p.amount > 0 &&
-                          (fullyPaid ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success">
-                              <Check size={11} strokeWidth={2.5} />
-                              выплачено
-                            </span>
-                          ) : p.paid > 0 ? (
-                            <span className="whitespace-nowrap text-[11px] font-medium text-warning">
-                              выплачено {formatMoney(p.paid)} · осталось{' '}
-                              {formatMoney(p.outstanding)} ₴
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-text-subtle">
-                              не выплачено
-                            </span>
-                          ))}
-                      </div>
+                      {/* Прогресс-бар выплаты (бриф §7): доля выплаченного — зелёным. */}
+                      {p.amount > 0 && (
+                        <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-surface-sunken">
+                          <div
+                            className="h-full rounded-full bg-success transition-[width] duration-300"
+                            style={{ width: `${paidPct}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
+import { CategoryBadge } from '@/components/ui/category-badge';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { advanceCaseStageAction } from '@/lib/cases/actions';
 import { cn } from '@/lib/utils';
@@ -51,14 +52,17 @@ export function BoardCard({
         </div>
 
         {c.client && (
-          <p className="text-[12.5px] text-text-muted truncate mb-1.5">
+          <p className="text-[12.5px] text-text-muted truncate mb-2">
             {c.client.name}
           </p>
         )}
 
-        <p className="text-[11.5px] text-text-subtle">
-          {CASE_TYPE_LABEL[c.case_type]}
-        </p>
+        <div className="flex items-center gap-2">
+          <CategoryBadge category={c.category} quiet />
+          <span className="text-[11.5px] text-text-subtle">
+            {CASE_TYPE_LABEL[c.case_type]}
+          </span>
+        </div>
       </Link>
 
       <div

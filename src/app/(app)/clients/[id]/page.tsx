@@ -4,7 +4,7 @@ import { ChevronLeft, Mail, MapPin, Pencil, Phone, Plus } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardHero } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { StageBadge, STAGE_LABELS } from '@/components/ui/stage-badge';
 import {
   Table,
@@ -85,23 +85,22 @@ export default async function ClientDetailPage({
       )}
 
       <Card>
-        <CardHero>
-          <Avatar
-            name={client.name}
-            size="xl"
-            className="border-2 border-white/40"
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-[24px] font-bold leading-tight tracking-[-0.01em] truncate">
+        {/* Светлая шапка (бриф §7): без золотого баннера — аватар + имя + мета,
+            действия справа (удаление — красная второстепенная). */}
+        <div className="flex flex-wrap items-center gap-4 border-b border-border px-6 py-5">
+          <Avatar name={client.name} size="xl" shape="square" />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[22px] font-bold leading-tight tracking-[-0.01em] text-text">
               {client.name}
-            </p>
-            <p className="text-[13px] opacity-90 mt-1">
-              {CLIENT_KIND_LABEL[client.client_kind]} · клиент с {DATE_FMT.format(new Date(client.created_at))}
+            </h1>
+            <p className="mt-1 text-[13px] text-text-muted">
+              {CLIENT_KIND_LABEL[client.client_kind]} · клиент с{' '}
+              {DATE_FMT.format(new Date(client.created_at))}
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex shrink-0 items-center gap-2">
             {canEdit && (
-              <Button asChild variant="secondary" size="sm" className="!bg-white/15 !border-white/30 !text-white hover:!bg-white/25 hover:!border-white/50">
+              <Button asChild variant="secondary" size="sm">
                 <Link href={`/clients/${client.id}/edit`}>
                   <Pencil size={14} strokeWidth={1.75} />
                   Редактировать
@@ -112,7 +111,7 @@ export default async function ClientDetailPage({
               <DeleteClientForm clientId={client.id} clientName={client.name} />
             )}
           </div>
-        </CardHero>
+        </div>
 
         <div className="grid grid-cols-1 gap-6 p-6 sm:grid-cols-2">
           <Section title="Тип клиента">
@@ -251,15 +250,22 @@ export default async function ClientDetailPage({
             </TableHeader>
             <TableBody>
               {cases.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium text-text">{c.number_title}</TableCell>
+                <TableRow key={c.id} className="group">
                   <TableCell>
-                    <StageBadge stage={c.stage} label={STAGE_LABELS[c.stage]} />
+                    <Link
+                      href={`/cases/${c.id}`}
+                      className="font-semibold text-primary transition-colors hover:text-primary-hover"
+                    >
+                      {c.number_title}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <StageBadge stage={c.stage} label={STAGE_LABELS[c.stage]} quiet />
                   </TableCell>
                   <TableCell>
                     {c.responsible ? (
                       <span className="inline-flex items-center gap-2">
-                        <Avatar name={c.responsible.full_name} size="sm" />
+                        <Avatar name={c.responsible.full_name} size="sm" shape="square" />
                         <span className="text-[13px] text-text">{c.responsible.full_name}</span>
                       </span>
                     ) : (

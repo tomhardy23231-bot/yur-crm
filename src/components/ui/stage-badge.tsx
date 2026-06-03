@@ -25,14 +25,47 @@ const STAGE_CLASS: Record<Stage, string> = {
   closed:            "text-stage-closed bg-stage-closed-bg",
 };
 
+// Цвет точки этапа (для .quiet — точка несёт семантику при тёмном тексте).
+const STAGE_DOT: Record<Stage, string> = {
+  new_request:       "bg-stage-new",
+  consultation:      "bg-stage-consultation",
+  in_progress:       "bg-stage-in-progress",
+  awaiting_decision: "bg-stage-awaiting",
+  closed:            "bg-stage-closed",
+};
+
 interface StageBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   stage: Stage;
   label?: string;
+  /** Тихий вариант для плотных таблиц: цветная точка + тёмный текст, без заливки. */
+  quiet?: boolean;
 }
 
-export function StageBadge({ stage, label, className, ...props }: StageBadgeProps) {
+export function StageBadge({ stage, label, quiet = false, className, ...props }: StageBadgeProps) {
   // «Живой» этап (не завершён) — точка пульсирует. Завершённый — статичная.
   const live = stage !== "closed";
+
+  // .quiet (бриф §3.4) — для плотных таблиц: статичная цветная точка + тёмный
+  // текст, без заливки/кольца/пульса, чтобы строки не шумели.
+  if (quiet) {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5",
+          "text-xs font-semibold leading-none whitespace-nowrap text-text",
+          className,
+        )}
+        {...props}
+      >
+        <span
+          aria-hidden="true"
+          className={cn("w-[7px] h-[7px] rounded-full shrink-0", STAGE_DOT[stage])}
+        />
+        {label ?? STAGE_LABELS[stage]}
+      </span>
+    );
+  }
+
   return (
     <span
       className={cn(

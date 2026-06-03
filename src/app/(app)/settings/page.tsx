@@ -1,11 +1,9 @@
 import Link from 'next/link';
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { Coins, Palette, ShieldCheck, Users, ChevronRight } from 'lucide-react';
+import { Coins, ShieldCheck, Users, ChevronRight } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ThemeSwitcher, type Theme } from '@/components/app/theme-switcher';
 import { requireUser } from '@/lib/auth/require-role';
 
 // Хаб настроек — единый вход в администрирование. Доступен обладателям права
@@ -17,25 +15,8 @@ export default async function SettingsPage() {
   const canEditRates = actor.caps.edit_payroll_rates;
   if (!canManageUsers && !canEditRates) redirect('/forbidden');
 
-  const theme: Theme =
-    (await cookies()).get('theme')?.value === 'brass' ? 'brass' : 'teal';
-
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      {/* Оформление — цветовая тема */}
-      <section className="flex flex-col gap-3">
-        <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
-          <Palette size={16} strokeWidth={1.75} className="text-text-muted" />
-          Оформление
-        </h2>
-        <Card className="p-5">
-          <p className="mb-3.5 text-[13px] text-text-muted">
-            Цветовая тема интерфейса. Выбор сохраняется в этом браузере.
-          </p>
-          <ThemeSwitcher current={theme} />
-        </Card>
-      </section>
-
       {/* Доступные настройки */}
       <section
         data-tour="settings-content"
@@ -159,10 +140,10 @@ function Roles({
   staff?: boolean;
 }) {
   return (
-    <span className="flex items-center gap-1.5">
-      {owner && <Badge tone="info">Владелец</Badge>}
-      {admin && <Badge tone="neutral">Админ</Badge>}
-      {staff && <Badge tone="neutral">Офис-менеджер</Badge>}
+    <span className="flex items-center gap-2">
+      {owner && <Badge tone="info" quiet>Владелец</Badge>}
+      {admin && <Badge tone="neutral" quiet>Админ</Badge>}
+      {staff && <Badge tone="neutral" quiet>Офис-менеджер</Badge>}
     </span>
   );
 }

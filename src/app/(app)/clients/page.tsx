@@ -193,10 +193,10 @@ export default async function ClientsPage({
                     />
                     <Link
                       href={`/clients/${c.id}`}
-                      className="relative flex items-center gap-3 -my-1 -mx-2 px-2 py-1 rounded-md transition-transform duration-200 ease-out group-hover:translate-x-1 focus-visible:outline-none focus-visible:bg-primary-subtle"
+                      className="relative -mx-2 -my-1 flex items-center gap-3 rounded-md px-2 py-1 transition-transform duration-200 ease-out group-hover:translate-x-1 focus-visible:bg-primary-subtle focus-visible:outline-none"
                     >
-                      <Avatar name={c.name} size="sm" />
-                      <span className="font-medium text-text group-hover:text-primary transition-colors">
+                      <Avatar name={c.name} size="sm" shape="square" />
+                      <span className="font-semibold text-primary transition-colors group-hover:text-primary-hover">
                         {c.name}
                       </span>
                     </Link>

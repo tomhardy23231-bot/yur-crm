@@ -1,17 +1,10 @@
 import Link from 'next/link';
-import {
-  AlertTriangle,
-  Briefcase,
-  Coins,
-  Plus,
-  Sparkles,
-  TrendingUp,
-} from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { KpiTile } from '@/components/dashboard/kpi-tile';
+import { KpiCard, type KpiDelta } from '@/components/dashboard/kpi-card';
 import { StageFunnel } from '@/components/dashboard/stage-funnel';
 import { CategoryRevenue } from '@/components/dashboard/category-revenue';
 import { RecentCases } from '@/components/dashboard/recent-cases';
@@ -19,20 +12,52 @@ import { PersonalEarnings } from '@/components/dashboard/personal-earnings';
 import { UpcomingDeadlinesBlock } from '@/components/tasks/upcoming-deadlines-block';
 import {
   computeDashboardStats,
+  computeDelta,
   computePersonalEarnings,
+  getDashboardAnalytics,
   getDashboardCases,
-  getRevenueThisMonth,
+  type MetricSeries,
 } from '@/lib/dashboard/queries';
-import { getPayrollRates, listPayrollBySpecialist } from '@/lib/payroll/queries';
+import { getPayrollRates } from '@/lib/payroll/queries';
 import { listCases } from '@/lib/cases/queries';
 import { STAFF_ROLES, type Role } from '@/lib/types/db';
 import { formatMoney } from '@/lib/utils';
 
-// Подпись месяца — в часовом поясе фирмы (как и границы окна в getRevenueThisMonth).
+// Подпись месяца — в часовом поясе фирмы (как и границы окна выручки).
 const MONTH_FMT = new Intl.DateTimeFormat('ru-RU', {
   month: 'long',
   timeZone: 'Europe/Kyiv',
 });
+
+// ── Хелперы дельт (бриф §3.1): фронт превращает current/prev в чип «▲/▼ + %». ──
+// Цвет дельты по смыслу: для выручки рост — зелёный (хорошо), для долга рост —
+// красный (плохо). neutral — когда нет однозначной «полярности».
+type Polarity = 'higher-good' | 'higher-bad' | 'neutral';
+
+function toneFor(polarity: Polarity, direction: 'up' | 'down' | 'flat'): KpiDelta['tone'] {
+  if (polarity === 'neutral' || direction === 'flat') return 'neutral';
+  const good = polarity === 'higher-good' ? direction === 'up' : direction === 'down';
+  return good ? 'money' : 'debt';
+}
+
+function pctDelta(s: MetricSeries, polarity: Polarity): KpiDelta {
+  const d = computeDelta(s.current, s.prev);
+  let text: string;
+  if (d.percent == null) {
+    text = d.direction === 'flat' ? '0%' : d.direction === 'up' ? 'рост' : 'спад';
+  } else {
+    const r = Math.round(d.percent);
+    text = `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r)}%`;
+  }
+  return { direction: d.direction, tone: toneFor(polarity, d.direction), text };
+}
+
+function countDelta(current: number, prev: number): KpiDelta {
+  const d = computeDelta(current, prev);
+  const diff = current - prev;
+  const text = diff > 0 ? `+${diff}` : diff < 0 ? `−${Math.abs(diff)}` : '0';
+  return { direction: d.direction, tone: 'neutral', text };
+}
 
 export default async function HomePage() {
   const user = await requireUser();
@@ -47,8 +72,7 @@ export default async function HomePage() {
   const stats = computeDashboardStats(cases);
   const recent = recentResult.items.slice(0, 6);
 
-  // U4: новичок без видимых дел получает онбординг вместо «нулевого» дашборда
-  // (KPI/воронка/таблицы были бы пустыми и выглядели как поломка).
+  // U4: новичок без видимых дел получает онбординг вместо «нулевого» дашборда.
   const isEmpty = cases.length === 0;
 
   return (
@@ -77,8 +101,6 @@ export default async function HomePage() {
 
 // ============================================================================
 // U4 — онбординг для пустого состояния (нет ни одного видимого дела).
-// Текст и действия зависят от роли: staff заводит дело, юрист — клиента,
-// эксперт ждёт назначения.
 // ============================================================================
 
 function EmptyDashboard({
@@ -136,7 +158,7 @@ function EmptyDashboard({
 }
 
 // ============================================================================
-// Staff (owner / admin / office_manager) — метрики компании.
+// Staff (owner / admin / office_manager) — метрики компании с дельтами.
 // ============================================================================
 
 async function StaffDashboard({
@@ -146,42 +168,47 @@ async function StaffDashboard({
   stats: ReturnType<typeof computeDashboardStats>;
   recent: Awaited<ReturnType<typeof listCases>>['items'];
 }) {
-  const [monthRevenue, payroll] = await Promise.all([
-    getRevenueThisMonth(),
-    listPayrollBySpecialist(),
-  ]);
-  const payrollFund = payroll.reduce((sum, r) => sum + r.earned, 0);
+  const rates = await getPayrollRates();
+  const a = await getDashboardAnalytics(rates);
   const monthName = MONTH_FMT.format(new Date());
 
   return (
     <>
       <section className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-2 xl:grid-cols-4">
-        <KpiTile
+        <KpiCard
           label="Активные дела"
           value={String(stats.activeCases)}
-          hint={`из ${stats.totalCases} всего`}
-          icon={Briefcase}
-          tone="primary"
+          context={`из ${stats.totalCases} всего`}
+          delta={countDelta(stats.activeCases, a.activeCases.prev)}
+          href="/cases"
         />
-        <KpiTile
+        <KpiCard
           label="Выручка за месяц"
-          value={`${formatMoney(monthRevenue)} ₴`}
-          hint={monthName}
-          icon={TrendingUp}
-          tone="success"
+          value={formatMoney(a.revenue.current)}
+          unit="₴"
+          context={monthName}
+          delta={pctDelta(a.revenue, 'higher-good')}
+          spark={{ points: a.revenue.series, tone: 'money' }}
+          href="/reports/payroll"
         />
-        <KpiTile
+        <KpiCard
           label="Фонд зарплат"
-          value={`${formatMoney(payrollFund)} ₴`}
-          hint="начислено по оплатам"
-          icon={Coins}
+          value={formatMoney(a.salary.current)}
+          unit="₴"
+          context="начислено по оплатам"
+          delta={pctDelta(a.salary, 'neutral')}
+          spark={{ points: a.salary.series, tone: 'money' }}
+          href="/reports/payroll"
         />
-        <KpiTile
+        <KpiCard
           label="Задолженность клиентов"
-          value={`${formatMoney(stats.totalDebt)} ₴`}
-          hint={`оплачено ${formatMoney(stats.totalPaid)} ₴`}
-          icon={AlertTriangle}
-          tone={stats.totalDebt > 0 ? 'error' : 'default'}
+          value={formatMoney(stats.totalDebt)}
+          unit="₴"
+          valueTone="debt"
+          context={`оплачено ${formatMoney(stats.totalPaid)} ₴`}
+          delta={pctDelta(a.debt, 'higher-bad')}
+          spark={{ points: a.debt.series, tone: 'debt' }}
+          href="/cases?debt=true"
         />
       </section>
 
@@ -191,7 +218,7 @@ async function StaffDashboard({
       </section>
 
       <section className="animate-fade-in-up">
-        <RecentCases items={recent} />
+        <RecentCases items={recent} funnel={stats.funnel} />
       </section>
     </>
   );
@@ -213,38 +240,45 @@ async function PersonalDashboard({
   userId: string;
 }) {
   const rates = await getPayrollRates();
-  const earnings = computePersonalEarnings(cases, rates, userId);
-  const totalEarned = earnings.reduce((sum, e) => sum + e.earned, 0);
+  const [a, earnings] = await Promise.all([
+    getDashboardAnalytics(rates, { userId }),
+    Promise.resolve(computePersonalEarnings(cases, rates, userId)),
+  ]);
 
   return (
     <>
       <section className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-3">
-        <KpiTile
+        <KpiCard
           label="Мои активные дела"
           value={String(stats.activeCases)}
-          hint={`из ${stats.totalCases} всего`}
-          icon={Briefcase}
-          tone="primary"
+          context={`из ${stats.totalCases} всего`}
+          delta={countDelta(stats.activeCases, a.activeCases.prev)}
+          href="/cases"
         />
-        <KpiTile
+        <KpiCard
           label="Начислено мне"
-          value={`${formatMoney(totalEarned)} ₴`}
-          hint="% от оплаченного по делам"
-          icon={Coins}
-          tone="success"
+          value={formatMoney(a.salary.current)}
+          unit="₴"
+          context="% от оплаченного по делам"
+          delta={pctDelta(a.salary, 'higher-good')}
+          spark={{ points: a.salary.series, tone: 'money' }}
+          href="/reports/payroll"
         />
-        <KpiTile
+        <KpiCard
           label="Задолженность по делам"
-          value={`${formatMoney(stats.totalDebt)} ₴`}
-          hint={`оплачено ${formatMoney(stats.totalPaid)} ₴`}
-          icon={AlertTriangle}
-          tone={stats.totalDebt > 0 ? 'error' : 'default'}
+          value={formatMoney(stats.totalDebt)}
+          unit="₴"
+          valueTone="debt"
+          context={`оплачено ${formatMoney(stats.totalPaid)} ₴`}
+          delta={pctDelta(a.debt, 'higher-bad')}
+          spark={{ points: a.debt.series, tone: 'debt' }}
+          href="/cases?debt=true"
         />
       </section>
 
       <section className="grid grid-cols-1 gap-6 animate-fade-in-up lg:grid-cols-2">
         <StageFunnel funnel={stats.funnel} />
-        <RecentCases items={recent} />
+        <RecentCases items={recent} funnel={stats.funnel} />
       </section>
 
       <section className="animate-fade-in-up">
