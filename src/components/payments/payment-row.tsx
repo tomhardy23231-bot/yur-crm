@@ -1,7 +1,10 @@
+'use client';
+
 import { Banknote, Trash2 } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { useI18n } from '@/lib/i18n/provider';
 import { deletePaymentAction } from '@/lib/payments/actions';
 import type { PaymentWithCreator } from '@/lib/types/db';
 
@@ -24,6 +27,7 @@ const MONEY_FMT = new Intl.NumberFormat('ru-RU', {
 });
 
 export function PaymentRow({ payment, canManage }: PaymentRowProps) {
+  const { t } = useI18n();
   return (
     <div className="group flex items-start gap-3 px-4 py-3 border-b border-border last:border-b-0 hover:bg-surface-muted/50 transition-colors duration-[120ms] ease-out">
       <span className="shrink-0 mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-md bg-success-bg text-success">
@@ -61,7 +65,7 @@ export function PaymentRow({ payment, canManage }: PaymentRowProps) {
           <input type="hidden" name="case_id" value={payment.case_id} />
           <button
             type="submit"
-            aria-label="Удалить платёж"
+            aria-label={t.payments.row.deleteLabel}
             className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity inline-flex items-center justify-center w-7 h-7 rounded-md text-text-subtle hover:text-error hover:bg-error-bg"
           >
             <Trash2 size={14} strokeWidth={1.75} />

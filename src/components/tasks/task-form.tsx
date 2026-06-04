@@ -9,13 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useI18n } from '@/lib/i18n/provider';
 import type { TaskActionState, TaskFormFields } from '@/lib/tasks/actions';
 import type { AssigneeOption } from '@/lib/tasks/queries';
-import {
-  TASK_KIND_LABEL,
-  TASK_KINDS,
-  type Task,
-} from '@/lib/types/db';
+import { TASK_KINDS, type Task } from '@/lib/types/db';
 
 const INITIAL: TaskActionState = { ok: false };
 
@@ -38,14 +35,6 @@ interface TaskFormProps {
   onSuccess?: () => void;
 }
 
-const ROLE_HINT: Record<string, string> = {
-  owner: 'владелец',
-  admin: 'админ',
-  office_manager: 'секретарь',
-  lawyer: 'юрист',
-  expert: 'эксперт',
-};
-
 export function TaskForm({
   action,
   task,
@@ -55,10 +44,14 @@ export function TaskForm({
   submitLabel,
   compact = false,
 }: TaskFormProps) {
+  const { t } = useI18n();
   const [state, formAction] = useActionState<TaskActionState, FormData>(
     action,
     INITIAL,
   );
+
+  const roleHint = (role: string): string =>
+    (t.tasks.form.roleHint as Record<string, string>)[role] ?? role;
 
   function value(field: TaskFormFields): string {
     if (state.values && state.values[field] !== undefined) {
@@ -109,7 +102,7 @@ export function TaskForm({
       )}
 
       <Field
-        label="Название"
+        label={t.tasks.form.title}
         htmlFor="task-title"
         error={err('title')}
         required
@@ -121,12 +114,17 @@ export function TaskForm({
           required
           maxLength={200}
           aria-invalid={err('title') ? 'true' : undefined}
-          placeholder="Подготовить иск / Заседание / ..."
+          placeholder={t.tasks.form.titlePlaceholder}
         />
       </Field>
 
       <div className={`grid gap-${compact ? '3' : '4'} grid-cols-1 sm:grid-cols-3`}>
-        <Field label="Тип" htmlFor="task-kind" error={err('kind')} required>
+        <Field
+          label={t.tasks.form.kind}
+          htmlFor="task-kind"
+          error={err('kind')}
+          required
+        >
           <Select
             id="task-kind"
             name="kind"
@@ -136,14 +134,14 @@ export function TaskForm({
           >
             {TASK_KINDS.map((k) => (
               <option key={k} value={k}>
-                {TASK_KIND_LABEL[k]}
+                {t.enums.taskKind[k]}
               </option>
             ))}
           </Select>
         </Field>
 
         <Field
-          label="Исполнитель"
+          label={t.tasks.form.assignee}
           htmlFor="task-assignee"
           error={err('assignee_id')}
           required
@@ -155,16 +153,16 @@ export function TaskForm({
             required
             aria-invalid={err('assignee_id') ? 'true' : undefined}
           >
-            <option value="">— выберите —</option>
+            <option value="">{t.tasks.form.assigneeSelect}</option>
             {assignees.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.full_name} · {ROLE_HINT[a.role] ?? a.role}
+                {a.full_name} · {roleHint(a.role)}
               </option>
             ))}
           </Select>
         </Field>
 
-        <Field label="Срок" htmlFor="task-due" error={err('due_at')}>
+        <Field label={t.tasks.form.due} htmlFor="task-due" error={err('due_at')}>
           <Input
             id="task-due"
             name="due_at"
@@ -178,7 +176,7 @@ export function TaskForm({
 
       {!compact && (
         <Field
-          label="Описание"
+          label={t.tasks.form.description}
           htmlFor="task-description"
           error={err('description')}
         >
@@ -187,7 +185,7 @@ export function TaskForm({
             name="description"
             rows={3}
             defaultValue={value('description')}
-            placeholder="Контекст, материалы, ссылки"
+            placeholder={t.tasks.form.descriptionPlaceholder}
           />
         </Field>
       )}
@@ -209,7 +207,11 @@ export function TaskForm({
       )}
 
       <div className="flex items-center gap-3">
-        <SubmitButton label={submitLabel} compact={compact} />
+        <SubmitButton
+          label={submitLabel}
+          savingLabel={t.tasks.form.saving}
+          compact={compact}
+        />
       </div>
     </form>
   );
@@ -247,11 +249,19 @@ function Field({
   );
 }
 
-function SubmitButton({ label, compact }: { label: string; compact: boolean }) {
+function SubmitButton({
+  label,
+  savingLabel,
+  compact,
+}: {
+  label: string;
+  savingLabel: string;
+  compact: boolean;
+}) {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending} size={compact ? 'sm' : 'default'}>
-      {pending ? 'Сохранение…' : label}
+      {pending ? savingLabel : label}
     </Button>
   );
 }

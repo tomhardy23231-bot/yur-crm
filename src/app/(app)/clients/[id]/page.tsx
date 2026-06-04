@@ -5,7 +5,7 @@ import { ChevronLeft, Mail, MapPin, Pencil, Phone, Plus } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { StageBadge, STAGE_LABELS } from '@/components/ui/stage-badge';
+import { StageBadge } from '@/components/ui/stage-badge';
 import {
   Table,
   TableHeader,
@@ -18,11 +18,8 @@ import { ClientKindBadge } from '@/components/clients/client-kind-badge';
 import { DeleteClientForm } from '@/components/clients/delete-client-form';
 import { getClient, getClientCases } from '@/lib/clients/queries';
 import { requireUser } from '@/lib/auth/require-role';
-import {
-  CLIENT_KIND_LABEL,
-  CLIENT_SOURCE_LABEL,
-  clientKindHasFullName,
-} from '@/lib/types/db';
+import { clientKindHasFullName } from '@/lib/types/db';
+import { getT } from '@/lib/i18n/server';
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
@@ -36,12 +33,6 @@ const MONEY_FMT = new Intl.NumberFormat('ru-RU', {
   maximumFractionDigits: 2,
 });
 
-const ERROR_MESSAGES: Record<string, string> = {
-  has_cases: 'Нельзя удалить клиента: у него есть дела. Сначала закройте или перенесите дела.',
-  delete_failed: 'Не удалось удалить клиента. Попробуйте позже.',
-  missing_id: 'Не передан идентификатор клиента.',
-};
-
 export default async function ClientDetailPage({
   params,
   searchParams,
@@ -50,8 +41,15 @@ export default async function ClientDetailPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const user = await requireUser();
+  const { t, fmt } = await getT();
   const { id } = await params;
   const { error } = await searchParams;
+
+  const ERROR_MESSAGES: Record<string, string> = {
+    has_cases: t.clients.detail.errorHasCases,
+    delete_failed: t.clients.detail.errorDeleteFailed,
+    missing_id: t.clients.detail.errorMissingId,
+  };
 
   const client = await getClient(id);
   if (!client) notFound();
@@ -72,7 +70,7 @@ export default async function ClientDetailPage({
         className="inline-flex items-center gap-1 text-[12.5px] text-text-muted hover:text-text transition-colors w-fit"
       >
         <ChevronLeft size={14} strokeWidth={1.75} />
-        К списку клиентов
+        {t.clients.detail.backToList}
       </Link>
 
       {errorMessage && (
@@ -94,7 +92,7 @@ export default async function ClientDetailPage({
               {client.name}
             </h1>
             <p className="mt-1 text-[13px] text-text-muted">
-              {CLIENT_KIND_LABEL[client.client_kind]} · клиент с{' '}
+              {t.enums.clientKind[client.client_kind]} · {t.clients.detail.clientSince}{' '}
               {DATE_FMT.format(new Date(client.created_at))}
             </p>
           </div>
@@ -103,7 +101,7 @@ export default async function ClientDetailPage({
               <Button asChild variant="secondary" size="sm">
                 <Link href={`/clients/${client.id}/edit`}>
                   <Pencil size={14} strokeWidth={1.75} />
-                  Редактировать
+                  {t.clients.detail.edit}
                 </Link>
               </Button>
             )}
@@ -114,39 +112,39 @@ export default async function ClientDetailPage({
         </div>
 
         <div className="grid grid-cols-1 gap-6 p-6 sm:grid-cols-2">
-          <Section title="Тип клиента">
+          <Section title={t.clients.detail.sectionKind}>
             <ClientKindBadge kind={client.client_kind} />
           </Section>
 
           {clientKindHasFullName(client.client_kind) && (
-            <Section title="Дата рождения">
+            <Section title={t.clients.detail.sectionBirthDate}>
               {client.birth_date ? (
                 <span className="font-mono text-[13.5px] text-text">
                   {DATE_FMT.format(new Date(client.birth_date))}
                 </span>
               ) : (
-                <Empty />
+                <Empty label={t.common.dash} />
               )}
             </Section>
           )}
 
-          <Section title={clientKindHasFullName(client.client_kind) ? 'ИНН' : 'ИНН / ЕДРПОУ'}>
+          <Section title={clientKindHasFullName(client.client_kind) ? t.clients.detail.sectionInn : t.clients.detail.sectionInnEdrpou}>
             {client.inn ? (
               <span className="font-mono text-[13.5px] text-text">{client.inn}</span>
             ) : (
-              <Empty />
+              <Empty label={t.common.dash} />
             )}
           </Section>
 
-          <Section title="Номер договора">
+          <Section title={t.clients.detail.sectionContractNumber}>
             {client.contract_number ? (
               <span className="font-mono text-[13.5px] text-text">{client.contract_number}</span>
             ) : (
-              <Empty />
+              <Empty label={t.common.dash} />
             )}
           </Section>
 
-          <Section title="Телефон">
+          <Section title={t.clients.detail.sectionPhone}>
             {client.phone ? (
               <a
                 href={`tel:${client.phone}`}
@@ -156,11 +154,11 @@ export default async function ClientDetailPage({
                 {client.phone}
               </a>
             ) : (
-              <Empty />
+              <Empty label={t.common.dash} />
             )}
           </Section>
 
-          <Section title="E-mail">
+          <Section title={t.clients.detail.sectionEmail}>
             {client.email ? (
               <a
                 href={`mailto:${client.email}`}
@@ -170,35 +168,35 @@ export default async function ClientDetailPage({
                 {client.email}
               </a>
             ) : (
-              <Empty />
+              <Empty label={t.common.dash} />
             )}
           </Section>
 
-          <Section title="Адрес">
+          <Section title={t.clients.detail.sectionAddress}>
             {client.address ? (
               <span className="inline-flex items-start gap-2 text-[13.5px] text-text">
                 <MapPin size={14} strokeWidth={1.75} className="text-text-muted mt-[3px] shrink-0" />
                 {client.address}
               </span>
             ) : (
-              <Empty />
+              <Empty label={t.common.dash} />
             )}
           </Section>
 
-          <Section title="Источник">
+          <Section title={t.clients.detail.sectionSource}>
             {client.source ? (
               <span className="text-[13.5px] text-text">
-                {CLIENT_SOURCE_LABEL[client.source]}
+                {t.enums.clientSource[client.source]}
               </span>
             ) : (
-              <Empty />
+              <Empty label={t.common.dash} />
             )}
           </Section>
         </div>
 
         {client.notes && (
           <div className="px-6 pb-6">
-            <Section title="Заметки">
+            <Section title={t.clients.detail.sectionNotes}>
               <p className="text-[13.5px] text-text leading-[1.6] whitespace-pre-wrap">
                 {client.notes}
               </p>
@@ -210,18 +208,18 @@ export default async function ClientDetailPage({
       <Card>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="text-[16px] font-semibold text-text">Дела клиента</h2>
+            <h2 className="text-[16px] font-semibold text-text">{t.clients.detail.casesTitle}</h2>
             <p className="text-[12.5px] text-text-muted mt-0.5">
               {cases.length === 0
-                ? 'У клиента пока нет дел'
-                : `Всего: ${cases.length}`}
+                ? t.clients.detail.casesNone
+                : fmt(t.clients.detail.casesTotal, { count: cases.length })}
             </p>
           </div>
           {canCreateCase && (
             <Button asChild size="sm">
               <Link href={`/cases/new?client=${client.id}`}>
                 <Plus size={14} strokeWidth={2} />
-                Новое дело
+                {t.clients.detail.newCase}
               </Link>
             </Button>
           )}
@@ -231,8 +229,8 @@ export default async function ClientDetailPage({
           <div className="py-10 px-6 text-center">
             <p className="text-[13px] text-text-muted">
               {canCreateCase
-                ? 'Заведите первое дело — оно соберёт документы, задачи и финансы.'
-                : 'Пока нет дел.'}
+                ? t.clients.detail.casesEmptyCanCreate
+                : t.clients.detail.casesEmpty}
             </p>
           </div>
         ) : (
@@ -240,12 +238,12 @@ export default async function ClientDetailPage({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
-                <TableHead>Номер / название</TableHead>
-                <TableHead>Этап</TableHead>
-                <TableHead>Ответственный</TableHead>
-                <TableHead>Открыто</TableHead>
-                <TableHead className="text-right">Сумма</TableHead>
-                <TableHead className="text-right">Долг</TableHead>
+                <TableHead>{t.clients.detail.colNumberTitle}</TableHead>
+                <TableHead>{t.clients.detail.colStage}</TableHead>
+                <TableHead>{t.clients.detail.colResponsible}</TableHead>
+                <TableHead>{t.clients.detail.colOpened}</TableHead>
+                <TableHead className="text-right">{t.clients.detail.colSum}</TableHead>
+                <TableHead className="text-right">{t.clients.detail.colDebt}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -260,7 +258,7 @@ export default async function ClientDetailPage({
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <StageBadge stage={c.stage} label={STAGE_LABELS[c.stage]} quiet />
+                    <StageBadge stage={c.stage} label={t.enums.caseStage[c.stage]} quiet />
                   </TableCell>
                   <TableCell>
                     {c.responsible ? (
@@ -269,7 +267,7 @@ export default async function ClientDetailPage({
                         <span className="text-[13px] text-text">{c.responsible.full_name}</span>
                       </span>
                     ) : (
-                      <Empty />
+                      <Empty label={t.common.dash} />
                     )}
                   </TableCell>
                   <TableCell className="font-mono text-[12.5px] text-text-muted">
@@ -309,6 +307,6 @@ function Section({
   );
 }
 
-function Empty() {
-  return <span className="text-[13px] text-text-subtle">—</span>;
+function Empty({ label }: { label: string }) {
+  return <span className="text-[13px] text-text-subtle">{label}</span>;
 }

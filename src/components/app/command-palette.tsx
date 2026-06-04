@@ -29,7 +29,8 @@ import {
   EMPTY_RESULTS,
   type PaletteResults,
 } from '@/lib/search/types';
-import { CLIENT_KIND_LABEL, type EffectiveCaps } from '@/lib/types/db';
+import { type EffectiveCaps } from '@/lib/types/db';
+import { useI18n } from '@/lib/i18n/provider';
 
 // ============================================================================
 // Context — sidebar-trigger открывает палитру без prop-drilling.
@@ -67,6 +68,7 @@ export function CommandPaletteProvider({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [serverResults, setServerResults] = useState<PaletteResults>(EMPTY_RESULTS);
@@ -181,7 +183,7 @@ export function CommandPaletteProvider({
       <Command.Dialog
         open={isOpen}
         onOpenChange={handleOpenChange}
-        label="Поиск и команды"
+        label={t.commandPalette.dialogLabel}
         shouldFilter={false}
         className={cn(
           'fixed left-1/2 top-[18%] z-50 -translate-x-1/2',
@@ -195,7 +197,7 @@ export function CommandPaletteProvider({
           <Command.Input
             value={query}
             onValueChange={setQuery}
-            placeholder="Поиск дел, клиентов, задач, документов или команда…"
+            placeholder={t.commandPalette.inputPlaceholder}
             className={cn(
               'flex-1 bg-transparent outline-none text-[14px] text-text',
               'placeholder:text-text-subtle',
@@ -210,64 +212,64 @@ export function CommandPaletteProvider({
         <Command.List className="max-h-[60vh] overflow-y-auto py-2">
           {showEmpty && (
             <Command.Empty className="px-4 py-6 text-center text-[13px] text-text-muted">
-              Ничего не найдено.
+              {t.commandPalette.empty}
             </Command.Empty>
           )}
 
           {/* Действия — всегда видны, role-gated */}
-          <PaletteGroup heading="Действия">
+          <PaletteGroup heading={t.commandPalette.groupActions}>
             {canCreateCase && (
               <PaletteItem
-                value="action create case дело"
+                value="action create case дело справа"
                 onSelect={() => go('/cases/new')}
                 icon={<FilePlus size={15} strokeWidth={1.75} />}
-                label="Создать дело"
-                hint="Новое дело и клиент"
+                label={t.commandPalette.createCase}
+                hint={t.commandPalette.createCaseHint}
               />
             )}
             {canCreateClient && (
               <PaletteItem
-                value="action create client клиент"
+                value="action create client клиент клієнт"
                 onSelect={() => go('/clients/new')}
                 icon={<UserPlus size={15} strokeWidth={1.75} />}
-                label="Создать клиента"
-                hint="Физлицо или компания"
+                label={t.commandPalette.createClient}
+                hint={t.commandPalette.createClientHint}
               />
             )}
             <PaletteItem
-              value="nav home главная"
+              value="nav home главная головна"
               onSelect={() => go('/')}
               icon={<Home size={15} strokeWidth={1.75} />}
-              label="Главная"
+              label={t.commandPalette.navHome}
             />
             <PaletteItem
-              value="nav cases дела"
+              value="nav cases дела справи"
               onSelect={() => go('/cases')}
               icon={<Briefcase size={15} strokeWidth={1.75} />}
-              label="Дела"
+              label={t.commandPalette.navCases}
             />
             <PaletteItem
-              value="nav clients клиенты"
+              value="nav clients клиенты клієнти"
               onSelect={() => go('/clients')}
               icon={<Users size={15} strokeWidth={1.75} />}
-              label="Клиенты"
+              label={t.commandPalette.navClients}
             />
             <PaletteItem
-              value="nav tasks задачи"
+              value="nav tasks задачи завдання"
               onSelect={() => go('/tasks')}
               icon={<CheckSquare size={15} strokeWidth={1.75} />}
-              label="Задачи"
+              label={t.commandPalette.navTasks}
             />
             <PaletteItem
-              value="nav calendar календарь заседания"
+              value="nav calendar календарь календар заседания засідання"
               onSelect={() => go('/calendar')}
               icon={<Calendar size={15} strokeWidth={1.75} />}
-              label="Календарь"
+              label={t.commandPalette.navCalendar}
             />
           </PaletteGroup>
 
           {displayResults.cases.length > 0 && (
-            <PaletteGroup heading="Дела">
+            <PaletteGroup heading={t.commandPalette.groupCases}>
               {displayResults.cases.map((c) => (
                 <PaletteItem
                   key={c.id}
@@ -282,7 +284,7 @@ export function CommandPaletteProvider({
           )}
 
           {displayResults.clients.length > 0 && (
-            <PaletteGroup heading="Клиенты">
+            <PaletteGroup heading={t.commandPalette.groupClients}>
               {displayResults.clients.map((c) => (
                 <PaletteItem
                   key={c.id}
@@ -290,14 +292,14 @@ export function CommandPaletteProvider({
                   onSelect={() => go(`/clients/${c.id}`)}
                   icon={<Users size={15} strokeWidth={1.75} />}
                   label={c.name}
-                  hint={CLIENT_KIND_LABEL[c.client_kind]}
+                  hint={t.enums.clientKind[c.client_kind]}
                 />
               ))}
             </PaletteGroup>
           )}
 
           {displayResults.tasks.length > 0 && (
-            <PaletteGroup heading="Задачи">
+            <PaletteGroup heading={t.commandPalette.groupTasks}>
               {displayResults.tasks.map((t) => (
                 <PaletteItem
                   key={t.id}
@@ -313,7 +315,7 @@ export function CommandPaletteProvider({
           )}
 
           {displayResults.documents.length > 0 && (
-            <PaletteGroup heading="Документы">
+            <PaletteGroup heading={t.commandPalette.groupDocuments}>
               {displayResults.documents.map((d) => (
                 <PaletteItem
                   key={d.id}
@@ -331,20 +333,20 @@ export function CommandPaletteProvider({
 
           {loading && (
             <div className="px-4 py-2 text-[12px] text-text-subtle">
-              Ищу…
+              {t.commandPalette.searching}
             </div>
           )}
         </Command.List>
 
         <div className="flex items-center gap-3 px-4 h-9 border-t border-border bg-surface-muted/40 text-[11px] text-text-subtle">
           <span>
-            <kbd className="font-mono">↵</kbd> выбрать
+            <kbd className="font-mono">↵</kbd> {t.commandPalette.footerSelect}
           </span>
           <span>
-            <kbd className="font-mono">↑↓</kbd> навигация
+            <kbd className="font-mono">↑↓</kbd> {t.commandPalette.footerNavigate}
           </span>
           <span className="ml-auto">
-            <kbd className="font-mono">Cmd/Ctrl+K</kbd> открыть/закрыть
+            <kbd className="font-mono">Cmd/Ctrl+K</kbd> {t.commandPalette.footerToggle}
           </span>
         </div>
       </Command.Dialog>
@@ -431,6 +433,7 @@ function PaletteItem({
 
 export function CommandPaletteTrigger() {
   const { open } = useCommandPalette();
+  const { t } = useI18n();
   return (
     <button
       type="button"
@@ -441,10 +444,10 @@ export function CommandPaletteTrigger() {
         'text-[13px] text-sidebar-text hover:text-sidebar-text-strong',
         'border border-sidebar-border hover:border-sidebar-active-bg',
       )}
-      aria-label="Открыть глобальный поиск"
+      aria-label={t.commandPalette.triggerAria}
     >
       <Search size={14} strokeWidth={1.75} />
-      <span className="flex-1 text-left">Поиск</span>
+      <span className="flex-1 text-left">{t.commandPalette.triggerLabel}</span>
       <kbd className="font-mono text-[10px] uppercase tracking-[0.04em] text-sidebar-text bg-sidebar-bg border border-sidebar-border rounded px-1.5 py-0.5">
         Ctrl K
       </kbd>

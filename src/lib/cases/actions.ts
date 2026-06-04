@@ -7,6 +7,8 @@ import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { dbErrorMessage } from '@/lib/errors';
+import { getT } from '@/lib/i18n/server';
+import type { Messages } from '@/lib/i18n/messages';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   ACCRUAL_MODES,
@@ -117,7 +119,10 @@ function todayIso(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function validate(formData: FormData):
+function validate(
+  formData: FormData,
+  t: Messages,
+):
   | {
       ok: true;
       data: Validated;
@@ -174,43 +179,45 @@ function validate(formData: FormData):
 
   const fieldErrors: Partial<Record<CaseFormFields, string>> = {};
 
-  if (!number_title) fieldErrors.number_title = 'Укажите номер/название';
+  const a = t.caseCard.actions;
+
+  if (!number_title) fieldErrors.number_title = a.numberRequired;
   else if (number_title.length > 200)
-    fieldErrors.number_title = 'Слишком длинное (макс 200)';
+    fieldErrors.number_title = a.numberTooLong;
 
-  if (!client_id) fieldErrors.client_id = 'Выберите клиента';
+  if (!client_id) fieldErrors.client_id = a.clientRequired;
   else if (!UUID_RE.test(client_id))
-    fieldErrors.client_id = 'Некорректный идентификатор клиента';
+    fieldErrors.client_id = a.clientInvalid;
 
-  if (!lawyer_id) fieldErrors.lawyer_id = 'Выберите юриста (договор)';
+  if (!lawyer_id) fieldErrors.lawyer_id = a.lawyerRequired;
   else if (!UUID_RE.test(lawyer_id))
-    fieldErrors.lawyer_id = 'Некорректный идентификатор';
+    fieldErrors.lawyer_id = a.idInvalid;
 
-  if (!responsible_id) fieldErrors.responsible_id = 'Выберите Експерта';
+  if (!responsible_id) fieldErrors.responsible_id = a.expertRequired;
   else if (!UUID_RE.test(responsible_id))
-    fieldErrors.responsible_id = 'Некорректный идентификатор';
+    fieldErrors.responsible_id = a.idInvalid;
 
-  if (!opened_at) fieldErrors.opened_at = 'Укажите дату открытия';
+  if (!opened_at) fieldErrors.opened_at = a.openedAtRequired;
   else if (!/^\d{4}-\d{2}-\d{2}$/.test(opened_at))
-    fieldErrors.opened_at = 'Дата в формате ГГГГ-ММ-ДД';
+    fieldErrors.opened_at = a.dateFormat;
 
-  if (!case_type_raw) fieldErrors.case_type = 'Выберите тип дела';
+  if (!case_type_raw) fieldErrors.case_type = a.caseTypeRequired;
   else if (!isCaseType(case_type_raw))
-    fieldErrors.case_type = 'Недопустимый тип';
+    fieldErrors.case_type = a.caseTypeInvalid;
 
-  if (!category_raw) fieldErrors.category = 'Выберите категорию';
+  if (!category_raw) fieldErrors.category = a.categoryRequired;
   else if (!isCaseCategory(category_raw))
-    fieldErrors.category = 'Недопустимая категория';
+    fieldErrors.category = a.categoryInvalid;
 
   if (subject && subject.length > 300)
-    fieldErrors.subject = 'Слишком длинное (макс 300)';
+    fieldErrors.subject = a.subjectTooLong;
 
-  if (!stage_raw) fieldErrors.stage = 'Выберите этап';
-  else if (!isCaseStage(stage_raw)) fieldErrors.stage = 'Недопустимый этап';
+  if (!stage_raw) fieldErrors.stage = a.stageRequired;
+  else if (!isCaseStage(stage_raw)) fieldErrors.stage = a.stageInvalid;
 
-  if (!priority_raw) fieldErrors.priority = 'Выберите приоритет';
+  if (!priority_raw) fieldErrors.priority = a.priorityRequired;
   else if (!isCasePriority(priority_raw))
-    fieldErrors.priority = 'Недопустимый приоритет';
+    fieldErrors.priority = a.priorityInvalid;
 
   let contract_sum = 0;
   if (contract_sum_raw) {
@@ -218,7 +225,7 @@ function validate(formData: FormData):
     const normalized = contract_sum_raw.replace(',', '.');
     const n = Number(normalized);
     if (!Number.isFinite(n) || n < 0) {
-      fieldErrors.contract_sum = 'Сумма — число ≥ 0';
+      fieldErrors.contract_sum = a.contractSumInvalid;
     } else {
       contract_sum = n;
     }
@@ -232,7 +239,7 @@ function validate(formData: FormData):
     if (!raw) return null;
     const n = Number(raw.replace(',', '.'));
     if (!Number.isFinite(n) || n < 0 || n > 100) {
-      fieldErrors[field] = 'Процент — число от 0 до 100';
+      fieldErrors[field] = a.percentInvalid;
       return null;
     }
     return n;
@@ -254,7 +261,7 @@ function validate(formData: FormData):
         fieldErrors,
         values,
         selectedBillingTypes: billing_types,
-        message: 'Проверьте поля формы',
+        message: a.checkForm,
       },
     };
   }
@@ -305,10 +312,11 @@ export async function createCaseAction(
   formData: FormData,
 ): Promise<CaseActionState> {
   const user = await requireUser();
+  const { t } = await getT();
   if (!user.caps.create_cases) {
-    return { ok: false, message: 'Недостаточно прав для создания дела.' };
+    return { ok: false, message: t.caseCard.actions.noCreatePermission };
   }
-  const result = validate(formData);
+  const result = validate(formData, t);
   if (!result.ok) return result.state;
 
   // Override % задаёт только обладатель права edit_rate_overrides; иначе поля не
@@ -329,7 +337,12 @@ export async function createCaseAction(
       ok: false,
       values: result.values,
       selectedBillingTypes: result.selectedBillingTypes,
-      message: dbErrorMessage('createCaseAction', error, 'Не удалось создать дело.'),
+      message: dbErrorMessage(
+        'createCaseAction',
+        error,
+        t.caseCard.actions.createFailed,
+        t.errors.db,
+      ),
     };
   }
 
@@ -402,7 +415,8 @@ export async function updateCaseAction(
   formData: FormData,
 ): Promise<CaseActionState> {
   const user = await requireUser();
-  const result = validate(formData);
+  const { t } = await getT();
+  const result = validate(formData, t);
   if (!result.ok) return result.state;
 
   const canEditRates = user.caps.edit_rate_overrides;
@@ -473,14 +487,14 @@ export async function updateCaseAction(
     const isStageBackward = error.message?.includes('stage_backward_forbidden');
     const isStageSkip = error.message?.includes('stage_skip_forbidden');
     const stageMsg = isStageBackward
-      ? 'Возврат на предыдущий этап разрешён только администратору.'
+      ? t.caseCard.actions.stageBackwardForbidden
       : isStageSkip
-        ? 'Этапы переключаются строго по порядку — нельзя перепрыгнуть через этап.'
+        ? t.caseCard.actions.stageSkipForbidden
         : null;
     const stageFieldErr = isStageBackward
-      ? 'Возврат на предыдущий этап запрещён'
+      ? t.caseCard.actions.stageBackwardFieldError
       : isStageSkip
-        ? 'Только следующий этап по порядку'
+        ? t.caseCard.actions.stageSkipFieldError
         : null;
     return {
       ok: false,
@@ -489,7 +503,12 @@ export async function updateCaseAction(
       fieldErrors: stageFieldErr ? { stage: stageFieldErr } : undefined,
       message:
         stageMsg ??
-        dbErrorMessage('updateCaseAction', error, 'Не удалось сохранить дело.'),
+        dbErrorMessage(
+          'updateCaseAction',
+          error,
+          t.caseCard.actions.updateFailed,
+          t.errors.db,
+        ),
     };
   }
 
@@ -574,11 +593,14 @@ export async function updateCaseStageAction(
   formData: FormData,
 ): Promise<StageActionState> {
   await requireUser();
+  const { t } = await getT();
 
-  if (!UUID_RE.test(caseId)) return { ok: false, message: 'Некорректное дело' };
+  if (!UUID_RE.test(caseId))
+    return { ok: false, message: t.caseCard.actions.caseInvalid };
 
   const stage_raw = getString(formData, 'stage');
-  if (!isCaseStage(stage_raw)) return { ok: false, message: 'Недопустимый этап' };
+  if (!isCaseStage(stage_raw))
+    return { ok: false, message: t.caseCard.actions.stageInvalid };
   const stage = stage_raw as CaseStage;
 
   const supabase = await createSupabaseServerClient();
@@ -594,7 +616,7 @@ export async function updateCaseStageAction(
     }>();
 
   // RLS отрезала дело (или его нет) → ничего не делаем.
-  if (!before) return { ok: false, message: 'Дело не найдено' };
+  if (!before) return { ok: false, message: t.caseCard.actions.caseNotFound };
   if (before.stage === stage) return { ok: true }; // no-op
 
   // closed_at синхронен stage='closed'. При входе в closed ставим сегодня;
@@ -613,13 +635,14 @@ export async function updateCaseStageAction(
     return {
       ok: false,
       message: isStageBackward
-        ? 'Возврат на предыдущий этап разрешён только администратору.'
+        ? t.caseCard.actions.stageBackwardForbidden
         : isStageSkip
-          ? 'Этапы переключаются строго по порядку — нельзя перепрыгнуть через этап.'
+          ? t.caseCard.actions.stageSkipForbidden
           : dbErrorMessage(
               'updateCaseStageAction',
               error,
-              'Не удалось сменить этап.',
+              t.caseCard.actions.stageChangeFailed,
+              t.errors.db,
             ),
     };
   }

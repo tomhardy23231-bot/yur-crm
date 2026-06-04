@@ -17,6 +17,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { requireUser } from '@/lib/auth/require-role';
+import { getT } from '@/lib/i18n/server';
 import { cn } from '@/lib/utils';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
@@ -30,8 +31,14 @@ import {
   type PayoutBucket,
 } from '@/components/payroll/payroll-actions';
 import { MonthPicker } from '@/components/payroll/month-picker';
-import { normalizeMonth, monthLabel, monthParam, nextMonth } from '@/lib/payroll/month';
-import { MANAGER_ROLES, ROLE_IN_CASE_LABEL } from '@/lib/types/db';
+import {
+  normalizeMonth,
+  monthLabel,
+  monthNamesFrom,
+  monthParam,
+  nextMonth,
+} from '@/lib/payroll/month';
+import { MANAGER_ROLES } from '@/lib/types/db';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
@@ -53,6 +60,8 @@ export default async function PayrollEmployeePage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const user = await requireUser();
+  const { t, fmt, plural } = await getT();
+  const monthNames = monthNamesFrom(t.payroll);
   const { userId } = await params;
   const { month: monthRaw } = await searchParams;
   const month = normalizeMonth(monthRaw);
@@ -81,7 +90,7 @@ export default async function PayrollEmployeePage({
     ]);
 
   const row = summary.find((r) => r.user_id === userId);
-  const fullName = userRow?.full_name ?? row?.full_name ?? 'Сотрудник';
+  const fullName = userRow?.full_name ?? row?.full_name ?? t.payroll.employee.fallbackName;
 
   // Итоги ЗА МЕСЯЦ (из сводки).
   const earnedMonth = row?.earned ?? monthCases.reduce((s, c) => s + c.earned, 0);
@@ -110,8 +119,8 @@ export default async function PayrollEmployeePage({
   const lawyerCount = allCases.filter((c) => c.role_in_case === 'lawyer').length;
   const expertCount = allCases.filter((c) => c.role_in_case === 'expert').length;
   const roleBits: string[] = [];
-  if (lawyerCount > 0) roleBits.push(`юрист — ${lawyerCount}`);
-  if (expertCount > 0) roleBits.push(`эксперт — ${expertCount}`);
+  if (lawyerCount > 0) roleBits.push(fmt(t.payroll.employee.rolesLawyer, { count: lawyerCount }));
+  if (expertCount > 0) roleBits.push(fmt(t.payroll.employee.rolesExpert, { count: expertCount }));
 
   // Дела за месяц: только те, по которым в этом месяце были оплаты (есть начисление).
   // Закрытые ниже, затем по убыванию начисления.
@@ -165,7 +174,7 @@ export default async function PayrollEmployeePage({
         className="inline-flex w-fit items-center gap-1.5 text-[13px] text-text-muted transition-colors hover:text-text"
       >
         <ArrowLeft size={15} strokeWidth={1.75} />
-        Ко всем сотрудникам
+        {t.payroll.employee.backToAll}
       </Link>
 
       {/* Шапка сотрудника */}
@@ -178,7 +187,7 @@ export default async function PayrollEmployeePage({
             </h1>
             {roleBits.length > 0 && (
               <p className="text-[12.5px] text-text-muted">
-                {roleBits.join(' · ')} дел
+                {roleBits.join(' · ')} {t.payroll.employee.rolesSuffix}
               </p>
             )}
           </div>
@@ -188,7 +197,7 @@ export default async function PayrollEmployeePage({
           <Button asChild variant="secondary" size="sm">
             <Link href={`/reports/employee/${userId}?month=${monthParam(month)}`}>
               <FileText size={14} strokeWidth={1.75} />
-              Сформировать отчёт
+              {t.payroll.employee.buildReport}
             </Link>
           </Button>
           {canManage && (
@@ -211,32 +220,37 @@ export default async function PayrollEmployeePage({
       >
         <div className="flex flex-col justify-center gap-1 bg-warning-bg/40 px-6 py-5 sm:w-[34%]">
           <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-[0.05em] text-text-muted">
-            <Wallet size={13} strokeWidth={2} />К выплате сейчас
+            <Wallet size={13} strokeWidth={2} />{t.payroll.employee.toPayNow}
           </span>
           <span className="font-mono text-[30px] font-extrabold leading-none tabular-nums text-warning">
             {MONEY.format(balance)} ₴
           </span>
           <span className="text-[12px] text-text-muted">
-            всего · дела {MONEY.format(casesOutstandingAll)} ₴ · премии{' '}
-            {MONEY.format(bonusOutstandingAll)} ₴
+            {fmt(t.payroll.employee.toPayBreakdown, {
+              cases: MONEY.format(casesOutstandingAll),
+              bonus: MONEY.format(bonusOutstandingAll),
+            })}
           </span>
         </div>
         <div className="grid flex-1 grid-cols-3 divide-x divide-border">
           <SummaryCell
-            label="Заработано за месяц"
+            label={t.payroll.employee.earnedMonth}
             value={`${MONEY.format(earnedMonth)} ₴`}
             tone="text"
           />
           <SummaryCell
-            label="Премии за месяц"
+            label={t.payroll.employee.bonusMonth}
             value={`${bonusMonth > 0 ? '+' : ''}${MONEY.format(bonusMonth)} ₴`}
             tone="muted"
           />
           <SummaryCell
-            label="Выплачено за месяц"
+            label={t.payroll.employee.paidMonth}
             value={`${MONEY.format(payoutMonth)} ₴`}
             tone="success"
-            caption={`дела ${MONEY.format(monthCaseAllocated)} · премии ${MONEY.format(monthBonusPaid)}`}
+            caption={fmt(t.payroll.employee.paidMonthCaption, {
+              cases: MONEY.format(monthCaseAllocated),
+              bonus: MONEY.format(monthBonusPaid),
+            })}
           />
         </div>
       </Card>
@@ -246,17 +260,16 @@ export default async function PayrollEmployeePage({
         <div className="flex items-center gap-2">
           <Briefcase size={16} strokeWidth={1.75} className="text-text-muted" />
           <h2 className="text-[16px] font-semibold text-text">
-            Заработок по делам — {monthLabel(month)}
+            {fmt(t.payroll.employee.casesTitle, { month: monthLabel(month, monthNames) })}
           </h2>
           <span className="text-[12.5px] text-text-subtle">
-            {monthCasesShown.length}{' '}
-            {monthCasesShown.length === 1 ? 'дело' : 'дел'}
+            {plural(t.payroll.employee.casesCount, monthCasesShown.length)}
           </span>
         </div>
         {monthCasesShown.length === 0 ? (
           <Card className="px-6 py-10 text-center">
             <p className="text-[13px] text-text-muted">
-              За {monthLabel(month)} оплат по делам не было — начислений нет.
+              {fmt(t.payroll.employee.casesEmpty, { month: monthLabel(month, monthNames) })}
             </p>
           </Card>
         ) : (
@@ -264,12 +277,12 @@ export default async function PayrollEmployeePage({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Дело</TableHead>
-                  <TableHead>Этап</TableHead>
-                  <TableHead>Роль</TableHead>
-                  <TableHead className="text-right">Заработано</TableHead>
-                  <TableHead className="min-w-32">Выплата</TableHead>
-                  <TableHead className="text-right">Осталось</TableHead>
+                  <TableHead>{t.payroll.employee.colCase}</TableHead>
+                  <TableHead>{t.payroll.employee.colStage}</TableHead>
+                  <TableHead>{t.payroll.employee.colRole}</TableHead>
+                  <TableHead className="text-right">{t.payroll.employee.colEarned}</TableHead>
+                  <TableHead className="min-w-32">{t.payroll.employee.colPayout}</TableHead>
+                  <TableHead className="text-right">{t.payroll.employee.colRemaining}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -290,14 +303,17 @@ export default async function PayrollEmployeePage({
                         <StageBadge stage={c.stage} />
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-[12.5px] text-text-muted">
-                        {ROLE_IN_CASE_LABEL[c.role_in_case]} · {MONEY.format(c.percent)}%
+                        {t.enums.roleInCase[c.role_in_case]} · {MONEY.format(c.percent)}%
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="font-mono text-[13px] font-semibold tabular-nums text-text">
                           {MONEY.format(c.earned)} ₴
                         </div>
                         <div className="text-[11px] text-text-subtle">
-                          {MONEY.format(c.percent)}% от {MONEY.format(c.paid_total)} ₴
+                          {fmt(t.payroll.employee.earnedFrom, {
+                            percent: MONEY.format(c.percent),
+                            paid: MONEY.format(c.paid_total),
+                          })}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -309,13 +325,15 @@ export default async function PayrollEmployeePage({
                           />
                           <span className="text-[11px] text-text-subtle">
                             {fullyPaid ? (
-                              <span className="font-medium text-success">Выплачено</span>
+                              <span className="font-medium text-success">
+                                {t.payroll.employee.statusPaid}
+                              </span>
                             ) : partially ? (
-                              <>выплачено {MONEY.format(c.paid)} ₴</>
+                              <>{fmt(t.payroll.employee.statusPartial, { amount: MONEY.format(c.paid) })}</>
                             ) : c.earned > 0 ? (
-                              'не выплачено'
+                              t.payroll.employee.statusUnpaid
                             ) : (
-                              '—'
+                              t.common.dash
                             )}
                           </span>
                         </div>
@@ -343,25 +361,25 @@ export default async function PayrollEmployeePage({
           <div className="flex items-center gap-2">
             <Gift size={16} strokeWidth={1.75} className="text-text-muted" />
             <h2 className="text-[16px] font-semibold text-text">
-              Премии — {monthLabel(month)}
+              {fmt(t.payroll.employee.bonusesTitle, { month: monthLabel(month, monthNames) })}
             </h2>
           </div>
           {bonusMonth > 0 && (
             <div className="flex items-baseline gap-4 font-mono text-[12.5px] tabular-nums">
               <span className="text-text-muted">
-                начислено{' '}
+                {t.payroll.employee.bonusAccrued}{' '}
                 <span className="font-semibold text-text">
                   {MONEY.format(bonusMonth)} ₴
                 </span>
               </span>
               <span className="text-text-muted">
-                выплачено{' '}
+                {t.payroll.employee.bonusPaid}{' '}
                 <span className="font-semibold text-success">
                   {MONEY.format(bonusMonthPaid)} ₴
                 </span>
               </span>
               <span className="text-text-muted">
-                осталось{' '}
+                {t.payroll.employee.bonusRemaining}{' '}
                 <span className="font-semibold text-warning">
                   {MONEY.format(bonusMonthOutstanding)} ₴
                 </span>
@@ -372,8 +390,7 @@ export default async function PayrollEmployeePage({
         {bonusRows.length === 0 ? (
           <Card className="px-6 py-8 text-center">
             <p className="text-[13px] text-text-muted">
-              За {monthLabel(month)} премий нет. Кнопка «Премия» — начислить бонус сверх
-              заработка по делам.
+              {fmt(t.payroll.employee.bonusesEmpty, { month: monthLabel(month, monthNames) })}
             </p>
           </Card>
         ) : (
@@ -398,13 +415,16 @@ export default async function PayrollEmployeePage({
                       {formatDate(b.occurred_on)}
                     </span>
                     {b.outstanding <= 0.001 ? (
-                      <Badge tone="success">выплачено</Badge>
+                      <Badge tone="success">{t.payroll.employee.badgePaid}</Badge>
                     ) : b.paid > 0 ? (
                       <Badge tone="warning">
-                        выплачено {MONEY.format(b.paid)} из {MONEY.format(b.amount)} ₴
+                        {fmt(t.payroll.employee.badgePartial, {
+                          paid: MONEY.format(b.paid),
+                          amount: MONEY.format(b.amount),
+                        })}
                       </Badge>
                     ) : (
-                      <Badge tone="neutral">не выплачено</Badge>
+                      <Badge tone="neutral">{t.payroll.employee.badgeUnpaid}</Badge>
                     )}
                   </div>
                   {b.comment && (
@@ -414,7 +434,7 @@ export default async function PayrollEmployeePage({
                 {canManage && (
                   <DeleteTransactionButton
                     transactionId={b.id}
-                    label={`Премия ${MONEY.format(b.amount)} ₴`}
+                    label={fmt(t.payroll.employee.bonusLabel, { amount: MONEY.format(b.amount) })}
                   />
                 )}
               </li>
@@ -428,24 +448,23 @@ export default async function PayrollEmployeePage({
         <div className="flex items-center gap-2">
           <Coins size={16} strokeWidth={1.75} className="text-text-muted" />
           <h2 className="text-[16px] font-semibold text-text">
-            Выплаты — {monthLabel(month)}
+            {fmt(t.payroll.employee.payoutsTitle, { month: monthLabel(month, monthNames) })}
           </h2>
         </div>
         {payouts.length === 0 ? (
           <Card className="px-6 py-8 text-center">
             <p className="text-[13px] text-text-muted">
-              За {monthLabel(month)} выплат не было. Кнопка «Выплата» — отметить, что
-              выдали сотруднику (за дела и/или премии).
+              {fmt(t.payroll.employee.payoutsEmpty, { month: monthLabel(month, monthNames) })}
             </p>
           </Card>
         ) : (
           <ul className="flex flex-col gap-2">
-            {payouts.map((t) => {
-              const allocSum = t.allocations.reduce((s, a) => s + a.amount, 0);
-              const bonusPortion = Math.round((t.amount - allocSum) * 100) / 100;
+            {payouts.map((tx) => {
+              const allocSum = tx.allocations.reduce((s, a) => s + a.amount, 0);
+              const bonusPortion = Math.round((tx.amount - allocSum) * 100) / 100;
               return (
                 <li
-                  key={t.id}
+                  key={tx.id}
                   className="flex items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-sm"
                 >
                   <span
@@ -457,18 +476,18 @@ export default async function PayrollEmployeePage({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-2">
                       <span className="font-mono text-[14px] font-bold tabular-nums text-text">
-                        −{MONEY.format(t.amount)} ₴
+                        −{MONEY.format(tx.amount)} ₴
                       </span>
                       <span className="text-[12px] text-text-muted">
-                        {formatDate(t.occurred_on)}
+                        {formatDate(tx.occurred_on)}
                       </span>
                     </div>
-                    {t.comment && (
-                      <p className="mt-0.5 text-[13px] text-text">{t.comment}</p>
+                    {tx.comment && (
+                      <p className="mt-0.5 text-[13px] text-text">{tx.comment}</p>
                     )}
-                    {(t.allocations.length > 0 || bonusPortion > 0.001) && (
+                    {(tx.allocations.length > 0 || bonusPortion > 0.001) && (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {t.allocations.map((a) => (
+                        {tx.allocations.map((a) => (
                           <Link
                             key={`${a.case_id}-${a.role_in_case}`}
                             href={`/cases/${a.case_id}`}
@@ -483,7 +502,7 @@ export default async function PayrollEmployeePage({
                         {bonusPortion > 0.001 && (
                           <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning-bg px-2 py-0.5 text-[11.5px] font-medium text-warning">
                             <Gift size={11} strokeWidth={2} />
-                            премии
+                            {t.payroll.employee.payoutBonusChip}
                             <span className="font-mono tabular-nums">
                               {MONEY.format(bonusPortion)} ₴
                             </span>
@@ -494,8 +513,8 @@ export default async function PayrollEmployeePage({
                   </div>
                   {canManage && (
                     <DeleteTransactionButton
-                      transactionId={t.id}
-                      label={`Выплата ${MONEY.format(t.amount)} ₴`}
+                      transactionId={tx.id}
+                      label={fmt(t.payroll.employee.payoutLabel, { amount: MONEY.format(tx.amount) })}
                     />
                   )}
                 </li>

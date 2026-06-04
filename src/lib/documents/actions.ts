@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { dbErrorMessage } from '@/lib/errors';
+import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { DOC_TYPES, type DocType } from '@/lib/types/db';
 
@@ -67,6 +68,7 @@ export async function uploadDocumentAction(
   formData: FormData,
 ): Promise<UploadDocumentState> {
   const user = await requireUser();
+  const { t } = await getT();
 
   const case_id = String(formData.get('case_id') ?? '').trim();
   const doc_type_raw = String(formData.get('doc_type') ?? '').trim();
@@ -74,26 +76,26 @@ export async function uploadDocumentAction(
 
   const fieldErrors: UploadDocumentState['fieldErrors'] = {};
 
-  if (!case_id) fieldErrors.case_id = 'Не указано дело';
+  if (!case_id) fieldErrors.case_id = t.documents.actions.caseRequired;
   else if (!UUID_RE.test(case_id))
-    fieldErrors.case_id = 'Некорректный идентификатор дела';
+    fieldErrors.case_id = t.documents.actions.caseInvalid;
 
-  if (!doc_type_raw) fieldErrors.doc_type = 'Выберите тип документа';
+  if (!doc_type_raw) fieldErrors.doc_type = t.documents.actions.docTypeRequired;
   else if (!isDocType(doc_type_raw))
-    fieldErrors.doc_type = 'Недопустимый тип';
+    fieldErrors.doc_type = t.documents.actions.docTypeInvalid;
 
   if (!(fileEntry instanceof File) || fileEntry.size === 0) {
-    fieldErrors.file = 'Выберите файл';
+    fieldErrors.file = t.documents.actions.fileRequired;
   } else {
     if (fileEntry.size > MAX_BYTES) {
-      fieldErrors.file = 'Файл больше 25 МБ';
+      fieldErrors.file = t.documents.actions.fileTooLarge;
     }
     if (fileEntry.name.length > 200) {
-      fieldErrors.file = 'Слишком длинное имя файла (макс 200)';
+      fieldErrors.file = t.documents.actions.fileNameTooLong;
     }
     const ext = fileExtension(fileEntry.name);
     if (ext && FORBIDDEN_EXT.has(ext)) {
-      fieldErrors.file = 'Этот тип файла загружать нельзя';
+      fieldErrors.file = t.documents.actions.fileForbidden;
     }
   }
 
@@ -101,7 +103,7 @@ export async function uploadDocumentAction(
     return {
       ok: false,
       fieldErrors,
-      message: 'Проверьте поля формы',
+      message: t.documents.actions.checkForm,
     };
   }
 
@@ -127,7 +129,8 @@ export async function uploadDocumentAction(
       message: dbErrorMessage(
         'uploadDocumentAction.storage',
         uploadErr,
-        'Не удалось загрузить файл.',
+        t.documents.actions.uploadFailed,
+        t.errors.db,
       ),
     };
   }
@@ -158,7 +161,8 @@ export async function uploadDocumentAction(
       message: dbErrorMessage(
         'uploadDocumentAction.insert',
         insertErr,
-        'Не удалось сохранить документ. Попробуйте ещё раз.',
+        t.documents.actions.saveFailed,
+        t.errors.db,
       ),
     };
   }

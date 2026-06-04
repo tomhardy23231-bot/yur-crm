@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { TableHead } from '@/components/ui/table';
+import { getT } from '@/lib/i18n/server';
 import { cn } from '@/lib/utils';
 
 export type SortDir = 'asc' | 'desc';
@@ -9,7 +10,7 @@ export type SortDir = 'asc' | 'desc';
 // Серверный компонент: статичный Link с предвычисленным href.
 // hrefFor вызывается синхронно в родителе — никакого client JS не требуется.
 // Цикл сортировки: не-активна → asc → desc → asc → desc → … (без сброса).
-export function SortableHeader({
+export async function SortableHeader({
   column,
   currentSort,
   currentDir,
@@ -24,6 +25,7 @@ export function SortableHeader({
   align?: 'left' | 'right';
   children: React.ReactNode;
 }) {
+  const { t, fmt } = await getT();
   const isActive = currentSort === column;
   const nextDir: SortDir = isActive && currentDir === 'asc' ? 'desc' : 'asc';
   const href = hrefFor(column, nextDir);
@@ -47,9 +49,14 @@ export function SortableHeader({
             ? 'text-text'
             : 'text-text-subtle hover:text-text transition-colors duration-[80ms]',
         )}
-        aria-label={`Сортировать по: ${typeof children === 'string' ? children : column}, ${
-          isActive ? (currentDir === 'asc' ? 'по возрастанию' : 'по убыванию') : 'нет сортировки'
-        }`}
+        aria-label={fmt(t.ui.sort.label, {
+          column: typeof children === 'string' ? children : column,
+          state: isActive
+            ? currentDir === 'asc'
+              ? t.ui.sort.ascending
+              : t.ui.sort.descending
+            : t.ui.sort.none,
+        })}
       >
         <span className={cn(isActive && 'font-semibold')}>{children}</span>
         <Icon

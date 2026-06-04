@@ -1,7 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import { Check, Trash2 } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
+import { useI18n } from '@/lib/i18n/provider';
 import { cn } from '@/lib/utils';
 import {
   deleteTaskAction,
@@ -33,6 +36,7 @@ const DATE_ONLY_FMT = new Intl.DateTimeFormat('ru-RU', {
 });
 
 export function TaskRow({ task, canManage, showCase = false }: TaskRowProps) {
+  const { t } = useI18n();
   const done = task.status === 'done';
 
   return (
@@ -51,7 +55,7 @@ export function TaskRow({ task, canManage, showCase = false }: TaskRowProps) {
           <input type="hidden" name="case_id" value={task.case_id} />
           <button
             type="submit"
-            aria-label={done ? 'Открыть задачу заново' : 'Отметить выполненной'}
+            aria-label={done ? t.tasks.row.reopenAria : t.tasks.row.markDoneAria}
             className={cn(
               'inline-flex items-center justify-center w-5 h-5 rounded-md border transition-colors',
               done
@@ -136,7 +140,7 @@ export function TaskRow({ task, canManage, showCase = false }: TaskRowProps) {
           <input type="hidden" name="case_id" value={task.case_id} />
           <button
             type="submit"
-            aria-label="Удалить задачу"
+            aria-label={t.tasks.row.deleteAria}
             className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity inline-flex items-center justify-center w-7 h-7 rounded-md text-text-subtle hover:text-error hover:bg-error-bg"
           >
             <Trash2 size={14} strokeWidth={1.75} />

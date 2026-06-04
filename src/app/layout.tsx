@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { getLocale } from "@/lib/i18n/server";
 
 // Редизайн «ЮрКейс» (бриф 2026-06-03): IBM Plex Sans — весь UI (строгий
 // корпоративный гротеск, полная кириллица); JetBrains Mono — числа/суммы/даты
@@ -24,15 +25,18 @@ export const metadata: Metadata = {
   description: "CRM-система для юридической компании",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Язык интерфейса (двуязычный UI): из cookie/профиля, дефолт — украинский.
+  const locale = await getLocale();
+
   // Единый строгий светлый вид (тема «Латунь»/«Изумруд» удалена при редизайне).
   return (
     <html
-      lang="ru"
+      lang={locale}
       className={`${ibmPlexSans.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>

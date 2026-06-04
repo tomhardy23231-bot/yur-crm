@@ -8,6 +8,7 @@ import { updateClientAction } from '@/lib/clients/actions';
 import { getClient } from '@/lib/clients/queries';
 import { requireUser } from '@/lib/auth/require-role';
 import { isStaff } from '@/lib/types/db';
+import { getT } from '@/lib/i18n/server';
 
 export default async function EditClientPage({
   params,
@@ -15,6 +16,7 @@ export default async function EditClientPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireUser();
+  const { t } = await getT();
   const { id } = await params;
 
   const client = await getClient(id);
@@ -41,7 +43,7 @@ export default async function EditClientPage({
           className="inline-flex items-center gap-1 text-[12.5px] text-text-muted hover:text-text transition-colors w-fit"
         >
           <ChevronLeft size={14} strokeWidth={1.75} />
-          К карточке клиента
+          {t.clients.edit.backToCard}
         </Link>
         <p className="text-[13px] text-text-muted">{client.name}</p>
       </div>
@@ -50,7 +52,7 @@ export default async function EditClientPage({
         <ClientForm
           action={boundAction}
           client={client}
-          submitLabel="Сохранить изменения"
+          submitLabel={t.clients.edit.submit}
           cancelHref={`/clients/${id}`}
         />
       </Card>

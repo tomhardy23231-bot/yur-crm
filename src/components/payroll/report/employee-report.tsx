@@ -1,12 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 
-import {
-  CASE_CATEGORY_LABEL,
-  CASE_STAGE_LABEL,
-  ROLE_IN_CASE_LABEL,
-} from '@/lib/types/db';
 import type { EmployeeReport } from '@/lib/payroll/report';
 import { DOC } from '@/components/payroll/report/report-document';
+import { useI18n } from '@/lib/i18n/provider';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
@@ -14,20 +12,14 @@ const MONEY = new Intl.NumberFormat('ru-RU', {
   maximumFractionDigits: 2,
 });
 
-const PAY_METHOD: Record<string, string> = {
-  cash: 'Наличные',
-  card: 'Карта',
-  bank: 'Банк. перевод',
-  transfer: 'Перевод',
-  other: 'Прочее',
-};
-
 function fmtDate(s: string): string {
   const [y, m, d] = s.split('-');
   return d && m && y ? `${d}.${m}.${y}` : s;
 }
 
 export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
+  const { t, fmt } = useI18n();
+  const payMethod: Record<string, string> = t.payrollPrint.payMethod;
   const {
     earnedMonth,
     bonusMonth,
@@ -57,14 +49,17 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
             borderTop: `2px solid ${DOC.accent}`,
           }}
         >
-          <Kpi label="Начислено за месяц" value={`${MONEY.format(earnedMonth)} ₴`} />
-          <Kpi label="Премии за месяц" value={`${bonusMonth > 0 ? '+' : ''}${MONEY.format(bonusMonth)} ₴`} />
-          <Kpi label="Выплачено за месяц" value={`${MONEY.format(payoutMonth)} ₴`} valueColor={DOC.green} />
+          <Kpi label={t.payrollPrint.employee.kpiEarnedMonth} value={`${MONEY.format(earnedMonth)} ₴`} />
+          <Kpi label={t.payrollPrint.employee.kpiBonusMonth} value={`${bonusMonth > 0 ? '+' : ''}${MONEY.format(bonusMonth)} ₴`} />
+          <Kpi label={t.payrollPrint.employee.kpiPayoutMonth} value={`${MONEY.format(payoutMonth)} ₴`} valueColor={DOC.green} />
           <Kpi
-            label="К выплате (всего)"
+            label={t.payrollPrint.employee.kpiBalance}
             value={`${MONEY.format(balance)} ₴`}
             valueColor={DOC.amber}
-            caption={`дела ${MONEY.format(casesOutstandingAll)} ₴ · премии ${MONEY.format(bonusOutstandingAll)} ₴`}
+            caption={fmt(t.payrollPrint.employee.kpiBalanceCaption, {
+              cases: MONEY.format(casesOutstandingAll),
+              bonus: MONEY.format(bonusOutstandingAll),
+            })}
           />
         </div>
         {/* Доп. показатели */}
@@ -72,29 +67,29 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
           className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1 px-1 text-[11.5px]"
           style={{ color: DOC.muted }}
         >
-          <Metric label="Дел за месяц" value={String(casesCount)} />
-          <Metric label="Поступления клиентов" value={`${MONEY.format(clientPaidTotal)} ₴`} />
-          <Metric label="Сумма договоров" value={`${MONEY.format(contractSumTotal)} ₴`} />
-          {lawyerEarned > 0 && <Metric label="Начислено как юрист" value={`${MONEY.format(lawyerEarned)} ₴`} />}
-          {expertEarned > 0 && <Metric label="Начислено как эксперт" value={`${MONEY.format(expertEarned)} ₴`} />}
+          <Metric label={t.payrollPrint.employee.metricCasesMonth} value={String(casesCount)} />
+          <Metric label={t.payrollPrint.employee.metricClientPaid} value={`${MONEY.format(clientPaidTotal)} ₴`} />
+          <Metric label={t.payrollPrint.employee.metricContractSum} value={`${MONEY.format(contractSumTotal)} ₴`} />
+          {lawyerEarned > 0 && <Metric label={t.payrollPrint.employee.metricLawyerEarned} value={`${MONEY.format(lawyerEarned)} ₴`} />}
+          {expertEarned > 0 && <Metric label={t.payrollPrint.employee.metricExpertEarned} value={`${MONEY.format(expertEarned)} ₴`} />}
         </div>
       </section>
 
       {/* Дела и начисления */}
-      <Section title="Дела и начисления" count={cases.length}>
+      <Section title={t.payrollPrint.employee.casesTitle} count={cases.length}>
         {cases.length === 0 ? (
-          <Empty>За выбранный период оплат по делам не поступало — начислений нет.</Empty>
+          <Empty>{t.payrollPrint.employee.casesEmpty}</Empty>
         ) : (
           <table className="w-full border-collapse text-[12px]">
             <thead>
               <Tr head>
-                <Th>Дело / клиент</Th>
-                <Th>Категория · этап</Th>
-                <Th>Роль · ставка</Th>
-                <Th align="right">Оплачено клиентом</Th>
-                <Th align="right">Начислено</Th>
-                <Th align="right">Выплачено</Th>
-                <Th align="right">Остаток</Th>
+                <Th>{t.payrollPrint.employee.colCaseClient}</Th>
+                <Th>{t.payrollPrint.employee.colCategoryStage}</Th>
+                <Th>{t.payrollPrint.employee.colRoleRate}</Th>
+                <Th align="right">{t.payrollPrint.employee.colClientPaid}</Th>
+                <Th align="right">{t.payrollPrint.employee.colEarned}</Th>
+                <Th align="right">{t.payrollPrint.employee.colPaid}</Th>
+                <Th align="right">{t.payrollPrint.employee.colOutstanding}</Th>
               </Tr>
             </thead>
             <tbody>
@@ -115,13 +110,13 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                     )}
                   </Td>
                   <Td color={DOC.muted}>
-                    {c.category ? CASE_CATEGORY_LABEL[c.category] : '—'}
+                    {c.category ? t.enums.caseCategory[c.category] : t.common.dash}
                     <div className="text-[11px]" style={{ color: DOC.subtle }}>
-                      {CASE_STAGE_LABEL[c.stage]}
+                      {t.enums.caseStage[c.stage]}
                     </div>
                   </Td>
                   <Td color={DOC.muted}>
-                    {ROLE_IN_CASE_LABEL[c.role_in_case]}
+                    {t.enums.roleInCase[c.role_in_case]}
                     <div className="text-[11px]" style={{ color: DOC.subtle }}>
                       {MONEY.format(c.percent)}%
                     </div>
@@ -145,7 +140,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
               <Tr foot>
                 <Td colSpan={3}>
                   <span className="font-semibold" style={{ color: DOC.ink }}>
-                    Итого за период
+                    {t.payrollPrint.employee.casesTotal}
                   </span>
                 </Td>
                 <Td align="right" mono color={DOC.muted}>
@@ -170,14 +165,14 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
 
       {/* Поступления от клиентов за период (основание начислений) */}
       {clientPayments.length > 0 && (
-        <Section title="Поступления от клиентов за период" count={clientPayments.length}>
+        <Section title={t.payrollPrint.employee.paymentsTitle} count={clientPayments.length}>
           <table className="w-full border-collapse text-[12px]">
             <thead>
               <Tr head>
-                <Th>Дата</Th>
-                <Th>Дело</Th>
-                <Th>Способ</Th>
-                <Th align="right">Сумма</Th>
+                <Th>{t.payrollPrint.employee.colDate}</Th>
+                <Th>{t.payrollPrint.employee.colCase}</Th>
+                <Th>{t.payrollPrint.employee.colMethod}</Th>
+                <Th align="right">{t.payrollPrint.employee.colAmount}</Th>
               </Tr>
             </thead>
             <tbody>
@@ -193,7 +188,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                       {p.number_title}
                     </Link>
                   </Td>
-                  <Td color={DOC.muted}>{p.method ? (PAY_METHOD[p.method] ?? p.method) : '—'}</Td>
+                  <Td color={DOC.muted}>{p.method ? (payMethod[p.method] ?? p.method) : t.common.dash}</Td>
                   <Td align="right" mono>
                     <span className="font-semibold" style={{ color: DOC.ink }}>
                       {MONEY.format(p.amount)} ₴
@@ -204,7 +199,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
               <Tr foot>
                 <Td colSpan={3}>
                   <span className="font-semibold" style={{ color: DOC.ink }}>
-                    Всего поступлений
+                    {t.payrollPrint.employee.paymentsTotal}
                   </span>
                 </Td>
                 <Td align="right" mono>
@@ -219,16 +214,16 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
       )}
 
       {/* Выплаты сотруднику */}
-      <Section title="Выплаты сотруднику за период" count={payouts.length}>
+      <Section title={t.payrollPrint.employee.payoutsTitle} count={payouts.length}>
         {payouts.length === 0 ? (
-          <Empty>За выбранный период выплат сотруднику не зафиксировано.</Empty>
+          <Empty>{t.payrollPrint.employee.payoutsEmpty}</Empty>
         ) : (
           <table className="w-full border-collapse text-[12px]">
             <thead>
               <Tr head>
-                <Th>Дата</Th>
-                <Th>Назначение</Th>
-                <Th align="right">Сумма</Th>
+                <Th>{t.payrollPrint.employee.colDate}</Th>
+                <Th>{t.payrollPrint.employee.colPurpose}</Th>
+                <Th align="right">{t.payrollPrint.employee.colAmount}</Th>
               </Tr>
             </thead>
             <tbody>
@@ -237,7 +232,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                   <Td mono color={DOC.muted}>{fmtDate(p.occurred_on)}</Td>
                   <Td>
                     {p.allocations.length === 0 && p.bonusPortion <= 0.001 && !p.comment ? (
-                      <span style={{ color: DOC.muted }}>—</span>
+                      <span style={{ color: DOC.muted }}>{t.common.dash}</span>
                     ) : (
                       <div className="flex flex-col gap-0.5">
                         {p.allocations.map((a) => (
@@ -250,7 +245,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                         ))}
                         {p.bonusPortion > 0.001 && (
                           <span style={{ color: DOC.body }}>
-                            Премия{' '}
+                            {t.payrollPrint.employee.bonusLabel}{' '}
                             <span className="font-mono tabular-nums" style={{ color: DOC.muted }}>
                               {MONEY.format(p.bonusPortion)} ₴
                             </span>
@@ -274,7 +269,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
               <Tr foot>
                 <Td colSpan={2}>
                   <span className="font-semibold" style={{ color: DOC.ink }}>
-                    Всего выплачено за период
+                    {t.payrollPrint.employee.payoutsTotal}
                   </span>
                 </Td>
                 <Td align="right" mono>
@@ -290,20 +285,20 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
 
       {/* Премии */}
       {bonuses.length > 0 && (
-        <Section title="Премии за период" count={bonuses.length}>
+        <Section title={t.payrollPrint.employee.bonusesTitle} count={bonuses.length}>
           <table className="w-full border-collapse text-[12px]">
             <thead>
               <Tr head>
-                <Th>Дата</Th>
-                <Th>Комментарий</Th>
-                <Th align="right">Сумма</Th>
+                <Th>{t.payrollPrint.employee.colDate}</Th>
+                <Th>{t.payrollPrint.employee.colComment}</Th>
+                <Th align="right">{t.payrollPrint.employee.colAmount}</Th>
               </Tr>
             </thead>
             <tbody>
               {bonuses.map((b) => (
                 <Tr key={b.id}>
                   <Td mono color={DOC.muted}>{fmtDate(b.occurred_on)}</Td>
-                  <Td color={DOC.body}>{b.comment ?? '—'}</Td>
+                  <Td color={DOC.body}>{b.comment ?? t.common.dash}</Td>
                   <Td align="right" mono>
                     <span className="font-semibold" style={{ color: DOC.ink }}>
                       +{MONEY.format(b.amount)} ₴

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { requireRole, requireCap } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
+import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CASE_CATEGORIES, type CaseCategory } from '@/lib/types/db';
 import {
@@ -28,15 +29,18 @@ export async function updatePayrollRatesAction(
   formData: FormData,
 ): Promise<PayrollRatesActionState> {
   await requireCap('edit_payroll_rates');
+  const { t, fmt } = await getT();
   const supabase = await createSupabaseServerClient();
 
   // Парсит и валидирует процент из поля формы (0..100, запятая/точка).
   function parsePercent(field: string): number | { error: string } {
     const raw = formData.get(field);
-    if (typeof raw !== 'string') return { error: `Поле ${field} отсутствует` };
+    if (typeof raw !== 'string') {
+      return { error: fmt(t.payroll.settings.fieldMissing, { field }) };
+    }
     const n = Number(raw.trim().replace(',', '.'));
     if (!Number.isFinite(n) || n < 0 || n > 100) {
-      return { error: 'Процент — число от 0 до 100' };
+      return { error: t.payroll.settings.percentRange };
     }
     return n;
   }
@@ -46,11 +50,23 @@ export async function updatePayrollRatesAction(
 
     const lawyer = parsePercent(`lawyer_percent_${category}`);
     if (typeof lawyer !== 'number') {
-      return { ok: false, message: `Юрист, «${category}»: ${lawyer.error}` };
+      return {
+        ok: false,
+        message: fmt(t.payroll.settings.lawyerError, {
+          category: t.enums.caseCategory[category],
+          error: lawyer.error,
+        }),
+      };
     }
     const expert = parsePercent(`expert_percent_${category}`);
     if (typeof expert !== 'number') {
-      return { ok: false, message: `Эксперт, «${category}»: ${expert.error}` };
+      return {
+        ok: false,
+        message: fmt(t.payroll.settings.expertError, {
+          category: t.enums.caseCategory[category],
+          error: expert.error,
+        }),
+      };
     }
 
     const { error } = await supabase
@@ -68,7 +84,7 @@ export async function updatePayrollRatesAction(
 
   revalidatePath('/settings/payroll');
   revalidatePath('/reports/payroll');
-  return { ok: true, message: 'Ставки сохранены.' };
+  return { ok: true, message: t.payroll.settings.ratesSaved };
 }
 
 // ============================================================================
@@ -213,15 +229,16 @@ export async function createPayoutAction(
   formData: FormData,
 ): Promise<PayrollMutationState> {
   const actor = await requireRole(['owner', 'admin']);
+  const { t } = await getT();
 
   const userId = formData.get('user_id');
   if (typeof userId !== 'string' || !UUID_RE.test(userId)) {
-    return { ok: false, message: 'Не указан сотрудник.' };
+    return { ok: false, message: t.payroll.mutations.noEmployee };
   }
 
   const occurredOn = formData.get('occurred_on');
   if (typeof occurredOn !== 'string' || !DATE_RE.test(occurredOn)) {
-    return { ok: false, message: 'Укажите корректную дату выплаты.' };
+    return { ok: false, message: t.payroll.mutations.badPayoutDate };
   }
 
   const commentRaw = formData.get('comment');
@@ -238,7 +255,7 @@ export async function createPayoutAction(
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : [];
     selected = Array.isArray(parsed) ? parsed : [];
   } catch {
-    return { ok: false, message: 'Не удалось разобрать список дел.' };
+    return { ok: false, message: t.payroll.mutations.badAllocations };
   }
 
   // Сколько из премий гасим этой выплатой (запрос из формы, серверно зажмём
@@ -302,7 +319,7 @@ export async function createPayoutAction(
   if (total <= 0) {
     return {
       ok: false,
-      message: 'Отметьте дела или премию для выплаты (нечего выплачивать).',
+      message: t.payroll.mutations.nothingSelected,
     };
   }
 
@@ -324,7 +341,7 @@ export async function createPayoutAction(
     .select('id')
     .single<{ id: string }>();
   if (txErr || !tx) {
-    return { ok: false, message: txErr?.message ?? 'Не удалось создать выплату.' };
+    return { ok: false, message: txErr?.message ?? t.payroll.mutations.payoutCreateFailed };
   }
 
   if (allocations.length > 0) {
@@ -355,7 +372,7 @@ export async function createPayoutAction(
   }
 
   revalidatePayroll(userId);
-  return { ok: true, message: 'Выплата сохранена.' };
+  return { ok: true, message: t.payroll.mutations.payoutSaved };
 }
 
 // Премия (bonus, «+») — мимо дел. Форма шлёт user_id, amount, comment.
@@ -364,21 +381,22 @@ export async function createBonusAction(
   formData: FormData,
 ): Promise<PayrollMutationState> {
   const actor = await requireRole(['owner', 'admin']);
+  const { t } = await getT();
 
   const userId = formData.get('user_id');
   if (typeof userId !== 'string' || !UUID_RE.test(userId)) {
-    return { ok: false, message: 'Не указан сотрудник.' };
+    return { ok: false, message: t.payroll.mutations.noEmployee };
   }
 
   const amountRaw = formData.get('amount');
   const normalized =
     typeof amountRaw === 'string' ? amountRaw.replace(',', '.').trim() : '';
   if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
-    return { ok: false, message: 'Введите сумму больше 0 (до 2 знаков).' };
+    return { ok: false, message: t.payroll.mutations.badBonusAmount };
   }
   const amount = Number(normalized);
   if (!Number.isFinite(amount) || amount <= 0 || amount >= 1_000_000_000_000) {
-    return { ok: false, message: 'Сумма вне допустимого диапазона.' };
+    return { ok: false, message: t.payroll.mutations.bonusOutOfRange };
   }
 
   const occurredOn = formData.get('occurred_on');
@@ -407,7 +425,7 @@ export async function createBonusAction(
   }
 
   revalidatePayroll(userId);
-  return { ok: true, message: 'Премия сохранена.' };
+  return { ok: true, message: t.payroll.mutations.bonusSaved };
 }
 
 // Удаление движения (выплаты или премии) — owner/admin. Аллокации каскадом.

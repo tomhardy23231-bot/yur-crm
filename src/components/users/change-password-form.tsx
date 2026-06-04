@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   changePasswordAction,
   type ChangePasswordFields,
@@ -15,6 +16,7 @@ import {
 const INITIAL: ChangePasswordState = { ok: false };
 
 export function ChangePasswordForm() {
+  const { t } = useI18n();
   const [state, formAction, pending] = useActionState<ChangePasswordState, FormData>(
     changePasswordAction,
     INITIAL,
@@ -33,7 +35,7 @@ export function ChangePasswordForm() {
 
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4" noValidate>
-      <Field label="Текущий пароль" htmlFor="cp-current" error={err('current')} required>
+      <Field label={t.account.password.current} htmlFor="cp-current" error={err('current')} required>
         <PasswordInput
           id="cp-current"
           name="current"
@@ -43,18 +45,18 @@ export function ChangePasswordForm() {
         />
       </Field>
 
-      <Field label="Новый пароль" htmlFor="cp-next" error={err('next')} required>
+      <Field label={t.account.password.next} htmlFor="cp-next" error={err('next')} required>
         <PasswordInput
           id="cp-next"
           name="next"
           autoComplete="new-password"
           show={show}
           invalid={!!err('next')}
-          placeholder="минимум 8 символов"
+          placeholder={t.account.password.nextPlaceholder}
         />
       </Field>
 
-      <Field label="Повторите новый пароль" htmlFor="cp-confirm" error={err('confirm')} required>
+      <Field label={t.account.password.confirm} htmlFor="cp-confirm" error={err('confirm')} required>
         <PasswordInput
           id="cp-confirm"
           name="confirm"
@@ -71,7 +73,7 @@ export function ChangePasswordForm() {
           onChange={(e) => setShow(e.currentTarget.checked)}
           className="h-4 w-4 accent-primary"
         />
-        Показывать пароли
+        {t.account.password.showPasswords}
       </label>
 
       {state.message && !state.ok && (
@@ -87,13 +89,13 @@ export function ChangePasswordForm() {
           role="status"
           className="rounded-md border border-success/15 bg-success-bg px-3 py-2 text-sm text-success"
         >
-          {state.message ?? 'Пароль изменён.'}
+          {state.message ?? t.account.password.successDefault}
         </p>
       )}
 
       <div>
         <Button type="submit" disabled={pending}>
-          {pending ? 'Сохранение…' : 'Сменить пароль'}
+          {pending ? t.account.password.submitting : t.account.password.submit}
         </Button>
       </div>
     </form>

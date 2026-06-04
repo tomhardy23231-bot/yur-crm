@@ -8,6 +8,8 @@ import {
   formatActivityTime,
   collectActivityIds,
 } from '@/lib/activity-log/format';
+import { getT } from '@/lib/i18n/server';
+import { LOCALE_BCP47 } from '@/lib/i18n/config';
 
 interface CaseActivityBlockProps {
   caseId: string;
@@ -19,6 +21,8 @@ export async function CaseActivityBlock({
   caseId,
   limit = 20,
 }: CaseActivityBlockProps) {
+  const i18n = await getT();
+  const { t, fmt, plural } = i18n;
   const entries = await listCaseActivity(caseId, limit);
   // Резолвим UUID юристов/Експертов/клиентов из записей в имена (Задача 3).
   const { userIds, clientIds } = collectActivityIds(entries);
@@ -28,11 +32,10 @@ export async function CaseActivityBlock({
     <Card>
       <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
         <History size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">История</h2>
+        <h2 className="text-[16px] font-semibold text-text">{t.activity.block.title}</h2>
         {entries.length > 0 && (
           <span className="text-[12px] text-text-muted">
-            · {entries.length}{' '}
-            {plural(entries.length, ['событие', 'события', 'событий'])}
+            · {plural(t.activity.block.count, entries.length)}
           </span>
         )}
       </div>
@@ -40,13 +43,13 @@ export async function CaseActivityBlock({
       {entries.length === 0 ? (
         <div className="py-10 px-6 flex flex-col items-center text-center">
           <p className="text-[13px] text-text-muted max-w-md">
-            Изменений по делу пока не было.
+            {t.activity.block.empty}
           </p>
         </div>
       ) : (
         <ul className="divide-y divide-border">
           {entries.map((entry) => {
-            const f = formatActivity(entry, nameById);
+            const f = formatActivity(i18n, entry, nameById);
             return (
               <li
                 key={entry.id}
@@ -60,9 +63,9 @@ export async function CaseActivityBlock({
                   </p>
                   <p
                     className="text-[11px] text-text-subtle font-mono tabular-nums mt-0.5"
-                    title={new Date(entry.created_at).toLocaleString('ru-RU')}
+                    title={new Date(entry.created_at).toLocaleString(LOCALE_BCP47[i18n.locale])}
                   >
-                    {formatActivityTime(entry.created_at)}
+                    {formatActivityTime(i18n, entry.created_at)}
                   </p>
                 </div>
               </li>
@@ -74,19 +77,10 @@ export async function CaseActivityBlock({
       {entries.length === limit && (
         <div className="px-5 py-3 border-t border-border bg-surface-muted/30">
           <p className="text-[11px] text-text-subtle font-medium uppercase tracking-[0.05em]">
-            Показаны {limit} последних событий
+            {fmt(t.activity.block.showingLast, { limit })}
           </p>
         </div>
       )}
     </Card>
   );
-}
-
-function plural(n: number, forms: [string, string, string]): string {
-  const abs = Math.abs(n) % 100;
-  const n1 = abs % 10;
-  if (abs > 10 && abs < 20) return forms[2];
-  if (n1 > 1 && n1 < 5) return forms[1];
-  if (n1 === 1) return forms[0];
-  return forms[2];
 }

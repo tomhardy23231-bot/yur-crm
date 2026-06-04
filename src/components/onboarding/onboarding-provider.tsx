@@ -18,6 +18,7 @@ import { driver, type Driver } from 'driver.js';
 import { WelcomeModal } from './welcome-modal';
 import { ReleaseModal } from '@/components/releases/release-modal';
 import { CURRENT_RELEASE } from '@/lib/releases/releases';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   buildTourSteps,
   buildPayrollTourSteps,
@@ -103,6 +104,7 @@ export function OnboardingProvider({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { t, fmt } = useI18n();
 
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [releaseOpen, setReleaseOpen] = useState(false);
@@ -113,6 +115,10 @@ export function OnboardingProvider({
   const routerRef = useRef(router);
   const pathRef = useRef(pathname);
   const ctxRef = useRef(ctx);
+  // Словарь тура и форматтер — тоже через ref'ы, чтобы движок (создаётся один
+  // раз) читал актуальный язык на момент построения попапа.
+  const tourRef = useRef(t.help.tour);
+  const fmtRef = useRef(fmt);
   useEffect(() => {
     routerRef.current = router;
   }, [router]);
@@ -122,6 +128,10 @@ export function OnboardingProvider({
   useEffect(() => {
     ctxRef.current = ctx;
   }, [ctx]);
+  useEffect(() => {
+    tourRef.current = t.help.tour;
+    fmtRef.current = fmt;
+  }, [t, fmt]);
 
   // Состояние движка.
   const driverRef = useRef<Driver | null>(null);
@@ -158,10 +168,15 @@ export function OnboardingProvider({
       const total = stepsRef.current.length;
       const isFirst = i === 0;
       const isLast = i === total - 1;
+      const tour = tourRef.current;
+      const progress = fmtRef.current(tour.progress, {
+        current: i + 1,
+        total,
+      });
       return {
         title: step.title,
         description:
-          `<div class="yk-tour-progress">Шаг ${i + 1} из ${total}</div>` +
+          `<div class="yk-tour-progress">${progress}</div>` +
           `<div class="yk-tour-body">${step.body}</div>`,
         side: step.side ?? 'bottom',
         align: step.align ?? 'start',
@@ -170,8 +185,8 @@ export function OnboardingProvider({
           : ['next', 'previous', 'close']) as Array<
           'next' | 'previous' | 'close'
         >,
-        nextBtnText: isLast ? 'Завершить' : 'Далее →',
-        prevBtnText: '← Назад',
+        nextBtnText: isLast ? tour.finish : tour.next,
+        prevBtnText: tour.prev,
         onNextClick: () => {
           void goTo(i + 1, 1);
         },
@@ -262,7 +277,7 @@ export function OnboardingProvider({
 
     stepsRef.current = Array.isArray(steps)
       ? (steps as TourStep[])
-      : buildTourSteps(ctxRef.current);
+      : buildTourSteps(ctxRef.current, tourRef.current);
     firstCaseHrefRef.current = null;
     firstEmployeeHrefRef.current = null;
 
@@ -277,7 +292,7 @@ export function OnboardingProvider({
       disableActiveInteraction: true,
       allowKeyboardControl: true,
       popoverClass: 'yk-tour',
-      doneBtnText: 'Завершить',
+      doneBtnText: tourRef.current.finish,
     });
 
     // Небольшая задержка — дать модалке закрыться, затем первый шаг.
@@ -290,7 +305,7 @@ export function OnboardingProvider({
   const startReleaseTour = useCallback(() => {
     const steps =
       CURRENT_RELEASE.tourId === 'payroll'
-        ? buildPayrollTourSteps(ctxRef.current)
+        ? buildPayrollTourSteps(ctxRef.current, tourRef.current)
         : undefined;
     startTour(steps);
   }, [startTour]);

@@ -14,10 +14,15 @@ import {
 } from '@/components/ui/table';
 import { ClickableRow } from '@/components/ui/clickable-row';
 import { requireUser } from '@/lib/auth/require-role';
+import { getT } from '@/lib/i18n/server';
 import { getPayrollEmployeeSummary, getPayrollRates } from '@/lib/payroll/queries';
-import { CASE_CATEGORY_LABEL } from '@/lib/types/db';
 import { MonthPicker } from '@/components/payroll/month-picker';
-import { normalizeMonth, monthLabel, monthParam as toMonthParam } from '@/lib/payroll/month';
+import {
+  normalizeMonth,
+  monthLabel,
+  monthNamesFrom,
+  monthParam as toMonthParam,
+} from '@/lib/payroll/month';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
@@ -31,8 +36,11 @@ export default async function PayrollReportPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const user = await requireUser();
+  const { t } = await getT();
+  const monthNames = monthNamesFrom(t.payroll);
   const { month: monthParam } = await searchParams;
   const month = normalizeMonth(monthParam);
+  const [subtitleBefore, subtitleAfter] = t.payroll.report.subtitle.split('{month}');
 
   const canEditRates = user.caps.edit_payroll_rates;
   const seeAll = user.caps.view_all_payroll;
@@ -58,11 +66,11 @@ export default async function PayrollReportPage({
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[20px] font-bold text-text">Финансы и ЗП</h1>
+          <h1 className="text-[20px] font-bold text-text">{t.payroll.report.heading}</h1>
           <p className="mt-0.5 text-[13px] text-text-muted">
-            Начислено, премии и выплаты за{' '}
-            <span className="font-medium text-text">{monthLabel(month)}</span>.
-            «К выплате» — общий накопленный долг за всё время.
+            {subtitleBefore}
+            <span className="font-medium text-text">{monthLabel(month, monthNames)}</span>
+            {subtitleAfter}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -71,7 +79,7 @@ export default async function PayrollReportPage({
             <Button asChild size="sm">
               <Link href={`/reports/summary?month=${toMonthParam(month)}`}>
                 <FileText size={14} strokeWidth={1.75} />
-                Сводный отчёт
+                {t.payroll.report.summaryReport}
               </Link>
             </Button>
           )}
@@ -79,7 +87,7 @@ export default async function PayrollReportPage({
             <Button asChild variant="secondary" size="sm">
               <Link href="/settings/payroll">
                 <Settings size={14} strokeWidth={1.75} />
-                Настроить ставки
+                {t.payroll.report.configureRates}
               </Link>
             </Button>
           )}
@@ -90,7 +98,7 @@ export default async function PayrollReportPage({
       <Card className="p-5">
         <div className="mb-3 flex items-center gap-2">
           <Coins size={16} strokeWidth={1.75} className="text-text-muted" />
-          <h2 className="text-[14px] font-semibold text-text">Ставки</h2>
+          <h2 className="text-[14px] font-semibold text-text">{t.payroll.report.ratesTitle}</h2>
         </div>
         <div className="flex flex-wrap gap-3">
           {rates.map((r) => (
@@ -99,12 +107,12 @@ export default async function PayrollReportPage({
               className="flex flex-col gap-1 rounded-md bg-surface-muted px-3 py-2"
             >
               <span className="text-[13px] font-medium text-text">
-                {CASE_CATEGORY_LABEL[r.category]}
+                {t.enums.caseCategory[r.category]}
               </span>
               <span className="flex items-baseline gap-3 font-mono tabular-nums">
                 {showLawyerRate && (
                   <span className="text-[12px] text-text-muted">
-                    юрист{' '}
+                    {t.payroll.report.rateLawyer}{' '}
                     <span className="text-[14px] font-bold text-text">
                       {MONEY.format(r.lawyer_percent)}%
                     </span>
@@ -112,7 +120,7 @@ export default async function PayrollReportPage({
                 )}
                 {showExpertRate && (
                   <span className="text-[12px] text-text-muted">
-                    эксперт{' '}
+                    {t.payroll.report.rateExpert}{' '}
                     <span className="text-[14px] font-bold text-text">
                       {MONEY.format(r.expert_percent)}%
                     </span>
@@ -128,10 +136,10 @@ export default async function PayrollReportPage({
       {rows.length === 0 ? (
         <Card className="px-6 py-12 text-center">
           <p className="mb-1 text-[14px] font-semibold text-text">
-            Пока нет данных по зарплате
+            {t.payroll.report.emptyTitle}
           </p>
           <p className="text-[13px] text-text-muted">
-            Начисления появятся, когда по делам поступят оплаты.
+            {t.payroll.report.emptyHint}
           </p>
         </Card>
       ) : (
@@ -142,11 +150,11 @@ export default async function PayrollReportPage({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
-                <TableHead>Сотрудник</TableHead>
-                <TableHead className="text-right">Начислено за месяц</TableHead>
-                <TableHead className="text-right">Премии за месяц</TableHead>
-                <TableHead className="text-right">Выплачено за месяц</TableHead>
-                <TableHead className="text-right">К выплате (всего)</TableHead>
+                <TableHead>{t.payroll.report.colEmployee}</TableHead>
+                <TableHead className="text-right">{t.payroll.report.colEarnedMonth}</TableHead>
+                <TableHead className="text-right">{t.payroll.report.colBonusMonth}</TableHead>
+                <TableHead className="text-right">{t.payroll.report.colPaidMonth}</TableHead>
+                <TableHead className="text-right">{t.payroll.report.colBalanceTotal}</TableHead>
                 <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
@@ -189,19 +197,19 @@ export default async function PayrollReportPage({
           </Table>
           <div className="flex items-center justify-end gap-6 border-t border-border bg-surface-muted/50 px-4 py-3 font-mono tabular-nums text-[13px]">
             <span className="text-text-muted">
-              начислено за месяц{' '}
+              {t.payroll.report.totalEarnedMonth}{' '}
               <span className="font-bold text-text">
                 {MONEY.format(totals.earned + totals.bonus)} ₴
               </span>
             </span>
             <span className="text-text-muted">
-              выплачено за месяц{' '}
+              {t.payroll.report.totalPaidMonth}{' '}
               <span className="font-bold text-success">
                 {MONEY.format(totals.payout)} ₴
               </span>
             </span>
             <span className="text-text-muted">
-              к выплате всего{' '}
+              {t.payroll.report.totalBalanceTotal}{' '}
               <span className="font-bold text-warning">
                 {MONEY.format(totals.balance)} ₴
               </span>

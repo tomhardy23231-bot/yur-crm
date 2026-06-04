@@ -22,16 +22,12 @@ import { CaseDocumentsBlock } from '@/components/documents/case-documents-block'
 import { CasePaymentsBlock } from '@/components/payments/case-payments-block';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { requireUser } from '@/lib/auth/require-role';
-import { cn, daysSince, formatMoney, formatPercent, pluralDays } from '@/lib/utils';
+import { cn, daysSince, formatMoney, formatPercent } from '@/lib/utils';
 import { getCase } from '@/lib/cases/queries';
 import { getCasePayroll, getCasePaidByRole } from '@/lib/payroll/queries';
 import { caseHasDocOfType } from '@/lib/documents/queries';
-import {
-  allowedStagesFor,
-  CASE_TYPE_LABEL,
-  CLIENT_KIND_LABEL,
-  STAFF_ROLES,
-} from '@/lib/types/db';
+import { getT } from '@/lib/i18n/server';
+import { allowedStagesFor, STAFF_ROLES } from '@/lib/types/db';
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
@@ -39,16 +35,10 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   year: 'numeric',
 });
 
-const ERROR_MESSAGES: Record<string, string> = {
-  has_links:
-    'Нельзя удалить дело: к нему привязаны документы или платежи. Сначала переместите/удалите связанные записи.',
-  delete_failed: 'Не удалось удалить дело. Попробуйте позже.',
-  missing_id: 'Не передан идентификатор дела.',
-};
-
 type Participant = {
   name: string;
-  roleLabel: 'Юрист-менеджер' | 'Эксперт';
+  roleLabel: string;
+  roleKey: 'lawyer' | 'expert';
   percent: number;
   amount: number;
   paid: number;
@@ -64,11 +54,18 @@ export default async function CaseDetailPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const user = await requireUser();
+  const { t, fmt, plural } = await getT();
   const { id } = await params;
   const { error } = await searchParams;
 
   const c = await getCase(id);
   if (!c) notFound();
+
+  const ERROR_MESSAGES: Record<string, string> = {
+    has_links: t.caseCard.detail.errorHasLinks,
+    delete_failed: t.caseCard.detail.errorDeleteFailed,
+    missing_id: t.caseCard.detail.errorMissingId,
+  };
 
   // Этапы (откат/прыжок) — по роли staff (БД-триггер guard_stage_forward).
   const isStaff = STAFF_ROLES.includes(user.profile.role);
@@ -121,7 +118,8 @@ export default async function CaseDetailPage({
       const paid = Math.min(paidByRole.lawyer, payroll.lawyer_amount);
       participants.push({
         name: c.lawyer.full_name,
-        roleLabel: 'Юрист-менеджер',
+        roleLabel: t.caseCard.detail.roleLawyerManager,
+        roleKey: 'lawyer',
         percent: payroll.lawyer_percent,
         amount: payroll.lawyer_amount,
         paid: paidByRole.lawyer,
@@ -133,7 +131,8 @@ export default async function CaseDetailPage({
       const paid = Math.min(paidByRole.expert, payroll.expert_amount);
       participants.push({
         name: c.responsible.full_name,
-        roleLabel: 'Эксперт',
+        roleLabel: t.enums.roleInCase.expert,
+        roleKey: 'expert',
         percent: payroll.expert_percent,
         amount: payroll.expert_amount,
         paid: paidByRole.expert,
@@ -167,7 +166,7 @@ export default async function CaseDetailPage({
       {missingAct && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/20 bg-warning-bg px-3 py-2 text-[13px] text-warning">
           <TriangleAlert size={15} strokeWidth={1.75} className="shrink-0" />
-          Дело завершено, но акт приёма-передачи выполненных работ не загружен.
+          {t.caseCard.detail.missingActWarning}
         </div>
       )}
 
@@ -184,16 +183,16 @@ export default async function CaseDetailPage({
               }}
             >
               <Briefcase size={12} strokeWidth={2.2} />
-              Дело
+              {t.caseCard.detail.brandBadge}
             </span>
             <CategoryBadge category={c.category} percent={payroll?.lawyer_percent} />
             <PriorityBadge priority={c.priority} />
             {c.closed_without_act && (
               <Badge
                 tone="warning"
-                title="Дело завершено без акта приёма-передачи"
+                title={t.caseCard.detail.withoutActBadgeTitle}
               >
-                без акта
+                {t.caseCard.detail.withoutActBadge}
               </Badge>
             )}
             {c.client && (
@@ -206,7 +205,7 @@ export default async function CaseDetailPage({
                   {c.client.name}
                 </Link>
                 <span className="text-text-subtle">
-                  · {CLIENT_KIND_LABEL[c.client.client_kind]}
+                  · {t.enums.clientKind[c.client.client_kind]}
                 </span>
               </span>
             )}
@@ -216,10 +215,14 @@ export default async function CaseDetailPage({
               экономит отдельную строку по высоте. Текущий этап виден в степпере
               ниже, отдельный бейдж не нужен. Действия — в панели сверху. */}
           <p className="text-[12.5px] text-text-muted">
-            {CASE_TYPE_LABEL[c.case_type]} · открыто{' '}
+            {t.enums.caseType[c.case_type]} · {t.caseCard.detail.openedAt}{' '}
             {DATE_FMT.format(new Date(c.opened_at))}
             {c.closed_at && (
-              <> · завершено {DATE_FMT.format(new Date(c.closed_at))}</>
+              <>
+                {' '}
+                · {t.caseCard.detail.closedAt}{' '}
+                {DATE_FMT.format(new Date(c.closed_at))}
+              </>
             )}
             {c.subject && <> · {c.subject}</>}
           </p>
@@ -249,23 +252,33 @@ export default async function CaseDetailPage({
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-text-muted">
             {c.billing_types.length > 0 && (
               <span className="inline-flex items-center gap-1.5">
-                <span className="text-text-subtle">Оплата:</span>
+                <span className="text-text-subtle">
+                  {t.caseCard.detail.paymentLabel}
+                </span>
                 <BillingTypesBadges types={c.billing_types} />
               </span>
             )}
             {c.opponent && (
               <span>
-                <span className="text-text-subtle">Оппонент:</span> {c.opponent}
+                <span className="text-text-subtle">
+                  {t.caseCard.detail.opponentLabel}
+                </span>{' '}
+                {c.opponent}
               </span>
             )}
             {c.court && (
               <span>
-                <span className="text-text-subtle">Суд:</span> {c.court}
+                <span className="text-text-subtle">
+                  {t.caseCard.detail.courtLabel}
+                </span>{' '}
+                {c.court}
               </span>
             )}
             {c.court_case_number && (
               <span>
-                <span className="text-text-subtle">№ дела:</span>{' '}
+                <span className="text-text-subtle">
+                  {t.caseCard.detail.caseNumberLabel}
+                </span>{' '}
                 <span className="font-mono tabular-nums">
                   {c.court_case_number}
                 </span>
@@ -298,7 +311,7 @@ export default async function CaseDetailPage({
             )}
           >
             <Clock size={13} strokeWidth={1.75} />
-            На текущем этапе {stageDays} {pluralDays(stageDays)}
+            {plural(t.caseCard.detail.stageDays, stageDays)}
           </p>
         )}
       </Card>
@@ -332,26 +345,30 @@ export default async function CaseDetailPage({
         <div className="flex flex-col gap-5">
           {payroll && participants.length > 0 && (
             <Card className="p-4">
-              <CardLabel className="mb-2.5">Вознаграждение команды</CardLabel>
+              <CardLabel className="mb-2.5">
+                {t.caseCard.detail.rewardTitle}
+              </CardLabel>
 
               {/* Деньги одной строкой (компактнее трёх плиток + прогресса). */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] bg-surface-sunken px-3 py-2 font-mono text-[12px] tabular-nums">
                 <span className="text-text-muted">
-                  Сумма{' '}
+                  {t.caseCard.detail.rewardSum}{' '}
                   <span className="font-bold text-text">
                     {formatMoney(c.contract_sum)} ₴
                   </span>
                 </span>
                 <span className="text-text-subtle">·</span>
                 <span className="text-text-muted">
-                  Оплачено{' '}
+                  {t.caseCard.detail.rewardPaid}{' '}
                   <span className="font-bold text-success">
                     {formatMoney(c.paid_total)} ₴
                   </span>
                 </span>
                 <span className="text-text-subtle">·</span>
                 <span className="text-text-muted">
-                  {c.overpaid > 0 ? 'Переплата' : 'Долг'}{' '}
+                  {c.overpaid > 0
+                    ? t.caseCard.detail.rewardOverpaid
+                    : t.caseCard.detail.rewardDebt}{' '}
                   <span
                     className={cn(
                       'font-bold',
@@ -371,7 +388,7 @@ export default async function CaseDetailPage({
 
               {hasOverride && (
                 <p className="mt-2 text-[11px] font-medium text-primary">
-                  Ставка переопределена вручную
+                  {t.caseCard.detail.rateOverridden}
                 </p>
               )}
 
@@ -384,7 +401,7 @@ export default async function CaseDetailPage({
                       : 0;
                   return (
                     <div
-                      key={p.roleLabel}
+                      key={p.roleKey}
                       className="border-b border-border py-2 last:border-0"
                     >
                       <div className="flex items-center gap-2.5">
@@ -405,16 +422,18 @@ export default async function CaseDetailPage({
                             (fullyPaid ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success">
                                 <Check size={11} strokeWidth={2.5} />
-                                выплачено
+                                {t.caseCard.detail.fullyPaid}
                               </span>
                             ) : p.paid > 0 ? (
                               <span className="whitespace-nowrap text-[11px] font-medium text-warning">
-                                выплачено {formatMoney(p.paid)} · осталось{' '}
-                                {formatMoney(p.outstanding)} ₴
+                                {fmt(t.caseCard.detail.partiallyPaid, {
+                                  paid: formatMoney(p.paid),
+                                  outstanding: formatMoney(p.outstanding),
+                                })}
                               </span>
                             ) : (
                               <span className="text-[11px] text-text-subtle">
-                                не выплачено
+                                {t.caseCard.detail.notPaid}
                               </span>
                             ))}
                         </div>
@@ -435,7 +454,9 @@ export default async function CaseDetailPage({
 
               <div className="mt-2.5 flex items-center justify-between border-t-2 border-surface-sunken pt-2.5">
                 <span className="text-[13px] font-extrabold tracking-[0.01em] text-text">
-                  {seeAllPayroll ? 'Фонд по делу' : 'Моё начисление'}
+                  {seeAllPayroll
+                    ? t.caseCard.detail.caseFund
+                    : t.caseCard.detail.myAccrual}
                 </span>
                 <span className="font-mono text-[17px] font-extrabold tabular-nums text-text">
                   {formatMoney(seeAllPayroll && payroll ? payroll.total : shownReward)} ₴
@@ -450,13 +471,13 @@ export default async function CaseDetailPage({
                 return (
                   <div className="mt-2 flex items-center justify-between rounded-[8px] bg-surface-sunken px-3 py-2 font-mono text-[12px] tabular-nums">
                     <span className="text-text-muted">
-                      Выплачено{' '}
+                      {t.caseCard.detail.paidLabel}{' '}
                       <span className="font-bold text-success">
                         {formatMoney(shownPaid)} ₴
                       </span>
                     </span>
                     <span className="text-text-muted">
-                      Осталось{' '}
+                      {t.caseCard.detail.outstandingLabel}{' '}
                       <span className="font-bold text-warning">
                         {formatMoney(shownOutstanding)} ₴
                       </span>
@@ -465,7 +486,7 @@ export default async function CaseDetailPage({
                 );
               })()}
               <p className="mt-2 text-[11px] leading-snug text-text-subtle">
-                Выплаты отмечаются в разделе «Финансы и ЗП» → карточка сотрудника.
+                {t.caseCard.detail.payoutHint}
               </p>
             </Card>
           )}

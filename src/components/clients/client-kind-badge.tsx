@@ -1,5 +1,8 @@
+'use client';
+
 import { Badge } from '@/components/ui/badge';
-import { CLIENT_KIND_LABEL, type ClientKind } from '@/lib/types/db';
+import { useI18n } from '@/lib/i18n/provider';
+import { type ClientKind } from '@/lib/types/db';
 
 const TONE: Record<ClientKind, 'info' | 'neutral'> = {
   individual: 'neutral',
@@ -16,9 +19,10 @@ export function ClientKindBadge({
   kind: ClientKind;
   quiet?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <Badge tone={TONE[kind]} quiet={quiet}>
-      {CLIENT_KIND_LABEL[kind]}
+      {t.enums.clientKind[kind]}
     </Badge>
   );
 }

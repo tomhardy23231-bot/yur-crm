@@ -1,4 +1,7 @@
+"use client";
+
 import { cn, formatMoney } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 
 // Прогресс оплаты по делу: зелёная полоса = деньги (DESIGN.md семантика).
 // paid/total → процент. Используется в списке дел, последних делах и карточке.
@@ -13,6 +16,7 @@ export function PaymentProgress({
   showLabel?: boolean;
   className?: string;
 }) {
+  const { t } = useI18n();
   const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
   const full = pct >= 100;
 
@@ -32,7 +36,7 @@ export function PaymentProgress({
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label="Оплачено по делу"
+        aria-label={t.caseCard.progress.ariaLabel}
       >
         {/* Латунь при частичной оплате, зелёный «деньги» при 100% (эталон). */}
         <div

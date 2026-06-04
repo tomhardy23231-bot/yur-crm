@@ -12,6 +12,7 @@ import {
   listLawyersForAssignment,
 } from '@/lib/cases/queries';
 import { requireUser } from '@/lib/auth/require-role';
+import { getT } from '@/lib/i18n/server';
 import { allowedStagesFor, STAFF_ROLES } from '@/lib/types/db';
 
 export default async function EditCasePage({
@@ -20,6 +21,7 @@ export default async function EditCasePage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireUser();
+  const { t } = await getT();
   const { id } = await params;
 
   const [c, clients, lawyers, experts] = await Promise.all([
@@ -49,7 +51,7 @@ export default async function EditCasePage({
           className="inline-flex items-center gap-1 text-[12.5px] text-text-muted hover:text-text transition-colors w-fit"
         >
           <ChevronLeft size={14} strokeWidth={1.75} />
-          К карточке дела
+          {t.caseCard.edit.backToCase}
         </Link>
         <p className="text-[13px] text-text-muted truncate">{c.number_title}</p>
       </div>
@@ -61,7 +63,7 @@ export default async function EditCasePage({
           clients={clients}
           lawyers={lawyers}
           experts={experts}
-          submitLabel="Сохранить"
+          submitLabel={t.common.save}
           cancelHref={`/cases/${id}`}
           allowedStages={allowedStages}
           canEditRates={user.caps.edit_rate_overrides}

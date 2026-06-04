@@ -1,9 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { PieChart } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
-import { CASE_CATEGORY_LABEL, type CaseCategory } from "@/lib/types/db";
+import { type CaseCategory } from "@/lib/types/db";
+import { useI18n } from "@/lib/i18n/provider";
 import type { CategoryRevenueEntry } from "@/lib/dashboard/queries";
 
 // CSS-переменная цвета категории для заливки полосы (см. globals.css --cat-*).
@@ -20,6 +23,7 @@ export function CategoryRevenue({
 }: {
   data: ReadonlyArray<CategoryRevenueEntry>;
 }) {
+  const { t } = useI18n();
   const max = Math.max(1, ...data.map((d) => d.paid));
   const total = data.reduce((sum, d) => sum + d.paid, 0);
 
@@ -28,7 +32,7 @@ export function CategoryRevenue({
       <div className="mb-3 flex items-center gap-2">
         <PieChart size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[15px] font-semibold text-text">
-          Выручка по категориям
+          {t.dashboard.categoryRevenue.title}
         </h2>
         <span className="ml-auto font-mono text-[12px] tabular-nums text-text-muted">
           {formatMoney(total)} ₴
@@ -37,7 +41,7 @@ export function CategoryRevenue({
 
       {total === 0 ? (
         <p className="py-6 text-center text-[13px] text-text-muted">
-          Пока нет оплат — выручка появится здесь.
+          {t.dashboard.categoryRevenue.empty}
         </p>
       ) : (
         <div className="flex flex-col">
@@ -56,7 +60,7 @@ export function CategoryRevenue({
                       style={{ background: CAT_VAR[d.category] }}
                       aria-hidden="true"
                     />
-                    {CASE_CATEGORY_LABEL[d.category]}
+                    {t.enums.caseCategory[d.category]}
                     <span className="text-[12px] text-text-subtle">· {d.count}</span>
                   </span>
                   <span className="font-mono text-[13px] font-semibold tabular-nums text-text">

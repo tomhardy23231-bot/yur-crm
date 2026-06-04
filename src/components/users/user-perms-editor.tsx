@@ -5,6 +5,7 @@ import { useFormStatus } from 'react-dom';
 import { ShieldCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   CAPABILITIES,
   canGrantCapability,
@@ -35,6 +36,7 @@ export function UserPermsEditor({
   actorRole: Role;
   actorCaps: EffectiveCaps;
 }) {
+  const { t, fmt } = useI18n();
   const [open, setOpen] = useState(false);
 
   // Сколько прав реально настраиваемо актором для этой роли.
@@ -43,7 +45,7 @@ export function UserPermsEditor({
   ).length;
 
   if (editableCount === 0) {
-    return <span className="text-[12px] text-text-subtle">—</span>;
+    return <span className="text-[12px] text-text-subtle">{t.common.dash}</span>;
   }
 
   // Сколько прав сейчас переопределено (отличается от дефолта роли).
@@ -62,7 +64,9 @@ export function UserPermsEditor({
         aria-expanded={open}
       >
         <ShieldCheck size={14} strokeWidth={1.75} />
-        Права{overriddenCount > 0 ? ` (${overriddenCount})` : ''}
+        {overriddenCount > 0
+          ? fmt(t.users.perms.buttonCount, { n: overriddenCount })
+          : t.users.perms.button}
       </Button>
 
       {open && (
@@ -72,8 +76,9 @@ export function UserPermsEditor({
         >
           <input type="hidden" name="user_id" value={userId} />
           <p className="mb-2.5 text-[12px] text-text-muted">
-            Персональные права для <span className="font-medium text-text">{userName}</span>.
-            «Наследует» — как у роли по умолчанию.
+            {t.users.perms.editIntroPrefix}{' '}
+            <span className="font-medium text-text">{userName}</span>
+            {t.users.perms.editIntroSuffix}
           </p>
           <UserPermsFields
             actorRole={actorRole}
@@ -89,7 +94,7 @@ export function UserPermsEditor({
               size="sm"
               onClick={() => setOpen(false)}
             >
-              Отмена
+              {t.common.cancel}
             </Button>
             <SaveButton />
           </div>
@@ -108,10 +113,11 @@ function effectiveCapDefault(
 }
 
 function SaveButton() {
+  const { t } = useI18n();
   const { pending } = useFormStatus();
   return (
     <Button type="submit" size="sm" disabled={pending}>
-      {pending ? 'Сохранение…' : 'Сохранить'}
+      {pending ? t.common.saving : t.common.save}
     </Button>
   );
 }

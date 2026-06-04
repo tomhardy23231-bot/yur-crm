@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { dbErrorMessage } from '@/lib/errors';
+import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export type CreatePaymentFields =
@@ -50,6 +51,7 @@ export async function createPaymentAction(
   formData: FormData,
 ): Promise<CreatePaymentState> {
   const user = await requireUser();
+  const { t } = await getT();
 
   const case_id = String(formData.get('case_id') ?? '').trim();
   const amount_raw = String(formData.get('amount') ?? '').trim();
@@ -64,26 +66,26 @@ export async function createPaymentAction(
 
   const fieldErrors: CreatePaymentState['fieldErrors'] = {};
 
-  if (!case_id) fieldErrors.case_id = 'Не указано дело';
+  if (!case_id) fieldErrors.case_id = t.payments.errors.caseRequired;
   else if (!UUID_RE.test(case_id))
-    fieldErrors.case_id = 'Некорректный идентификатор дела';
+    fieldErrors.case_id = t.payments.errors.caseInvalid;
 
-  if (!amount_raw) fieldErrors.amount = 'Укажите сумму';
+  if (!amount_raw) fieldErrors.amount = t.payments.errors.amountRequired;
   else if (parseAmount(amount_raw) === null)
-    fieldErrors.amount = 'Сумма должна быть больше 0, до 2 знаков после запятой';
+    fieldErrors.amount = t.payments.errors.amountInvalid;
 
-  if (!paid_at) fieldErrors.paid_at = 'Укажите дату';
+  if (!paid_at) fieldErrors.paid_at = t.payments.errors.dateRequired;
   else if (!isValidDate(paid_at))
-    fieldErrors.paid_at = 'Некорректная дата';
+    fieldErrors.paid_at = t.payments.errors.dateInvalid;
 
-  if (method_raw.length > 80) fieldErrors.method = 'Слишком длинно (макс 80)';
-  if (note_raw.length > 500) fieldErrors.note = 'Слишком длинно (макс 500)';
+  if (method_raw.length > 80) fieldErrors.method = t.payments.errors.methodTooLong;
+  if (note_raw.length > 500) fieldErrors.note = t.payments.errors.noteTooLong;
 
   if (Object.keys(fieldErrors).length > 0) {
     return {
       ok: false,
       fieldErrors,
-      message: 'Проверьте поля формы',
+      message: t.errors.checkForm,
     };
   }
 
@@ -142,7 +144,8 @@ export async function createPaymentAction(
       message: dbErrorMessage(
         'createPaymentAction',
         error,
-        'Не удалось сохранить платёж.',
+        t.payments.errors.saveFailed,
+        t.errors.db,
       ),
     };
   }

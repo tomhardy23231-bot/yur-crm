@@ -6,10 +6,8 @@ import { CategoryBadge } from '@/components/ui/category-badge';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { advanceCaseStageAction } from '@/lib/cases/actions';
 import { cn } from '@/lib/utils';
-import {
-  CASE_TYPE_LABEL,
-  type CaseStage,
-} from '@/lib/types/db';
+import { type CaseStage } from '@/lib/types/db';
+import { getT } from '@/lib/i18n/server';
 import type { BoardCaseItem } from '@/lib/cases/queries';
 
 const MONEY_FMT = new Intl.NumberFormat('ru-RU', {
@@ -20,7 +18,7 @@ const MONEY_FMT = new Intl.NumberFormat('ru-RU', {
 
 // Карточка дела на канбан-доске.
 // canAdvance — может ли текущий пользователь двигать дело вперёд (RLS + не closed).
-export function BoardCard({
+export async function BoardCard({
   c,
   canAdvance,
   nextStageLabel,
@@ -29,6 +27,7 @@ export function BoardCard({
   canAdvance: boolean;
   nextStageLabel: string | null;
 }) {
+  const { t, fmt } = await getT();
   const isUrgent = c.priority === 'urgent';
   const isClosed: boolean = (c.stage as CaseStage) === 'closed';
 
@@ -60,7 +59,7 @@ export function BoardCard({
         <div className="flex items-center gap-2">
           <CategoryBadge category={c.category} quiet />
           <span className="text-[11.5px] text-text-subtle">
-            {CASE_TYPE_LABEL[c.case_type]}
+            {t.enums.caseType[c.case_type]}
           </span>
         </div>
       </Link>
@@ -80,7 +79,7 @@ export function BoardCard({
               </span>
             </>
           ) : (
-            <span className="text-[11.5px] text-text-subtle">Без ответственного</span>
+            <span className="text-[11.5px] text-text-subtle">{t.cases.board.noResponsible}</span>
           )}
         </div>
         <span
@@ -88,7 +87,7 @@ export function BoardCard({
             'text-[11.5px] font-mono tabular-nums whitespace-nowrap',
             c.debt > 0 ? 'text-error' : 'text-text-subtle',
           )}
-          title={c.debt > 0 ? 'Долг по делу' : 'Без долга'}
+          title={c.debt > 0 ? t.cases.board.debtTitle : t.cases.board.noDebtTitle}
         >
           {c.debt > 0 ? `−${MONEY_FMT.format(c.debt)} ₴` : `${MONEY_FMT.format(c.contract_sum)} ₴`}
         </span>
@@ -107,7 +106,10 @@ export function BoardCard({
               'transition-opacity duration-[80ms] hover:bg-primary/90',
             )}
             title={`→ ${nextStageLabel}`}
-            aria-label={`Перевести дело ${c.number_title} на этап «${nextStageLabel}»`}
+            aria-label={fmt(t.cases.board.advanceAria, {
+              number: c.number_title,
+              stage: nextStageLabel,
+            })}
           >
             <ChevronRight size={14} strokeWidth={2.5} />
           </button>

@@ -4,6 +4,7 @@ import { Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { deleteCaseAction } from '@/lib/cases/actions';
+import { useI18n } from '@/lib/i18n/provider';
 
 export function DeleteCaseForm({
   caseId,
@@ -12,12 +13,13 @@ export function DeleteCaseForm({
   caseId: string;
   caseTitle: string;
 }) {
+  const { t, fmt } = useI18n();
   return (
     <form
       action={deleteCaseAction}
       onSubmit={(event) => {
         const ok = window.confirm(
-          `Удалить дело «${caseTitle}»? Операция необратима. Если у дела есть документы или платежи — удаление будет заблокировано.`,
+          fmt(t.caseCard.delete.confirm, { title: caseTitle }),
         );
         if (!ok) event.preventDefault();
       }}
@@ -32,7 +34,7 @@ export function DeleteCaseForm({
         className="!border-error/30 !text-error hover:!border-error hover:!bg-error hover:!text-white"
       >
         <Trash2 size={14} strokeWidth={1.75} />
-        Удалить
+        {t.caseCard.delete.button}
       </Button>
     </form>
   );

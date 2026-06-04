@@ -1,6 +1,9 @@
+"use client";
+
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 
 export type Stage =
   | "new_request"
@@ -9,14 +12,7 @@ export type Stage =
   | "awaiting_decision"
   | "closed";
 
-export const STAGE_LABELS: Record<Stage, string> = {
-  new_request: "Новое обращение",
-  consultation: "Консультация",
-  in_progress: "В работе",
-  awaiting_decision: "Ожидание решения",
-  closed: "Завершено",
-};
-
+// Подписи этапов берутся из словаря (t.enums.caseStage).
 const STAGE_CLASS: Record<Stage, string> = {
   new_request:       "text-stage-new bg-stage-new-bg",
   consultation:      "text-stage-consultation bg-stage-consultation-bg",
@@ -42,6 +38,7 @@ interface StageBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 export function StageBadge({ stage, label, quiet = false, className, ...props }: StageBadgeProps) {
+  const { t } = useI18n();
   // «Живой» этап (не завершён) — точка пульсирует. Завершённый — статичная.
   const live = stage !== "closed";
 
@@ -61,7 +58,7 @@ export function StageBadge({ stage, label, quiet = false, className, ...props }:
           aria-hidden="true"
           className={cn("w-[7px] h-[7px] rounded-full shrink-0", STAGE_DOT[stage])}
         />
-        {label ?? STAGE_LABELS[stage]}
+        {label ?? t.enums.caseStage[stage]}
       </span>
     );
   }
@@ -85,7 +82,7 @@ export function StageBadge({ stage, label, quiet = false, className, ...props }:
           live && "stage-dot-live",
         )}
       />
-      {label ?? STAGE_LABELS[stage]}
+      {label ?? t.enums.caseStage[stage]}
     </span>
   );
 }

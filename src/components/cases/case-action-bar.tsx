@@ -6,6 +6,7 @@ import { ChevronLeft, Pencil } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { DeleteCaseForm } from '@/components/cases/delete-case-form';
+import { useI18n } from '@/lib/i18n/provider';
 import { cn } from '@/lib/utils';
 
 // Закреплённая (sticky) панель карточки дела — единственный дом действий дела:
@@ -13,12 +14,12 @@ import { cn } from '@/lib/utils';
 // Остаётся видимой при прокрутке длинной карточки, поэтому действия не нужно
 // дублировать в шапке. Подсветка активной секции — scrollspy.
 
-const SECTIONS = [
-  { id: 'overview', label: 'Обзор' },
-  { id: 'documents', label: 'Документы' },
-  { id: 'tasks', label: 'Задачи' },
-  { id: 'finance', label: 'Финансы' },
-  { id: 'history', label: 'История' },
+const SECTION_IDS = [
+  'overview',
+  'documents',
+  'tasks',
+  'finance',
+  'history',
 ] as const;
 
 export function CaseActionBar({
@@ -32,7 +33,16 @@ export function CaseActionBar({
   canDelete: boolean;
   caseTitle: string;
 }) {
+  const { t } = useI18n();
   const [active, setActive] = useState<string>('overview');
+
+  const sections = [
+    { id: 'overview', label: t.caseCard.actionBar.sectionOverview },
+    { id: 'documents', label: t.caseCard.actionBar.sectionDocuments },
+    { id: 'tasks', label: t.caseCard.actionBar.sectionTasks },
+    { id: 'finance', label: t.caseCard.actionBar.sectionFinance },
+    { id: 'history', label: t.caseCard.actionBar.sectionHistory },
+  ] as const;
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -47,8 +57,8 @@ export function CaseActionBar({
       // Активной считаем секцию в верхней трети вьюпорта.
       { rootMargin: '-15% 0px -75% 0px' },
     );
-    for (const s of SECTIONS) {
-      const el = document.getElementById(s.id);
+    for (const id of SECTION_IDS) {
+      const el = document.getElementById(id);
       if (el) observer.observe(el);
     }
     return () => observer.disconnect();
@@ -65,14 +75,16 @@ export function CaseActionBar({
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-[12.5px] font-medium text-text-muted shadow-sm transition-colors hover:border-border-strong hover:text-text"
           >
             <ChevronLeft size={14} strokeWidth={1.75} />
-            <span className="hidden sm:inline">К списку дел</span>
+            <span className="hidden sm:inline">
+              {t.caseCard.actionBar.backToList}
+            </span>
           </Link>
           <span
             aria-hidden
             className="hidden h-5 w-px shrink-0 bg-border sm:block"
           />
           <nav className="flex min-w-0 items-center gap-1 overflow-x-auto">
-            {SECTIONS.map((s) => (
+            {sections.map((s) => (
             <a
               key={s.id}
               href={`#${s.id}`}
@@ -96,7 +108,7 @@ export function CaseActionBar({
               <Button asChild variant="secondary" size="sm">
                 <Link href={`/cases/${caseId}/edit`}>
                   <Pencil size={14} strokeWidth={1.75} />
-                  Редактировать
+                  {t.caseCard.actionBar.edit}
                 </Link>
               </Button>
             )}

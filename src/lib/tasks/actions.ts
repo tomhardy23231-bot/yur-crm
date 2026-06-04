@@ -7,7 +7,9 @@ import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { dbErrorMessage } from '@/lib/errors';
+import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import type { Messages } from '@/lib/i18n/messages';
 import {
   TASK_KINDS,
   TASK_STATUSES,
@@ -62,7 +64,10 @@ type Validated = {
   due_at: string | null;
 };
 
-function validate(formData: FormData):
+function validate(
+  formData: FormData,
+  t: Messages,
+):
   | { ok: true; data: Validated; values: Record<TaskFormFields, string> }
   | { ok: false; state: TaskActionState } {
   const case_id = getString(formData, 'case_id');
@@ -83,26 +88,26 @@ function validate(formData: FormData):
 
   const fieldErrors: TaskActionState['fieldErrors'] = {};
 
-  if (!case_id) fieldErrors.case_id = 'Выберите дело';
+  if (!case_id) fieldErrors.case_id = t.tasks.errors.selectCase;
   else if (!UUID_RE.test(case_id))
-    fieldErrors.case_id = 'Некорректный идентификатор дела';
+    fieldErrors.case_id = t.tasks.errors.invalidCaseId;
 
-  if (!title) fieldErrors.title = 'Укажите название';
+  if (!title) fieldErrors.title = t.tasks.errors.enterTitle;
   else if (title.length > 200)
-    fieldErrors.title = 'Слишком длинное (макс 200)';
+    fieldErrors.title = t.tasks.errors.titleTooLong;
 
-  if (!kind_raw) fieldErrors.kind = 'Выберите тип';
-  else if (!isTaskKind(kind_raw)) fieldErrors.kind = 'Недопустимый тип';
+  if (!kind_raw) fieldErrors.kind = t.tasks.errors.selectKind;
+  else if (!isTaskKind(kind_raw)) fieldErrors.kind = t.tasks.errors.invalidKind;
 
-  if (!assignee_id) fieldErrors.assignee_id = 'Выберите исполнителя';
+  if (!assignee_id) fieldErrors.assignee_id = t.tasks.errors.selectAssignee;
   else if (!UUID_RE.test(assignee_id))
-    fieldErrors.assignee_id = 'Некорректный идентификатор';
+    fieldErrors.assignee_id = t.tasks.errors.invalidAssignee;
 
   let due_at: string | null = null;
   if (due_at_local) {
     const iso = localToIso(due_at_local);
     if (!iso) {
-      fieldErrors.due_at = 'Некорректная дата';
+      fieldErrors.due_at = t.tasks.errors.invalidDate;
     } else {
       due_at = iso;
     }
@@ -110,7 +115,7 @@ function validate(formData: FormData):
 
   // hearing требует время — это в чек CLAUDE.md (заседание без времени бессмысленно).
   if (kind_raw === 'hearing' && !due_at) {
-    fieldErrors.due_at = 'Для заседания укажите дату и время';
+    fieldErrors.due_at = t.tasks.errors.hearingNeedsDate;
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -120,7 +125,7 @@ function validate(formData: FormData):
         ok: false,
         fieldErrors,
         values,
-        message: 'Проверьте поля формы',
+        message: t.tasks.errors.checkForm,
       },
     };
   }
@@ -144,7 +149,8 @@ export async function createTaskAction(
   formData: FormData,
 ): Promise<TaskActionState> {
   const user = await requireUser();
-  const result = validate(formData);
+  const { t } = await getT();
+  const result = validate(formData, t);
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
@@ -163,7 +169,12 @@ export async function createTaskAction(
     return {
       ok: false,
       values: result.values,
-      message: dbErrorMessage('createTaskAction', error, 'Не удалось создать задачу.'),
+      message: dbErrorMessage(
+        'createTaskAction',
+        error,
+        t.tasks.errors.createFailed,
+        t.errors.db,
+      ),
     };
   }
 
@@ -207,7 +218,8 @@ export async function updateTaskAction(
   formData: FormData,
 ): Promise<TaskActionState> {
   await requireUser();
-  const result = validate(formData);
+  const { t } = await getT();
+  const result = validate(formData, t);
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
@@ -233,7 +245,12 @@ export async function updateTaskAction(
     return {
       ok: false,
       values: result.values,
-      message: dbErrorMessage('updateTaskAction', error, 'Не удалось сохранить задачу.'),
+      message: dbErrorMessage(
+        'updateTaskAction',
+        error,
+        t.tasks.errors.updateFailed,
+        t.errors.db,
+      ),
     };
   }
 

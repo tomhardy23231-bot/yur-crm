@@ -5,8 +5,10 @@ import { useState, useTransition } from 'react';
 import { Search } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
+import { useI18n } from '@/lib/i18n/provider';
 
 export function ClientsSearch({ initial }: { initial: string }) {
+  const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [value, setValue] = useState(initial);
@@ -42,9 +44,9 @@ export function ClientsSearch({ initial }: { initial: string }) {
         name="q"
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        placeholder="Поиск по имени, телефону, e-mail…"
+        placeholder={t.clients.search.placeholder}
         className="pl-9"
-        aria-label="Поиск клиентов"
+        aria-label={t.clients.search.ariaLabel}
       />
     </form>
   );

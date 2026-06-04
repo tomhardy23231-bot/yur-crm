@@ -19,11 +19,13 @@ import {
 import { Card } from '@/components/ui/card';
 import { HelpActions } from '@/components/onboarding/help-actions';
 import { requireUser } from '@/lib/auth/require-role';
-import { STAFF_ROLES } from '@/lib/types/db';
+import { STAFF_ROLES, type CaseStage } from '@/lib/types/db';
+import { getT } from '@/lib/i18n/server';
 
-export const metadata = {
-  title: 'Справка — ЮрКейс',
-};
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: t.help.metaTitle };
+}
 
 // ============================================================================
 // Страница «Справка»: подробное описание системы, правила работы с примерами и
@@ -31,142 +33,119 @@ export const metadata = {
 // обучающего тура. Видна всем сотрудникам.
 // ============================================================================
 
-const STAGES: ReadonlyArray<{ label: string; varName: string; note: string }> = [
-  { label: 'Новое обращение', varName: '--stage-new', note: 'клиент только пришёл' },
-  { label: 'Консультация', varName: '--stage-consultation', note: 'оценка и предложение' },
-  { label: 'В работе', varName: '--stage-in-progress', note: 'договор заключён' },
-  { label: 'Ожидание решения', varName: '--stage-awaiting', note: 'дело у эксперта' },
-  { label: 'Завершено', varName: '--stage-closed', note: 'акт подписан, в архив' },
-];
-
-const ROLES: ReadonlyArray<{ name: string; tone: string; sees: string }> = [
-  { name: 'Владелец', tone: 'var(--info)', sees: 'Всё: все дела, все финансы, пользователи и системные настройки (ставки).' },
-  { name: 'Администратор', tone: 'var(--stage-awaiting)', sees: 'Все дела и все финансы, управление пользователями. Без системных настроек.' },
-  { name: 'Офис-менеджер', tone: 'var(--primary)', sees: 'Все дела и финансы, заводит клиентов и дела. Не удаляет записи и не правит платежи.' },
-  { name: 'Юрист', tone: 'var(--cat-claim)', sees: 'Только свои дела (где он продал договор) и свои личные начисления.' },
-  { name: 'Эксперт', tone: 'var(--success)', sees: 'Только свои дела (где он исполнитель) и свои личные начисления.' },
-];
-
-const RATES: ReadonlyArray<{ cat: string; pct: string; varName: string }> = [
-  { cat: 'Документ', pct: '7%', varName: '--cat-document' },
-  { cat: 'Иск', pct: '10%', varName: '--cat-claim' },
-  { cat: 'Представительство', pct: '25%', varName: '--cat-representation' },
+const STAGES: ReadonlyArray<{ stage: CaseStage; varName: string }> = [
+  { stage: 'new_request', varName: '--stage-new' },
+  { stage: 'consultation', varName: '--stage-consultation' },
+  { stage: 'in_progress', varName: '--stage-in-progress' },
+  { stage: 'awaiting_decision', varName: '--stage-awaiting' },
+  { stage: 'closed', varName: '--stage-closed' },
 ];
 
 type Faq = { q: string; a: React.ReactNode };
 
 export default async function HelpPage() {
   const user = await requireUser();
+  const { t } = await getT();
   const isStaff = STAFF_ROLES.includes(user.profile.role);
+  const h = t.help;
 
   const visibility = isStaff
-    ? 'Вы — сотрудник офиса: видите все дела компании и все финансы.'
+    ? h.page.visibilityStaff
     : user.profile.role === 'lawyer'
-      ? 'Вы — юрист: видите дела, где назначены продавцом договора, и свои начисления.'
-      : 'Вы — эксперт: видите дела, где назначены исполнителем, и свои начисления.';
+      ? h.page.visibilityLawyer
+      : h.page.visibilityExpert;
+
+  const roles: ReadonlyArray<{ name: string; tone: string; sees: string }> = [
+    { name: t.enums.role.owner, tone: 'var(--info)', sees: h.roleSees.owner },
+    { name: t.enums.role.admin, tone: 'var(--stage-awaiting)', sees: h.roleSees.admin },
+    { name: t.enums.role.office_manager, tone: 'var(--primary)', sees: h.roleSees.office_manager },
+    { name: t.enums.role.lawyer, tone: 'var(--cat-claim)', sees: h.roleSees.lawyer },
+    { name: t.enums.role.expert, tone: 'var(--success)', sees: h.roleSees.expert },
+  ];
+
+  const rates: ReadonlyArray<{ cat: string; pct: string; varName: string }> = [
+    { cat: t.enums.caseCategory.document, pct: h.payroll.rateDocument, varName: '--cat-document' },
+    { cat: t.enums.caseCategory.claim, pct: h.payroll.rateClaim, varName: '--cat-claim' },
+    { cat: t.enums.caseCategory.representation, pct: h.payroll.rateRepresentation, varName: '--cat-representation' },
+  ];
 
   const faqs: Faq[] = [
     {
-      q: 'Как создать новое дело?',
+      q: h.faq.createCaseQ,
       a: (
         <>
-          Откройте раздел <b>«Дела»</b> и нажмите <b>«Новое дело»</b>. Укажите
-          номер/название, клиента, юриста и эксперта, категорию (от неё зависит
-          процент зарплаты) и сумму договора. Дело сразу появится в списке и на
-          доске.
+          {h.faq.createCaseA1} <b>{h.faq.createCaseA2}</b> {h.faq.createCaseA3}{' '}
+          <b>{h.faq.createCaseA4}</b>
+          {h.faq.createCaseA5}
         </>
       ),
     },
     {
-      q: 'Кто какие дела видит?',
+      q: h.faq.visibilityQ,
       a: (
         <>
-          {visibility} Юрист и эксперт видят только свои дела и не видят дел друг
-          друга. Эти правила действуют и в интерфейсе, и в самой базе данных.
+          {visibility} {h.faq.visibilityA}
         </>
       ),
     },
     {
-      q: 'Как считается зарплата?',
+      q: h.faq.payrollQ,
       a: (
         <>
-          Зарплата — это <b>процент от оплаченной клиентом суммы</b> по делу.
-          Процент зависит от категории: документ&nbsp;— 7%, иск&nbsp;— 10%,
-          представительство&nbsp;— 25%. Полный процент получает и юрист, и
-          эксперт. Всё считается автоматически; начисления видны в карточке дела
-          и в разделе <b>«Финансы и ЗП»</b>.
+          {h.faq.payrollA1} <b>{h.faq.payrollA2}</b> {h.faq.payrollA3}{' '}
+          <b>{h.faq.payrollA4}</b>.
         </>
       ),
     },
     {
-      q: 'Как двигать дело по этапам?',
+      q: h.faq.stagesQ,
+      a: <>{h.faq.stagesA}</>,
+    },
+    {
+      q: h.faq.documentQ,
       a: (
         <>
-          В карточке дела вверху — воронка из 5 этапов. Кликните по следующему
-          этапу, чтобы перевести дело дальше. Движение возможно только вперёд:
-          это сохраняет порядок и историю. Исправить ошибочный этап может только
-          сотрудник офиса.
+          {h.faq.documentA1} <b>{h.faq.documentA2}</b> {h.faq.documentA3}
         </>
       ),
     },
     {
-      q: 'Как загрузить документ или акт?',
+      q: h.faq.paymentQ,
       a: (
         <>
-          В карточке дела есть блок <b>«Документы»</b> — загрузите файл и укажите
-          его тип (договор, иск, доверенность, переписка, акт). Акт
-          приёма-передачи прикладывают перед закрытием дела.
+          {h.faq.paymentA1} <b>{h.faq.paymentA2}</b>
+          {h.faq.paymentA3}
         </>
       ),
     },
     {
-      q: 'Как внести платёж клиента?',
+      q: h.faq.searchQ,
       a: (
         <>
-          В карточке дела, в блоке <b>«Платежи и финансы»</b>, добавьте платёж
-          (сумма, дата, способ). Система сама пересчитает «оплачено» и «долг» и
-          обновит начисления зарплаты.
+          {h.faq.searchA1} <Kbd>Ctrl</Kbd> + <Kbd>K</Kbd> {h.faq.searchA2}
         </>
       ),
     },
     {
-      q: 'Как быстро что-то найти?',
-      a: (
-        <>
-          Нажмите <Kbd>Ctrl</Kbd> + <Kbd>K</Kbd> в любом месте — откроется поиск
-          по делам, клиентам, задачам и документам. Та же кнопка есть в верхней
-          панели.
-        </>
-      ),
-    },
-    {
-      q: 'Что такое «акт» и зачем он нужен?',
-      a: (
-        <>
-          Акт приёма-передачи выполненных работ — документ, который прикладывают
-          к делу перед его завершением. Если дело закрыто без акта, система
-          покажет мягкое предупреждение (но не заблокирует закрытие).
-        </>
-      ),
+      q: h.faq.actQ,
+      a: <>{h.faq.actA}</>,
     },
     ...(isStaff
       ? [
           {
-            q: 'Как добавить сотрудника или изменить права?',
+            q: h.faq.usersQ,
             a: (
               <>
-                Раздел <b>«Настройки» → «Пользователи и роли»</b> (доступен
-                владельцу и администратору). Там можно завести сотрудника,
-                назначить роль и при необходимости выдать персональные права.
+                {h.faq.usersA1} <b>{h.faq.usersA2}</b> {h.faq.usersA3}
               </>
             ),
           },
           {
-            q: 'Как изменить цветовую тему?',
+            q: h.faq.themeQ,
             a: (
               <>
-                Раздел <b>«Настройки» → «Оформление»</b>. Выбор темы сохраняется
-                в текущем браузере.
+                {h.faq.themeA1} <b>{h.faq.themeA2}</b>
+                {h.faq.themeA3}
               </>
             ),
           },
@@ -175,10 +154,10 @@ export default async function HelpPage() {
   ];
 
   const principles: ReadonlyArray<{ icon: LucideIcon; title: string; text: string }> = [
-    { icon: Briefcase, title: 'Дело — в центре', text: 'Договор и есть дело. Вокруг него — клиент, документы, задачи, команда и деньги.' },
-    { icon: GitBranch, title: 'Воронка из 5 этапов', text: 'От нового обращения до завершения. Движение только вперёд — порядок и история в чистоте.' },
-    { icon: Coins, title: 'Зарплата = % от оплат', text: 'Процент от оплаченного клиентом, по категории дела. Считается автоматически.' },
-    { icon: ShieldCheck, title: 'Доступ по ролям', text: 'Каждый видит ровно своё. Права заложены и в интерфейсе, и в базе данных.' },
+    { icon: Briefcase, title: h.principles.caseCenterTitle, text: h.principles.caseCenterText },
+    { icon: GitBranch, title: h.principles.funnelTitle, text: h.principles.funnelText },
+    { icon: Coins, title: h.principles.payrollTitle, text: h.principles.payrollText },
+    { icon: ShieldCheck, title: h.principles.accessTitle, text: h.principles.accessText },
   ];
 
   return (
@@ -195,11 +174,10 @@ export default async function HelpPage() {
             </span>
             <div>
               <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.01em] text-white">
-                Справка и обучение
+                {h.page.heroTitle}
               </h1>
               <p className="mt-1 max-w-2xl text-[14.5px] leading-relaxed text-white/90">
-                ЮрКейс — CRM для юридической компании. Ниже — как всё работает: правила,
-                примеры, пошаговые инструкции и интерактивный тур по каждому разделу.
+                {h.page.heroLead}
               </p>
             </div>
           </div>
@@ -208,7 +186,7 @@ export default async function HelpPage() {
       </Card>
 
       {/* ── Ключевые принципы ─────────────────────────────────── */}
-      <Section icon={Sparkles} title="Как всё устроено">
+      <Section icon={Sparkles} title={h.sections.howItWorks}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {principles.map((p) => {
             const Icon = p.icon;
@@ -226,12 +204,12 @@ export default async function HelpPage() {
       </Section>
 
       {/* ── Воронка из 5 этапов (визуальный пример) ────────────── */}
-      <Section icon={GitBranch} title="Путь дела: 5 этапов">
+      <Section icon={GitBranch} title={h.sections.casePath}>
         <Card className="flex flex-col gap-5 p-5 sm:p-6">
           {/* Иллюстрация-степпер (как в карточке дела) */}
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-stretch sm:gap-1">
             {STAGES.map((s, i) => (
-              <div key={s.label} className="flex flex-1 items-center gap-1">
+              <div key={s.stage} className="flex flex-1 items-center gap-1">
                 <div
                   className="flex flex-1 flex-col items-center gap-1 rounded-[10px] px-2 py-2.5 text-center"
                   style={{ background: `var(${s.varName}-bg)` }}
@@ -240,9 +218,11 @@ export default async function HelpPage() {
                     className="text-[12.5px] font-bold leading-tight"
                     style={{ color: `var(${s.varName})` }}
                   >
-                    {s.label}
+                    {t.enums.caseStage[s.stage]}
                   </span>
-                  <span className="text-[11px] leading-tight text-text-muted">{s.note}</span>
+                  <span className="text-[11px] leading-tight text-text-muted">
+                    {h.stageNotes[s.stage]}
+                  </span>
                 </div>
                 {i < STAGES.length - 1 && (
                   <ArrowRight
@@ -255,18 +235,15 @@ export default async function HelpPage() {
             ))}
           </div>
           <p className="text-[13.5px] leading-relaxed text-text-muted">
-            Этап двигается <b className="text-text">только вперёд</b> — кликом по следующему
-            шагу в карточке дела. Это сохраняет порядок и честную историю. Ошибочно
-            выставленный этап может поправить только сотрудник офиса — и это запишется в
-            журнал изменений.
+            {h.stageHint}
           </p>
         </Card>
       </Section>
 
       {/* ── Роли и доступ (пример: кто что видит) ──────────────── */}
-      <Section icon={ShieldCheck} title="Кто что видит">
+      <Section icon={ShieldCheck} title={h.sections.whoSeesWhat}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {ROLES.map((r) => (
+          {roles.map((r) => (
             <Card key={r.name} className="flex items-start gap-3.5 p-4">
               <span
                 className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white"
@@ -283,21 +260,20 @@ export default async function HelpPage() {
           ))}
         </div>
         <Callout>
-          {visibility} Это правило работает и в интерфейсе, и в самой базе данных — данные
-          клиентов защищены на самом глубоком уровне.
+          {visibility} {h.rolesCallout}
         </Callout>
       </Section>
 
       {/* ── Зарплата: формула + живой пример ───────────────────── */}
-      <Section icon={Coins} title="Зарплата: процент от оплат">
+      <Section icon={Coins} title={h.sections.payroll}>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.85fr_1.15fr]">
           {/* Ставки по категориям */}
           <Card className="flex flex-col gap-3 p-5">
             <h3 className="text-[13px] font-extrabold uppercase tracking-[0.04em] text-text-muted">
-              Ставки по категориям
+              {h.payroll.ratesTitle}
             </h3>
             <div className="flex flex-col gap-2">
-              {RATES.map((r) => (
+              {rates.map((r) => (
                 <div
                   key={r.cat}
                   className="flex items-center justify-between rounded-[10px] px-3.5 py-2.5"
@@ -320,87 +296,95 @@ export default async function HelpPage() {
           {/* «Скриншото-подобный» пример расчёта */}
           <Card className="flex flex-col gap-3 p-5">
             <h3 className="text-[13px] font-extrabold uppercase tracking-[0.04em] text-text-muted">
-              Пример расчёта
+              {h.payroll.exampleTitle}
             </h3>
             <div className="rounded-[10px] border border-border bg-surface-muted/60 p-4">
               <div className="flex flex-wrap items-center gap-2 text-[13px]">
                 <span className="rounded-md bg-cat-claim-bg px-2 py-0.5 font-semibold text-cat-claim">
-                  Иск · 10%
+                  {h.payroll.exampleBadge}
                 </span>
-                <span className="text-text-muted">Дело CRM-2026-007</span>
+                <span className="text-text-muted">{h.payroll.exampleCaseLabel}</span>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[13px] tabular-nums">
                 <span className="text-text-muted">
-                  Сумма <span className="font-bold text-text">100 000 ₴</span>
+                  {h.payroll.exampleSum}{' '}
+                  <span className="font-bold text-text">{h.payroll.exampleSumValue}</span>
                 </span>
                 <span className="text-text-muted">
-                  Оплачено <span className="font-bold text-success">60 000 ₴</span>
+                  {h.payroll.examplePaid}{' '}
+                  <span className="font-bold text-success">{h.payroll.examplePaidValue}</span>
                 </span>
               </div>
               <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-                <PayRow role="Юрист" base="60 000 ₴ × 10%" amount="6 000 ₴" />
-                <PayRow role="Эксперт" base="60 000 ₴ × 10%" amount="6 000 ₴" />
+                <PayRow
+                  role={h.payroll.exampleRoleLawyer}
+                  base={h.payroll.exampleBase}
+                  amount={h.payroll.exampleAmount}
+                />
+                <PayRow
+                  role={h.payroll.exampleRoleExpert}
+                  base={h.payroll.exampleBase}
+                  amount={h.payroll.exampleAmount}
+                />
               </div>
             </div>
             <p className="text-[13px] leading-relaxed text-text-muted">
-              База — <b className="text-text">оплаченная</b> сумма (не вся сумма договора).
-              Полный процент получает <b className="text-text">каждый</b> — и юрист, и эксперт.
-              Внесёте новый платёж — начисления пересчитаются сами.
+              {h.payroll.note}
             </p>
           </Card>
         </div>
       </Section>
 
       {/* ── Пошагово: завести клиента / создать дело ───────────── */}
-      <Section icon={FilePlus} title="С чего начать">
+      <Section icon={FilePlus} title={h.sections.getStarted}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Steps
             icon={UserPlus}
-            title="Завести клиента"
+            title={h.start.clientTitle}
             steps={[
-              <>Раздел <b>«Клиенты»</b> → кнопка <b>«Добавить клиента»</b>.</>,
-              <>Имя, тип (<b>физлицо</b> или <b>компания</b>), телефон и e-mail.</>,
-              <>Укажите <b>источник</b> — откуда пришёл клиент (сайт, рекомендация…).</>,
-              <>Нажмите <b>«Создать клиента»</b> — он появится в списке.</>,
+              h.start.clientStep1,
+              h.start.clientStep2,
+              h.start.clientStep3,
+              h.start.clientStep4,
             ]}
           />
           <Steps
             icon={Briefcase}
-            title="Создать дело"
+            title={h.start.caseTitle}
             steps={[
-              <>Раздел <b>«Дела»</b> → кнопка <b>«Новое дело»</b>.</>,
-              <>Номер/название и <b>клиент</b> (или заведите нового прямо в форме).</>,
-              <><b>Юрист-продажник</b> и <b>эксперт-исполнитель</b>.</>,
-              <><b>Категория</b> и <b>сумма договора</b> — основа для расчётов.</>,
-              <>Нажмите <b>«Создать дело»</b> — карточка готова к работе.</>,
+              h.start.caseStep1,
+              h.start.caseStep2,
+              h.start.caseStep3,
+              h.start.caseStep4,
+              h.start.caseStep5,
             ]}
           />
         </div>
       </Section>
 
       {/* ── Документы / Платежи / Сроки ────────────────────────── */}
-      <Section icon={FileText} title="Внутри дела">
+      <Section icon={FileText} title={h.sections.insideCase}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <MiniCard
             icon={FileText}
-            title="Документы"
-            text="Договор, иск, доверенность, переписка и акт приёма-передачи. Файл виден всем, кто видит дело."
+            title={h.inside.documentsTitle}
+            text={h.inside.documentsText}
           />
           <MiniCard
             icon={Wallet}
-            title="Платежи и долг"
-            text="Добавляйте поступления — «оплачено» и «долг» по делу пересчитаются автоматически."
+            title={h.inside.paymentsTitle}
+            text={h.inside.paymentsText}
           />
           <MiniCard
             icon={CalendarClock}
-            title="Задачи и сроки"
-            text="Задачи, заседания и дедлайны попадают в общий календарь и в напоминания."
+            title={h.inside.tasksTitle}
+            text={h.inside.tasksText}
           />
         </div>
       </Section>
 
       {/* ── FAQ ───────────────────────────────────────────────── */}
-      <Section icon={Search} title="Частые вопросы">
+      <Section icon={Search} title={h.sections.faq}>
         <Card className="overflow-hidden">
           {faqs.map((f, i) => (
             <details
@@ -422,8 +406,7 @@ export default async function HelpPage() {
           ))}
         </Card>
         <p className="text-[12.5px] text-text-subtle">
-          Не нашли ответ? Запустите интерактивный тур кнопкой вверху — он проведёт по
-          каждому разделу и покажет, что где находится, прямо в живом интерфейсе.
+          {h.faq.footer}
         </p>
       </Section>
     </main>
@@ -481,7 +464,8 @@ function Steps({
 }: {
   icon: LucideIcon;
   title: string;
-  steps: React.ReactNode[];
+  // Строки содержат разметку <b> — рендерятся через dangerouslySetInnerHTML.
+  steps: string[];
 }) {
   return (
     <Card className="flex flex-col gap-3.5 p-5">
@@ -497,9 +481,10 @@ function Steps({
             <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-fg">
               {i + 1}
             </span>
-            <span className="text-[13.5px] leading-relaxed text-text-muted [&_b]:font-semibold [&_b]:text-text">
-              {s}
-            </span>
+            <span
+              className="text-[13.5px] leading-relaxed text-text-muted [&_b]:font-semibold [&_b]:text-text"
+              dangerouslySetInnerHTML={{ __html: s }}
+            />
           </li>
         ))}
       </ol>

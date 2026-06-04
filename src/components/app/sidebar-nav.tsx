@@ -17,18 +17,29 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n/provider';
 import type { Capability, EffectiveCaps } from '@/lib/types/db';
 
 export type SidebarCounts = {
   tasksOpen: number;
 };
 
+// Ключ пункта = база в словаре nav: t.nav[key] (полное) + t.nav[`${key}Short`].
+type NavId =
+  | 'home'
+  | 'clients'
+  | 'cases'
+  | 'tasks'
+  | 'calendar'
+  | 'payroll'
+  | 'documents'
+  | 'finance'
+  | 'settings'
+  | 'help';
+
 type NavItem = {
+  id: NavId;
   href: string;
-  /** Полное название — тултип при наведении. */
-  label: string;
-  /** Микро-подпись под иконкой на рейле. */
-  short: string;
   icon: LucideIcon;
   enabled: boolean;
   /** Ключ счётчика из counts. */
@@ -41,23 +52,22 @@ type NavItem = {
 
 // Рабочая область — основные разделы (видны всем активным сотрудникам).
 const WORK_ITEMS: ReadonlyArray<NavItem> = [
-  { href: '/',          label: 'Главная',       short: 'Главная',   icon: LayoutDashboard, enabled: true, tourId: 'nav-home'     },
-  { href: '/clients',   label: 'Клиенты',       short: 'Клиенты',   icon: Users,           enabled: true, tourId: 'nav-clients'  },
-  { href: '/cases',     label: 'Дела',          short: 'Дела',      icon: Briefcase,       enabled: true, tourId: 'nav-cases'    },
-  { href: '/tasks',     label: 'Задачи',        short: 'Задачи',    icon: CheckSquare,     enabled: true, counterKey: 'tasksOpen', tourId: 'nav-tasks' },
-  { href: '/calendar',  label: 'Календарь',     short: 'Календарь', icon: Calendar,        enabled: true, tourId: 'nav-calendar' },
-  { href: '/reports/payroll', label: 'Финансы и ЗП', short: 'Финансы', icon: Coins,        enabled: true, tourId: 'nav-payroll'  },
-  { href: '/documents', label: 'Документы',     short: 'Документы', icon: FileText,        enabled: false },
-  { href: '/finance',   label: 'Счета',         short: 'Счета',     icon: Wallet,          enabled: false },
+  { id: 'home',      href: '/',          icon: LayoutDashboard, enabled: true, tourId: 'nav-home'     },
+  { id: 'clients',   href: '/clients',   icon: Users,           enabled: true, tourId: 'nav-clients'  },
+  { id: 'cases',     href: '/cases',     icon: Briefcase,       enabled: true, tourId: 'nav-cases'    },
+  { id: 'tasks',     href: '/tasks',     icon: CheckSquare,     enabled: true, counterKey: 'tasksOpen', tourId: 'nav-tasks' },
+  { id: 'calendar',  href: '/calendar',  icon: Calendar,        enabled: true, tourId: 'nav-calendar' },
+  { id: 'payroll',   href: '/reports/payroll', icon: Coins,     enabled: true, tourId: 'nav-payroll'  },
+  { id: 'documents', href: '/documents', icon: FileText,        enabled: false },
+  { id: 'finance',   href: '/finance',   icon: Wallet,          enabled: false },
 ];
 
 // Администрирование. Единый вход — «Настройки». Виден обладателям права
 // управления пользователями ИЛИ системных настроек (ставок). RLS дублирует.
 const ADMIN_ITEMS: ReadonlyArray<NavItem> = [
   {
+    id: 'settings',
     href: '/settings',
-    label: 'Настройки',
-    short: 'Настройки',
     icon: Settings,
     enabled: true,
     requiredCaps: ['manage_users', 'edit_payroll_rates'],
@@ -67,9 +77,8 @@ const ADMIN_ITEMS: ReadonlyArray<NavItem> = [
 
 // «Справка» — служебный пункт, прижат к низу рейла.
 const HELP_ITEM: NavItem = {
+  id: 'help',
   href: '/help',
-  label: 'Справка',
-  short: 'Справка',
   icon: HelpCircle,
   enabled: true,
   tourId: 'nav-help',
@@ -86,15 +95,18 @@ export function SidebarNav({
   caps: EffectiveCaps;
 }) {
   const pathname = usePathname();
+  const { t, fmt } = useI18n();
 
-  const renderItem = ({ href, label, short, icon: Icon, enabled, counterKey, tourId }: NavItem) => {
+  const renderItem = ({ id, href, icon: Icon, enabled, counterKey, tourId }: NavItem) => {
     const counter = counterKey ? counts[counterKey] : 0;
+    const label = t.nav[id];
+    const short = t.nav[`${id}Short`];
 
     if (!enabled) {
       return (
         <span
           key={href}
-          title={`${label} — скоро`}
+          title={fmt(t.nav.comingSoonTooltip, { label })}
           aria-disabled="true"
           className="group relative flex w-[72px] cursor-default select-none flex-col items-center gap-1.5 rounded-[12px] py-2.5 text-sidebar-text-disabled"
         >

@@ -1,5 +1,8 @@
+'use client';
+
 import type { SummaryReport } from '@/lib/payroll/report';
 import { DOC } from '@/components/payroll/report/report-document';
+import { useI18n } from '@/lib/i18n/provider';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
@@ -8,6 +11,7 @@ const MONEY = new Intl.NumberFormat('ru-RU', {
 });
 
 export function SummaryReportBody({ report }: { report: SummaryReport }) {
+  const { t, fmt } = useI18n();
   const { rows, totals } = report;
 
   return (
@@ -18,28 +22,28 @@ export function SummaryReportBody({ report }: { report: SummaryReport }) {
           className="grid grid-cols-2 sm:grid-cols-5"
           style={{ border: `1px solid ${DOC.hair}`, borderTop: `2px solid ${DOC.accent}` }}
         >
-          <Kpi label="Сотрудников" value={String(rows.length)} />
-          <Kpi label="Начислено за месяц" value={`${MONEY.format(totals.earned)} ₴`} />
-          <Kpi label="Премии за месяц" value={`${totals.bonus > 0 ? '+' : ''}${MONEY.format(totals.bonus)} ₴`} />
-          <Kpi label="Выплачено за месяц" value={`${MONEY.format(totals.payout)} ₴`} valueColor={DOC.green} />
-          <Kpi label="К выплате (всего)" value={`${MONEY.format(totals.balance)} ₴`} valueColor={DOC.amber} />
+          <Kpi label={t.payrollPrint.summary.kpiEmployees} value={String(rows.length)} />
+          <Kpi label={t.payrollPrint.summary.kpiEarnedMonth} value={`${MONEY.format(totals.earned)} ₴`} />
+          <Kpi label={t.payrollPrint.summary.kpiBonusMonth} value={`${totals.bonus > 0 ? '+' : ''}${MONEY.format(totals.bonus)} ₴`} />
+          <Kpi label={t.payrollPrint.summary.kpiPayoutMonth} value={`${MONEY.format(totals.payout)} ₴`} valueColor={DOC.green} />
+          <Kpi label={t.payrollPrint.summary.kpiBalance} value={`${MONEY.format(totals.balance)} ₴`} valueColor={DOC.amber} />
         </div>
       </section>
 
-      <Section title="Начисления и выплаты по сотрудникам" count={rows.length}>
+      <Section title={t.payrollPrint.summary.tableTitle} count={rows.length}>
         {rows.length === 0 ? (
           <p className="py-3 text-[12px]" style={{ color: DOC.muted }}>
-            За выбранный период данных по заработной плате нет.
+            {t.payrollPrint.summary.empty}
           </p>
         ) : (
           <table className="w-full border-collapse text-[12.5px]">
             <thead>
               <Tr head>
-                <Th>Сотрудник</Th>
-                <Th align="right">Начислено за месяц</Th>
-                <Th align="right">Премии за месяц</Th>
-                <Th align="right">Выплачено за месяц</Th>
-                <Th align="right">К выплате (всего)</Th>
+                <Th>{t.payrollPrint.summary.colEmployee}</Th>
+                <Th align="right">{t.payrollPrint.summary.colEarned}</Th>
+                <Th align="right">{t.payrollPrint.summary.colBonus}</Th>
+                <Th align="right">{t.payrollPrint.summary.colPayout}</Th>
+                <Th align="right">{t.payrollPrint.summary.colBalance}</Th>
               </Tr>
             </thead>
             <tbody>
@@ -54,7 +58,7 @@ export function SummaryReportBody({ report }: { report: SummaryReport }) {
                     {MONEY.format(r.earned)} ₴
                   </Td>
                   <Td align="right" mono color={r.bonus > 0 ? DOC.body : DOC.subtle}>
-                    {r.bonus > 0 ? `+${MONEY.format(r.bonus)} ₴` : '—'}
+                    {r.bonus > 0 ? `+${MONEY.format(r.bonus)} ₴` : t.common.dash}
                   </Td>
                   <Td align="right" mono color={DOC.green}>
                     {MONEY.format(r.payout)} ₴
@@ -67,7 +71,7 @@ export function SummaryReportBody({ report }: { report: SummaryReport }) {
               <Tr foot>
                 <Td>
                   <span className="font-bold" style={{ color: DOC.ink }}>
-                    Итого · {rows.length} чел.
+                    {fmt(t.payrollPrint.summary.totalRow, { n: rows.length })}
                   </span>
                 </Td>
                 <Td align="right" mono>
@@ -76,7 +80,7 @@ export function SummaryReportBody({ report }: { report: SummaryReport }) {
                   </span>
                 </Td>
                 <Td align="right" mono color={DOC.muted}>
-                  {totals.bonus > 0 ? `+${MONEY.format(totals.bonus)} ₴` : '—'}
+                  {totals.bonus > 0 ? `+${MONEY.format(totals.bonus)} ₴` : t.common.dash}
                 </Td>
                 <Td align="right" mono>
                   <span className="font-bold" style={{ color: DOC.green }}>

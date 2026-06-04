@@ -14,6 +14,9 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n/provider';
+import type { I18n } from '@/lib/i18n/core';
+import type { CaseStage } from '@/lib/types/db';
 import type { TourCtx } from '@/lib/onboarding/tour-steps';
 
 type Slide = {
@@ -24,49 +27,45 @@ type Slide = {
   extra?: React.ReactNode;
 };
 
-const STAGES: ReadonlyArray<{ label: string; varName: string }> = [
-  { label: 'Новое обращение', varName: '--stage-new' },
-  { label: 'Консультация', varName: '--stage-consultation' },
-  { label: 'В работе', varName: '--stage-in-progress' },
-  { label: 'Ожидание решения', varName: '--stage-awaiting' },
-  { label: 'Завершено', varName: '--stage-closed' },
+const STAGES: ReadonlyArray<{ stage: CaseStage; varName: string }> = [
+  { stage: 'new_request', varName: '--stage-new' },
+  { stage: 'consultation', varName: '--stage-consultation' },
+  { stage: 'in_progress', varName: '--stage-in-progress' },
+  { stage: 'awaiting_decision', varName: '--stage-awaiting' },
+  { stage: 'closed', varName: '--stage-closed' },
 ];
 
-function roleVisibility(ctx: TourCtx): string {
+function roleVisibility(ctx: TourCtx, t: I18n['t']): string {
   if (ctx.isStaff) {
-    return 'Вы видите все дела компании и все финансы — полная картина по фирме.';
+    return t.help.welcome.visibilityStaff;
   }
   if (ctx.role === 'lawyer') {
-    return 'Вы видите дела, где вы — юрист-продажник, и свои личные начисления.';
+    return t.help.welcome.visibilityLawyer;
   }
-  return 'Вы видите дела, где вы — эксперт-исполнитель, и свои личные начисления.';
+  return t.help.welcome.visibilityExpert;
 }
 
-function buildSlides(ctx: TourCtx): Slide[] {
+function buildSlides(ctx: TourCtx, t: I18n['t']): Slide[] {
+  const w = t.help.welcome;
   return [
     {
       icon: Sparkles,
-      title: 'Добро пожаловать в ЮрКейс',
-      lead:
-        'Это CRM для юридической компании. За пару минут покажем, как всё устроено, ' +
-        'и проведём по каждому разделу. Можно пропустить и вернуться к туру в любой момент.',
+      title: w.slide1Title,
+      lead: w.slide1Lead,
     },
     {
       icon: Briefcase,
-      title: 'В центре всего — Дело',
-      lead:
-        'Главная сущность системы — «Дело» (оно же договор). Вокруг него собирается ' +
-        'всё: клиент, документы, задачи и сроки, команда и деньги. Создаёте дело — и дальше вся работа идёт внутри него.',
+      title: w.slide2Title,
+      lead: w.slide2Lead,
     },
     {
       icon: GitBranch,
-      title: 'Воронка из 5 этапов',
-      lead:
-        'Каждое дело проходит этапы. Движение — только вперёд: это держит порядок и историю в чистоте.',
+      title: w.slide3Title,
+      lead: w.slide3Lead,
       extra: (
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
           {STAGES.map((s, i) => (
-            <span key={s.label} className="inline-flex items-center gap-1.5">
+            <span key={s.stage} className="inline-flex items-center gap-1.5">
               <span
                 className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
                 style={{
@@ -78,7 +77,7 @@ function buildSlides(ctx: TourCtx): Slide[] {
                   className="h-1.5 w-1.5 rounded-full"
                   style={{ background: `var(${s.varName})` }}
                 />
-                {s.label}
+                {t.enums.caseStage[s.stage]}
               </span>
               {i < STAGES.length - 1 && (
                 <span className="text-text-subtle">→</span>
@@ -90,28 +89,24 @@ function buildSlides(ctx: TourCtx): Slide[] {
     },
     {
       icon: ShieldCheck,
-      title: 'Доступ — по ролям',
-      lead:
-        'Каждый видит ровно то, что нужно. Права заложены и в интерфейсе, и в самой ' +
-        'базе данных — это безопасно для конфиденциальных данных клиентов.',
+      title: w.slide4Title,
+      lead: w.slide4Lead,
       extra: (
         <div className="mt-4 rounded-xl border border-primary-border bg-primary-subtle px-4 py-3 text-[13px] font-medium text-primary-pressed">
-          {roleVisibility(ctx)}
+          {roleVisibility(ctx, t)}
         </div>
       ),
     },
     {
       icon: Coins,
-      title: 'Зарплата считается сама',
-      lead:
-        'Зарплата команды — это процент от оплаченной клиентом суммы по делу. Процент ' +
-        'зависит от категории дела. Ничего считать вручную не нужно.',
+      title: w.slide5Title,
+      lead: w.slide5Lead,
       extra: (
         <div className="mt-4 grid grid-cols-3 gap-2">
           {[
-            { k: 'Документ', v: '7%' },
-            { k: 'Иск', v: '10%' },
-            { k: 'Представительство', v: '25%' },
+            { k: t.enums.caseCategory.document, v: w.rateDocument },
+            { k: t.enums.caseCategory.claim, v: w.rateClaim },
+            { k: t.enums.caseCategory.representation, v: w.rateRepresentation },
           ].map((r) => (
             <div
               key={r.k}
@@ -140,6 +135,7 @@ export function WelcomeModal({
   onStartTour: () => void;
   onSkip: () => void;
 }) {
+  const { t } = useI18n();
   const [index, setIndex] = useState(0);
 
   // Сброс на первый слайд при каждом открытии — паттерн «состояние от пропа»
@@ -150,7 +146,7 @@ export function WelcomeModal({
     if (open) setIndex(0);
   }
 
-  const slides = buildSlides(userCtx);
+  const slides = buildSlides(userCtx, t);
   const total = slides.length;
   const isLast = index === total - 1;
 
@@ -182,12 +178,12 @@ export function WelcomeModal({
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Знакомство с системой"
+      aria-label={t.help.welcome.ariaLabel}
     >
       {/* Подложка */}
       <button
         type="button"
-        aria-label="Закрыть"
+        aria-label={t.help.welcome.closeBackdrop}
         onClick={onSkip}
         className="absolute inset-0 cursor-default bg-[#080A0F]/80 backdrop-blur-[4px] animate-[wm-fade_220ms_ease-out]"
       />
@@ -202,7 +198,7 @@ export function WelcomeModal({
           <button
             type="button"
             onClick={onSkip}
-            aria-label="Пропустить знакомство"
+            aria-label={t.help.welcome.skip}
             className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/15 hover:text-white"
           >
             <X size={17} strokeWidth={2} />
@@ -248,17 +244,17 @@ export function WelcomeModal({
           <div className="flex items-center gap-2">
             {index > 0 && (
               <Button variant="ghost" size="sm" onClick={prev}>
-                Назад
+                {t.help.welcome.back}
               </Button>
             )}
             {isLast ? (
               <Button size="sm" onClick={onStartTour} className="px-4">
                 <Sparkles size={15} strokeWidth={2} />
-                Начать тур
+                {t.help.welcome.startTour}
               </Button>
             ) : (
               <Button size="sm" onClick={next} className="px-4">
-                Далее
+                {t.help.welcome.next}
               </Button>
             )}
           </div>

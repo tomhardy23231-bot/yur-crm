@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   createPaymentAction,
   type CreatePaymentFields,
@@ -39,6 +40,7 @@ function parseAmountClient(raw: string): number | null {
 }
 
 export function PaymentForm({ caseId }: Props) {
+  const { t } = useI18n();
   const [state, formAction, isPending] = useActionState<CreatePaymentState, FormData>(
     createPaymentAction,
     INITIAL,
@@ -69,7 +71,7 @@ export function PaymentForm({ caseId }: Props) {
     // Клиентская валидация суммы: не пускаем «мусор» и неположительные значения.
     const amountRaw = String(formData.get('amount') ?? '');
     if (parseAmountClient(amountRaw) === null) {
-      setAmountError('Введите сумму больше 0 (до 2 знаков после запятой).');
+      setAmountError(t.payments.form.amountInvalid);
       return;
     }
     setAmountError(undefined);
@@ -96,7 +98,7 @@ export function PaymentForm({ caseId }: Props) {
 
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-[1fr_1fr_1fr]">
         <Field
-          label="Сумма, ₴"
+          label={t.payments.form.amountLabel}
           htmlFor="payment-amount"
           error={err('amount')}
           required
@@ -106,7 +108,7 @@ export function PaymentForm({ caseId }: Props) {
             name="amount"
             type="text"
             inputMode="decimal"
-            placeholder="0.00"
+            placeholder={t.payments.form.amountPlaceholder}
             required
             maxLength={16}
             // Задача 9c: пускаем только цифры и разделитель — «мусор» (буквы,
@@ -124,7 +126,7 @@ export function PaymentForm({ caseId }: Props) {
         </Field>
 
         <Field
-          label="Дата оплаты"
+          label={t.payments.form.paidAtLabel}
           htmlFor="payment-paid-at"
           error={err('paid_at')}
           required
@@ -141,7 +143,7 @@ export function PaymentForm({ caseId }: Props) {
         </Field>
 
         <Field
-          label="Метод"
+          label={t.payments.form.methodLabel}
           htmlFor="payment-method"
           error={err('method')}
         >
@@ -150,14 +152,14 @@ export function PaymentForm({ caseId }: Props) {
             name="method"
             type="text"
             maxLength={80}
-            placeholder="Наличные / Безнал / Карта"
+            placeholder={t.payments.form.methodPlaceholder}
             aria-invalid={err('method') ? 'true' : undefined}
           />
         </Field>
       </div>
 
       <Field
-        label="Комментарий"
+        label={t.payments.form.noteLabel}
         htmlFor="payment-note"
         error={err('note')}
       >
@@ -166,7 +168,7 @@ export function PaymentForm({ caseId }: Props) {
           name="note"
           maxLength={500}
           rows={2}
-          placeholder="Опционально"
+          placeholder={t.payments.form.notePlaceholder}
           aria-invalid={err('note') ? 'true' : undefined}
         />
       </Field>
@@ -185,12 +187,16 @@ export function PaymentForm({ caseId }: Props) {
           role="status"
           className="text-sm text-success bg-success-bg border border-success/15 rounded-md px-3 py-2"
         >
-          Платёж сохранён.
+          {t.payments.form.saved}
         </p>
       )}
 
       <div className="flex items-center gap-3">
-        <SubmitButton pending={isPending} />
+        <SubmitButton
+          pending={isPending}
+          submitLabel={t.payments.form.submit}
+          submittingLabel={t.payments.form.submitting}
+        />
       </div>
     </form>
   );
@@ -228,10 +234,18 @@ function Field({
   );
 }
 
-function SubmitButton({ pending }: { pending: boolean }) {
+function SubmitButton({
+  pending,
+  submitLabel,
+  submittingLabel,
+}: {
+  pending: boolean;
+  submitLabel: string;
+  submittingLabel: string;
+}) {
   return (
     <Button type="submit" disabled={pending} size="sm">
-      {pending ? 'Сохранение…' : 'Добавить платёж'}
+      {pending ? submittingLabel : submitLabel}
     </Button>
   );
 }

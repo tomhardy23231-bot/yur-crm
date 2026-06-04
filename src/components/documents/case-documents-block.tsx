@@ -1,6 +1,7 @@
 import { FileText, Plus } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
+import { getT } from '@/lib/i18n/server';
 import { listDocumentsByCase } from '@/lib/documents/queries';
 
 import { DocumentRow } from './document-row';
@@ -19,6 +20,7 @@ export async function CaseDocumentsBlock({
   canWrite,
   canDelete,
 }: CaseDocumentsBlockProps) {
+  const { t, plural } = await getT();
   const docs = await listDocumentsByCase(caseId);
 
   return (
@@ -28,9 +30,11 @@ export async function CaseDocumentsBlock({
     <Card id="documents" className="scroll-mt-20">
       <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
         <FileText size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">Документы</h2>
+        <h2 className="text-[16px] font-semibold text-text">
+          {t.documents.block.heading}
+        </h2>
         <span className="text-[12px] text-text-muted">
-          · {docs.length} {plural(docs.length, ['файл', 'файла', 'файлов'])}
+          · {plural(t.documents.block.fileCount, docs.length)}
         </span>
       </div>
 
@@ -42,7 +46,7 @@ export async function CaseDocumentsBlock({
               strokeWidth={2}
               className="transition-transform group-open:rotate-45"
             />
-            Загрузить документ
+            {t.documents.block.uploadSummary}
           </summary>
           <div className="px-5 pb-5 pt-1">
             <DocumentUploadForm caseId={caseId} />
@@ -51,7 +55,13 @@ export async function CaseDocumentsBlock({
       )}
 
       {docs.length === 0 ? (
-        <EmptyState canWrite={canWrite} />
+        <EmptyState
+          message={
+            canWrite
+              ? t.documents.block.emptyCanWrite
+              : t.documents.block.emptyReadonly
+          }
+        />
       ) : (
         <div>
           {docs.map((d) => (
@@ -63,23 +73,10 @@ export async function CaseDocumentsBlock({
   );
 }
 
-function EmptyState({ canWrite }: { canWrite: boolean }) {
+function EmptyState({ message }: { message: string }) {
   return (
     <div className="py-10 px-6 flex flex-col items-center text-center">
-      <p className="text-[13px] text-text-muted max-w-md">
-        {canWrite
-          ? 'Документов пока нет. Загрузите договор, претензию или доверенность — файл будет доступен всем, кто видит это дело.'
-          : 'Документов по этому делу пока нет.'}
-      </p>
+      <p className="text-[13px] text-text-muted max-w-md">{message}</p>
     </div>
   );
-}
-
-function plural(n: number, forms: [string, string, string]): string {
-  const abs = Math.abs(n) % 100;
-  const n1 = abs % 10;
-  if (abs > 10 && abs < 20) return forms[2];
-  if (n1 > 1 && n1 < 5) return forms[1];
-  if (n1 === 1) return forms[0];
-  return forms[2];
 }

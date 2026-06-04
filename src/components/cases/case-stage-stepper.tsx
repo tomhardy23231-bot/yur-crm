@@ -4,7 +4,8 @@ import { useOptimistic, useTransition } from 'react';
 
 import { cn } from '@/lib/utils';
 import { updateCaseStageAction } from '@/lib/cases/actions';
-import { CASE_STAGES, CASE_STAGE_LABEL, type CaseStage } from '@/lib/types/db';
+import { useI18n } from '@/lib/i18n/provider';
+import { CASE_STAGES, type CaseStage } from '@/lib/types/db';
 
 // Синяя «лента» прогресса (бриф §7): текущий — синий, пройденные — серые,
 // будущие — бледные; превью при наведении на доступный этап — синее.
@@ -48,6 +49,7 @@ export function CaseStageStepper({
   allowedStages,
   hasAct = true,
 }: CaseStageStepperProps) {
+  const { t, fmt } = useI18n();
   const [optimisticStage, setOptimisticStage] = useOptimistic(stage);
   const [pending, startTransition] = useTransition();
 
@@ -60,7 +62,7 @@ export function CaseStageStepper({
     // Мягкий контроль: завершить без акта можно, но с подтверждением.
     if (s === 'closed' && !hasAct) {
       const okToClose = window.confirm(
-        'По делу не загружен акт приёма-передачи выполненных работ. Завершить дело всё равно?',
+        t.caseCard.stepper.confirmCloseWithoutAct,
       );
       if (!okToClose) return;
     }
@@ -94,8 +96,10 @@ export function CaseStageStepper({
             aria-current={isCurrent ? 'step' : undefined}
             title={
               selectable
-                ? `Перевести на этап «${CASE_STAGE_LABEL[s]}»`
-                : CASE_STAGE_LABEL[s]
+                ? fmt(t.caseCard.stepper.moveTo, {
+                    stage: t.enums.caseStage[s],
+                  })
+                : t.enums.caseStage[s]
             }
             className={cn(
               'group flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left',
@@ -129,7 +133,7 @@ export function CaseStageStepper({
                 fontWeight: isCurrent ? 700 : 500,
               }}
             >
-              {CASE_STAGE_LABEL[s]}
+              {t.enums.caseStage[s]}
             </span>
           </button>
         );

@@ -3,6 +3,7 @@ import { Bell } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { TaskRow } from '@/components/tasks/task-row';
+import { getT } from '@/lib/i18n/server';
 import { listUpcomingTasks } from '@/lib/tasks/queries';
 
 interface UpcomingDeadlinesBlockProps {
@@ -18,6 +19,7 @@ export async function UpcomingDeadlinesBlock({
   hoursAhead = 72,
   limit = 10,
 }: UpcomingDeadlinesBlockProps = {}) {
+  const { t } = await getT();
   const upcoming = await listUpcomingTasks({ hoursAhead, limit });
 
   return (
@@ -25,15 +27,17 @@ export async function UpcomingDeadlinesBlock({
       <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
         <Bell size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[16px] font-semibold text-text">
-          Приближающиеся сроки
+          {t.tasks.upcoming.heading}
         </h2>
-        <span className="text-[12px] text-text-muted">· ближайшие 3 дня</span>
+        <span className="text-[12px] text-text-muted">
+          {t.tasks.upcoming.subtitle}
+        </span>
         <span className="ml-auto">
           <Link
             href="/tasks?status=open&mode=all"
             className="text-[12px] text-primary hover:underline"
           >
-            Все задачи →
+            {t.tasks.upcoming.allTasks}
           </Link>
         </span>
       </div>
@@ -41,7 +45,7 @@ export async function UpcomingDeadlinesBlock({
       {upcoming.length === 0 ? (
         <div className="py-10 px-6 flex flex-col items-center text-center">
           <p className="text-[13px] text-text-muted max-w-md">
-            На ближайшие 3 дня ничего не запланировано — день под контролем.
+            {t.tasks.upcoming.empty}
           </p>
         </div>
       ) : (

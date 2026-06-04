@@ -4,9 +4,11 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   currentMonth,
   monthLabel,
+  monthNamesFrom,
   monthParam,
   nextMonth,
   prevMonth,
@@ -15,6 +17,8 @@ import {
 // Переключатель месяца: ‹ Июнь 2026 ›. Меняет ?month=YYYY-MM в URL (server-компонент
 // перечитает данные). Вперёд дальше текущего месяца не пускаем — там нет начислений.
 export function MonthPicker({ month }: { month: string }) {
+  const { t } = useI18n();
+  const monthNames = monthNamesFrom(t.payroll);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -33,20 +37,20 @@ export function MonthPicker({ month }: { month: string }) {
       <button
         type="button"
         onClick={() => go(prevMonth(month))}
-        aria-label="Предыдущий месяц"
+        aria-label={t.payroll.monthPicker.prev}
         className="inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-muted hover:text-text"
       >
         <ChevronLeft size={16} strokeWidth={2} />
       </button>
       <span className="inline-flex items-center gap-1.5 px-2 text-[13px] font-semibold text-text">
         <Calendar size={14} strokeWidth={1.75} className="text-text-muted" />
-        {monthLabel(month)}
+        {monthLabel(month, monthNames)}
       </span>
       <button
         type="button"
         onClick={() => go(nextMonth(month))}
         disabled={isCurrent}
-        aria-label="Следующий месяц"
+        aria-label={t.payroll.monthPicker.next}
         className={cn(
           'inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors',
           isCurrent

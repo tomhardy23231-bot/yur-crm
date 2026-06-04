@@ -1,4 +1,8 @@
+'use client';
+
 import { Scale } from 'lucide-react';
+
+import { useI18n } from '@/lib/i18n/provider';
 
 // Палитра серьёзного документа (без «леденцовых» заливок). Едина для всех блоков.
 export const DOC = {
@@ -37,6 +41,7 @@ export function ReportDocument({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <article
       className="report-sheet mx-auto w-full max-w-[1100px] px-6 py-9 sm:px-12 sm:py-11"
@@ -55,10 +60,10 @@ export function ReportDocument({
             </span>
             <div>
               <p className="text-[15px] font-extrabold leading-tight tracking-tight" style={{ color: DOC.ink }}>
-                ЮрКейс
+                {t.payrollPrint.document.brand}
               </p>
               <p className="text-[11px]" style={{ color: DOC.muted }}>
-                Юридическая компания
+                {t.payrollPrint.document.company}
               </p>
             </div>
           </div>
@@ -115,31 +120,30 @@ export function ReportDocument({
 }
 
 export function ReportSignatures() {
+  const { t } = useI18n();
   return (
     <footer
       className="report-footer break-inside-avoid mt-9 flex flex-col gap-6 pt-6"
       style={{ borderTop: `1px solid ${DOC.hair}` }}
     >
       <p className="text-[10.5px] leading-relaxed" style={{ color: DOC.muted }}>
-        Начисление и выплата заработной платы производятся 15-го числа и в последний
-        день месяца. Все суммы указаны в гривне (₴). Показатель «К выплате» —
-        накопленный остаток задолженности перед сотрудником за всё время на дату
-        формирования отчёта. Документ сформирован автоматически системой ЮрКейс.
+        {t.payrollPrint.document.note}
       </p>
       <div className="flex items-end justify-between gap-10">
-        <SignatureLine label="Сотрудник" />
-        <SignatureLine label="Руководитель" />
+        <SignatureLine label={t.payrollPrint.document.signatureEmployee} />
+        <SignatureLine label={t.payrollPrint.document.signatureManager} />
       </div>
     </footer>
   );
 }
 
 function SignatureLine({ label }: { label: string }) {
+  const { t } = useI18n();
   return (
     <div className="flex-1">
       <div style={{ height: 30, borderBottom: `1px solid ${DOC.hairStrong}` }} />
       <p className="mt-1.5 text-[10.5px]" style={{ color: DOC.muted }}>
-        {label} · подпись / дата
+        {label} · {t.payrollPrint.document.signatureCaption}
       </p>
     </div>
   );

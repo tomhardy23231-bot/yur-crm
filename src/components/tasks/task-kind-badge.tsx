@@ -1,5 +1,8 @@
+'use client';
+
 import { Badge } from '@/components/ui/badge';
-import { TASK_KIND_LABEL, type TaskKind } from '@/lib/types/db';
+import { useI18n } from '@/lib/i18n/provider';
+import { type TaskKind } from '@/lib/types/db';
 
 const TONE: Record<TaskKind, 'neutral' | 'info' | 'warning'> = {
   task: 'neutral',
@@ -8,5 +11,6 @@ const TONE: Record<TaskKind, 'neutral' | 'info' | 'warning'> = {
 };
 
 export function TaskKindBadge({ kind }: { kind: TaskKind }) {
-  return <Badge tone={TONE[kind]}>{TASK_KIND_LABEL[kind]}</Badge>;
+  const { t } = useI18n();
+  return <Badge tone={TONE[kind]}>{t.enums.taskKind[kind]}</Badge>;
 }

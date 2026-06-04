@@ -5,32 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { TaskRow } from '@/components/tasks/task-row';
 import { requireUser } from '@/lib/auth/require-role';
+import { getT } from '@/lib/i18n/server';
+import { LOCALE_BCP47 } from '@/lib/i18n/config';
+import type { CalendarMessages } from '@/lib/i18n/messages/ru/calendar';
 import { listTasksInRange } from '@/lib/tasks/queries';
 import { cn } from '@/lib/utils';
 import type { TaskKind, TaskWithRefs } from '@/lib/types/db';
-
-const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-
-const MONTH_LABELS = [
-  'январь',
-  'февраль',
-  'март',
-  'апрель',
-  'май',
-  'июнь',
-  'июль',
-  'август',
-  'сентябрь',
-  'октябрь',
-  'ноябрь',
-  'декабрь',
-];
-
-const DAY_FMT = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: 'long',
-  year: 'numeric',
-});
 
 const KIND_DOT: Record<TaskKind, string> = {
   task: 'bg-text-muted',
@@ -44,7 +24,18 @@ export default async function CalendarPage({
   searchParams: Promise<{ month?: string; day?: string }>;
 }) {
   await requireUser();
+  const { t, plural, locale } = await getT();
   const sp = await searchParams;
+
+  // Длинная дата ("4 червня 2026") — на активном языке.
+  const dayFmt = new Intl.DateTimeFormat(LOCALE_BCP47[locale], {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const weekdayLabels = weekdaysFrom(t.calendar);
+  const monthLabels = monthsFrom(t.calendar);
 
   const today = new Date();
   const { year, monthIdx } = parseMonth(sp.month, today);
@@ -75,7 +66,7 @@ export default async function CalendarPage({
   const selectedDate = selectedDayKey ? new Date(selectedDayKey + 'T00:00:00') : null;
 
   // Заголовок месяца, ссылки prev/next.
-  const monthLabel = `${MONTH_LABELS[monthIdx]} ${year}`;
+  const monthLabel = `${monthLabels[monthIdx]} ${year}`;
   const prevMonth = toMonthParam(monthIdx === 0 ? year - 1 : year, (monthIdx + 11) % 12);
   const nextMonth = toMonthParam(monthIdx === 11 ? year + 1 : year, (monthIdx + 1) % 12);
   const thisMonthParam = toMonthParam(today.getFullYear(), today.getMonth());
@@ -123,29 +114,29 @@ export default async function CalendarPage({
         <Button asChild variant="secondary" size="sm">
           <Link href="/tasks">
             <List size={14} strokeWidth={1.75} />
-            Список
+            {t.calendar.listButton}
           </Link>
         </Button>
       </header>
 
       {/* Навигация месяцами */}
       <div className="flex flex-wrap items-center gap-2">
-        <NavLink href={buildHref({ month: prevMonth, day: null })} ariaLabel="Предыдущий месяц">
+        <NavLink href={buildHref({ month: prevMonth, day: null })} ariaLabel={t.calendar.prevMonth}>
           <ChevronLeft size={14} strokeWidth={1.75} />
         </NavLink>
         <NavLink href={buildHref({ month: thisMonthParam, day: null })}>
-          Сегодня
+          {t.common.today}
         </NavLink>
-        <NavLink href={buildHref({ month: nextMonth, day: null })} ariaLabel="Следующий месяц">
+        <NavLink href={buildHref({ month: nextMonth, day: null })} ariaLabel={t.calendar.nextMonth}>
           <ChevronRight size={14} strokeWidth={1.75} />
         </NavLink>
-        <Legend />
+        <Legend labels={t.enums.taskKind} />
       </div>
 
       <Card className="overflow-hidden">
         {/* Headers weekdays */}
         <div className="grid grid-cols-7 border-b border-border bg-surface-muted">
-          {WEEKDAY_LABELS.map((wd) => (
+          {weekdayLabels.map((wd) => (
             <div
               key={wd}
               className="px-2 py-2 text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle text-center"
@@ -175,23 +166,22 @@ export default async function CalendarPage({
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-[15px] font-semibold text-text capitalize">
-              {DAY_FMT.format(selectedDate)}
+              {dayFmt.format(selectedDate)}
               <span className="font-mono text-text-muted ml-2">
-                · {selectedDayTasks.length}{' '}
-                {plural(selectedDayTasks.length, ['задача', 'задачи', 'задач'])}
+                · {plural(t.calendar.taskCount, selectedDayTasks.length)}
               </span>
             </h2>
             <Link
               href={buildHref({ day: null })}
               className="text-[12px] text-text-muted hover:text-text underline-offset-2 hover:underline"
             >
-              Скрыть
+              {t.calendar.hide}
             </Link>
           </div>
           {selectedDayTasks.length === 0 ? (
             <Card className="py-10 px-6 text-center">
               <p className="text-[13px] text-text-muted">
-                В этот день нет задач.
+                {t.calendar.noTasksDay}
               </p>
             </Card>
           ) : (
@@ -206,8 +196,8 @@ export default async function CalendarPage({
 
       {tasks.length === 0 && !selectedDate && (
         <div className="flex items-center gap-2 text-[13px] text-text-muted">
-          <CalendarDays size={14} strokeWidth={1.75} />В этом месяце нет задач с
-          назначенным сроком.
+          <CalendarDays size={14} strokeWidth={1.75} />
+          {t.calendar.noTasksMonth}
         </div>
       )}
     </main>
@@ -309,12 +299,12 @@ function NavLink({
   );
 }
 
-function Legend() {
+function Legend({ labels }: { labels: Record<TaskKind, string> }) {
   return (
     <div className="ml-auto flex flex-wrap items-center gap-3 text-[11px] text-text-muted">
-      <LegendItem dotClass={KIND_DOT.task} label="Задача" />
-      <LegendItem dotClass={KIND_DOT.hearing} label="Заседание" />
-      <LegendItem dotClass={KIND_DOT.deadline} label="Дедлайн" />
+      <LegendItem dotClass={KIND_DOT.task} label={labels.task} />
+      <LegendItem dotClass={KIND_DOT.hearing} label={labels.hearing} />
+      <LegendItem dotClass={KIND_DOT.deadline} label={labels.deadline} />
     </div>
   );
 }
@@ -372,11 +362,27 @@ function isoDayKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function plural(n: number, forms: [string, string, string]): string {
-  const abs = Math.abs(n) % 100;
-  const n1 = abs % 10;
-  if (abs > 10 && abs < 20) return forms[2];
-  if (n1 > 1 && n1 < 5) return forms[1];
-  if (n1 === 1) return forms[0];
-  return forms[2];
+// Пн…Вс из словаря в порядке отображения сетки (неделя с понедельника).
+function weekdaysFrom(c: CalendarMessages): string[] {
+  const w = c.weekdays;
+  return [w.mon, w.tue, w.wed, w.thu, w.fri, w.sat, w.sun];
+}
+
+// Месяцы из словаря по индексу (0 = январь … 11 = декабрь).
+function monthsFrom(c: CalendarMessages): string[] {
+  const m = c.months;
+  return [
+    m.january,
+    m.february,
+    m.march,
+    m.april,
+    m.may,
+    m.june,
+    m.july,
+    m.august,
+    m.september,
+    m.october,
+    m.november,
+    m.december,
+  ];
 }

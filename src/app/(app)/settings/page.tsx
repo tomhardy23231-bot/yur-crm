@@ -1,16 +1,19 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Coins, ShieldCheck, Users, ChevronRight } from 'lucide-react';
+import { Coins, Languages, ShieldCheck, Users, ChevronRight } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { requireUser } from '@/lib/auth/require-role';
+import { getT } from '@/lib/i18n/server';
+import type { Messages } from '@/lib/i18n/messages';
 
 // Хаб настроек — единый вход в администрирование. Доступен обладателям права
 // управления пользователями ИЛИ системных настроек (ставок). Каждая карточка
 // дополнительно гейтится своим правом; RLS дублирует защиту на стороне БД.
 export default async function SettingsPage() {
   const actor = await requireUser();
+  const { t } = await getT();
   const canManageUsers = actor.caps.manage_users;
   const canEditRates = actor.caps.edit_payroll_rates;
   if (!canManageUsers && !canEditRates) redirect('/forbidden');
@@ -32,10 +35,10 @@ export default async function SettingsPage() {
             </span>
             <span className="flex-1">
               <span className="block text-[15px] font-semibold text-text">
-                Ставки зарплаты
+                {t.settings.ratesCard.title}
               </span>
               <span className="block text-[13px] text-text-muted">
-                Проценты по категориям, раздельно для юриста и эксперта.
+                {t.settings.ratesCard.desc}
               </span>
             </span>
             <ChevronRight
@@ -56,10 +59,10 @@ export default async function SettingsPage() {
             </span>
             <span className="flex-1">
               <span className="block text-[15px] font-semibold text-text">
-                Пользователи и роли
+                {t.settings.usersCard.title}
               </span>
               <span className="block text-[13px] text-text-muted">
-                Управление сотрудниками и правами доступа.
+                {t.settings.usersCard.desc}
               </span>
             </span>
             <ChevronRight
@@ -69,39 +72,45 @@ export default async function SettingsPage() {
             />
           </Link>
         )}
+
+        {/* Язык интерфейса — персональная настройка (полный экран в профиле). */}
+        <Link
+          href="/profile"
+          className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+        >
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+            <Languages size={20} strokeWidth={1.75} />
+          </span>
+          <span className="flex-1">
+            <span className="block text-[15px] font-semibold text-text">
+              {t.settings.languageCard.title}
+            </span>
+            <span className="block text-[13px] text-text-muted">
+              {t.settings.languageCard.desc}
+            </span>
+          </span>
+          <ChevronRight
+            size={18}
+            strokeWidth={1.75}
+            className="text-text-subtle transition-transform group-hover:translate-x-0.5"
+          />
+        </Link>
       </section>
 
       {/* Сводный список прав (P3.1) */}
       <section className="flex flex-col gap-3">
         <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
           <ShieldCheck size={16} strokeWidth={1.75} className="text-text-muted" />
-          Кто что может
+          {t.settings.capsHeading}
         </h2>
         <Card className="overflow-hidden">
-          <CapRow
-            title="Системные настройки (ставки зарплаты)"
-            owner
-            admin={false}
-          />
-          <CapRow title="Управление пользователями и ролями" owner admin />
-          <CapRow
-            title="Удаление дел / клиентов / документов, правка платежей"
-            owner
-            admin
-          />
-          <CapRow title="Все дела и все финансы (сводки)" owner admin staff />
-          <CapRow
-            title="Индивидуальный % зарплаты на деле"
-            owner
-            admin
-            last
-          />
+          <CapRow title={t.settings.capSystemSettings} owner admin={false} roles={t.enums.roleShort} />
+          <CapRow title={t.settings.capManageUsers} owner admin roles={t.enums.roleShort} />
+          <CapRow title={t.settings.capDestructive} owner admin roles={t.enums.roleShort} />
+          <CapRow title={t.settings.capAllCasesFinance} owner admin staff roles={t.enums.roleShort} />
+          <CapRow title={t.settings.capRateOverride} owner admin last roles={t.enums.roleShort} />
         </Card>
-        <p className="text-[12px] text-text-subtle">
-          «Офис-менеджер» видит все дела и финансы, но не удаляет записи, не
-          правит платежи и не управляет пользователями. «Юрист» и «Эксперт»
-          видят только свои дела и начисления.
-        </p>
+        <p className="text-[12px] text-text-subtle">{t.settings.capsFootnote}</p>
       </section>
     </main>
   );
@@ -113,37 +122,25 @@ function CapRow({
   admin,
   staff,
   last,
+  roles,
 }: {
   title: string;
   owner?: boolean;
   admin?: boolean;
   staff?: boolean;
   last?: boolean;
+  roles: Messages['enums']['roleShort'];
 }) {
   return (
     <div
       className={`flex items-center gap-3 px-5 py-3 ${last ? '' : 'border-b border-border'}`}
     >
       <span className="flex-1 text-[13.5px] text-text">{title}</span>
-      <Roles owner={owner} admin={admin} staff={staff} />
+      <span className="flex items-center gap-2">
+        {owner && <Badge tone="info" quiet>{roles.owner}</Badge>}
+        {admin && <Badge tone="neutral" quiet>{roles.admin}</Badge>}
+        {staff && <Badge tone="neutral" quiet>{roles.office_manager}</Badge>}
+      </span>
     </div>
-  );
-}
-
-function Roles({
-  owner,
-  admin,
-  staff,
-}: {
-  owner?: boolean;
-  admin?: boolean;
-  staff?: boolean;
-}) {
-  return (
-    <span className="flex items-center gap-2">
-      {owner && <Badge tone="info" quiet>Владелец</Badge>}
-      {admin && <Badge tone="neutral" quiet>Админ</Badge>}
-      {staff && <Badge tone="neutral" quiet>Офис-менеджер</Badge>}
-    </span>
   );
 }

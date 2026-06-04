@@ -11,6 +11,7 @@ import {
 } from '@/lib/cases/queries';
 import { getClient } from '@/lib/clients/queries';
 import { requireCap } from '@/lib/auth/require-role';
+import { getT } from '@/lib/i18n/server';
 
 // Дела заводит staff: owner/admin/office_manager (RLS-политика cases_insert_staff).
 // Для юриста/Експерта — /forbidden.
@@ -20,6 +21,7 @@ export default async function NewCasePage({
   searchParams: Promise<{ client?: string }>;
 }) {
   const user = await requireCap('create_cases');
+  const { t, fmt } = await getT();
   const canEditRates = user.caps.edit_rate_overrides;
   const sp = await searchParams;
 
@@ -43,7 +45,9 @@ export default async function NewCasePage({
           className="inline-flex items-center gap-1 text-[12.5px] text-text-muted hover:text-text transition-colors w-fit"
         >
           <ChevronLeft size={14} strokeWidth={1.75} />
-          {lockedClient ? `К клиенту «${lockedClient.name}»` : 'К списку'}
+          {lockedClient
+            ? fmt(t.caseCard.create.backToClient, { name: lockedClient.name })
+            : t.caseCard.create.backToList}
         </Link>
       </div>
 
@@ -54,7 +58,7 @@ export default async function NewCasePage({
           lockedClient={lockedClient}
           lawyers={lawyers}
           experts={experts}
-          submitLabel="Создать дело"
+          submitLabel={t.caseCard.create.submit}
           cancelHref={lockedClient ? `/clients/${lockedClient.id}` : '/cases'}
           canEditRates={canEditRates}
           canCreateClient={user.caps.create_clients}

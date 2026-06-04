@@ -6,14 +6,15 @@ import { Card } from '@/components/ui/card';
 import { TaskRow } from '@/components/tasks/task-row';
 import { TasksFilterSelect } from '@/components/tasks/tasks-filter-select';
 import { requireUser } from '@/lib/auth/require-role';
+import { getT } from '@/lib/i18n/server';
 import { listTasksForUser, TASKS_PAGE_SIZE } from '@/lib/tasks/queries';
 import {
   STAFF_ROLES,
-  TASK_STATUS_LABEL,
   TASK_STATUSES,
   type TaskStatus,
   type TaskWithRefs,
 } from '@/lib/types/db';
+import type { Messages } from '@/lib/i18n/messages';
 
 function isTaskStatus(v: string): v is TaskStatus {
   return (TASK_STATUSES as readonly string[]).includes(v);
@@ -29,6 +30,7 @@ export default async function TasksPage({
   }>;
 }) {
   const user = await requireUser();
+  const { t, fmt } = await getT();
   const sp = await searchParams;
 
   const status = sp.status && isTaskStatus(sp.status) ? sp.status : undefined;
@@ -73,13 +75,13 @@ export default async function TasksPage({
               href={buildHref({ mode: 'mine', page: 1 })}
               active={mode === 'mine'}
             >
-              Мои
+              {t.tasks.page.modeMine}
             </ModeTab>
             <ModeTab
               href={buildHref({ mode: 'all', page: 1 })}
               active={mode === 'all'}
             >
-              Все
+              {t.tasks.page.modeAll}
             </ModeTab>
           </div>
         )}
@@ -87,13 +89,13 @@ export default async function TasksPage({
         <TasksFilterSelect
           name="status"
           value={status ?? ''}
-          ariaLabel="Статус"
+          ariaLabel={t.tasks.page.statusAria}
           basePath="/tasks"
           options={[
-            { value: '', label: 'Все статусы' },
+            { value: '', label: t.tasks.page.allStatuses },
             ...TASK_STATUSES.map((s) => ({
               value: s,
-              label: TASK_STATUS_LABEL[s],
+              label: t.enums.taskStatus[s],
             })),
           ]}
         />
@@ -103,25 +105,29 @@ export default async function TasksPage({
             href={buildHref({ status: '', page: 1 })}
             className="text-[13px] text-text-muted hover:text-text underline-offset-2 hover:underline"
           >
-            Сбросить
+            {t.tasks.page.reset}
           </Link>
         )}
         <Button asChild variant="secondary" size="sm" className="ml-auto">
           <Link href="/calendar">
             <Calendar size={14} strokeWidth={1.75} />
-            Календарь
+            {t.tasks.page.calendar}
           </Link>
         </Button>
       </div>
 
       {items.length === 0 ? (
-        <EmptyState hasFilters={Boolean(status)} mode={mode} />
+        <EmptyState hasFilters={Boolean(status)} mode={mode} t={t} />
       ) : (
         <div className="flex flex-col gap-6">
           {groups.map((g) => (
-            <DayGroup key={g.key} title={g.label} count={g.tasks.length}>
-              {g.tasks.map((t) => (
-                <TaskRow key={t.id} task={t} canManage={true} showCase />
+            <DayGroup
+              key={g.key}
+              title={t.tasks.page[g.labelKey]}
+              count={g.tasks.length}
+            >
+              {g.tasks.map((task) => (
+                <TaskRow key={task.id} task={task} canManage={true} showCase />
               ))}
             </DayGroup>
           ))}
@@ -131,20 +137,24 @@ export default async function TasksPage({
       {pageCount > 1 && (
         <nav
           className="flex items-center justify-between"
-          aria-label="Пагинация"
+          aria-label={t.tasks.page.paginationAria}
         >
           <p className="text-[12px] text-text-muted">
-            Страница {page} из {pageCount} · по {TASKS_PAGE_SIZE} на странице
+            {fmt(t.tasks.page.pageInfo, {
+              page,
+              pageCount,
+              pageSize: TASKS_PAGE_SIZE,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <PageLink href={buildHref({ page: page - 1 })} disabled={page <= 1}>
-              ← Назад
+              {t.tasks.page.prev}
             </PageLink>
             <PageLink
               href={buildHref({ page: page + 1 })}
               disabled={page >= pageCount}
             >
-              Вперёд →
+              {t.tasks.page.next}
             </PageLink>
           </div>
         </nav>
@@ -229,9 +239,11 @@ function PageLink({
 function EmptyState({
   hasFilters,
   mode,
+  t,
 }: {
   hasFilters: boolean;
   mode: 'mine' | 'all';
+  t: Messages;
 }) {
   return (
     <div className="bg-surface rounded-lg border border-border shadow-sm py-16 px-6 flex flex-col items-center text-center">
@@ -242,14 +254,14 @@ function EmptyState({
         <CheckSquare size={20} strokeWidth={1.75} />
       </span>
       <h2 className="text-[18px] font-semibold text-text mb-1">
-        {hasFilters ? 'Ничего не нашли' : 'Здесь будут задачи'}
+        {hasFilters ? t.tasks.page.emptyFilteredTitle : t.tasks.page.emptyTitle}
       </h2>
       <p className="text-[13px] text-text-muted max-w-md">
         {hasFilters
-          ? 'Попробуйте сбросить фильтры.'
+          ? t.tasks.page.emptyFilteredText
           : mode === 'mine'
-            ? 'Задачи, назначенные вам, появятся здесь. Создавайте задачи прямо из карточки дела.'
-            : 'По вашим делам пока нет задач.'}
+            ? t.tasks.page.emptyMineText
+            : t.tasks.page.emptyAllText}
       </p>
     </div>
   );
@@ -259,7 +271,15 @@ function EmptyState({
 // Группировка задач по дням.
 //   Просрочено · Без срока · Сегодня · Завтра · На этой неделе · Позже
 // =====================================================================
-type Group = { key: string; label: string; tasks: TaskWithRefs[] };
+type GroupLabelKey =
+  | 'groupOverdue'
+  | 'groupToday'
+  | 'groupTomorrow'
+  | 'groupWeek'
+  | 'groupLater'
+  | 'groupNoDate';
+
+type Group = { key: string; labelKey: GroupLabelKey; tasks: TaskWithRefs[] };
 
 function groupByDay(tasks: TaskWithRefs[]): Group[] {
   const now = new Date();
@@ -296,17 +316,17 @@ function groupByDay(tasks: TaskWithRefs[]): Group[] {
 
   const groups: Group[] = [];
   if (overdue.length)
-    groups.push({ key: 'overdue', label: 'Просрочено', tasks: overdue });
+    groups.push({ key: 'overdue', labelKey: 'groupOverdue', tasks: overdue });
   if (today.length)
-    groups.push({ key: 'today', label: 'Сегодня', tasks: today });
+    groups.push({ key: 'today', labelKey: 'groupToday', tasks: today });
   if (tomorrow.length)
-    groups.push({ key: 'tomorrow', label: 'Завтра', tasks: tomorrow });
+    groups.push({ key: 'tomorrow', labelKey: 'groupTomorrow', tasks: tomorrow });
   if (thisWeek.length)
-    groups.push({ key: 'week', label: 'На этой неделе', tasks: thisWeek });
+    groups.push({ key: 'week', labelKey: 'groupWeek', tasks: thisWeek });
   if (later.length)
-    groups.push({ key: 'later', label: 'Позже', tasks: later });
+    groups.push({ key: 'later', labelKey: 'groupLater', tasks: later });
   if (noDate.length)
-    groups.push({ key: 'nodate', label: 'Без срока', tasks: noDate });
+    groups.push({ key: 'nodate', labelKey: 'groupNoDate', tasks: noDate });
 
   return groups;
 }

@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getT } from '@/lib/i18n/server';
 
 // Задача 6: смена собственного пароля любым авторизованным пользователем.
 // Поток (безопасно, через стандартный Supabase auth):
@@ -29,30 +30,33 @@ export async function changePasswordAction(
   formData: FormData,
 ): Promise<ChangePasswordState> {
   const user = await requireUser();
+  const { t, fmt } = await getT();
 
   const current = String(formData.get('current') ?? '');
   const next = String(formData.get('next') ?? '');
   const confirm = String(formData.get('confirm') ?? '');
 
   const fieldErrors: ChangePasswordState['fieldErrors'] = {};
-  if (!current) fieldErrors.current = 'Введите текущий пароль';
-  if (!next) fieldErrors.next = 'Введите новый пароль';
-  else if (next.length < MIN_LEN) fieldErrors.next = `Минимум ${MIN_LEN} символов`;
-  else if (next.length > MAX_LEN) fieldErrors.next = `Слишком длинный (макс ${MAX_LEN})`;
-  if (next && confirm !== next) fieldErrors.confirm = 'Пароли не совпадают';
+  if (!current) fieldErrors.current = t.account.password.enterCurrent;
+  if (!next) fieldErrors.next = t.account.password.enterNext;
+  else if (next.length < MIN_LEN)
+    fieldErrors.next = fmt(t.account.password.minLen, { n: MIN_LEN });
+  else if (next.length > MAX_LEN)
+    fieldErrors.next = fmt(t.account.password.tooLong, { n: MAX_LEN });
+  if (next && confirm !== next) fieldErrors.confirm = t.account.password.mismatch;
   if (current && next && current === next) {
-    fieldErrors.next = 'Новый пароль совпадает с текущим';
+    fieldErrors.next = t.account.password.sameAsCurrent;
   }
 
   if (Object.keys(fieldErrors).length > 0) {
-    return { ok: false, fieldErrors, message: 'Проверьте поля формы' };
+    return { ok: false, fieldErrors, message: t.errors.checkForm };
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {
     console.error('changePasswordAction: missing Supabase env');
-    return { ok: false, message: 'Сервис временно недоступен. Попробуйте позже.' };
+    return { ok: false, message: t.errors.serviceUnavailable };
   }
 
   // 1) Проверяем текущий пароль на изолированном клиенте (не трогаем сессию).
@@ -64,7 +68,7 @@ export async function changePasswordAction(
     password: current,
   });
   if (signInErr) {
-    return { ok: false, fieldErrors: { current: 'Неверный текущий пароль' } };
+    return { ok: false, fieldErrors: { current: t.account.password.wrongCurrent } };
   }
 
   // 2) Меняем пароль для текущей сессии пользователя.
@@ -72,8 +76,8 @@ export async function changePasswordAction(
   const { error } = await supabase.auth.updateUser({ password: next });
   if (error) {
     console.error('changePasswordAction.updateUser:', error.message);
-    return { ok: false, message: 'Не удалось сменить пароль. Попробуйте ещё раз.' };
+    return { ok: false, message: t.account.password.updateFailed };
   }
 
-  return { ok: true, message: 'Пароль изменён.' };
+  return { ok: true, message: t.account.password.successDefault };
 }

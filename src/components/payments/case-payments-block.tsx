@@ -1,6 +1,7 @@
 import { Plus, Wallet } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
+import { getT } from '@/lib/i18n/server';
 import { listPaymentsByCase } from '@/lib/payments/queries';
 
 import { PaymentForm } from './payment-form';
@@ -28,6 +29,7 @@ export async function CasePaymentsBlock({
   canManage,
   overpaid = 0,
 }: CasePaymentsBlockProps) {
+  const { t, fmt, plural } = await getT();
   const payments = await listPaymentsByCase(caseId);
   const total = payments.reduce((s, p) => s + p.amount, 0);
 
@@ -35,23 +37,24 @@ export async function CasePaymentsBlock({
     <Card>
       <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
         <Wallet size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">Платежи</h2>
+        <h2 className="text-[16px] font-semibold text-text">
+          {t.payments.block.heading}
+        </h2>
         <span className="text-[12px] text-text-muted">
-          · {payments.length}{' '}
-          {plural(payments.length, ['платёж', 'платежа', 'платежей'])}
+          · {plural(t.payments.block.count, payments.length)}
         </span>
         <span className="ml-auto inline-flex items-center gap-3">
           {overpaid > 0 && (
             <span
               className="rounded-full bg-info-bg px-2.5 py-0.5 text-[12px] font-semibold text-info"
-              title="Оплачено больше суммы договора"
+              title={t.payments.block.overpaidTitle}
             >
-              переплата +{MONEY_FMT.format(overpaid)} ₴
+              {fmt(t.payments.block.overpaid, { amount: MONEY_FMT.format(overpaid) })}
             </span>
           )}
           {payments.length > 0 && (
             <span className="text-[13px] font-mono tabular-nums text-text">
-              итого{' '}
+              {t.payments.block.total}{' '}
               <span className="font-bold text-success">
                 {MONEY_FMT.format(total)} ₴
               </span>
@@ -68,7 +71,7 @@ export async function CasePaymentsBlock({
               strokeWidth={2}
               className="transition-transform group-open:rotate-45"
             />
-            Добавить платёж
+            {t.payments.block.addPayment}
           </summary>
           <div className="px-5 pb-5 pt-1">
             <PaymentForm caseId={caseId} />
@@ -77,7 +80,11 @@ export async function CasePaymentsBlock({
       )}
 
       {payments.length === 0 ? (
-        <EmptyState canWrite={canWrite} />
+        <EmptyState
+          canWrite={canWrite}
+          emptyCanWrite={t.payments.block.emptyCanWrite}
+          empty={t.payments.block.empty}
+        />
       ) : (
         <div>
           {payments.map((p) => (
@@ -89,23 +96,20 @@ export async function CasePaymentsBlock({
   );
 }
 
-function EmptyState({ canWrite }: { canWrite: boolean }) {
+function EmptyState({
+  canWrite,
+  emptyCanWrite,
+  empty,
+}: {
+  canWrite: boolean;
+  emptyCanWrite: string;
+  empty: string;
+}) {
   return (
     <div className="py-10 px-6 flex flex-col items-center text-center">
       <p className="text-[13px] text-text-muted max-w-md">
-        {canWrite
-          ? 'Платежей пока нет. Добавьте первое поступление — сумма автоматически обновит «Оплачено» и «Долг» по делу.'
-          : 'Платежей по этому делу пока нет.'}
+        {canWrite ? emptyCanWrite : empty}
       </p>
     </div>
   );
-}
-
-function plural(n: number, forms: [string, string, string]): string {
-  const abs = Math.abs(n) % 100;
-  const n1 = abs % 10;
-  if (abs > 10 && abs < 20) return forms[2];
-  if (n1 > 1 && n1 < 5) return forms[1];
-  if (n1 === 1) return forms[0];
-  return forms[2];
 }

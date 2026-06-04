@@ -22,12 +22,9 @@ import { getPayrollRates } from '@/lib/payroll/queries';
 import { listCases } from '@/lib/cases/queries';
 import { STAFF_ROLES, type Role } from '@/lib/types/db';
 import { formatMoney } from '@/lib/utils';
-
-// Подпись месяца — в часовом поясе фирмы (как и границы окна выручки).
-const MONTH_FMT = new Intl.DateTimeFormat('ru-RU', {
-  month: 'long',
-  timeZone: 'Europe/Kyiv',
-});
+import { getT } from '@/lib/i18n/server';
+import { LOCALE_BCP47, type Locale } from '@/lib/i18n/config';
+import type { I18n } from '@/lib/i18n/core';
 
 // ── Хелперы дельт (бриф §3.1): фронт превращает current/prev в чип «▲/▼ + %». ──
 // Цвет дельты по смыслу: для выручки рост — зелёный (хорошо), для долга рост —
@@ -40,11 +37,16 @@ function toneFor(polarity: Polarity, direction: 'up' | 'down' | 'flat'): KpiDelt
   return good ? 'money' : 'debt';
 }
 
-function pctDelta(s: MetricSeries, polarity: Polarity): KpiDelta {
+function pctDelta(s: MetricSeries, polarity: Polarity, t: I18n['t']): KpiDelta {
   const d = computeDelta(s.current, s.prev);
   let text: string;
   if (d.percent == null) {
-    text = d.direction === 'flat' ? '0%' : d.direction === 'up' ? 'рост' : 'спад';
+    text =
+      d.direction === 'flat'
+        ? '0%'
+        : d.direction === 'up'
+          ? t.dashboard.delta.growth
+          : t.dashboard.delta.decline;
   } else {
     const r = Math.round(d.percent);
     text = `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r)}%`;
@@ -61,6 +63,7 @@ function countDelta(current: number, prev: number): KpiDelta {
 
 export default async function HomePage() {
   const user = await requireUser();
+  const { t, fmt, locale } = await getT();
   const { profile } = user;
   const staff = STAFF_ROLES.includes(profile.role);
 
@@ -82,15 +85,19 @@ export default async function HomePage() {
           role={profile.role}
           name={profile.full_name}
           canCreateClient={user.caps.create_clients}
+          t={t}
+          fmt={fmt}
         />
       ) : staff ? (
-        <StaffDashboard stats={stats} recent={recent} />
+        <StaffDashboard stats={stats} recent={recent} t={t} fmt={fmt} locale={locale} />
       ) : (
         <PersonalDashboard
           cases={cases}
           stats={stats}
           recent={recent}
           userId={profile.id}
+          t={t}
+          fmt={fmt}
         />
       )}
 
@@ -107,19 +114,23 @@ function EmptyDashboard({
   role,
   name,
   canCreateClient,
+  t,
+  fmt,
 }: {
   role: Role;
   name: string;
   canCreateClient: boolean;
+  t: I18n['t'];
+  fmt: I18n['fmt'];
 }) {
   const staff = STAFF_ROLES.includes(role);
   const firstName = name.trim().split(/\s+/)[0] ?? name;
 
   const message = staff
-    ? 'Здесь появится сводка по делам, финансам и срокам. Заведите клиента и создайте первое дело — дашборд оживёт.'
+    ? t.dashboard.empty.staffMessage
     : role === 'lawyer'
-      ? 'За вами пока нет дел. Заведите клиента или дождитесь, пока вас назначат на дело.'
-      : 'За вами пока нет дел. Они появятся здесь, как только вас назначат экспертом по делу.';
+      ? t.dashboard.empty.lawyerMessage
+      : t.dashboard.empty.expertMessage;
 
   return (
     <Card className="flex flex-col items-center gap-3 px-6 py-14 text-center animate-fade-in-up">
@@ -130,7 +141,7 @@ function EmptyDashboard({
         <Sparkles size={26} strokeWidth={1.75} />
       </span>
       <h1 className="text-[20px] font-bold tracking-[-0.01em] text-text">
-        Добро пожаловать, {firstName}!
+        {fmt(t.dashboard.empty.greeting, { name: firstName })}
       </h1>
       <p className="max-w-md text-[13.5px] leading-relaxed text-text-muted">
         {message}
@@ -140,7 +151,7 @@ function EmptyDashboard({
           <Button asChild>
             <Link href="/cases/new">
               <Plus size={16} strokeWidth={2} />
-              Новое дело
+              {t.dashboard.empty.newCase}
             </Link>
           </Button>
         )}
@@ -148,7 +159,7 @@ function EmptyDashboard({
           <Button asChild variant={staff ? 'secondary' : 'primary'}>
             <Link href="/clients/new">
               <Plus size={16} strokeWidth={2} />
-              Новый клиент
+              {t.dashboard.empty.newClient}
             </Link>
           </Button>
         )}
@@ -164,49 +175,59 @@ function EmptyDashboard({
 async function StaffDashboard({
   stats,
   recent,
+  t,
+  fmt,
+  locale,
 }: {
   stats: ReturnType<typeof computeDashboardStats>;
   recent: Awaited<ReturnType<typeof listCases>>['items'];
+  t: I18n['t'];
+  fmt: I18n['fmt'];
+  locale: Locale;
 }) {
   const rates = await getPayrollRates();
   const a = await getDashboardAnalytics(rates);
-  const monthName = MONTH_FMT.format(new Date());
+  // Подпись месяца — в часовом поясе фирмы (как и границы окна выручки).
+  const monthName = new Intl.DateTimeFormat(LOCALE_BCP47[locale], {
+    month: 'long',
+    timeZone: 'Europe/Kyiv',
+  }).format(new Date());
 
   return (
     <>
       <section className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Активные дела"
+          label={t.dashboard.kpi.activeCases}
           value={String(stats.activeCases)}
-          context={`из ${stats.totalCases} всего`}
+          context={fmt(t.dashboard.kpi.ofTotal, { total: stats.totalCases })}
           delta={countDelta(stats.activeCases, a.activeCases.prev)}
           href="/cases"
         />
         <KpiCard
-          label="Выручка за месяц"
+          label={t.dashboard.kpi.revenue}
           value={formatMoney(a.revenue.current)}
           unit="₴"
           context={monthName}
-          delta={pctDelta(a.revenue, 'higher-good')}
+          delta={pctDelta(a.revenue, 'higher-good', t)}
           spark={{ points: a.revenue.series, tone: 'money' }}
           href="/reports/payroll"
         />
         <KpiCard
-          label="Фонд зарплат"
+          label={t.dashboard.kpi.salaryFund}
           value={formatMoney(a.salary.current)}
           unit="₴"
-          context="начислено по оплатам"
-          delta={pctDelta(a.salary, 'neutral')}
+          context={t.dashboard.kpi.salaryFundContext}
+          delta={pctDelta(a.salary, 'neutral', t)}
           spark={{ points: a.salary.series, tone: 'money' }}
           href="/reports/payroll"
         />
         <KpiCard
-          label="Задолженность клиентов"
+          label={t.dashboard.kpi.clientsDebt}
           value={formatMoney(stats.totalDebt)}
           unit="₴"
           valueTone="debt"
-          context={`оплачено ${formatMoney(stats.totalPaid)} ₴`}
-          delta={pctDelta(a.debt, 'higher-bad')}
+          context={fmt(t.dashboard.kpi.debtPaidContext, { paid: formatMoney(stats.totalPaid) })}
+          delta={pctDelta(a.debt, 'higher-bad', t)}
           spark={{ points: a.debt.series, tone: 'debt' }}
           href="/cases?debt=true"
         />
@@ -233,11 +254,15 @@ async function PersonalDashboard({
   stats,
   recent,
   userId,
+  t,
+  fmt,
 }: {
   cases: Awaited<ReturnType<typeof getDashboardCases>>;
   stats: ReturnType<typeof computeDashboardStats>;
   recent: Awaited<ReturnType<typeof listCases>>['items'];
   userId: string;
+  t: I18n['t'];
+  fmt: I18n['fmt'];
 }) {
   const rates = await getPayrollRates();
   const [a, earnings] = await Promise.all([
@@ -249,28 +274,28 @@ async function PersonalDashboard({
     <>
       <section className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-3">
         <KpiCard
-          label="Мои активные дела"
+          label={t.dashboard.kpi.myActiveCases}
           value={String(stats.activeCases)}
-          context={`из ${stats.totalCases} всего`}
+          context={fmt(t.dashboard.kpi.ofTotal, { total: stats.totalCases })}
           delta={countDelta(stats.activeCases, a.activeCases.prev)}
           href="/cases"
         />
         <KpiCard
-          label="Начислено мне"
+          label={t.dashboard.kpi.accruedToMe}
           value={formatMoney(a.salary.current)}
           unit="₴"
-          context="% от оплаченного по делам"
-          delta={pctDelta(a.salary, 'higher-good')}
+          context={t.dashboard.kpi.accruedToMeContext}
+          delta={pctDelta(a.salary, 'higher-good', t)}
           spark={{ points: a.salary.series, tone: 'money' }}
           href="/reports/payroll"
         />
         <KpiCard
-          label="Задолженность по делам"
+          label={t.dashboard.kpi.casesDebt}
           value={formatMoney(stats.totalDebt)}
           unit="₴"
           valueTone="debt"
-          context={`оплачено ${formatMoney(stats.totalPaid)} ₴`}
-          delta={pctDelta(a.debt, 'higher-bad')}
+          context={fmt(t.dashboard.kpi.debtPaidContext, { paid: formatMoney(stats.totalPaid) })}
+          delta={pctDelta(a.debt, 'higher-bad', t)}
           spark={{ points: a.debt.series, tone: 'debt' }}
           href="/cases?debt=true"
         />

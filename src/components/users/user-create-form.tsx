@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useI18n } from '@/lib/i18n/provider';
 import {
-  ROLE_LABEL,
   type EffectiveCaps,
   type Role,
 } from '@/lib/types/db';
@@ -33,6 +33,7 @@ interface Props {
 }
 
 export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props) {
+  const { t } = useI18n();
   const [state, formAction] = useActionState<CreateUserState, FormData>(
     createUserAction,
     INITIAL,
@@ -67,31 +68,31 @@ export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props)
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-[1.2fr_1.2fr_1fr]">
-        <Field label="Имя" htmlFor="user-full-name" error={err('full_name')} required>
+        <Field label={t.users.create.nameLabel} htmlFor="user-full-name" error={err('full_name')} required>
           <Input
             id="user-full-name"
             name="full_name"
             type="text"
             maxLength={120}
-            placeholder="Иван Петров"
+            placeholder={t.users.create.namePlaceholder}
             required
             aria-invalid={err('full_name') ? 'true' : undefined}
           />
         </Field>
 
-        <Field label="Email" htmlFor="user-email" error={err('email')} required>
+        <Field label={t.users.create.emailLabel} htmlFor="user-email" error={err('email')} required>
           <Input
             id="user-email"
             name="email"
             type="email"
             maxLength={200}
-            placeholder="user@company.ru"
+            placeholder={t.users.create.emailPlaceholder}
             required
             aria-invalid={err('email') ? 'true' : undefined}
           />
         </Field>
 
-        <Field label="Роль" htmlFor="user-role" error={err('role')} required>
+        <Field label={t.users.create.roleLabel} htmlFor="user-role" error={err('role')} required>
           <Select
             id="user-role"
             name="role"
@@ -100,10 +101,10 @@ export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props)
             required
             aria-invalid={err('role') ? 'true' : undefined}
           >
-            <option value="">— выберите —</option>
+            <option value="">{t.users.create.rolePlaceholder}</option>
             {assignableRoles.map((r) => (
               <option key={r} value={r}>
-                {ROLE_LABEL[r]}
+                {t.enums.role[r]}
               </option>
             ))}
           </Select>
@@ -121,7 +122,7 @@ export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props)
             className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left"
           >
             <span className="text-[13px] font-medium text-text">
-              Персональные права (необязательно)
+              {t.users.perms.sectionToggle}
             </span>
             <ChevronDown
               size={16}
@@ -132,8 +133,7 @@ export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props)
           {permsOpen && (
             <div className="border-t border-border px-3.5 py-3">
               <p className="mb-2.5 text-[12px] text-text-muted">
-                По умолчанию права наследуются от роли. Здесь можно точечно
-                разрешить или запретить отдельные действия.
+                {t.users.perms.createHint}
               </p>
               {/* key по роли — пересоздаёт контролы с правильными дефолтами при смене роли. */}
               <UserPermsFields
@@ -162,17 +162,16 @@ export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props)
           role="status"
           className="text-sm text-success bg-success-bg border border-success/15 rounded-md px-3 py-2"
         >
-          <p className="font-medium">Пользователь создан.</p>
-          <p className="mt-1 text-text">
-            Передайте сотруднику данные для входа (показаны один раз):
-          </p>
+          <p className="font-medium">{t.users.create.successTitle}</p>
+          <p className="mt-1 text-text">{t.users.create.successHint}</p>
           <p className="mt-1 font-mono tabular-nums text-text">
             {state.createdEmail}
             <br />
-            Временный пароль: <span className="font-semibold">{state.tempPassword}</span>
+            {t.users.create.tempPasswordLabel}{' '}
+            <span className="font-semibold">{state.tempPassword}</span>
           </p>
           <p className="mt-1 text-[12px] text-text-muted">
-            Попросите сменить пароль при первом входе.
+            {t.users.create.changeHint}
           </p>
         </div>
       )}
@@ -217,11 +216,12 @@ function Field({
 }
 
 function SubmitButton() {
+  const { t } = useI18n();
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending} size="sm">
       <UserPlus size={14} strokeWidth={1.75} />
-      {pending ? 'Создание…' : 'Добавить пользователя'}
+      {pending ? t.users.create.submitting : t.users.create.submit}
     </Button>
   );
 }

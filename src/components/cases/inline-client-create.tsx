@@ -14,11 +14,10 @@ import {
   type ClientFormFields,
   type InlineClientState,
 } from '@/lib/clients/actions';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   CLIENT_KINDS,
-  CLIENT_KIND_LABEL,
   CLIENT_SOURCES,
-  CLIENT_SOURCE_LABEL,
   clientKindHasFullName,
   type ClientKind,
 } from '@/lib/types/db';
@@ -40,6 +39,7 @@ export function InlineClientCreate({
   onClose: () => void;
   onCreated: (client: CreatedClient) => void;
 }) {
+  const { t } = useI18n();
   const [state, formAction] = useActionState(createClientInlineAction, INITIAL);
   // Тип клиента определяет, показывать ФИО (физлицо/ФОП) или «Наименование» (компания).
   const [kind, setKind] = useState<ClientKind>('individual');
@@ -70,7 +70,7 @@ export function InlineClientCreate({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Новый клиент"
+      aria-label={t.caseCard.inlineClient.dialogAria}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -79,12 +79,12 @@ export function InlineClientCreate({
         <div className="mb-3 flex items-center justify-between">
           <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
             <UserPlus size={16} strokeWidth={1.75} className="text-primary" />
-            Новый клиент
+            {t.caseCard.inlineClient.title}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Закрыть"
+            aria-label={t.caseCard.inlineClient.closeAria}
             className="rounded-md p-1 text-text-subtle transition-colors hover:bg-surface-muted hover:text-text"
           >
             <X size={16} strokeWidth={1.75} />
@@ -92,7 +92,12 @@ export function InlineClientCreate({
         </div>
 
         <form action={formAction} className="flex flex-col gap-3">
-          <Field label="Тип клиента" htmlFor="ic-kind" error={err('client_kind')} required>
+          <Field
+            label={t.caseCard.inlineClient.kind}
+            htmlFor="ic-kind"
+            error={err('client_kind')}
+            required
+          >
             <Select
               id="ic-kind"
               name="client_kind"
@@ -101,7 +106,7 @@ export function InlineClientCreate({
             >
               {CLIENT_KINDS.map((k) => (
                 <option key={k} value={k}>
-                  {CLIENT_KIND_LABEL[k]}
+                  {t.enums.clientKind[k]}
                 </option>
               ))}
             </Select>
@@ -110,7 +115,12 @@ export function InlineClientCreate({
           {hasFullName ? (
             <>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label="Фамилия" htmlFor="ic-last" error={err('last_name')} required>
+                <Field
+                  label={t.caseCard.inlineClient.lastName}
+                  htmlFor="ic-last"
+                  error={err('last_name')}
+                  required
+                >
                   <Input
                     id="ic-last"
                     name="last_name"
@@ -118,29 +128,42 @@ export function InlineClientCreate({
                     required
                     maxLength={100}
                     aria-invalid={err('last_name') ? 'true' : undefined}
-                    placeholder="Иванов"
+                    placeholder={t.caseCard.inlineClient.lastNamePlaceholder}
                   />
                 </Field>
-                <Field label="Имя" htmlFor="ic-first" error={err('first_name')} required>
+                <Field
+                  label={t.caseCard.inlineClient.firstName}
+                  htmlFor="ic-first"
+                  error={err('first_name')}
+                  required
+                >
                   <Input
                     id="ic-first"
                     name="first_name"
                     required
                     maxLength={100}
                     aria-invalid={err('first_name') ? 'true' : undefined}
-                    placeholder="Иван"
+                    placeholder={t.caseCard.inlineClient.firstNamePlaceholder}
                   />
                 </Field>
-                <Field label="Отчество" htmlFor="ic-middle" error={err('middle_name')}>
+                <Field
+                  label={t.caseCard.inlineClient.middleName}
+                  htmlFor="ic-middle"
+                  error={err('middle_name')}
+                >
                   <Input
                     id="ic-middle"
                     name="middle_name"
                     maxLength={100}
                     aria-invalid={err('middle_name') ? 'true' : undefined}
-                    placeholder="Иванович"
+                    placeholder={t.caseCard.inlineClient.middleNamePlaceholder}
                   />
                 </Field>
-                <Field label="Дата рождения" htmlFor="ic-birth" error={err('birth_date')}>
+                <Field
+                  label={t.caseCard.inlineClient.birthDate}
+                  htmlFor="ic-birth"
+                  error={err('birth_date')}
+                >
                   <Input
                     id="ic-birth"
                     name="birth_date"
@@ -152,7 +175,12 @@ export function InlineClientCreate({
               </div>
             </>
           ) : (
-            <Field label="Наименование" htmlFor="ic-name" error={err('name')} required>
+            <Field
+              label={t.caseCard.inlineClient.name}
+              htmlFor="ic-name"
+              error={err('name')}
+              required
+            >
               <Input
                 id="ic-name"
                 name="name"
@@ -160,14 +188,18 @@ export function InlineClientCreate({
                 required
                 maxLength={200}
                 aria-invalid={err('name') ? 'true' : undefined}
-                placeholder="ООО «Ромашка»"
+                placeholder={t.caseCard.inlineClient.namePlaceholder}
               />
             </Field>
           )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field
-              label={hasFullName ? 'ИНН' : 'ИНН / ЕДРПОУ'}
+              label={
+                hasFullName
+                  ? t.caseCard.inlineClient.innIndividual
+                  : t.caseCard.inlineClient.innCompany
+              }
               htmlFor="ic-inn"
               error={err('inn')}
             >
@@ -178,60 +210,80 @@ export function InlineClientCreate({
                 maxLength={12}
                 className="font-mono"
                 aria-invalid={err('inn') ? 'true' : undefined}
-                placeholder="1234567890"
+                placeholder={t.caseCard.inlineClient.innPlaceholder}
               />
             </Field>
-            <Field label="Номер договора" htmlFor="ic-contract" error={err('contract_number')}>
+            <Field
+              label={t.caseCard.inlineClient.contractNumber}
+              htmlFor="ic-contract"
+              error={err('contract_number')}
+            >
               <Input
                 id="ic-contract"
                 name="contract_number"
                 maxLength={100}
                 className="font-mono"
                 aria-invalid={err('contract_number') ? 'true' : undefined}
-                placeholder="№ 2026/001"
+                placeholder={t.caseCard.inlineClient.contractNumberPlaceholder}
               />
             </Field>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Телефон" htmlFor="ic-phone" error={err('phone')}>
+            <Field
+              label={t.caseCard.inlineClient.phone}
+              htmlFor="ic-phone"
+              error={err('phone')}
+            >
               <Input
                 id="ic-phone"
                 name="phone"
                 type="tel"
                 className="font-mono"
-                placeholder="+38 067 000 00 00"
+                placeholder={t.caseCard.inlineClient.phonePlaceholder}
               />
             </Field>
-            <Field label="E-mail" htmlFor="ic-email" error={err('email')}>
+            <Field
+              label={t.caseCard.inlineClient.email}
+              htmlFor="ic-email"
+              error={err('email')}
+            >
               <Input
                 id="ic-email"
                 name="email"
                 type="email"
                 className="font-mono"
-                placeholder="client@example.com"
+                placeholder={t.caseCard.inlineClient.emailPlaceholder}
                 aria-invalid={err('email') ? 'true' : undefined}
               />
             </Field>
           </div>
 
-          <Field label="Источник" htmlFor="ic-source" error={err('source')}>
+          <Field
+            label={t.caseCard.inlineClient.source}
+            htmlFor="ic-source"
+            error={err('source')}
+          >
             <Select id="ic-source" name="source" defaultValue="">
-              <option value="">— не указан —</option>
+              <option value="">{t.caseCard.inlineClient.sourcePlaceholder}</option>
               {CLIENT_SOURCES.map((s) => (
                 <option key={s} value={s}>
-                  {CLIENT_SOURCE_LABEL[s]}
+                  {t.enums.clientSource[s]}
                 </option>
               ))}
             </Select>
           </Field>
 
-          <Field label="Заметки" htmlFor="ic-notes" error={err('notes')}>
+          <Field
+            label={t.caseCard.inlineClient.notes}
+            htmlFor="ic-notes"
+            error={err('notes')}
+          >
             <Textarea
               id="ic-notes"
               name="notes"
               rows={2}
-              placeholder="Опционально"
+              placeholder={t.caseCard.inlineClient.notesPlaceholder}
             />
           </Field>
 
@@ -246,7 +298,7 @@ export function InlineClientCreate({
 
           <div className="mt-1 flex items-center justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose}>
-              Отмена
+              {t.caseCard.inlineClient.cancel}
             </Button>
             <SaveButton />
           </div>
@@ -257,10 +309,11 @@ export function InlineClientCreate({
 }
 
 function SaveButton() {
+  const { t } = useI18n();
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
-      {pending ? 'Сохранение…' : 'Создать и выбрать'}
+      {pending ? t.caseCard.inlineClient.saving : t.caseCard.inlineClient.submit}
     </Button>
   );
 }

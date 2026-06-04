@@ -6,7 +6,8 @@ import {
   getPayrollEmployeeSummary,
   getPayrollTransactions,
 } from '@/lib/payroll/queries';
-import { monthLabel, nextMonth } from '@/lib/payroll/month';
+import { monthLabel, monthNamesFrom, nextMonth } from '@/lib/payroll/month';
+import { getT } from '@/lib/i18n/server';
 import type {
   CaseCategory,
   PayrollEmployeeCase,
@@ -108,6 +109,7 @@ export async function buildEmployeeReport(
   month: string,
 ): Promise<EmployeeReport> {
   const supabase = await createSupabaseServerClient();
+  const { t } = await getT();
 
   const [{ data: userRow }, summary, monthCases, allCases, monthTx, allTx] =
     await Promise.all([
@@ -124,7 +126,7 @@ export async function buildEmployeeReport(
     ]);
 
   const row = summary.find((r) => r.user_id === userId);
-  const fullName = userRow?.full_name ?? row?.full_name ?? 'Сотрудник';
+  const fullName = userRow?.full_name ?? row?.full_name ?? t.payrollPrint.fallbackEmployeeName;
 
   const earnedMonth = row?.earned ?? monthCases.reduce((s, c) => s + c.earned, 0);
   const bonusMonth = row?.bonus ?? 0;
@@ -220,7 +222,7 @@ export async function buildEmployeeReport(
   const clientPayments: ClientPayment[] = ((paymentRows ?? []) as PaymentRow[])
     .map((p) => ({
       case_id: p.case_id,
-      number_title: titleById.get(p.case_id) ?? '—',
+      number_title: titleById.get(p.case_id) ?? t.common.dash,
       paid_at: p.paid_at,
       amount: Number(p.amount),
       method: p.method,
@@ -264,7 +266,7 @@ export async function buildEmployeeReport(
     userId,
     fullName,
     month,
-    monthLabel: monthLabel(month),
+    monthLabel: monthLabel(month, monthNamesFrom(t.payroll)),
     lawyerCount,
     expertCount,
     earnedMonth,
@@ -287,6 +289,7 @@ export async function buildEmployeeReport(
 
 // Сводный отчёт за всех сотрудников за месяц (staff с view_all_payroll).
 export async function buildSummaryReport(month: string): Promise<SummaryReport> {
+  const { t } = await getT();
   const rows = await getPayrollEmployeeSummary(month);
   const sorted = [...rows].sort((a, b) => b.balance - a.balance);
   const totals = sorted.reduce(
@@ -298,5 +301,10 @@ export async function buildSummaryReport(month: string): Promise<SummaryReport> 
     }),
     { earned: 0, bonus: 0, payout: 0, balance: 0 },
   );
-  return { month, monthLabel: monthLabel(month), rows: sorted, totals };
+  return {
+    month,
+    monthLabel: monthLabel(month, monthNamesFrom(t.payroll)),
+    rows: sorted,
+    totals,
+  };
 }

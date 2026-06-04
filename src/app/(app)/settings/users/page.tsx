@@ -13,6 +13,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { requireCap } from '@/lib/auth/require-role';
+import { getT } from '@/lib/i18n/server';
 import { listManagedUsers } from '@/lib/users/queries';
 import { assignableRoles, canManageTargetUser } from '@/lib/types/db';
 import { UserCreateForm } from '@/components/users/user-create-form';
@@ -30,9 +31,10 @@ export default async function UsersSettingsPage() {
   const actor = await requireCap('manage_users');
   const users = await listManagedUsers();
   const assignable = assignableRoles(actor.profile.role, actor.caps.manage_users);
+  const { t } = await getT();
 
   const backHref = '/settings';
-  const backLabel = 'Настройки';
+  const backLabel = t.nav.settings;
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
@@ -48,13 +50,13 @@ export default async function UsersSettingsPage() {
       <section className="flex flex-col gap-3">
         <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
           <Users size={16} strokeWidth={1.75} className="text-text-muted" />
-          Пользователи и роли
+          {t.users.heading}
         </h2>
         <Card className="p-5">
           <p className="mb-4 text-[13px] text-text-muted">
             {actor.profile.role === 'owner'
-              ? 'Создавайте сотрудников, назначайте роли и персональные права.'
-              : 'Вы можете заводить и менять роли офис-менеджеров, юристов и экспертов, а также их персональные права. Владельцев и администраторов меняет только владелец.'}
+              ? t.users.introOwner
+              : t.users.introManager}
           </p>
           <UserCreateForm
             assignableRoles={assignable}
@@ -69,11 +71,11 @@ export default async function UsersSettingsPage() {
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-surface">
-              <TableHead>Сотрудник</TableHead>
-              <TableHead>Роль</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead className="text-right">Права</TableHead>
-              <TableHead className="text-right">Действие</TableHead>
+              <TableHead>{t.users.table.colUser}</TableHead>
+              <TableHead>{t.users.table.colRole}</TableHead>
+              <TableHead>{t.users.table.colStatus}</TableHead>
+              <TableHead className="text-right">{t.users.table.colPerms}</TableHead>
+              <TableHead className="text-right">{t.users.table.colAction}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -107,9 +109,9 @@ export default async function UsersSettingsPage() {
                   </TableCell>
                   <TableCell>
                     {u.is_active ? (
-                      <Badge tone="success">Активен</Badge>
+                      <Badge tone="success">{t.users.table.statusActive}</Badge>
                     ) : (
-                      <Badge tone="neutral">Деактивирован</Badge>
+                      <Badge tone="neutral">{t.users.table.statusInactive}</Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -145,7 +147,7 @@ export default async function UsersSettingsPage() {
         </Table>
         <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface-muted/50">
           <span className="text-[12px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
-            Всего сотрудников
+            {t.users.table.totalLabel}
           </span>
           <span className="font-mono tabular-nums font-bold text-text">
             {users.length}
@@ -153,11 +155,7 @@ export default async function UsersSettingsPage() {
         </div>
       </div>
 
-      <p className="text-[12px] text-text-subtle">
-        Деактивация не удаляет данные: сотрудник теряет доступ, но его дела,
-        платежи и начисления сохраняются. Роль и персональные права меняются по
-        правилам доступа — администратор не управляет владельцами и админами.
-      </p>
+      <p className="text-[12px] text-text-subtle">{t.users.footnote}</p>
     </main>
   );
 }

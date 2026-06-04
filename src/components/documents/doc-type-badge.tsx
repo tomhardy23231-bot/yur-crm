@@ -1,5 +1,8 @@
+'use client';
+
 import { Badge } from '@/components/ui/badge';
-import { DOC_TYPE_LABEL, type DocType } from '@/lib/types/db';
+import { useI18n } from '@/lib/i18n/provider';
+import type { DocType } from '@/lib/types/db';
 
 const TONE: Record<DocType, React.ComponentProps<typeof Badge>['tone']> = {
   contract: 'info',
@@ -11,5 +14,6 @@ const TONE: Record<DocType, React.ComponentProps<typeof Badge>['tone']> = {
 };
 
 export function DocTypeBadge({ docType }: { docType: DocType }) {
-  return <Badge tone={TONE[docType]}>{DOC_TYPE_LABEL[docType]}</Badge>;
+  const { t } = useI18n();
+  return <Badge tone={TONE[docType]}>{t.enums.docType[docType]}</Badge>;
 }

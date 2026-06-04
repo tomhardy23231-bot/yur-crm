@@ -1,7 +1,9 @@
 import { Skeleton } from '@/components/ui/skeleton';
-import { CASE_STAGES, CASE_STAGE_LABEL } from '@/lib/types/db';
+import { CASE_STAGES } from '@/lib/types/db';
+import { getT } from '@/lib/i18n/server';
 
-export default function CasesBoardLoading() {
+export default async function CasesBoardLoading() {
+  const { t } = await getT();
   return (
     <main
       className="flex flex-col gap-5 px-3 py-2 sm:px-4 min-h-0"
@@ -22,7 +24,7 @@ export default function CasesBoardLoading() {
           >
             <header className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border">
               <span className="text-[12px] uppercase tracking-[0.05em] font-bold leading-tight text-text-subtle">
-                {CASE_STAGE_LABEL[stage]}
+                {t.enums.caseStage[stage]}
               </span>
               <Skeleton className="h-5 w-6 rounded-full" />
             </header>

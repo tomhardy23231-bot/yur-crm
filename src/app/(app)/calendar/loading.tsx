@@ -1,7 +1,12 @@
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getT } from '@/lib/i18n/server';
 
-export default function CalendarLoading() {
+export default async function CalendarLoading() {
+  const { t } = await getT();
+  const w = t.calendar.weekdays;
+  const weekdays = [w.mon, w.tue, w.wed, w.thu, w.fri, w.sat, w.sun];
+
   return (
     <main
       className="flex flex-col gap-5 px-3 py-2 sm:px-4"
@@ -24,7 +29,7 @@ export default function CalendarLoading() {
 
       <Card className="p-0 overflow-hidden">
         <div className="grid grid-cols-7 bg-surface-muted/50 border-b border-border">
-          {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => (
+          {weekdays.map((d) => (
             <div
               key={d}
               className="h-8 px-2 flex items-center text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle"

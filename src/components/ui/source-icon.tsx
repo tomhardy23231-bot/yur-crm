@@ -1,10 +1,15 @@
+"use client";
+
 import * as React from "react";
 import { Mail, Phone, Send, MessageCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 
 export type Source = "gmail" | "telegram" | "whatsapp" | "viber" | "phone";
 
+// Бренд-названия каналов (Gmail/Telegram/WhatsApp/Viber) не переводятся —
+// только «Телефон» берётся из словаря.
 const SOURCE_META: Record<Source, { label: string; bgClass: string; Icon: React.ComponentType<{ size?: number; strokeWidth?: number }> }> = {
   gmail:    { label: "Gmail",    bgClass: "bg-brand-gmail",    Icon: Mail },
   telegram: { label: "Telegram", bgClass: "bg-brand-telegram", Icon: Send },
@@ -28,7 +33,10 @@ const SIZES = {
  * в брендовых цветах. Используется в карточке контакта и таблицах дел.
  */
 export function SourceIcon({ source, size = "md", className, ...props }: SourceIconProps) {
-  const { label, bgClass, Icon } = SOURCE_META[source];
+  const { t } = useI18n();
+  const { label: rawLabel, bgClass, Icon } = SOURCE_META[source];
+  // Бренд-названия остаются как есть; локализуем только подпись «Телефон».
+  const label = source === "phone" ? t.clients.form.phone : rawLabel;
   const sz = SIZES[size];
   return (
     <span

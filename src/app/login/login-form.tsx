@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useI18n } from '@/lib/i18n/provider';
 import { loginAction, type LoginFormState } from './actions';
 
 type Props = {
@@ -15,6 +16,7 @@ type Props = {
 const INITIAL_STATE: LoginFormState = {};
 
 export function LoginForm({ next }: Props) {
+  const { t } = useI18n();
   const [state, action, pending] = useActionState<LoginFormState, FormData>(
     loginAction,
     INITIAL_STATE,
@@ -29,7 +31,7 @@ export function LoginForm({ next }: Props) {
       <input type="hidden" name="next" value={next} />
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t.auth.login.emailLabel}</Label>
         <Input
           id="email"
           name="email"
@@ -37,13 +39,13 @@ export function LoginForm({ next }: Props) {
           required
           autoComplete="email"
           autoFocus
-          placeholder="you@firm.local"
+          placeholder={t.auth.login.emailPlaceholder}
           aria-invalid={state?.error ? 'true' : undefined}
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="password">Пароль</Label>
+        <Label htmlFor="password">{t.auth.login.passwordLabel}</Label>
         <div className="relative">
           <Input
             id="password"
@@ -51,14 +53,14 @@ export function LoginForm({ next }: Props) {
             type={showPassword ? 'text' : 'password'}
             required
             autoComplete="current-password"
-            placeholder="••••••••"
+            placeholder={t.auth.login.passwordPlaceholder}
             className="pr-10"
             aria-invalid={state?.error ? 'true' : undefined}
           />
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
-            aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            aria-label={showPassword ? t.auth.login.hidePassword : t.auth.login.showPassword}
             aria-pressed={showPassword}
             className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors"
             tabIndex={-1}
@@ -82,7 +84,7 @@ export function LoginForm({ next }: Props) {
       )}
 
       <Button type="submit" disabled={pending} className="w-full h-10 mt-1">
-        {pending ? 'Входим…' : 'Войти'}
+        {pending ? t.auth.login.submitting : t.auth.login.submit}
       </Button>
     </form>
   );

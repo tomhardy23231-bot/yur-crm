@@ -6,7 +6,8 @@ import { useFormStatus } from 'react-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { ROLE_LABEL, type Role } from '@/lib/types/db';
+import { useI18n } from '@/lib/i18n/provider';
+import { type Role } from '@/lib/types/db';
 import { changeUserRoleAction, setUserActiveAction } from '@/lib/users/actions';
 
 // Селект роли в строке таблицы. Авто-сабмит при выборе. Если строку нельзя
@@ -26,6 +27,7 @@ export function UserRoleControl({
   manageable: boolean;
   isActive?: boolean;
 }) {
+  const { t } = useI18n();
   const formRef = useRef<HTMLFormElement>(null);
 
   if (!manageable || !isActive) {
@@ -34,11 +36,11 @@ export function UserRoleControl({
         tone="neutral"
         title={
           manageable && !isActive
-            ? 'Сначала реактивируйте сотрудника, чтобы изменить роль'
+            ? t.users.row.reactivateFirst
             : undefined
         }
       >
-        {ROLE_LABEL[currentRole]}
+        {t.enums.role[currentRole]}
       </Badge>
     );
   }
@@ -49,13 +51,13 @@ export function UserRoleControl({
       <Select
         name="role"
         defaultValue={currentRole}
-        aria-label="Роль пользователя"
+        aria-label={t.users.row.roleSelectAria}
         className="h-9 min-w-[160px]"
         onChange={() => formRef.current?.requestSubmit()}
       >
         {assignableRoles.map((r) => (
           <option key={r} value={r}>
-            {ROLE_LABEL[r]}
+            {t.enums.role[r]}
           </option>
         ))}
       </Select>
@@ -76,9 +78,12 @@ export function UserActiveControl({
   manageable: boolean;
   isSelf: boolean;
 }) {
+  const { t } = useI18n();
   if (!manageable) {
     return (
-      <span className="text-[12px] text-text-subtle">{isSelf ? 'это вы' : '—'}</span>
+      <span className="text-[12px] text-text-subtle">
+        {isSelf ? t.users.row.self : t.common.dash}
+      </span>
     );
   }
 
@@ -92,6 +97,7 @@ export function UserActiveControl({
 }
 
 function ActiveSubmit({ isActive }: { isActive: boolean }) {
+  const { t } = useI18n();
   const { pending } = useFormStatus();
   return (
     <Button
@@ -100,7 +106,7 @@ function ActiveSubmit({ isActive }: { isActive: boolean }) {
       size="sm"
       disabled={pending}
     >
-      {isActive ? 'Деактивировать' : 'Реактивировать'}
+      {isActive ? t.users.row.deactivate : t.users.row.reactivate}
     </Button>
   );
 }

@@ -1,9 +1,8 @@
 'use client';
 
+import { useI18n } from '@/lib/i18n/provider';
 import {
   CAPABILITIES,
-  CAPABILITY_LABELS,
-  CAPABILITY_HINTS,
   canGrantCapability,
   capRoleDefault,
   type Capability,
@@ -40,6 +39,7 @@ export function UserPermsFields({
   current?: PermOverrides;
   idPrefix: string;
 }) {
+  const { t } = useI18n();
   const editable = CAPABILITIES.filter((cap) =>
     canGrantCapability(cap, actorRole, actorCaps, targetRole, false),
   );
@@ -47,7 +47,7 @@ export function UserPermsFields({
   if (editable.length === 0) {
     return (
       <p className="text-[12.5px] text-text-muted">
-        Для этой роли нет прав, которые вы можете настроить.
+        {t.users.perms.noneEditable}
       </p>
     );
   }
@@ -78,16 +78,19 @@ function CapField({
   initial: TriState;
   id: string;
 }) {
+  const { t, fmt } = useI18n();
   const roleDefault = capRoleDefault(cap, targetRole);
-  const inheritLabel = `Наследует (${roleDefault ? 'разрешено' : 'запрещено'})`;
+  const inheritLabel = fmt(t.users.perms.inherit, {
+    state: roleDefault ? t.users.perms.stateAllowed : t.users.perms.stateDenied,
+  });
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
       <div className="min-w-0 flex-1">
         <label htmlFor={id} className="block text-[13px] font-medium text-text">
-          {CAPABILITY_LABELS[cap]}
+          {t.enums.capabilityLabel[cap]}
         </label>
-        <p className="text-[11.5px] text-text-muted">{CAPABILITY_HINTS[cap]}</p>
+        <p className="text-[11.5px] text-text-muted">{t.enums.capabilityHint[cap]}</p>
       </div>
       <select
         id={id}
@@ -96,8 +99,8 @@ function CapField({
         className="h-8 shrink-0 rounded-md border border-border bg-surface px-2 text-[12.5px] text-text outline-none transition-colors hover:border-border-strong focus:border-primary"
       >
         <option value="inherit">{inheritLabel}</option>
-        <option value="grant">Разрешено</option>
-        <option value="revoke">Запрещено</option>
+        <option value="grant">{t.users.perms.grant}</option>
+        <option value="revoke">{t.users.perms.revoke}</option>
       </select>
     </div>
   );

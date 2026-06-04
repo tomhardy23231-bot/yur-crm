@@ -7,6 +7,8 @@ import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
 import { dbErrorMessage } from '@/lib/errors';
+import { getT } from '@/lib/i18n/server';
+import type { I18n } from '@/lib/i18n/core';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   CLIENT_KINDS,
@@ -78,7 +80,7 @@ type Validated = {
   notes: string | null;
 };
 
-function validate(formData: FormData):
+function validate(formData: FormData, t: I18n['t']):
   | { ok: true; data: Validated; values: Record<ClientFormFields, string> }
   | { ok: false; state: ClientActionState } {
   const nameRaw = getString(formData, 'name');
@@ -114,54 +116,54 @@ function validate(formData: FormData):
   const fieldErrors: ClientActionState['fieldErrors'] = {};
 
   const kindValid = isClientKind(kindRaw);
-  if (!kindRaw) fieldErrors.client_kind = 'Выберите тип';
-  else if (!kindValid) fieldErrors.client_kind = 'Недопустимый тип';
+  if (!kindRaw) fieldErrors.client_kind = t.clients.actions.selectKind;
+  else if (!kindValid) fieldErrors.client_kind = t.clients.actions.invalidKind;
 
   // У физлица/ФОП собираем отображаемое имя из ФИО; у компании name = наименование.
   const hasFullName = kindValid && clientKindHasFullName(kindRaw as ClientKind);
   let name = nameRaw;
   if (hasFullName) {
-    if (!lastName) fieldErrors.last_name = 'Укажите фамилию';
-    else if (lastName.length > 100) fieldErrors.last_name = 'Слишком длинно (макс 100)';
-    if (!firstName) fieldErrors.first_name = 'Укажите имя';
-    else if (firstName.length > 100) fieldErrors.first_name = 'Слишком длинно (макс 100)';
-    if (middleName.length > 100) fieldErrors.middle_name = 'Слишком длинно (макс 100)';
+    if (!lastName) fieldErrors.last_name = t.clients.actions.enterLastName;
+    else if (lastName.length > 100) fieldErrors.last_name = t.clients.actions.tooLong100;
+    if (!firstName) fieldErrors.first_name = t.clients.actions.enterFirstName;
+    else if (firstName.length > 100) fieldErrors.first_name = t.clients.actions.tooLong100;
+    if (middleName.length > 100) fieldErrors.middle_name = t.clients.actions.tooLong100;
     name = [lastName, firstName, middleName].filter(Boolean).join(' ');
   } else {
-    if (!nameRaw) fieldErrors.name = 'Укажите наименование';
-    else if (nameRaw.length > 200) fieldErrors.name = 'Слишком длинное (макс 200)';
+    if (!nameRaw) fieldErrors.name = t.clients.actions.enterName;
+    else if (nameRaw.length > 200) fieldErrors.name = t.clients.actions.nameTooLong;
   }
 
   if (birthDate) {
     if (!DATE_RE.test(birthDate)) {
-      fieldErrors.birth_date = 'Неверная дата';
+      fieldErrors.birth_date = t.clients.actions.invalidDate;
     } else {
       const d = new Date(`${birthDate}T00:00:00Z`);
-      if (Number.isNaN(d.getTime())) fieldErrors.birth_date = 'Неверная дата';
-      else if (d.getTime() > Date.now()) fieldErrors.birth_date = 'Дата в будущем';
+      if (Number.isNaN(d.getTime())) fieldErrors.birth_date = t.clients.actions.invalidDate;
+      else if (d.getTime() > Date.now()) fieldErrors.birth_date = t.clients.actions.futureDate;
     }
   }
 
   if (inn && !INN_RE.test(inn)) {
-    fieldErrors.inn = 'ИНН — только цифры (8–12)';
+    fieldErrors.inn = t.clients.actions.invalidInn;
   }
 
   if (contractNumber && contractNumber.length > 100) {
-    fieldErrors.contract_number = 'Слишком длинно (макс 100)';
+    fieldErrors.contract_number = t.clients.actions.tooLong100;
   }
 
   if (email && !EMAIL_RE.test(email)) {
-    fieldErrors.email = 'Похоже на ошибку в e-mail';
+    fieldErrors.email = t.clients.actions.invalidEmail;
   }
 
   if (sourceRaw && !isClientSource(sourceRaw)) {
-    fieldErrors.source = 'Недопустимый источник';
+    fieldErrors.source = t.clients.actions.invalidSource;
   }
 
   if (Object.keys(fieldErrors).length > 0) {
     return {
       ok: false,
-      state: { ok: false, fieldErrors, values, message: 'Проверьте поля формы' },
+      state: { ok: false, fieldErrors, values, message: t.errors.checkForm },
     };
   }
 
@@ -193,6 +195,7 @@ export async function createClientAction(
   formData: FormData,
 ): Promise<ClientActionState> {
   const user = await requireUser();
+  const { t } = await getT();
 
   // Клиентов заводят обладатели права create_clients (по умолчанию все, кроме
   // эксперта). RLS (clients_insert_creators) — жёсткая защита; здесь дружелюбный
@@ -200,11 +203,11 @@ export async function createClientAction(
   if (!user.caps.create_clients) {
     return {
       ok: false,
-      message: 'Недостаточно прав для создания клиента.',
+      message: t.clients.actions.noCreatePermission,
     };
   }
 
-  const result = validate(formData);
+  const result = validate(formData, t);
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
@@ -224,7 +227,8 @@ export async function createClientAction(
       message: dbErrorMessage(
         'createClientAction',
         error,
-        'Не удалось создать клиента.',
+        t.clients.actions.createFailed,
+        t.errors.db,
       ),
     };
   }
@@ -284,7 +288,8 @@ export async function updateClientAction(
   formData: FormData,
 ): Promise<ClientActionState> {
   const user = await requireUser();
-  const result = validate(formData);
+  const { t } = await getT();
+  const result = validate(formData, t);
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
@@ -308,8 +313,7 @@ export async function updateClientAction(
     return {
       ok: false,
       values: result.values,
-      message:
-        'Недостаточно прав: клиента может изменить автор записи или сотрудник с доступом ко всем делам.',
+      message: t.clients.actions.noEditPermission,
     };
   }
 
@@ -325,7 +329,8 @@ export async function updateClientAction(
       message: dbErrorMessage(
         'updateClientAction',
         error,
-        'Не удалось сохранить изменения клиента.',
+        t.clients.actions.updateFailed,
+        t.errors.db,
       ),
     };
   }
@@ -395,15 +400,16 @@ export async function createClientInlineAction(
   formData: FormData,
 ): Promise<InlineClientState> {
   const user = await requireUser();
+  const { t } = await getT();
 
   if (!user.caps.create_clients) {
     return {
       ok: false,
-      message: 'Недостаточно прав для создания клиента.',
+      message: t.clients.actions.noCreatePermission,
     };
   }
 
-  const result = validate(formData);
+  const result = validate(formData, t);
   if (!result.ok) return result.state;
 
   const supabase = await createSupabaseServerClient();
@@ -423,7 +429,8 @@ export async function createClientInlineAction(
       message: dbErrorMessage(
         'createClientInlineAction',
         error,
-        'Не удалось создать клиента.',
+        t.clients.actions.createFailed,
+        t.errors.db,
       ),
     };
   }

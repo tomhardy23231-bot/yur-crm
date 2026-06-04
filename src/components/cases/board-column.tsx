@@ -3,10 +3,8 @@ import {
   BOARD_COLUMN_CAP,
   type BoardCaseItem,
 } from '@/lib/cases/queries';
-import {
-  CASE_STAGE_LABEL,
-  type CaseStage,
-} from '@/lib/types/db';
+import { type CaseStage } from '@/lib/types/db';
+import { getT } from '@/lib/i18n/server';
 import { cn } from '@/lib/utils';
 
 // Цветовой токен заголовка колонки — по стадии. Чёрно-белый закрытый
@@ -19,7 +17,7 @@ const STAGE_HEADER: Record<CaseStage, string> = {
   closed: 'text-stage-closed bg-stage-closed-bg',
 };
 
-export function BoardColumn({
+export async function BoardColumn({
   stage,
   cases,
   nextStageLabel,
@@ -32,6 +30,7 @@ export function BoardColumn({
   // вперёд (юрист/Експерт дела или staff).
   canAdvanceFor: (c: BoardCaseItem) => boolean;
 }) {
+  const { t, fmt } = await getT();
   const visible = cases.slice(0, BOARD_COLUMN_CAP);
   const overflow = cases.length - visible.length;
   const isClosed = stage === 'closed';
@@ -42,7 +41,7 @@ export function BoardColumn({
         'flex flex-col w-[280px] shrink-0 bg-surface-muted/40 rounded-lg border border-border',
         'max-h-[calc(100vh-13rem)]',
       )}
-      aria-label={`Колонка ${CASE_STAGE_LABEL[stage]}`}
+      aria-label={fmt(t.cases.column.aria, { stage: t.enums.caseStage[stage] })}
     >
       <header
         className={cn(
@@ -52,7 +51,7 @@ export function BoardColumn({
         )}
       >
         <h2 className="text-[12px] uppercase tracking-[0.05em] font-bold leading-tight">
-          {CASE_STAGE_LABEL[stage]}
+          {t.enums.caseStage[stage]}
         </h2>
         <span
           className={cn(
@@ -60,7 +59,7 @@ export function BoardColumn({
             'text-[11px] font-bold tabular-nums',
             'bg-white/70 text-current',
           )}
-          aria-label={`${cases.length} дел в колонке`}
+          aria-label={fmt(t.cases.column.countAria, { count: cases.length })}
         >
           {cases.length}
         </span>
@@ -70,7 +69,7 @@ export function BoardColumn({
         {visible.length === 0 ? (
           <div className="flex items-center justify-center px-3 py-8 text-center">
             <p className="text-[12px] text-text-subtle">
-              {isClosed ? 'Пока ничего не завершено' : 'Пока пусто'}
+              {isClosed ? t.cases.column.emptyClosed : t.cases.column.empty}
             </p>
           </div>
         ) : (
@@ -85,7 +84,7 @@ export function BoardColumn({
         )}
         {overflow > 0 && (
           <p className="text-[11.5px] text-text-subtle text-center py-2">
-            и ещё {overflow}…
+            {fmt(t.cases.column.overflow, { n: overflow })}
           </p>
         )}
       </div>

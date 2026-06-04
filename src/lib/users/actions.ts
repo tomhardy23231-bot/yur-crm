@@ -5,10 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { dbErrorMessage } from '@/lib/errors';
+import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import {
-  ROLE_LABEL,
   canManageTargetUser,
   canGrantCapability,
   isRole,
@@ -78,8 +78,9 @@ export async function createUserAction(
   formData: FormData,
 ): Promise<CreateUserState> {
   const actor = await requireUser();
+  const { t, fmt } = await getT();
   if (!actor.caps.manage_users) {
-    return { ok: false, message: 'Недостаточно прав для управления пользователями.' };
+    return { ok: false, message: t.users.errors.noManageUsers };
   }
 
   const full_name = String(formData.get('full_name') ?? '').trim();
@@ -87,18 +88,18 @@ export async function createUserAction(
   const role_raw = String(formData.get('role') ?? '').trim();
 
   const fieldErrors: CreateUserState['fieldErrors'] = {};
-  if (!full_name) fieldErrors.full_name = 'Укажите имя';
-  else if (full_name.length > 120) fieldErrors.full_name = 'Слишком длинно (макс 120)';
+  if (!full_name) fieldErrors.full_name = t.users.errors.enterName;
+  else if (full_name.length > 120) fieldErrors.full_name = t.users.errors.nameTooLong;
 
-  if (!email) fieldErrors.email = 'Укажите email';
+  if (!email) fieldErrors.email = t.users.errors.enterEmail;
   else if (!EMAIL_RE.test(email) || email.length > 200)
-    fieldErrors.email = 'Некорректный email';
+    fieldErrors.email = t.users.errors.invalidEmail;
 
-  if (!role_raw) fieldErrors.role = 'Выберите роль';
-  else if (!isRole(role_raw)) fieldErrors.role = 'Некорректная роль';
+  if (!role_raw) fieldErrors.role = t.users.errors.selectRole;
+  else if (!isRole(role_raw)) fieldErrors.role = t.users.errors.invalidRole;
 
   if (Object.keys(fieldErrors).length > 0) {
-    return { ok: false, fieldErrors, message: 'Проверьте поля формы' };
+    return { ok: false, fieldErrors, message: t.errors.checkForm };
   }
 
   const role = role_raw as Role;
@@ -107,7 +108,7 @@ export async function createUserAction(
   if (!canManageTargetUser(actor.profile.role, actor.caps.manage_users, role)) {
     return {
       ok: false,
-      message: `Недостаточно прав для создания роли «${ROLE_LABEL[role]}».`,
+      message: fmt(t.users.errors.noPermsForRole, { role: t.enums.role[role] }),
     };
   }
 
@@ -132,10 +133,10 @@ export async function createUserAction(
   if (authErr || !created?.user) {
     const msg = authErr?.message ?? '';
     if (/already|exist|registered/i.test(msg)) {
-      return { ok: false, fieldErrors: { email: 'Пользователь с таким email уже есть' } };
+      return { ok: false, fieldErrors: { email: t.users.errors.emailExists } };
     }
     console.error('[createUserAction.auth]', msg);
-    return { ok: false, message: 'Не удалось создать пользователя. Попробуйте ещё раз.' };
+    return { ok: false, message: t.users.errors.createFailed };
   }
 
   const newId = created.user.id;
@@ -160,7 +161,8 @@ export async function createUserAction(
       message: dbErrorMessage(
         'createUserAction.profile',
         profErr,
-        'Не удалось сохранить профиль пользователя.',
+        t.users.errors.saveProfileFailed,
+        t.errors.db,
       ),
     };
   }
@@ -188,7 +190,7 @@ export async function createUserAction(
     ok: true,
     createdEmail: email,
     tempPassword: password,
-    message: 'Пользователь создан.',
+    message: t.users.create.successTitle,
   };
 }
 

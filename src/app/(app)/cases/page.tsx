@@ -24,7 +24,8 @@ import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { requireUser } from '@/lib/auth/require-role';
-import { daysSince, formatMoney, pluralDays } from '@/lib/utils';
+import { getT } from '@/lib/i18n/server';
+import { daysSince, formatMoney } from '@/lib/utils';
 import { SortableHeader, type SortDir } from '@/components/ui/sortable-header';
 import {
   CASES_DEFAULT_SORT,
@@ -39,10 +40,7 @@ import {
 } from '@/lib/cases/queries';
 import {
   CASE_CATEGORIES,
-  CASE_CATEGORY_LABEL,
-  CASE_STAGE_LABEL,
   CASE_STAGES,
-  CASE_TYPE_LABEL,
   CASE_TYPES,
   STAFF_ROLES,
   type CaseCategory,
@@ -107,6 +105,7 @@ export default async function CasesPage({
   }>;
 }) {
   const user = await requireUser();
+  const { t, fmt, plural } = await getT();
   const sp = await searchParams;
 
   const q = sp.q?.trim() ?? '';
@@ -213,14 +212,14 @@ export default async function CasesPage({
   const stageChips: StatusChip[] = [
     {
       key: 'all',
-      label: 'Все',
+      label: t.cases.allStages,
       count: totalByStage,
       href: buildHref({ stage: '', page: 1 }),
       active: !stage,
     },
     ...CASE_STAGES.map((s) => ({
       key: s,
-      label: CASE_STAGE_LABEL[s],
+      label: t.enums.caseStage[s],
       count: stageCounts[s],
       dotClass: STAGE_DOT[s],
       href: buildHref({ stage: s, page: 1 }),
@@ -232,7 +231,7 @@ export default async function CasesPage({
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       {deleted && (
         <div className="text-[13px] text-success bg-success-bg border border-success/20 rounded-md px-3 py-2 max-w-md">
-          Дело удалено.
+          {t.cases.deletedNotice}
         </div>
       )}
 
@@ -242,12 +241,12 @@ export default async function CasesPage({
         <CasesFilterSelect
           name="type"
           value={caseType ?? ''}
-          ariaLabel="Тип дела"
+          ariaLabel={t.cases.filters.typeAria}
           options={[
-            { value: '', label: 'Все типы' },
-            ...CASE_TYPES.map((t) => ({
-              value: t,
-              label: CASE_TYPE_LABEL[t],
+            { value: '', label: t.cases.filters.allTypes },
+            ...CASE_TYPES.map((ct) => ({
+              value: ct,
+              label: t.enums.caseType[ct],
             })),
           ]}
         />
@@ -255,12 +254,12 @@ export default async function CasesPage({
         <CasesFilterSelect
           name="category"
           value={category ?? ''}
-          ariaLabel="Категория"
+          ariaLabel={t.cases.filters.categoryAria}
           options={[
-            { value: '', label: 'Все категории' },
+            { value: '', label: t.cases.filters.allCategories },
             ...CASE_CATEGORIES.map((c) => ({
               value: c,
-              label: CASE_CATEGORY_LABEL[c],
+              label: t.enums.caseCategory[c],
             })),
           ]}
         />
@@ -269,9 +268,9 @@ export default async function CasesPage({
           <CasesFilterSelect
             name="responsible"
             value={responsibleId ?? ''}
-            ariaLabel="Эксперт"
+            ariaLabel={t.cases.filters.expertAria}
             options={[
-              { value: '', label: 'Все эксперты' },
+              { value: '', label: t.cases.filters.allExperts },
               ...experts.map((s) => ({
                 value: s.id,
                 label: s.full_name,
@@ -284,9 +283,9 @@ export default async function CasesPage({
           <CasesFilterSelect
             name="lawyer"
             value={lawyerId ?? ''}
-            ariaLabel="Юрист"
+            ariaLabel={t.cases.filters.lawyerAria}
             options={[
-              { value: '', label: 'Все юристы' },
+              { value: '', label: t.cases.filters.allLawyers },
               ...lawyers.map((s) => ({
                 value: s.id,
                 label: s.full_name,
@@ -299,9 +298,9 @@ export default async function CasesPage({
           <CasesFilterSelect
             name="client"
             value={clientId ?? ''}
-            ariaLabel="Клиент"
+            ariaLabel={t.cases.filters.clientAria}
             options={[
-              { value: '', label: 'Все клиенты' },
+              { value: '', label: t.cases.filters.allClients },
               ...clients.map((c) => ({
                 value: c.id,
                 label: c.name,
@@ -318,21 +317,21 @@ export default async function CasesPage({
             })}
             className="text-[13px] text-text-muted hover:text-text underline-offset-2 hover:underline"
           >
-            Сбросить
+            {t.cases.toolbar.reset}
           </Link>
         )}
         <div className="flex items-center gap-2 ml-auto">
           <Button asChild variant="secondary">
             <Link href={boardHref()} data-tour="cases-board">
               <LayoutGrid size={16} strokeWidth={1.75} />
-              Доска
+              {t.cases.toolbar.board}
             </Link>
           </Button>
           {isStaff && (
             <Button asChild>
               <Link href="/cases/new" data-tour="cases-new">
                 <Plus size={16} strokeWidth={2} />
-                Новое дело
+                {t.cases.toolbar.newCase}
               </Link>
             </Button>
           )}
@@ -343,12 +342,12 @@ export default async function CasesPage({
 
       {debtOnly && (
         <p className="-mt-2 text-[12.5px] text-text-muted">
-          Показаны только дела с непогашенным долгом ·{' '}
+          {t.cases.debtNotice}
           <Link
             href={buildHref({ debt: '', page: 1 })}
             className="font-semibold text-primary hover:text-primary-hover"
           >
-            показать все
+            {t.cases.debtShowAll}
           </Link>
         </p>
       )}
@@ -359,6 +358,19 @@ export default async function CasesPage({
             q || stage || caseType || category || responsibleId || lawyerId || clientId,
           )}
           isStaff={isStaff}
+          title={
+            Boolean(q || stage || caseType || category || responsibleId || lawyerId || clientId)
+              ? t.cases.empty.notFoundTitle
+              : t.cases.empty.title
+          }
+          hint={
+            Boolean(q || stage || caseType || category || responsibleId || lawyerId || clientId)
+              ? t.cases.empty.notFoundHint
+              : isStaff
+                ? t.cases.empty.staffHint
+                : t.cases.empty.nonStaffHint
+          }
+          newCaseLabel={t.cases.toolbar.newCase}
         />
       ) : (
         <div className="bg-surface rounded-lg border border-border shadow-sm overflow-x-auto">
@@ -371,21 +383,21 @@ export default async function CasesPage({
                   currentDir={dir}
                   hrefFor={sortHref}
                 >
-                  Номер / название
+                  {t.cases.columns.numberTitle}
                 </SortableHeader>
-                <TableHead>Клиент</TableHead>
-                <TableHead>Этап</TableHead>
-                <TableHead>Тип</TableHead>
-                <TableHead>Категория</TableHead>
-                <TableHead>Приоритет</TableHead>
-                <TableHead>Эксперт</TableHead>
+                <TableHead>{t.cases.columns.client}</TableHead>
+                <TableHead>{t.cases.columns.stage}</TableHead>
+                <TableHead>{t.cases.columns.type}</TableHead>
+                <TableHead>{t.cases.columns.category}</TableHead>
+                <TableHead>{t.cases.columns.priority}</TableHead>
+                <TableHead>{t.cases.columns.expert}</TableHead>
                 <SortableHeader
                   column="opened_at"
                   currentSort={sort}
                   currentDir={dir}
                   hrefFor={sortHref}
                 >
-                  Открыто
+                  {t.cases.columns.openedAt}
                 </SortableHeader>
                 <SortableHeader
                   column="contract_sum"
@@ -394,7 +406,7 @@ export default async function CasesPage({
                   hrefFor={sortHref}
                   align="right"
                 >
-                  Сумма
+                  {t.cases.columns.sum}
                 </SortableHeader>
                 <SortableHeader
                   column="debt"
@@ -403,7 +415,7 @@ export default async function CasesPage({
                   hrefFor={sortHref}
                   align="right"
                 >
-                  Долг
+                  {t.cases.columns.debt}
                 </SortableHeader>
               </TableRow>
             </TableHeader>
@@ -446,19 +458,27 @@ export default async function CasesPage({
                       {c.closed_without_act && (
                         <Badge
                           tone="warning"
-                          title="Дело завершено без акта приёма-передачи"
+                          title={t.cases.row.withoutActTitle}
                         >
-                          без акта
+                          {t.cases.row.withoutAct}
                         </Badge>
                       )}
                     </span>
                     {/* U6: сколько дней дело на текущем этапе (видно зависшие). */}
-                    {c.stage !== 'closed' && (
-                      <StageDays days={daysSince(c.stage_changed_at)} />
-                    )}
+                    {c.stage !== 'closed' &&
+                      (() => {
+                        const days = daysSince(c.stage_changed_at);
+                        return (
+                          <StageDays
+                            days={days}
+                            label={plural(t.cases.row.stageDays, days)}
+                            title={plural(t.cases.row.stageDaysTitle, days)}
+                          />
+                        );
+                      })()}
                   </TableCell>
                   <TableCell className="text-[13px] text-text-muted">
-                    {CASE_TYPE_LABEL[c.case_type]}
+                    {t.enums.caseType[c.case_type]}
                   </TableCell>
                   <TableCell>
                     <CategoryBadge category={c.category} quiet />
@@ -497,7 +517,7 @@ export default async function CasesPage({
                       info-цветом со знаком +, чтобы её было видно (раньше показывался 0). */}
                   <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
                     {c.overpaid > 0 ? (
-                      <span className="text-info" title="Переплата клиента">
+                      <span className="text-info" title={t.cases.row.overpaid}>
                         +{formatMoney(c.overpaid)} ₴
                       </span>
                     ) : (
@@ -516,20 +536,24 @@ export default async function CasesPage({
       {pageCount > 1 && (
         <nav
           className="flex items-center justify-between"
-          aria-label="Пагинация"
+          aria-label={t.cases.pagination.aria}
         >
           <p className="text-[12px] text-text-muted">
-            Страница {page} из {pageCount} · по {CASES_PAGE_SIZE} на странице
+            {fmt(t.cases.pagination.info, {
+              page,
+              pageCount,
+              size: CASES_PAGE_SIZE,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <PageLink href={buildHref({ page: page - 1 })} disabled={page <= 1}>
-              ← Назад
+              {t.cases.pagination.prev}
             </PageLink>
             <PageLink
               href={buildHref({ page: page + 1 })}
               disabled={page >= pageCount}
             >
-              Вперёд →
+              {t.cases.pagination.next}
             </PageLink>
           </div>
         </nav>
@@ -570,9 +594,15 @@ function PageLink({
 function EmptyState({
   hasFilters,
   isStaff,
+  title,
+  hint,
+  newCaseLabel,
 }: {
   hasFilters: boolean;
   isStaff: boolean;
+  title: string;
+  hint: string;
+  newCaseLabel: string;
 }) {
   return (
     <div className="bg-surface rounded-lg border border-border shadow-sm py-16 px-6 flex flex-col items-center text-center">
@@ -582,21 +612,13 @@ function EmptyState({
       >
         <Briefcase size={20} strokeWidth={1.75} />
       </span>
-      <h2 className="text-[18px] font-semibold text-text mb-1">
-        {hasFilters ? 'Ничего не нашли' : 'Здесь будут дела'}
-      </h2>
-      <p className="text-[13px] text-text-muted max-w-md mb-5">
-        {hasFilters
-          ? 'Попробуйте изменить фильтры или сбросить их.'
-          : isStaff
-            ? 'Создайте первое дело — оно соберёт вокруг себя клиента, документы, задачи и финансы.'
-            : 'У вас пока нет назначенных дел. Они появятся здесь, когда офис заведёт первое.'}
-      </p>
+      <h2 className="text-[18px] font-semibold text-text mb-1">{title}</h2>
+      <p className="text-[13px] text-text-muted max-w-md mb-5">{hint}</p>
       {!hasFilters && isStaff && (
         <Button asChild>
           <Link href="/cases/new">
             <Plus size={16} strokeWidth={2} />
-            Новое дело
+            {newCaseLabel}
           </Link>
         </Button>
       )}
@@ -609,14 +631,23 @@ function Empty() {
 }
 
 // U6: «N дней на этапе» под бейджем этапа. Застой (≥ порога) — предупреждающий цвет.
-function StageDays({ days }: { days: number }) {
+// label/title — уже локализованные строки (plural) из родителя.
+function StageDays({
+  days,
+  label,
+  title,
+}: {
+  days: number;
+  label: string;
+  title: string;
+}) {
   const stale = days >= STALE_STAGE_DAYS;
   return (
     <div
       className={`mt-1 text-[11px] tabular-nums ${stale ? 'font-medium text-warning' : 'text-text-subtle'}`}
-      title={`Дело на текущем этапе ${days} ${pluralDays(days)}`}
+      title={title}
     >
-      {days} {pluralDays(days)} на этапе
+      {label}
     </div>
   );
 }

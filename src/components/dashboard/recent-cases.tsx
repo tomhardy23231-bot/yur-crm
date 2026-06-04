@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { Briefcase } from "lucide-react";
 
@@ -19,7 +21,8 @@ import {
 } from "@/components/ui/table";
 import { PaymentProgress } from "@/components/cases/payment-progress";
 import { formatMoney } from "@/lib/utils";
-import { CASE_STAGE_LABEL, type CaseStage } from "@/lib/types/db";
+import { type CaseStage } from "@/lib/types/db";
+import { useI18n } from "@/lib/i18n/provider";
 import type { CaseListItem } from "@/lib/cases/queries";
 import type { FunnelEntry } from "@/lib/dashboard/queries";
 
@@ -42,17 +45,18 @@ export function RecentCases({
   items: ReadonlyArray<CaseListItem>;
   funnel?: ReadonlyArray<FunnelEntry>;
 }) {
+  const { t } = useI18n();
   const chips: StatusChip[] | null = funnel
     ? [
         {
           key: "all",
-          label: "Все",
+          label: t.common.all,
           count: funnel.reduce((s, f) => s + f.count, 0),
           href: "/cases",
         },
         ...funnel.map((f) => ({
           key: f.stage,
-          label: CASE_STAGE_LABEL[f.stage],
+          label: t.enums.caseStage[f.stage],
           count: f.count,
           dotClass: STAGE_DOT[f.stage],
           href: `/cases?stage=${f.stage}`,
@@ -64,12 +68,12 @@ export function RecentCases({
     <Card>
       <div className="flex items-center gap-2 border-b border-border px-5 py-4">
         <Briefcase size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[15px] font-semibold text-text">Последние дела</h2>
+        <h2 className="text-[15px] font-semibold text-text">{t.dashboard.recentCases.title}</h2>
         <Link
           href="/cases"
           className="ml-auto text-[12px] font-semibold text-primary hover:text-primary-hover"
         >
-          Все дела →
+          {t.dashboard.recentCases.allLink}
         </Link>
       </div>
 
@@ -79,18 +83,18 @@ export function RecentCases({
 
       {items.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-text-muted">
-          Пока нет дел.
+          {t.dashboard.recentCases.empty}
         </p>
       ) : (
         <div className="overflow-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
-                <TableHead>Номер / название</TableHead>
-                <TableHead>Клиент</TableHead>
-                <TableHead>Этап</TableHead>
-                <TableHead>Категория</TableHead>
-                <TableHead className="text-right">Сумма / оплата</TableHead>
+                <TableHead>{t.dashboard.recentCases.colNumberTitle}</TableHead>
+                <TableHead>{t.dashboard.recentCases.colClient}</TableHead>
+                <TableHead>{t.dashboard.recentCases.colStage}</TableHead>
+                <TableHead>{t.dashboard.recentCases.colCategory}</TableHead>
+                <TableHead className="text-right">{t.dashboard.recentCases.colSumPayment}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -115,7 +119,7 @@ export function RecentCases({
                           </span>
                         </span>
                       ) : (
-                        <span className="text-[13px] text-text-subtle">—</span>
+                        <span className="text-[13px] text-text-subtle">{t.common.dash}</span>
                       )}
                     </TableCell>
                     <TableCell>

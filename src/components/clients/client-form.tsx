@@ -10,11 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useI18n } from '@/lib/i18n/provider';
 import type { ClientActionState, ClientFormFields } from '@/lib/clients/actions';
 import {
-  CLIENT_KIND_LABEL,
   CLIENT_KINDS,
-  CLIENT_SOURCE_LABEL,
   CLIENT_SOURCES,
   clientKindHasFullName,
   type Client,
@@ -37,6 +36,7 @@ interface ClientFormProps {
 }
 
 export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFormProps) {
+  const { t } = useI18n();
   const [state, formAction] = useActionState<ClientActionState, FormData>(
     action,
     INITIAL,
@@ -83,7 +83,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="Тип клиента" htmlFor="client_kind" error={err('client_kind')} required>
+        <Field label={t.clients.form.kindLabel} htmlFor="client_kind" error={err('client_kind')} required>
           <Select
             id="client_kind"
             name="client_kind"
@@ -93,7 +93,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
           >
             {CLIENT_KINDS.map((k) => (
               <option key={k} value={k}>
-                {CLIENT_KIND_LABEL[k]}
+                {t.enums.clientKind[k]}
               </option>
             ))}
           </Select>
@@ -101,7 +101,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
 
         {hasFullName ? (
           <>
-            <Field label="Фамилия" htmlFor="last_name" error={err('last_name')} required>
+            <Field label={t.clients.form.lastName} htmlFor="last_name" error={err('last_name')} required>
               <Input
                 id="last_name"
                 name="last_name"
@@ -110,10 +110,10 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
                 required
                 maxLength={100}
                 aria-invalid={err('last_name') ? 'true' : undefined}
-                placeholder="Иванов"
+                placeholder={t.clients.form.lastNamePlaceholder}
               />
             </Field>
-            <Field label="Имя" htmlFor="first_name" error={err('first_name')} required>
+            <Field label={t.clients.form.firstName} htmlFor="first_name" error={err('first_name')} required>
               <Input
                 id="first_name"
                 name="first_name"
@@ -121,20 +121,20 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
                 required
                 maxLength={100}
                 aria-invalid={err('first_name') ? 'true' : undefined}
-                placeholder="Иван"
+                placeholder={t.clients.form.firstNamePlaceholder}
               />
             </Field>
-            <Field label="Отчество" htmlFor="middle_name" error={err('middle_name')}>
+            <Field label={t.clients.form.middleName} htmlFor="middle_name" error={err('middle_name')}>
               <Input
                 id="middle_name"
                 name="middle_name"
                 defaultValue={value('middle_name')}
                 maxLength={100}
                 aria-invalid={err('middle_name') ? 'true' : undefined}
-                placeholder="Иванович"
+                placeholder={t.clients.form.middleNamePlaceholder}
               />
             </Field>
-            <Field label="Дата рождения" htmlFor="birth_date" error={err('birth_date')}>
+            <Field label={t.clients.form.birthDate} htmlFor="birth_date" error={err('birth_date')}>
               <Input
                 id="birth_date"
                 name="birth_date"
@@ -147,7 +147,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
           </>
         ) : (
           <Field
-            label="Наименование"
+            label={t.clients.form.companyName}
             htmlFor="name"
             error={err('name')}
             required
@@ -161,13 +161,13 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
               required
               maxLength={200}
               aria-invalid={err('name') ? 'true' : undefined}
-              placeholder="ООО «Ромашка»"
+              placeholder={t.clients.form.companyNamePlaceholder}
             />
           </Field>
         )}
 
         <Field
-          label={hasFullName ? 'ИНН' : 'ИНН / ЕДРПОУ'}
+          label={hasFullName ? t.clients.form.inn : t.clients.form.innEdrpou}
           htmlFor="inn"
           error={err('inn')}
         >
@@ -178,77 +178,77 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
             inputMode="numeric"
             maxLength={12}
             aria-invalid={err('inn') ? 'true' : undefined}
-            placeholder="1234567890"
+            placeholder={t.clients.form.innPlaceholder}
             className="font-mono"
           />
         </Field>
 
-        <Field label="Номер договора" htmlFor="contract_number" error={err('contract_number')}>
+        <Field label={t.clients.form.contractNumber} htmlFor="contract_number" error={err('contract_number')}>
           <Input
             id="contract_number"
             name="contract_number"
             defaultValue={value('contract_number')}
             maxLength={100}
             aria-invalid={err('contract_number') ? 'true' : undefined}
-            placeholder="№ 2026/001"
+            placeholder={t.clients.form.contractNumberPlaceholder}
             className="font-mono"
           />
         </Field>
 
-        <Field label="Телефон" htmlFor="phone" error={err('phone')}>
+        <Field label={t.clients.form.phone} htmlFor="phone" error={err('phone')}>
           <Input
             id="phone"
             name="phone"
             type="tel"
             defaultValue={value('phone')}
-            placeholder="+38 067 000 00 00"
+            placeholder={t.clients.form.phonePlaceholder}
             className="font-mono"
           />
         </Field>
 
-        <Field label="E-mail" htmlFor="email" error={err('email')}>
+        <Field label={t.clients.form.email} htmlFor="email" error={err('email')}>
           <Input
             id="email"
             name="email"
             type="email"
             defaultValue={value('email')}
-            placeholder="client@example.com"
+            placeholder={t.clients.form.emailPlaceholder}
             aria-invalid={err('email') ? 'true' : undefined}
             className="font-mono"
           />
         </Field>
 
-        <Field label="Адрес" htmlFor="address" error={err('address')}>
+        <Field label={t.clients.form.address} htmlFor="address" error={err('address')}>
           <Input
             id="address"
             name="address"
             defaultValue={value('address')}
-            placeholder="г. Киев, ул. Крещатик, 1"
+            placeholder={t.clients.form.addressPlaceholder}
           />
         </Field>
 
-        <Field label="Источник" htmlFor="source" error={err('source')}>
+        <Field label={t.clients.form.source} htmlFor="source" error={err('source')}>
           <Select
             id="source"
             name="source"
             defaultValue={value('source')}
             aria-invalid={err('source') ? 'true' : undefined}
           >
-            <option value="">— не указан —</option>
+            <option value="">{t.clients.form.sourceNone}</option>
             {CLIENT_SOURCES.map((s) => (
               <option key={s} value={s}>
-                {CLIENT_SOURCE_LABEL[s]}
+                {t.enums.clientSource[s]}
               </option>
             ))}
           </Select>
         </Field>
 
-        <Field label="Заметки" htmlFor="notes" error={err('notes')} className="sm:col-span-2 lg:col-span-3">
+        <Field label={t.clients.form.notes} htmlFor="notes" error={err('notes')} className="sm:col-span-2 lg:col-span-3">
           <Textarea
             id="notes"
             name="notes"
             defaultValue={value('notes')}
-            placeholder="Любая внутренняя информация о клиенте"
+            placeholder={t.clients.form.notesPlaceholder}
             rows={4}
           />
         </Field>
@@ -264,9 +264,9 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
       )}
 
       <div className="flex items-center gap-3 pt-2 border-t border-border">
-        <SubmitButton label={submitLabel} />
+        <SubmitButton label={submitLabel} savingLabel={t.common.saving} />
         <Button asChild variant="ghost" type="button">
-          <Link href={cancelHref}>Отмена</Link>
+          <Link href={cancelHref}>{t.common.cancel}</Link>
         </Button>
       </div>
     </form>
@@ -304,11 +304,11 @@ function Field({
   );
 }
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ label, savingLabel }: { label: string; savingLabel: string }) {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
-      {pending ? 'Сохранение…' : label}
+      {pending ? savingLabel : label}
     </Button>
   );
 }

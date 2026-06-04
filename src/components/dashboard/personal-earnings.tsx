@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { Wallet } from "lucide-react";
 
@@ -13,6 +15,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { formatMoney, formatPercent } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 import type { PersonalEarning } from "@/lib/dashboard/queries";
 
 // Личный блок начислений специалиста (юрист/Эксперт): по каждому его делу —
@@ -22,6 +25,7 @@ export function PersonalEarnings({
 }: {
   earnings: ReadonlyArray<PersonalEarning>;
 }) {
+  const { t, fmt } = useI18n();
   const totalEarned = earnings.reduce((sum, e) => sum + e.earned, 0);
   const totalPaidBase = earnings.reduce((sum, e) => sum + e.paid_total, 0);
 
@@ -29,34 +33,33 @@ export function PersonalEarnings({
     <Card>
       <div className="flex items-center gap-2 border-b border-border px-5 py-4">
         <Wallet size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[15px] font-semibold text-text">Мои начисления</h2>
+        <h2 className="text-[15px] font-semibold text-text">{t.dashboard.earnings.title}</h2>
         <span className="text-[12px] text-text-muted">
-          · % от оплаченного по делу
+          {t.dashboard.earnings.subtitle}
         </span>
         <Link
           href="/reports/payroll"
           className="ml-auto text-[12px] text-primary hover:underline"
         >
-          Отчёт →
+          {t.dashboard.earnings.reportLink}
         </Link>
       </div>
 
       {earnings.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-text-muted">
-          У вас пока нет дел с начислениями. Они появятся, когда по вашим делам
-          поступят оплаты.
+          {t.dashboard.earnings.empty}
         </p>
       ) : (
         <div className="overflow-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
-                <TableHead>Дело</TableHead>
-                <TableHead>Категория</TableHead>
-                <TableHead>Этап</TableHead>
-                <TableHead className="text-right">Оплачено</TableHead>
-                <TableHead className="text-right">%</TableHead>
-                <TableHead className="text-right">Начислено</TableHead>
+                <TableHead>{t.dashboard.earnings.colCase}</TableHead>
+                <TableHead>{t.dashboard.earnings.colCategory}</TableHead>
+                <TableHead>{t.dashboard.earnings.colStage}</TableHead>
+                <TableHead className="text-right">{t.dashboard.earnings.colPaid}</TableHead>
+                <TableHead className="text-right">{t.dashboard.earnings.colPercent}</TableHead>
+                <TableHead className="text-right">{t.dashboard.earnings.colAccrued}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -91,11 +94,11 @@ export function PersonalEarnings({
           </Table>
           <div className="flex items-center justify-between gap-4 border-t border-border bg-surface-muted/50 px-4 py-3">
             <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-subtle">
-              Итого начислено
+              {t.dashboard.earnings.totalAccrued}
             </span>
             <div className="flex items-baseline gap-4">
               <span className="font-mono text-[12px] tabular-nums text-text-muted">
-                база {formatMoney(totalPaidBase)} ₴
+                {fmt(t.dashboard.earnings.base, { amount: formatMoney(totalPaidBase) })}
               </span>
               <span className="font-mono text-[15px] font-bold tabular-nums text-success">
                 {formatMoney(totalEarned)} ₴

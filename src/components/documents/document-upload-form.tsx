@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   uploadDocumentAction,
   type UploadDocumentFields,
   type UploadDocumentState,
 } from '@/lib/documents/actions';
-import { DOC_TYPES, DOC_TYPE_LABEL } from '@/lib/types/db';
+import { DOC_TYPES } from '@/lib/types/db';
 
 const INITIAL: UploadDocumentState = { ok: false };
 
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export function DocumentUploadForm({ caseId }: Props) {
+  const { t } = useI18n();
   const [state, formAction] = useActionState<UploadDocumentState, FormData>(
     uploadDocumentAction,
     INITIAL,
@@ -51,7 +53,7 @@ export function DocumentUploadForm({ caseId }: Props) {
 
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-[2fr_1fr]">
         <Field
-          label="Файл"
+          label={t.documents.upload.fileLabel}
           htmlFor="doc-file"
           error={err('file')}
           required
@@ -67,7 +69,7 @@ export function DocumentUploadForm({ caseId }: Props) {
         </Field>
 
         <Field
-          label="Тип документа"
+          label={t.documents.upload.docTypeLabel}
           htmlFor="doc-type"
           error={err('doc_type')}
           required
@@ -79,9 +81,9 @@ export function DocumentUploadForm({ caseId }: Props) {
             required
             aria-invalid={err('doc_type') ? 'true' : undefined}
           >
-            {DOC_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {DOC_TYPE_LABEL[t]}
+            {DOC_TYPES.map((dt) => (
+              <option key={dt} value={dt}>
+                {t.enums.docType[dt]}
               </option>
             ))}
           </Select>
@@ -102,12 +104,12 @@ export function DocumentUploadForm({ caseId }: Props) {
           role="status"
           className="text-sm text-success bg-success-bg border border-success/15 rounded-md px-3 py-2"
         >
-          Файл загружен.
+          {t.documents.upload.success}
         </p>
       )}
 
       <p className="text-[11px] text-text-subtle">
-        До 25 МБ. Запрещены исполняемые файлы (.exe, .bat, .ps1 и т.п.).
+        {t.documents.upload.sizeHint}
       </p>
 
       <div className="flex items-center gap-3">
@@ -150,10 +152,11 @@ function Field({
 }
 
 function SubmitButton() {
+  const { t } = useI18n();
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending} size="sm">
-      {pending ? 'Загрузка…' : 'Загрузить'}
+      {pending ? t.documents.upload.submitting : t.documents.upload.submit}
     </Button>
   );
 }

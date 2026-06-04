@@ -6,15 +6,12 @@ import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   updatePayrollRatesAction,
   type PayrollRatesActionState,
 } from '@/lib/payroll/actions';
-import {
-  CASE_CATEGORIES,
-  CASE_CATEGORY_LABEL,
-  type CaseCategory,
-} from '@/lib/types/db';
+import { CASE_CATEGORIES, type CaseCategory } from '@/lib/types/db';
 
 const INITIAL: PayrollRatesActionState = { ok: false };
 
@@ -25,6 +22,7 @@ export function PayrollRatesForm({
 }: {
   rates: Record<CaseCategory, CategoryRatePair>;
 }) {
+  const { t, fmt } = useI18n();
   const [state, formAction] = useActionState<PayrollRatesActionState, FormData>(
     updatePayrollRatesAction,
     INITIAL,
@@ -39,7 +37,7 @@ export function PayrollRatesForm({
             className="flex flex-col gap-3 rounded-lg border border-border bg-surface-muted/40 p-4"
           >
             <span className="text-[13px] font-semibold text-text">
-              {CASE_CATEGORY_LABEL[c]}
+              {t.enums.caseCategory[c]}
             </span>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
@@ -47,7 +45,7 @@ export function PayrollRatesForm({
                   htmlFor={`lawyer_percent_${c}`}
                   className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle"
                 >
-                  Юрист, %
+                  {t.payroll.settings.lawyerPercent}
                 </Label>
                 <Input
                   id={`lawyer_percent_${c}`}
@@ -59,7 +57,9 @@ export function PayrollRatesForm({
                   max="100"
                   defaultValue={String(rates[c].lawyer)}
                   required
-                  aria-label={`${CASE_CATEGORY_LABEL[c]} — ставка юриста, %`}
+                  aria-label={fmt(t.payroll.settings.lawyerRateAria, {
+                    category: t.enums.caseCategory[c],
+                  })}
                   className="font-mono"
                 />
               </div>
@@ -68,7 +68,7 @@ export function PayrollRatesForm({
                   htmlFor={`expert_percent_${c}`}
                   className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle"
                 >
-                  Эксперт, %
+                  {t.payroll.settings.expertPercent}
                 </Label>
                 <Input
                   id={`expert_percent_${c}`}
@@ -80,7 +80,9 @@ export function PayrollRatesForm({
                   max="100"
                   defaultValue={String(rates[c].expert)}
                   required
-                  aria-label={`${CASE_CATEGORY_LABEL[c]} — ставка эксперта, %`}
+                  aria-label={fmt(t.payroll.settings.expertRateAria, {
+                    category: t.enums.caseCategory[c],
+                  })}
                   className="font-mono"
                 />
               </div>
@@ -110,10 +112,11 @@ export function PayrollRatesForm({
 }
 
 function SubmitButton() {
+  const { t } = useI18n();
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
-      {pending ? 'Сохранение…' : 'Сохранить ставки'}
+      {pending ? t.payroll.settings.saving : t.payroll.settings.saveRates}
     </Button>
   );
 }

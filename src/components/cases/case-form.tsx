@@ -16,20 +16,15 @@ import {
   InlineClientCreate,
   type CreatedClient,
 } from '@/components/cases/inline-client-create';
+import { useI18n } from '@/lib/i18n/provider';
 import type { CaseActionState, CaseFormFields } from '@/lib/cases/actions';
 import type { AssigneeOption, ClientOption } from '@/lib/cases/queries';
 import {
-  ACCRUAL_MODE_LABEL,
   ACCRUAL_MODES,
-  BILLING_TYPE_LABEL,
   BILLING_TYPES,
   CASE_CATEGORIES,
-  CASE_CATEGORY_LABEL,
   CASE_PRIORITIES,
-  CASE_PRIORITY_LABEL,
-  CASE_STAGE_LABEL,
   CASE_STAGES,
-  CASE_TYPE_LABEL,
   CASE_TYPES,
   type BillingType,
   type Case,
@@ -84,6 +79,7 @@ export function CaseForm({
   canEditRates = false,
   canCreateClient = false,
 }: CaseFormProps) {
+  const { t } = useI18n();
   const stageOptions = allowedStages ?? CASE_STAGES;
   const [state, formAction] = useActionState<CaseActionState, FormData>(
     action,
@@ -171,10 +167,10 @@ export function CaseForm({
     <>
       <form ref={formRef} action={formAction} className="flex flex-col gap-6">
       {/* Базовый блок */}
-      <Section title="Основное">
+      <Section title={t.caseCard.form.sectionBasic}>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Field
-            label="Номер / название"
+            label={t.caseCard.form.numberTitle}
             htmlFor="number_title"
             error={err('number_title')}
             required
@@ -188,11 +184,16 @@ export function CaseForm({
               required
               maxLength={200}
               aria-invalid={err('number_title') ? 'true' : undefined}
-              placeholder="CRM-2026-003 / Иск ООО «Ромашка»"
+              placeholder={t.caseCard.form.numberTitlePlaceholder}
             />
           </Field>
 
-          <Field label="Клиент" htmlFor="client_id" error={err('client_id')} required>
+          <Field
+            label={t.caseCard.form.client}
+            htmlFor="client_id"
+            error={err('client_id')}
+            required
+          >
             {lockedClient ? (
               <>
                 <input
@@ -218,7 +219,9 @@ export function CaseForm({
                   aria-invalid={err('client_id') ? 'true' : undefined}
                   className="flex-1"
                 >
-                  <option value="">— выберите клиента —</option>
+                  <option value="">
+                    {t.caseCard.form.clientSelectPlaceholder}
+                  </option>
                   {clientOptions.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -234,7 +237,7 @@ export function CaseForm({
                     onClick={() => setShowNewClient(true)}
                   >
                     <Plus size={14} strokeWidth={2} />
-                    Новый
+                    {t.caseCard.form.newClient}
                   </Button>
                 )}
               </div>
@@ -242,7 +245,7 @@ export function CaseForm({
           </Field>
 
           <Field
-            label="Юрист (договор)"
+            label={t.caseCard.form.lawyer}
             htmlFor="lawyer_id"
             error={err('lawyer_id')}
             required
@@ -254,7 +257,7 @@ export function CaseForm({
               required
               aria-invalid={err('lawyer_id') ? 'true' : undefined}
             >
-              <option value="">— выберите —</option>
+              <option value="">{t.caseCard.form.selectPlaceholder}</option>
               {lawyers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.full_name}
@@ -264,7 +267,7 @@ export function CaseForm({
           </Field>
 
           <Field
-            label="Эксперт (исполнитель)"
+            label={t.caseCard.form.expert}
             htmlFor="responsible_id"
             error={err('responsible_id')}
             required
@@ -276,7 +279,7 @@ export function CaseForm({
               required
               aria-invalid={err('responsible_id') ? 'true' : undefined}
             >
-              <option value="">— выберите —</option>
+              <option value="">{t.caseCard.form.selectPlaceholder}</option>
               {experts.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.full_name}
@@ -285,7 +288,12 @@ export function CaseForm({
             </Select>
           </Field>
 
-          <Field label="Открыто" htmlFor="opened_at" error={err('opened_at')} required>
+          <Field
+            label={t.caseCard.form.openedAt}
+            htmlFor="opened_at"
+            error={err('opened_at')}
+            required
+          >
             <Input
               id="opened_at"
               name="opened_at"
@@ -297,7 +305,12 @@ export function CaseForm({
             />
           </Field>
 
-          <Field label="Тип дела" htmlFor="case_type" error={err('case_type')} required>
+          <Field
+            label={t.caseCard.form.caseType}
+            htmlFor="case_type"
+            error={err('case_type')}
+            required
+          >
             <Select
               id="case_type"
               name="case_type"
@@ -305,16 +318,16 @@ export function CaseForm({
               required
               aria-invalid={err('case_type') ? 'true' : undefined}
             >
-              {CASE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {CASE_TYPE_LABEL[t]}
+              {CASE_TYPES.map((ct) => (
+                <option key={ct} value={ct}>
+                  {t.enums.caseType[ct]}
                 </option>
               ))}
             </Select>
           </Field>
 
           <Field
-            label="Категория (для расчёта зарплаты)"
+            label={t.caseCard.form.category}
             htmlFor="category"
             error={err('category')}
             required
@@ -328,14 +341,14 @@ export function CaseForm({
             >
               {CASE_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
-                  {CASE_CATEGORY_LABEL[c]}
+                  {t.enums.caseCategory[c]}
                 </option>
               ))}
             </Select>
           </Field>
 
           <Field
-            label="Предмет договора"
+            label={t.caseCard.form.subject}
             htmlFor="subject"
             error={err('subject')}
             className="sm:col-span-2 lg:col-span-3"
@@ -345,11 +358,16 @@ export function CaseForm({
               name="subject"
               defaultValue={value('subject')}
               maxLength={300}
-              placeholder="кратко: взыскание задолженности, регистрация ООО…"
+              placeholder={t.caseCard.form.subjectPlaceholder}
             />
           </Field>
 
-          <Field label="Этап" htmlFor="stage" error={err('stage')} required>
+          <Field
+            label={t.caseCard.form.stage}
+            htmlFor="stage"
+            error={err('stage')}
+            required
+          >
             <Select
               id="stage"
               name="stage"
@@ -359,13 +377,18 @@ export function CaseForm({
             >
               {stageOptions.map((s) => (
                 <option key={s} value={s}>
-                  {CASE_STAGE_LABEL[s]}
+                  {t.enums.caseStage[s]}
                 </option>
               ))}
             </Select>
           </Field>
 
-          <Field label="Приоритет" htmlFor="priority" error={err('priority')} required>
+          <Field
+            label={t.caseCard.form.priority}
+            htmlFor="priority"
+            error={err('priority')}
+            required
+          >
             <Select
               id="priority"
               name="priority"
@@ -375,7 +398,7 @@ export function CaseForm({
             >
               {CASE_PRIORITIES.map((p) => (
                 <option key={p} value={p}>
-                  {CASE_PRIORITY_LABEL[p]}
+                  {t.enums.casePriority[p]}
                 </option>
               ))}
             </Select>
@@ -384,10 +407,10 @@ export function CaseForm({
       </Section>
 
       {/* Финансы */}
-      <Section title="Финансы">
+      <Section title={t.caseCard.form.sectionFinance}>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Field
-            label="Сумма договора"
+            label={t.caseCard.form.contractSum}
             htmlFor="contract_sum"
             error={err('contract_sum')}
           >
@@ -407,15 +430,14 @@ export function CaseForm({
           {canEditRates && (
             <div className="sm:col-span-2 lg:col-span-3 flex flex-col gap-2 rounded-md border border-border bg-surface-muted/40 p-4">
               <p className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
-                Индивидуальный % зарплаты по этому делу
+                {t.caseCard.form.rateOverrideTitle}
               </p>
               <p className="text-[12px] text-text-subtle">
-                Необязательно. Пусто → берётся ставка категории. Меняет только
-                владелец/администратор.
+                {t.caseCard.form.rateOverrideHint}
               </p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field
-                  label="% юриста"
+                  label={t.caseCard.form.lawyerRate}
                   htmlFor="lawyer_rate_override"
                   error={err('lawyer_rate_override')}
                 >
@@ -428,13 +450,13 @@ export function CaseForm({
                     min="0"
                     max="100"
                     defaultValue={value('lawyer_rate_override')}
-                    placeholder="по категории"
+                    placeholder={t.caseCard.form.rateByCategoryPlaceholder}
                     aria-invalid={err('lawyer_rate_override') ? 'true' : undefined}
                     className="font-mono"
                   />
                 </Field>
                 <Field
-                  label="% эксперта"
+                  label={t.caseCard.form.expertRate}
                   htmlFor="expert_rate_override"
                   error={err('expert_rate_override')}
                 >
@@ -447,7 +469,7 @@ export function CaseForm({
                     min="0"
                     max="100"
                     defaultValue={value('expert_rate_override')}
-                    placeholder="по категории"
+                    placeholder={t.caseCard.form.rateByCategoryPlaceholder}
                     aria-invalid={err('expert_rate_override') ? 'true' : undefined}
                     className="font-mono"
                   />
@@ -457,7 +479,7 @@ export function CaseForm({
           )}
 
           <Field
-            label="Начисление зарплаты"
+            label={t.caseCard.form.accrualMode}
             htmlFor="accrual_mode"
             error={err('accrual_mode')}
           >
@@ -469,14 +491,14 @@ export function CaseForm({
             >
               {ACCRUAL_MODES.map((m) => (
                 <option key={m} value={m}>
-                  {ACCRUAL_MODE_LABEL[m]}
+                  {t.enums.accrualMode[m]}
                 </option>
               ))}
             </Select>
           </Field>
 
           <Field
-            label="Тип оплаты"
+            label={t.caseCard.form.billingTypes}
             htmlFor="billing_types"
             error={err('billing_types')}
             className="sm:col-span-2 lg:col-span-3"
@@ -495,7 +517,7 @@ export function CaseForm({
                     className="h-4 w-4 accent-primary cursor-pointer"
                   />
                   <span className="text-[13px] text-text">
-                    {BILLING_TYPE_LABEL[bt]}
+                    {t.enums.billingType[bt]}
                   </span>
                 </label>
               ))}
@@ -505,10 +527,10 @@ export function CaseForm({
       </Section>
 
       {/* Судебная часть */}
-      <Section title="Судебное (если применимо)">
+      <Section title={t.caseCard.form.sectionCourt}>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Field
-            label="Оппонент"
+            label={t.caseCard.form.opponent}
             htmlFor="opponent"
             error={err('opponent')}
             className="sm:col-span-2 lg:col-span-1"
@@ -517,12 +539,12 @@ export function CaseForm({
               id="opponent"
               name="opponent"
               defaultValue={value('opponent')}
-              placeholder="ФИО / название организации"
+              placeholder={t.caseCard.form.opponentPlaceholder}
             />
           </Field>
 
           <Field
-            label="Номер судебного дела"
+            label={t.caseCard.form.courtCaseNumber}
             htmlFor="court_case_number"
             error={err('court_case_number')}
           >
@@ -530,31 +552,35 @@ export function CaseForm({
               id="court_case_number"
               name="court_case_number"
               defaultValue={value('court_case_number')}
-              placeholder="755/12345/2026"
+              placeholder={t.caseCard.form.courtCaseNumberPlaceholder}
               className="font-mono"
             />
           </Field>
 
-          <Field label="Суд" htmlFor="court" error={err('court')}>
+          <Field
+            label={t.caseCard.form.court}
+            htmlFor="court"
+            error={err('court')}
+          >
             <Input
               id="court"
               name="court"
               defaultValue={value('court')}
-              placeholder="Шевченковский районный суд г. Киева"
+              placeholder={t.caseCard.form.courtPlaceholder}
             />
           </Field>
         </div>
       </Section>
 
       {/* Дополнительно */}
-      <Section title="Дополнительно">
-        <Field label="Теги" htmlFor="tags" error={err('tags')}>
+      <Section title={t.caseCard.form.sectionExtra}>
+        <Field label={t.caseCard.form.tags} htmlFor="tags" error={err('tags')}>
           <Textarea
             id="tags"
             name="tags"
             rows={2}
             defaultValue={value('tags')}
-            placeholder="через запятую: vip, hot, recurring"
+            placeholder={t.caseCard.form.tagsPlaceholder}
           />
         </Field>
       </Section>
@@ -571,7 +597,7 @@ export function CaseForm({
       <div className="flex items-center gap-3 pt-2 border-t border-border">
         <SubmitButton label={submitLabel} />
         <Button asChild variant="ghost" type="button">
-          <Link href={cancelHref}>Отмена</Link>
+          <Link href={cancelHref}>{t.caseCard.form.cancel}</Link>
         </Button>
       </div>
       </form>
@@ -638,10 +664,11 @@ function Field({
 }
 
 function SubmitButton({ label }: { label: string }) {
+  const { t } = useI18n();
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
-      {pending ? 'Сохранение…' : label}
+      {pending ? t.caseCard.form.saving : label}
     </Button>
   );
 }

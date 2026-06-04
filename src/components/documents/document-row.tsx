@@ -2,6 +2,7 @@ import { Download, FileText, Trash2 } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { deleteDocumentAction } from '@/lib/documents/actions';
+import { getT } from '@/lib/i18n/server';
 import type { DocumentWithUploader } from '@/lib/types/db';
 
 import { DocTypeBadge } from './doc-type-badge';
@@ -20,7 +21,8 @@ const DATETIME_FMT = new Intl.DateTimeFormat('ru-RU', {
   minute: '2-digit',
 });
 
-export function DocumentRow({ doc, canDelete }: DocumentRowProps) {
+export async function DocumentRow({ doc, canDelete }: DocumentRowProps) {
+  const { t } = await getT();
   return (
     // id + scroll-mt-24 + target:* — переход по якорю из Cmd+K (LOW#9).
     // target:bg-primary-subtle/60 даёт мягкую подсветку выбранного документа,
@@ -57,7 +59,7 @@ export function DocumentRow({ doc, canDelete }: DocumentRowProps) {
 
       <a
         href={`/api/documents/${doc.id}/download`}
-        aria-label="Скачать"
+        aria-label={t.documents.row.download}
         className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md text-text-subtle hover:text-primary hover:bg-primary-subtle"
       >
         <Download size={14} strokeWidth={1.75} />
@@ -69,7 +71,7 @@ export function DocumentRow({ doc, canDelete }: DocumentRowProps) {
           <input type="hidden" name="case_id" value={doc.case_id} />
           <button
             type="submit"
-            aria-label="Удалить документ"
+            aria-label={t.documents.row.deleteDocument}
             className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity inline-flex items-center justify-center w-7 h-7 rounded-md text-text-subtle hover:text-error hover:bg-error-bg"
           >
             <Trash2 size={14} strokeWidth={1.75} />

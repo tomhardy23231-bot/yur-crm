@@ -1,5 +1,8 @@
+"use client";
+
 import { cn } from "@/lib/utils";
-import { CASE_STAGES, CASE_STAGE_LABEL, type CaseStage } from "@/lib/types/db";
+import { useI18n } from "@/lib/i18n/provider";
+import { CASE_STAGES, type CaseStage } from "@/lib/types/db";
 
 // Синяя «лента» прогресса этапов (бриф §7): текущий этап — синий, пройденные —
 // серые, будущие — бледные. Единый акцент вместо разноцветной шкалы.
@@ -21,6 +24,7 @@ function arrowClip(i: number, last: number): string {
 
 // Степпер-воронка (read-only): сегменты-стрелки. Движение только вперёд.
 export function StageStepper({ stage }: { stage: CaseStage }) {
+  const { t } = useI18n();
   const current = CASE_STAGES.indexOf(stage);
   const last = CASE_STAGES.length - 1;
 
@@ -46,7 +50,7 @@ export function StageStepper({ stage }: { stage: CaseStage }) {
               className="px-1 text-center text-[11px] leading-tight"
               style={{ color: labelColor, fontWeight: isCurrent ? 700 : 500 }}
             >
-              {CASE_STAGE_LABEL[s]}
+              {t.enums.caseStage[s]}
             </span>
           </div>
         );

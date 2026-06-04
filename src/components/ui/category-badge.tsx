@@ -1,7 +1,10 @@
+"use client";
+
 import * as React from "react";
 
 import { cn, formatPercent } from "@/lib/utils";
-import { CASE_CATEGORY_LABEL, type CaseCategory } from "@/lib/types/db";
+import { type CaseCategory } from "@/lib/types/db";
+import { useI18n } from "@/lib/i18n/provider";
 
 // Бейдж категории дела. Яркая чистая гамма (см. globals.css --cat-*). Опционально
 // показывает % зарплаты по категории. Вариант quiet — для плотных таблиц.
@@ -34,6 +37,7 @@ export function CategoryBadge({
   className,
   ...props
 }: CategoryBadgeProps) {
+  const { t } = useI18n();
   if (quiet) {
     return (
       <span
@@ -48,7 +52,7 @@ export function CategoryBadge({
           aria-hidden="true"
           className={cn("w-[7px] h-[7px] rounded-full shrink-0", CATEGORY_DOT[category])}
         />
-        {CASE_CATEGORY_LABEL[category]}
+        {t.enums.caseCategory[category]}
         {percent != null && (
           <span className="font-mono tabular-nums text-text-subtle">
             {formatPercent(percent)}%
@@ -70,7 +74,7 @@ export function CategoryBadge({
       )}
       {...props}
     >
-      {CASE_CATEGORY_LABEL[category]}
+      {t.enums.caseCategory[category]}
       {percent != null && (
         <span className="font-mono tabular-nums opacity-70">
           {formatPercent(percent)}%

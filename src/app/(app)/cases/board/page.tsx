@@ -10,11 +10,10 @@ import {
   listExpertsForAssignment,
   type BoardCaseItem,
 } from '@/lib/cases/queries';
+import { getT } from '@/lib/i18n/server';
 import {
   CASE_STAGES,
-  CASE_STAGE_LABEL,
   CASE_TYPES,
-  CASE_TYPE_LABEL,
   STAFF_ROLES,
   type CaseType,
   type CaseStage,
@@ -36,6 +35,7 @@ export default async function CasesBoardPage({
   }>;
 }) {
   const user = await requireUser();
+  const { t } = await getT();
   const sp = await searchParams;
   const caseType = sp.type && isCaseType(sp.type) ? sp.type : undefined;
   const responsibleId =
@@ -75,12 +75,12 @@ export default async function CasesBoardPage({
         <CasesFilterSelect
           name="type"
           value={caseType ?? ''}
-          ariaLabel="Тип дела"
+          ariaLabel={t.cases.filters.typeAria}
           options={[
-            { value: '', label: 'Все типы' },
-            ...CASE_TYPES.map((t) => ({
-              value: t,
-              label: CASE_TYPE_LABEL[t],
+            { value: '', label: t.cases.filters.allTypes },
+            ...CASE_TYPES.map((ct) => ({
+              value: ct,
+              label: t.enums.caseType[ct],
             })),
           ]}
         />
@@ -88,9 +88,9 @@ export default async function CasesBoardPage({
           <CasesFilterSelect
             name="responsible"
             value={responsibleId ?? ''}
-            ariaLabel="Эксперт"
+            ariaLabel={t.cases.filters.expertAria}
             options={[
-              { value: '', label: 'Все эксперты' },
+              { value: '', label: t.cases.filters.allExperts },
               ...experts.map((s) => ({
                 value: s.id,
                 label: s.full_name,
@@ -103,21 +103,21 @@ export default async function CasesBoardPage({
             href="/cases/board"
             className="text-[13px] text-text-muted hover:text-text underline-offset-2 hover:underline"
           >
-            Сбросить
+            {t.cases.toolbar.reset}
           </Link>
         )}
         <div className="flex items-center gap-2 ml-auto">
           <Button asChild variant="secondary" size="sm">
             <Link href={listHref()}>
               <List size={14} strokeWidth={1.75} />
-              Список
+              {t.cases.toolbar.list}
             </Link>
           </Button>
           {isStaff && (
             <Button asChild size="sm">
               <Link href="/cases/new">
                 <Plus size={14} strokeWidth={2} />
-                Новое дело
+                {t.cases.toolbar.newCase}
               </Link>
             </Button>
           )}
@@ -127,7 +127,7 @@ export default async function CasesBoardPage({
       <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2">
         {CASE_STAGES.map((stage, idx) => {
           const nextStage = CASE_STAGES[idx + 1] ?? null;
-          const nextStageLabel = nextStage ? CASE_STAGE_LABEL[nextStage] : null;
+          const nextStageLabel = nextStage ? t.enums.caseStage[nextStage] : null;
           return (
             <BoardColumn
               key={stage}

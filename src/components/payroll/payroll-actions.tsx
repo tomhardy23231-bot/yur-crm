@@ -9,13 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n/provider';
 import {
   createBonusAction,
   createPayoutAction,
   deletePayrollTransactionAction,
   type PayrollMutationState,
 } from '@/lib/payroll/actions';
-import { ROLE_IN_CASE_LABEL, type RoleInCase } from '@/lib/types/db';
+import { type RoleInCase } from '@/lib/types/db';
 
 const PAYROLL_INITIAL: PayrollMutationState = { ok: false };
 
@@ -52,17 +53,18 @@ export function PayrollActions({
   buckets: PayoutBucket[];
   bonusOutstanding: number;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState<null | 'payout' | 'bonus'>(null);
 
   return (
     <div className="flex items-center gap-2">
       <Button variant="secondary" size="sm" onClick={() => setOpen('bonus')}>
         <Gift size={14} strokeWidth={1.75} />
-        Премия
+        {t.payroll.actions.bonusButton}
       </Button>
       <Button size="sm" onClick={() => setOpen('payout')}>
         <Coins size={14} strokeWidth={1.75} />
-        Выплата
+        {t.payroll.actions.payoutButton}
       </Button>
 
       {open === 'payout' && (
@@ -93,11 +95,12 @@ export function DeleteTransactionButton({
   transactionId: string;
   label: string;
 }) {
+  const { t, fmt } = useI18n();
   return (
     <form
       action={deletePayrollTransactionAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Удалить «${label}»? Действие необратимо.`)) {
+        if (!window.confirm(fmt(t.payroll.actions.deleteConfirm, { label }))) {
           e.preventDefault();
         }
       }}
@@ -107,7 +110,7 @@ export function DeleteTransactionButton({
         type="submit"
         variant="ghost"
         size="sm"
-        aria-label="Удалить"
+        aria-label={t.payroll.actions.deleteAria}
         className="text-text-muted hover:text-error"
       >
         <Trash2 size={14} strokeWidth={1.75} />
@@ -128,6 +131,7 @@ function ModalShell({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const { t } = useI18n();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -147,7 +151,7 @@ function ModalShell({
     >
       <button
         type="button"
-        aria-label="Закрыть"
+        aria-label={t.payroll.actions.closeAria}
         onClick={onClose}
         className="absolute inset-0 cursor-default bg-[#080A0F]/70 backdrop-blur-[3px]"
       />
@@ -162,7 +166,7 @@ function ModalShell({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Закрыть"
+            aria-label={t.payroll.actions.closeAria}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-muted hover:text-text"
           >
             <X size={17} strokeWidth={2} />
@@ -189,6 +193,7 @@ function PayoutModal({
   bonusOutstanding: number;
   onClose: () => void;
 }) {
+  const { t, fmt } = useI18n();
   const [state, formAction, isPending] = useActionState(
     createPayoutAction,
     PAYROLL_INITIAL,
@@ -239,15 +244,15 @@ function PayoutModal({
 
   return (
     <ModalShell
-      title="Выплата"
-      subtitle={`${userName} · отметьте, что закрываете`}
+      title={t.payroll.actions.payoutTitle}
+      subtitle={fmt(t.payroll.actions.payoutSubtitle, { name: userName })}
       onClose={onClose}
     >
       <form action={submit} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
           {nothingToPay ? (
             <p className="py-8 text-center text-[13px] text-text-muted">
-              Нечего выплачивать — нет невыплаченного заработка и премий.
+              {t.payroll.actions.nothingToPay}
             </p>
           ) : (
             <>
@@ -255,7 +260,7 @@ function PayoutModal({
                 <>
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
-                      Дела к выплате
+                      {t.payroll.actions.casesToPay}
                     </span>
                     <button
                       type="button"
@@ -264,7 +269,7 @@ function PayoutModal({
                         setChecked(allSelected ? new Set() : new Set(allKeys))
                       }
                     >
-                      {allSelected ? 'Снять все' : 'Выбрать все'}
+                      {allSelected ? t.payroll.actions.unselectAll : t.payroll.actions.selectAll}
                     </button>
                   </div>
                   <ul className="flex flex-col gap-1">
@@ -292,7 +297,7 @@ function PayoutModal({
                                 {b.number_title}
                               </span>
                               <span className="text-[12px] text-text-muted">
-                                {ROLE_IN_CASE_LABEL[b.role_in_case]}
+                                {t.enums.roleInCase[b.role_in_case]}
                               </span>
                             </span>
                             <span className="font-mono tabular-nums text-[13px] font-semibold text-success whitespace-nowrap">
@@ -309,7 +314,7 @@ function PayoutModal({
               {hasBonus && (
                 <>
                   <div className="mb-2 mt-4 text-[12px] uppercase tracking-[0.04em] text-text-muted">
-                    Премии
+                    {t.payroll.actions.bonusesHeading}
                   </div>
                   <label
                     className={cn(
@@ -327,10 +332,10 @@ function PayoutModal({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[13px] font-medium text-text">
-                        Невыплаченные премии
+                        {t.payroll.actions.unpaidBonuses}
                       </span>
                       <span className="text-[12px] text-text-muted">
-                        бонусы мимо дел
+                        {t.payroll.actions.bonusesAside}
                       </span>
                     </span>
                     <span className="whitespace-nowrap font-mono text-[13px] font-semibold tabular-nums text-warning">
@@ -348,7 +353,7 @@ function PayoutModal({
                 htmlFor="payout-date"
                 className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
               >
-                Дата выплаты
+                {t.payroll.actions.payoutDate}
               </Label>
               <Input
                 id="payout-date"
@@ -366,14 +371,14 @@ function PayoutModal({
               htmlFor="payout-comment"
               className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
             >
-              Комментарий
+              {t.payroll.actions.comment}
             </Label>
             <Textarea
               id="payout-comment"
               name="comment"
               maxLength={500}
               rows={2}
-              placeholder="Напр.: выплата 15-го за июнь"
+              placeholder={t.payroll.actions.payoutCommentPlaceholder}
             />
           </div>
 
@@ -389,17 +394,17 @@ function PayoutModal({
 
         <div className="flex items-center justify-between gap-4 border-t border-border bg-surface-muted/50 px-6 py-4">
           <span className="text-[13px] text-text-muted">
-            К выплате:{' '}
+            {t.payroll.actions.toPay}{' '}
             <span className="font-mono tabular-nums text-[15px] font-bold text-text">
               {MONEY.format(total)} ₴
             </span>
           </span>
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-              Отмена
+              {t.payroll.actions.cancel}
             </Button>
             <Button type="submit" size="sm" disabled={isPending || total <= 0}>
-              {isPending ? 'Сохранение…' : 'Сохранить выплату'}
+              {isPending ? t.payroll.actions.saving : t.payroll.actions.savePayout}
             </Button>
           </div>
         </div>
@@ -418,6 +423,7 @@ function BonusModal({
   userName: string;
   onClose: () => void;
 }) {
+  const { t, fmt } = useI18n();
   const [state, formAction, isPending] = useActionState(
     createBonusAction,
     PAYROLL_INITIAL,
@@ -434,8 +440,8 @@ function BonusModal({
 
   return (
     <ModalShell
-      title="Премия"
-      subtitle={`${userName} · бонус сверх заработка по делам`}
+      title={t.payroll.actions.bonusTitle}
+      subtitle={fmt(t.payroll.actions.bonusSubtitle, { name: userName })}
       onClose={onClose}
     >
       <form action={submit} className="flex flex-col">
@@ -446,7 +452,7 @@ function BonusModal({
                 htmlFor="bonus-amount"
                 className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
               >
-                Сумма, ₴<span className="ml-0.5 text-error">*</span>
+                {t.payroll.actions.amount}<span className="ml-0.5 text-error">*</span>
               </Label>
               <Input
                 id="bonus-amount"
@@ -470,7 +476,7 @@ function BonusModal({
                 htmlFor="bonus-date"
                 className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
               >
-                Дата
+                {t.payroll.actions.date}
               </Label>
               <Input
                 id="bonus-date"
@@ -487,14 +493,14 @@ function BonusModal({
               htmlFor="bonus-comment"
               className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
             >
-              Комментарий
+              {t.payroll.actions.comment}
             </Label>
             <Textarea
               id="bonus-comment"
               name="comment"
               maxLength={500}
               rows={2}
-              placeholder="За что премия (опционально)"
+              placeholder={t.payroll.actions.bonusCommentPlaceholder}
             />
           </div>
 
@@ -510,10 +516,10 @@ function BonusModal({
 
         <div className="flex items-center justify-end gap-2 border-t border-border bg-surface-muted/50 px-6 py-4">
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Отмена
+            {t.payroll.actions.cancel}
           </Button>
           <Button type="submit" size="sm" disabled={isPending}>
-            {isPending ? 'Сохранение…' : 'Сохранить премию'}
+            {isPending ? t.payroll.actions.saving : t.payroll.actions.saveBonus}
           </Button>
         </div>
       </form>

@@ -58,9 +58,49 @@ export function monthParam(month: string): string {
   return month.slice(0, 7);
 }
 
-// Человекочитаемая подпись: 'Июнь 2026'.
-export function monthLabel(month: string): string {
+// Человекочитаемая подпись: 'Июнь 2026'. `names` — локализованные названия
+// месяцев (индекс 0 = январь); по умолчанию русские (back-compat для серверных
+// отчётов, где словарь не пробрасывается).
+export function monthLabel(
+  month: string,
+  names: readonly string[] = MONTH_NAMES_RU,
+): string {
   const y = month.slice(0, 4);
   const m = Number(month.slice(5, 7));
-  return `${MONTH_NAMES_RU[m - 1]} ${y}`;
+  return `${names[m - 1]} ${y}`;
+}
+
+// Локализованный массив названий месяцев из словаря (индекс 0 = январь).
+// Для передачи в monthLabel(month, monthNamesFrom(t.payroll)).
+export function monthNamesFrom(p: {
+  monthNames: {
+    january: string;
+    february: string;
+    march: string;
+    april: string;
+    may: string;
+    june: string;
+    july: string;
+    august: string;
+    september: string;
+    october: string;
+    november: string;
+    december: string;
+  };
+}): string[] {
+  const m = p.monthNames;
+  return [
+    m.january,
+    m.february,
+    m.march,
+    m.april,
+    m.may,
+    m.june,
+    m.july,
+    m.august,
+    m.september,
+    m.october,
+    m.november,
+    m.december,
+  ];
 }

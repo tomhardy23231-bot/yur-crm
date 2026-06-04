@@ -23,7 +23,9 @@ import {
   type ClientsSortColumn,
   listClients,
 } from '@/lib/clients/queries';
-import { CLIENT_KIND_LABEL, type ClientKind } from '@/lib/types/db';
+import { type ClientKind } from '@/lib/types/db';
+import { getT } from '@/lib/i18n/server';
+import type { I18n } from '@/lib/i18n/core';
 
 function isClientKind(value: string): value is ClientKind {
   return value === 'individual' || value === 'company';
@@ -63,13 +65,14 @@ export default async function ClientsPage({
   const dir: SortDir =
     sp.dir && isSortDir(sp.dir) ? sp.dir : CLIENTS_DEFAULT_SORT.dir;
 
+  const { t, fmt } = await getT();
   const result = await listClients({ q, kind, page, sort, dir });
   const { items, pageCount } = result;
 
   const KIND_OPTIONS: ReadonlyArray<{ value: ClientKind | 'all'; label: string }> = [
-    { value: 'all', label: 'Все' },
-    { value: 'individual', label: CLIENT_KIND_LABEL.individual },
-    { value: 'company', label: CLIENT_KIND_LABEL.company },
+    { value: 'all', label: t.common.all },
+    { value: 'individual', label: t.enums.clientKind.individual },
+    { value: 'company', label: t.enums.clientKind.company },
   ];
 
   function pillHref(next: ClientKind | 'all'): string {
@@ -113,13 +116,13 @@ export default async function ClientsPage({
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       {deleted && (
         <div className="text-[13px] text-success bg-success-bg border border-success/20 rounded-md px-3 py-2 max-w-md">
-          Клиент удалён.
+          {t.clients.list.deletedNotice}
         </div>
       )}
 
       <div data-tour="clients-toolbar" className="flex flex-wrap items-center gap-3">
         <ClientsSearch initial={q} />
-        <div role="tablist" aria-label="Тип клиента" className="flex items-center gap-1.5">
+        <div role="tablist" aria-label={t.clients.list.kindFilterLabel} className="flex items-center gap-1.5">
           {KIND_OPTIONS.map(({ value, label }) => {
             const active = (value === 'all' && !kind) || value === kind;
             return (
@@ -144,13 +147,13 @@ export default async function ClientsPage({
         <Button asChild className="ml-auto">
           <Link href="/clients/new" data-tour="clients-new">
             <Plus size={16} strokeWidth={2} />
-            Добавить клиента
+            {t.clients.list.addClient}
           </Link>
         </Button>
       </div>
 
       {items.length === 0 ? (
-        <EmptyState hasFilters={Boolean(q || kind)} />
+        <EmptyState hasFilters={Boolean(q || kind)} t={t} />
       ) : (
         <div className="bg-surface rounded-lg border border-border shadow-sm overflow-x-auto">
           <Table>
@@ -162,19 +165,19 @@ export default async function ClientsPage({
                   currentDir={dir}
                   hrefFor={sortHref}
                 >
-                  Клиент
+                  {t.clients.list.colClient}
                 </SortableHeader>
-                <TableHead>Тип</TableHead>
-                <TableHead>Телефон</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead className="text-right">Дел</TableHead>
+                <TableHead>{t.clients.list.colKind}</TableHead>
+                <TableHead>{t.clients.list.colPhone}</TableHead>
+                <TableHead>{t.clients.list.colEmail}</TableHead>
+                <TableHead className="text-right">{t.clients.list.colCases}</TableHead>
                 <SortableHeader
                   column="created_at"
                   currentSort={sort}
                   currentDir={dir}
                   hrefFor={sortHref}
                 >
-                  Создан
+                  {t.clients.list.colCreated}
                 </SortableHeader>
               </TableRow>
             </TableHeader>
@@ -205,10 +208,10 @@ export default async function ClientsPage({
                     <ClientKindBadge kind={c.client_kind} />
                   </TableCell>
                   <TableCell className="font-mono text-[12.5px] text-text-muted">
-                    {c.phone ?? '—'}
+                    {c.phone ?? t.common.dash}
                   </TableCell>
                   <TableCell className="font-mono text-[12.5px] text-text-muted">
-                    {c.email ?? '—'}
+                    {c.email ?? t.common.dash}
                   </TableCell>
                   <TableCell className="text-right font-mono">{c.cases_count}</TableCell>
                   <TableCell className="font-mono text-[12.5px] text-text-muted">
@@ -222,16 +225,20 @@ export default async function ClientsPage({
       )}
 
       {pageCount > 1 && (
-        <nav className="flex items-center justify-between" aria-label="Пагинация">
+        <nav className="flex items-center justify-between" aria-label={t.clients.list.paginationLabel}>
           <p className="text-[12px] text-text-muted">
-            Страница {page} из {pageCount} · по {CLIENTS_PAGE_SIZE} на странице
+            {fmt(t.clients.list.pageInfo, {
+              page,
+              pageCount,
+              pageSize: CLIENTS_PAGE_SIZE,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <PageLink href={pageHref(page - 1)} disabled={page <= 1}>
-              ← Назад
+              {t.clients.list.prev}
             </PageLink>
             <PageLink href={pageHref(page + 1)} disabled={page >= pageCount}>
-              Вперёд →
+              {t.clients.list.next}
             </PageLink>
           </div>
         </nav>
@@ -269,7 +276,13 @@ function PageLink({
   );
 }
 
-function EmptyState({ hasFilters }: { hasFilters: boolean }) {
+function EmptyState({
+  hasFilters,
+  t,
+}: {
+  hasFilters: boolean;
+  t: I18n['t'];
+}) {
   return (
     <div className="bg-surface rounded-lg border border-border shadow-sm py-16 px-6 flex flex-col items-center text-center">
       <span
@@ -279,18 +292,18 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
         <UsersIcon size={20} strokeWidth={1.75} />
       </span>
       <h2 className="text-[18px] font-semibold text-text mb-1">
-        {hasFilters ? 'Ничего не нашли' : 'Здесь будут ваши клиенты'}
+        {hasFilters ? t.clients.list.emptyFilteredTitle : t.clients.list.emptyTitle}
       </h2>
       <p className="text-[13px] text-text-muted max-w-md mb-5">
         {hasFilters
-          ? 'Попробуйте изменить поиск или фильтры. Если клиент должен быть видим — проверьте, что у вас есть связанное с ним дело.'
-          : 'Заведите первого клиента — затем добавите ему дело, документы и финансы.'}
+          ? t.clients.list.emptyFilteredHint
+          : t.clients.list.emptyHint}
       </p>
       {!hasFilters && (
         <Button asChild>
           <Link href="/clients/new">
             <Plus size={16} strokeWidth={2} />
-            Добавить клиента
+            {t.clients.list.addClient}
           </Link>
         </Button>
       )}
