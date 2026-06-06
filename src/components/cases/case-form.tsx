@@ -301,7 +301,7 @@ export function CaseForm({
               defaultValue={defaultOpenedAt}
               required
               aria-invalid={err('opened_at') ? 'true' : undefined}
-              className="font-mono"
+              className=""
             />
           </Field>
 
@@ -423,7 +423,7 @@ export function CaseForm({
               min="0"
               defaultValue={value('contract_sum') || '0'}
               aria-invalid={err('contract_sum') ? 'true' : undefined}
-              className="font-mono"
+              className=""
             />
           </Field>
 
@@ -452,7 +452,7 @@ export function CaseForm({
                     defaultValue={value('lawyer_rate_override')}
                     placeholder={t.caseCard.form.rateByCategoryPlaceholder}
                     aria-invalid={err('lawyer_rate_override') ? 'true' : undefined}
-                    className="font-mono"
+                    className=""
                   />
                 </Field>
                 <Field
@@ -471,7 +471,7 @@ export function CaseForm({
                     defaultValue={value('expert_rate_override')}
                     placeholder={t.caseCard.form.rateByCategoryPlaceholder}
                     aria-invalid={err('expert_rate_override') ? 'true' : undefined}
-                    className="font-mono"
+                    className=""
                   />
                 </Field>
               </div>
@@ -553,7 +553,7 @@ export function CaseForm({
               name="court_case_number"
               defaultValue={value('court_case_number')}
               placeholder={t.caseCard.form.courtCaseNumberPlaceholder}
-              className="font-mono"
+              className=""
             />
           </Field>
 

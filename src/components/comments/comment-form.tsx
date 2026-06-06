@@ -28,15 +28,17 @@ export function CommentForm({ caseId }: { caseId: string }) {
   }, [state]);
 
   return (
-    <form ref={formRef} action={formAction} className="flex flex-col gap-2">
+    <form ref={formRef} action={formAction} className="flex flex-col gap-1.5">
       <input type="hidden" name="case_id" value={caseId} />
+      {/* Компактнее, чем дефолтные 88px: 2 строки; при необходимости тянется. */}
       <Textarea
         name="body"
-        rows={3}
+        rows={2}
         required
         maxLength={5000}
         placeholder={t.comments.form.placeholder}
         aria-invalid={state.fieldErrors?.body ? 'true' : undefined}
+        className="min-h-[56px]"
       />
 
       {state.fieldErrors?.body && (

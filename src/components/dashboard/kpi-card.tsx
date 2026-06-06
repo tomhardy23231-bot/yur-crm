@@ -117,7 +117,7 @@ export function KpiCard({
       <div className="my-2 flex items-end justify-between gap-2.5">
         <p
           className={cn(
-            "font-mono text-[27px] font-semibold leading-none tracking-[-0.02em] tabular-nums",
+            "text-[27px] font-semibold leading-none tracking-[-0.02em] tabular-nums",
             valueTone === "debt" ? "text-error" : "text-text",
           )}
         >

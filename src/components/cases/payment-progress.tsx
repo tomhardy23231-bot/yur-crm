@@ -23,7 +23,7 @@ export function PaymentProgress({
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       {showLabel && (
-        <div className="flex items-baseline justify-between gap-2 font-mono tabular-nums text-[11px]">
+        <div className="flex items-baseline justify-between gap-2 tabular-nums text-[11px]">
           <span className="font-medium text-text">{formatMoney(paid)} ₴</span>
           <span className={full ? "text-success" : "text-text-subtle"}>
             {pct}%

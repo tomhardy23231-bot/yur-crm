@@ -169,7 +169,7 @@ export function TaskForm({
             type="datetime-local"
             defaultValue={value('due_at')}
             aria-invalid={err('due_at') ? 'true' : undefined}
-            className="font-mono"
+            className=""
           />
         </Field>
       </div>

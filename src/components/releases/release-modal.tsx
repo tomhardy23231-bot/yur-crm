@@ -115,7 +115,7 @@ export function ReleaseModal({
 
         {/* Футер */}
         <div className="flex items-center justify-between gap-4 border-t border-border bg-surface-muted/50 px-8 py-5">
-          <span className="font-mono text-[12px] tabular-nums text-text-subtle">
+          <span className="text-[12px] tabular-nums text-text-subtle">
             v{release.version}
           </span>
           <div className="flex items-center gap-2">

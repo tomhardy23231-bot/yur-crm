@@ -79,13 +79,13 @@ export function PersonalEarnings({
                   <TableCell>
                     <StageBadge stage={e.stage} />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] tabular-nums text-text-muted">
+                  <TableCell className="whitespace-nowrap text-right text-[13px] tabular-nums text-text-muted">
                     {formatMoney(e.paid_total)} ₴
                   </TableCell>
-                  <TableCell className="text-right font-mono text-[13px] tabular-nums text-text-muted">
+                  <TableCell className="text-right text-[13px] tabular-nums text-text-muted">
                     {formatPercent(e.percent)}%
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-semibold tabular-nums text-success">
+                  <TableCell className="whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-success">
                     {formatMoney(e.earned)} ₴
                   </TableCell>
                 </TableRow>
@@ -97,10 +97,10 @@ export function PersonalEarnings({
               {t.dashboard.earnings.totalAccrued}
             </span>
             <div className="flex items-baseline gap-4">
-              <span className="font-mono text-[12px] tabular-nums text-text-muted">
+              <span className="text-[12px] tabular-nums text-text-muted">
                 {fmt(t.dashboard.earnings.base, { amount: formatMoney(totalPaidBase) })}
               </span>
-              <span className="font-mono text-[15px] font-bold tabular-nums text-success">
+              <span className="text-[15px] font-bold tabular-nums text-success">
                 {formatMoney(totalEarned)} ₴
               </span>
             </div>

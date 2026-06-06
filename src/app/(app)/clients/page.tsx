@@ -207,14 +207,14 @@ export default async function ClientsPage({
                   <TableCell>
                     <ClientKindBadge kind={c.client_kind} />
                   </TableCell>
-                  <TableCell className="font-mono text-[12.5px] text-text-muted">
+                  <TableCell className="text-[12.5px] text-text-muted">
                     {c.phone ?? t.common.dash}
                   </TableCell>
-                  <TableCell className="font-mono text-[12.5px] text-text-muted">
+                  <TableCell className="text-[12.5px] text-text-muted">
                     {c.email ?? t.common.dash}
                   </TableCell>
-                  <TableCell className="text-right font-mono">{c.cases_count}</TableCell>
-                  <TableCell className="font-mono text-[12.5px] text-text-muted">
+                  <TableCell className="text-right">{c.cases_count}</TableCell>
+                  <TableCell className="text-[12.5px] text-text-muted">
                     {DATE_FMT.format(new Date(c.created_at))}
                   </TableCell>
                 </ClickableRow>

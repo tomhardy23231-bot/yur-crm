@@ -54,7 +54,7 @@ export function CategoryBadge({
         />
         {t.enums.caseCategory[category]}
         {percent != null && (
-          <span className="font-mono tabular-nums text-text-subtle">
+          <span className="tabular-nums text-text-subtle">
             {formatPercent(percent)}%
           </span>
         )}
@@ -76,7 +76,7 @@ export function CategoryBadge({
     >
       {t.enums.caseCategory[category]}
       {percent != null && (
-        <span className="font-mono tabular-nums opacity-70">
+        <span className="tabular-nums opacity-70">
           {formatPercent(percent)}%
         </span>
       )}

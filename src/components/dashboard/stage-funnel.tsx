@@ -29,7 +29,7 @@ export function StageFunnel({ funnel }: { funnel: ReadonlyArray<FunnelEntry> }) 
       <div className="mb-3 flex items-center gap-2">
         <Filter size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[15px] font-semibold text-text">{t.dashboard.funnel.title}</h2>
-        <span className="ml-auto font-mono text-[12px] tabular-nums text-text-muted">
+        <span className="ml-auto text-[12px] tabular-nums text-text-muted">
           {total}
         </span>
       </div>
@@ -57,7 +57,7 @@ export function StageFunnel({ funnel }: { funnel: ReadonlyArray<FunnelEntry> }) 
                 />
               </div>
               <span
-                className={`w-7 shrink-0 text-right font-mono text-[13px] font-semibold tabular-nums ${
+                className={`w-7 shrink-0 text-right text-[13px] font-semibold tabular-nums ${
                   f.count > 0 ? "text-text" : "text-text-subtle"
                 }`}
               >

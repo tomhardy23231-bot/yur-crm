@@ -116,7 +116,7 @@ function Kpi({
         {label}
       </span>
       <span
-        className="whitespace-nowrap font-mono text-[18px] font-bold leading-none tabular-nums"
+        className="whitespace-nowrap text-[18px] font-bold leading-none tabular-nums"
         style={{ color: valueColor ?? DOC.ink }}
       >
         {value}
@@ -144,7 +144,7 @@ function Section({
           {title}
         </h2>
         {count != null && (
-          <span className="font-mono text-[11px] tabular-nums" style={{ color: DOC.subtle }}>
+          <span className="text-[11px] tabular-nums" style={{ color: DOC.subtle }}>
             {count}
           </span>
         )}
@@ -205,7 +205,7 @@ function Td({
 }) {
   return (
     <td
-      className={`px-2.5 py-2.5 align-top ${mono ? 'whitespace-nowrap font-mono tabular-nums' : ''}`}
+      className={`px-2.5 py-2.5 align-top ${mono ? 'whitespace-nowrap tabular-nums' : ''}`}
       style={{ textAlign: align, color: color ?? DOC.body }}
     >
       {children}

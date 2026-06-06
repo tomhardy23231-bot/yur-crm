@@ -110,7 +110,7 @@ export function TaskRow({ task, canManage, showCase = false }: TaskRowProps) {
           {task.due_at && (
             <span
               className={cn(
-                'font-mono',
+                '',
                 !done && isOverdue(task.due_at) && 'text-error font-semibold',
               )}
             >

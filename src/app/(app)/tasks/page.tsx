@@ -176,7 +176,7 @@ function DayGroup({
     <section className="flex flex-col gap-2">
       <h2 className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle flex items-center gap-2">
         {title}
-        <span className="font-mono text-text-muted">· {count}</span>
+        <span className="text-text-muted">· {count}</span>
       </h2>
       <Card className="overflow-hidden">{children}</Card>
     </section>

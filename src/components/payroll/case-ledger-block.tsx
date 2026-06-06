@@ -77,7 +77,7 @@ export function CaseLedgerBlock({
                       })}
                 </p>
               </div>
-              <span className="font-mono text-[14px] font-semibold tabular-nums text-success whitespace-nowrap">
+              <span className="text-[14px] font-semibold tabular-nums text-success whitespace-nowrap">
                 {formatMoney(e.amount)} ₴
               </span>
               <Badge tone={paid ? "success" : "warning"}>

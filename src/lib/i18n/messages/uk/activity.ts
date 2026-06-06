@@ -57,6 +57,7 @@ export const activity: ActivityMessages = {
     task_updated: 'оновив(ла) завдання',
     task_toggled: 'перемкнув(ла) статус завдання',
     task_deleted: 'видалив(ла) завдання',
+    comment_edited: 'відредагував(ла) коментар',
     payroll_paid: 'відмітив(ла) виплату зарплати',
     payroll_reverted: 'відкотив(ла) виплату зарплати',
     user_created: 'створив(ла) користувача',
@@ -92,6 +93,8 @@ export const activity: ActivityMessages = {
     taskReopened: 'відкрив(ла) завдання{suffix} знову',
     taskToggled: 'перемкнув(ла) статус завдання{suffix}',
     taskDeleted: 'видалив(ла) завдання «{title}»',
+
+    commentEdited: 'змінив(ла) коментар: «{from}» → «{to}»',
 
     payrollPaid: 'відмітив(ла) виплату зарплати',
     payrollReverted: 'відкотив(ла) виплату зарплати',

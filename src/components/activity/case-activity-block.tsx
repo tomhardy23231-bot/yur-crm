@@ -62,7 +62,7 @@ export async function CaseActivityBlock({
                     <span className="text-text-muted">{f.text}</span>
                   </p>
                   <p
-                    className="text-[11px] text-text-subtle font-mono tabular-nums mt-0.5"
+                    className="text-[11px] text-text-subtle tabular-nums mt-0.5"
                     title={new Date(entry.created_at).toLocaleString(LOCALE_BCP47[i18n.locale])}
                   >
                     {formatActivityTime(i18n, entry.created_at)}

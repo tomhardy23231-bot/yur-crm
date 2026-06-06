@@ -61,6 +61,7 @@ export const activity = {
     task_updated: 'обновил(а) задачу',
     task_toggled: 'переключил(а) статус задачи',
     task_deleted: 'удалил(а) задачу',
+    comment_edited: 'отредактировал(а) комментарий',
     payroll_paid: 'отметил(а) выплату зарплаты',
     payroll_reverted: 'откатил(а) выплату зарплаты',
     user_created: 'создал(а) пользователя',
@@ -98,6 +99,8 @@ export const activity = {
     taskReopened: 'открыл(а) задачу{suffix} заново',
     taskToggled: 'переключил(а) статус задачи{suffix}',
     taskDeleted: 'удалил(а) задачу «{title}»',
+
+    commentEdited: 'изменил(а) комментарий: «{from}» → «{to}»',
 
     payrollPaid: 'отметил(а) выплату зарплаты',
     payrollReverted: 'откатил(а) выплату зарплаты',

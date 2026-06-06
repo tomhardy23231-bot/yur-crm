@@ -44,7 +44,7 @@ export function StatusFilterStrip({
           {c.count != null && (
             <span
               className={cn(
-                "font-mono text-[11px] tabular-nums",
+                "text-[11px] tabular-nums",
                 c.active ? "text-primary" : "text-text-subtle",
               )}
             >

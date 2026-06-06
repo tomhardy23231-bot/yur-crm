@@ -168,7 +168,7 @@ export function InlineClientCreate({
                     id="ic-birth"
                     name="birth_date"
                     type="date"
-                    className="font-mono"
+                    className=""
                     aria-invalid={err('birth_date') ? 'true' : undefined}
                   />
                 </Field>
@@ -208,7 +208,7 @@ export function InlineClientCreate({
                 name="inn"
                 inputMode="numeric"
                 maxLength={12}
-                className="font-mono"
+                className=""
                 aria-invalid={err('inn') ? 'true' : undefined}
                 placeholder={t.caseCard.inlineClient.innPlaceholder}
               />
@@ -222,7 +222,7 @@ export function InlineClientCreate({
                 id="ic-contract"
                 name="contract_number"
                 maxLength={100}
-                className="font-mono"
+                className=""
                 aria-invalid={err('contract_number') ? 'true' : undefined}
                 placeholder={t.caseCard.inlineClient.contractNumberPlaceholder}
               />
@@ -239,7 +239,7 @@ export function InlineClientCreate({
                 id="ic-phone"
                 name="phone"
                 type="tel"
-                className="font-mono"
+                className=""
                 placeholder={t.caseCard.inlineClient.phonePlaceholder}
               />
             </Field>
@@ -252,7 +252,7 @@ export function InlineClientCreate({
                 id="ic-email"
                 name="email"
                 type="email"
-                className="font-mono"
+                className=""
                 placeholder={t.caseCard.inlineClient.emailPlaceholder}
                 aria-invalid={err('email') ? 'true' : undefined}
               />

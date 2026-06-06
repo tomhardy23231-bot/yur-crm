@@ -549,6 +549,8 @@ export type CaseComment = {
   author_id: string;
   body: string;
   created_at: string;
+  // NULL — не редактировался; иначе время последней правки тела.
+  updated_at: string | null;
 };
 
 export type CaseCommentWithAuthor = CaseComment & {

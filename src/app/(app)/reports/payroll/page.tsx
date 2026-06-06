@@ -109,7 +109,7 @@ export default async function PayrollReportPage({
               <span className="text-[13px] font-medium text-text">
                 {t.enums.caseCategory[r.category]}
               </span>
-              <span className="flex items-baseline gap-3 font-mono tabular-nums">
+              <span className="flex items-baseline gap-3 tabular-nums">
                 {showLawyerRate && (
                   <span className="text-[12px] text-text-muted">
                     {t.payroll.report.rateLawyer}{' '}
@@ -176,16 +176,16 @@ export default async function PayrollReportPage({
                       </span>
                     </span>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] text-text">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text">
                     {MONEY.format(r.earned)} ₴
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] text-text-muted">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text-muted">
                     {r.bonus > 0 ? `+${MONEY.format(r.bonus)} ₴` : '—'}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] text-success">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-success">
                     {MONEY.format(r.payout)} ₴
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] font-bold text-warning">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] font-bold text-warning">
                     {MONEY.format(r.balance)} ₴
                   </TableCell>
                   <TableCell className="text-right text-text-subtle">
@@ -195,7 +195,7 @@ export default async function PayrollReportPage({
               ))}
             </TableBody>
           </Table>
-          <div className="flex items-center justify-end gap-6 border-t border-border bg-surface-muted/50 px-4 py-3 font-mono tabular-nums text-[13px]">
+          <div className="flex items-center justify-end gap-6 border-t border-border bg-surface-muted/50 px-4 py-3 tabular-nums text-[13px]">
             <span className="text-text-muted">
               {t.payroll.report.totalEarnedMonth}{' '}
               <span className="font-bold text-text">

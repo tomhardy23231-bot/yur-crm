@@ -340,6 +340,20 @@ export function formatActivity(
       return { actor, text: tail ? fmt(ev.payrollDetail, { verb, tail }) : verb };
     }
 
+    // ---------- comments ----------
+    case 'comment_edited': {
+      // Усекаем для строки журнала (тексты могут быть длинными).
+      const trunc = (v: unknown): string => {
+        const s = asString(v);
+        if (!s) return dash;
+        return s.length > 80 ? `${s.slice(0, 80)}…` : s;
+      };
+      return {
+        actor,
+        text: fmt(ev.commentEdited, { from: trunc(c.from), to: trunc(c.to) }),
+      };
+    }
+
     default:
       // Неизвестный/новый action — берём подпись из карты, иначе показываем код
       // (видно, что в журнал прилетело что-то новое, а не ломаем рендер).

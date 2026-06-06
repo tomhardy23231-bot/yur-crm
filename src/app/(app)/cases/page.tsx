@@ -498,12 +498,12 @@ export default async function CasesPage({
                       <Empty />
                     )}
                   </TableCell>
-                  <TableCell className="font-mono text-[12.5px] text-text-muted">
+                  <TableCell className="text-[12.5px] text-text-muted">
                     {DATE_FMT.format(new Date(c.opened_at))}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="ml-auto flex w-32 flex-col items-end gap-1">
-                      <span className="font-mono tabular-nums whitespace-nowrap">
+                      <span className="tabular-nums whitespace-nowrap">
                         {formatMoney(c.contract_sum)} ₴
                       </span>
                       <PaymentProgress
@@ -515,7 +515,7 @@ export default async function CasesPage({
                   </TableCell>
                   {/* U7: долг ИЛИ переплата (взаимоисключающи). Переплата —
                       info-цветом со знаком +, чтобы её было видно (раньше показывался 0). */}
-                  <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">
                     {c.overpaid > 0 ? (
                       <span className="text-info" title={t.cases.row.overpaid}>
                         +{formatMoney(c.overpaid)} ₴

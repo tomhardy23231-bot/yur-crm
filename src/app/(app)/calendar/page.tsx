@@ -167,7 +167,7 @@ export default async function CalendarPage({
           <div className="flex items-center justify-between">
             <h2 className="text-[15px] font-semibold text-text capitalize">
               {dayFmt.format(selectedDate)}
-              <span className="font-mono text-text-muted ml-2">
+              <span className="text-text-muted ml-2">
                 · {plural(t.calendar.taskCount, selectedDayTasks.length)}
               </span>
             </h2>
@@ -237,7 +237,7 @@ function DayCell({
     >
       <span
         className={cn(
-          'inline-flex items-center justify-center w-6 h-6 rounded-full text-[12px] font-mono font-semibold',
+          'inline-flex items-center justify-center w-6 h-6 rounded-full text-[12px] font-semibold',
           isToday
             ? 'bg-primary text-primary-fg'
             : inMonth
@@ -269,7 +269,7 @@ function DayCell({
             </li>
           ))}
           {extra > 0 && (
-            <li className="text-[10.5px] font-mono text-text-muted pl-2.5">
+            <li className="text-[10.5px] text-text-muted pl-2.5">
               +{extra}
             </li>
           )}

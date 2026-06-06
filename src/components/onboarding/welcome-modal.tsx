@@ -112,7 +112,7 @@ function buildSlides(ctx: TourCtx, t: I18n['t']): Slide[] {
               key={r.k}
               className="rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-center"
             >
-              <div className="font-mono text-[20px] font-extrabold tabular-nums text-text">
+              <div className="text-[20px] font-extrabold tabular-nums text-text">
                 {r.v}
               </div>
               <div className="mt-0.5 text-[11.5px] text-text-muted">{r.k}</div>

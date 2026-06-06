@@ -130,7 +130,7 @@ export function RecentCases({
                     </TableCell>
                     <TableCell>
                       <div className="ml-auto flex w-40 flex-col items-end gap-1">
-                        <span className="font-mono text-[12.5px] tabular-nums text-text">
+                        <span className="text-[12.5px] tabular-nums text-text">
                           {formatMoney(c.contract_sum)} ₴
                         </span>
                         <PaymentProgress

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { BillingTypesBadges } from '@/components/cases/billing-types-badges';
+import { CasePaymentsMini } from '@/components/payments/case-payments-mini';
 import { getT } from '@/lib/i18n/server';
 import { cn } from '@/lib/utils';
 import type { CaseWithRefs } from '@/lib/types/db';
@@ -21,7 +22,17 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 // колонки делят одну dl-сетку, поэтому подписи выровнены по вертикали.
 const DL_CLASS = 'grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1.5';
 
-export async function CaseInfoGrid({ c }: { c: CaseWithRefs }) {
+export async function CaseInfoGrid({
+  c,
+  canWrite = false,
+  canManage = false,
+}: {
+  c: CaseWithRefs;
+  /** Может ли пользователь добавлять платёж (RLS INSERT = can_write_case). */
+  canWrite?: boolean;
+  /** Может ли удалять платёж (RLS DELETE = staff). */
+  canManage?: boolean;
+}) {
   const { t } = await getT();
   const o = t.caseCard.overview;
   const dash = o.dash;
@@ -107,6 +118,14 @@ export async function CaseInfoGrid({ c }: { c: CaseWithRefs }) {
             </Field>
           )}
         </dl>
+        {/* Платежи по делу: компактный список + итог + добавление (кнопка/
+            модалка). Заменяет отдельную нижнюю секцию «Финансы». */}
+        <CasePaymentsMini
+          caseId={c.id}
+          canWrite={canWrite}
+          canManage={canManage}
+          overpaid={c.overpaid}
+        />
       </Column>
     </div>
   );
@@ -150,7 +169,7 @@ function Field({
       <dd
         className={cn(
           'min-w-0 text-[12.5px] font-medium text-text',
-          mono && 'font-mono tabular-nums',
+          mono && 'tabular-nums',
         )}
       >
         {children}

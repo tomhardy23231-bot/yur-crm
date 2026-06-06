@@ -11,7 +11,7 @@ export async function listCommentsByCase(
   const { data, error } = await supabase
     .from('case_comments')
     .select(
-      'id, case_id, author_id, body, created_at, author:author_id(id, full_name)',
+      'id, case_id, author_id, body, created_at, updated_at, author:author_id(id, full_name)',
     )
     .eq('case_id', caseId)
     .order('created_at', { ascending: false });
@@ -26,6 +26,7 @@ export async function listCommentsByCase(
     author_id: string;
     body: string;
     created_at: string;
+    updated_at: string | null;
     author:
       | ReadonlyArray<{ id: string; full_name: string }>
       | { id: string; full_name: string }
@@ -41,6 +42,7 @@ export async function listCommentsByCase(
       author_id: r.author_id,
       body: r.body,
       created_at: r.created_at,
+      updated_at: r.updated_at,
       author,
     };
   });

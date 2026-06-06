@@ -141,7 +141,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
                 type="date"
                 defaultValue={value('birth_date')}
                 aria-invalid={err('birth_date') ? 'true' : undefined}
-                className="font-mono"
+                className=""
               />
             </Field>
           </>
@@ -179,7 +179,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
             maxLength={12}
             aria-invalid={err('inn') ? 'true' : undefined}
             placeholder={t.clients.form.innPlaceholder}
-            className="font-mono"
+            className=""
           />
         </Field>
 
@@ -191,7 +191,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
             maxLength={100}
             aria-invalid={err('contract_number') ? 'true' : undefined}
             placeholder={t.clients.form.contractNumberPlaceholder}
-            className="font-mono"
+            className=""
           />
         </Field>
 
@@ -202,7 +202,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
             type="tel"
             defaultValue={value('phone')}
             placeholder={t.clients.form.phonePlaceholder}
-            className="font-mono"
+            className=""
           />
         </Field>
 
@@ -214,7 +214,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
             defaultValue={value('email')}
             placeholder={t.clients.form.emailPlaceholder}
             aria-invalid={err('email') ? 'true' : undefined}
-            className="font-mono"
+            className=""
           />
         </Field>
 

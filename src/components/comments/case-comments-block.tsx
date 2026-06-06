@@ -39,7 +39,7 @@ export async function CaseCommentsBlock({
       </div>
 
       {canWrite && (
-        <div className="border-b border-border px-5 py-4">
+        <div className="border-b border-border px-5 pt-3 pb-2">
           <CommentForm caseId={caseId} />
         </div>
       )}
@@ -54,13 +54,17 @@ export async function CaseCommentsBlock({
         </div>
       ) : (
         <div>
-          {comments.map((c) => (
-            <CommentRow
-              key={c.id}
-              comment={c}
-              canDelete={isManager || c.author_id === currentUserId}
-            />
-          ))}
+          {comments.map((c) => {
+            const mine = c.author_id === currentUserId;
+            return (
+              <CommentRow
+                key={c.id}
+                comment={c}
+                canDelete={isManager || mine}
+                canEdit={isManager || mine}
+              />
+            );
+          })}
         </div>
       )}
     </Card>

@@ -34,7 +34,7 @@ export function CategoryRevenue({
         <h2 className="text-[15px] font-semibold text-text">
           {t.dashboard.categoryRevenue.title}
         </h2>
-        <span className="ml-auto font-mono text-[12px] tabular-nums text-text-muted">
+        <span className="ml-auto text-[12px] tabular-nums text-text-muted">
           {formatMoney(total)} ₴
         </span>
       </div>
@@ -63,7 +63,7 @@ export function CategoryRevenue({
                     {t.enums.caseCategory[d.category]}
                     <span className="text-[12px] text-text-subtle">· {d.count}</span>
                   </span>
-                  <span className="font-mono text-[13px] font-semibold tabular-nums text-text">
+                  <span className="text-[13px] font-semibold tabular-nums text-text">
                     {formatMoney(d.paid)} ₴
                   </span>
                 </div>

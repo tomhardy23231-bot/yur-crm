@@ -59,10 +59,78 @@ export type Release = {
 };
 
 // Текущая версия системы. Поднимается с каждым заметным обновлением.
-export const APP_VERSION = '2.0';
+export const APP_VERSION = '2.4';
 
 // Свежие релизы — сверху. RELEASES[0] = текущий (по нему строится модалка).
 export const RELEASES: ReadonlyArray<Release> = [
+  {
+    version: '2.4',
+    titleKey: 'v2_4Title',
+    date: '2026-06-07',
+    leadKey: 'v2_4Lead',
+    sections: [
+      {
+        headingKey: 'headingChanged',
+        itemKeys: [
+          'v2_4Changed1',
+          'v2_4Changed2',
+          'v2_4Changed3',
+          'v2_4Changed4',
+          'v2_4Changed5',
+          'v2_4Changed6',
+        ],
+      },
+    ],
+  },
+  {
+    version: '2.3',
+    titleKey: 'v2_3Title',
+    date: '2026-06-06',
+    leadKey: 'v2_3Lead',
+    sections: [
+      {
+        headingKey: 'headingChanged',
+        itemKeys: [
+          'v2_3Changed1',
+          'v2_3Changed2',
+          'v2_3Changed3',
+          'v2_3Changed4',
+        ],
+      },
+    ],
+  },
+  {
+    version: '2.2',
+    titleKey: 'v2_2Title',
+    date: '2026-06-06',
+    leadKey: 'v2_2Lead',
+    sections: [
+      {
+        headingKey: 'headingAdded',
+        itemKeys: ['v2_2Added1', 'v2_2Added2', 'v2_2Added3'],
+      },
+      {
+        headingKey: 'headingHowItWorks',
+        itemKeys: ['v2_2How1', 'v2_2How2'],
+      },
+    ],
+  },
+  {
+    version: '2.1',
+    titleKey: 'v2_1Title',
+    date: '2026-06-04',
+    leadKey: 'v2_1Lead',
+    sections: [
+      {
+        headingKey: 'headingAdded',
+        itemKeys: ['v2_1Added1', 'v2_1Added2', 'v2_1Added3'],
+      },
+      {
+        headingKey: 'headingHowItWorks',
+        itemKeys: ['v2_1How1', 'v2_1How2'],
+      },
+    ],
+  },
   {
     version: '2.0',
     titleKey: 'v2_0Title',

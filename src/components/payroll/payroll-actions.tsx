@@ -300,7 +300,7 @@ function PayoutModal({
                                 {t.enums.roleInCase[b.role_in_case]}
                               </span>
                             </span>
-                            <span className="font-mono tabular-nums text-[13px] font-semibold text-success whitespace-nowrap">
+                            <span className="tabular-nums text-[13px] font-semibold text-success whitespace-nowrap">
                               {MONEY.format(b.outstanding)} ₴
                             </span>
                           </label>
@@ -338,7 +338,7 @@ function PayoutModal({
                         {t.payroll.actions.bonusesAside}
                       </span>
                     </span>
-                    <span className="whitespace-nowrap font-mono text-[13px] font-semibold tabular-nums text-warning">
+                    <span className="whitespace-nowrap text-[13px] font-semibold tabular-nums text-warning">
                       {MONEY.format(bonusOutstanding)} ₴
                     </span>
                   </label>
@@ -361,7 +361,7 @@ function PayoutModal({
                 type="date"
                 defaultValue={todayISO()}
                 required
-                className="font-mono"
+                className=""
               />
             </div>
           </div>
@@ -395,7 +395,7 @@ function PayoutModal({
         <div className="flex items-center justify-between gap-4 border-t border-border bg-surface-muted/50 px-6 py-4">
           <span className="text-[13px] text-text-muted">
             {t.payroll.actions.toPay}{' '}
-            <span className="font-mono tabular-nums text-[15px] font-bold text-text">
+            <span className="tabular-nums text-[15px] font-bold text-text">
               {MONEY.format(total)} ₴
             </span>
           </span>
@@ -468,7 +468,7 @@ function BonusModal({
                     e.currentTarget.value = cleaned;
                   }
                 }}
-                className="font-mono tabular-nums"
+                className="tabular-nums"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -483,7 +483,7 @@ function BonusModal({
                 name="occurred_on"
                 type="date"
                 defaultValue={todayISO()}
-                className="font-mono"
+                className=""
               />
             </div>
           </div>

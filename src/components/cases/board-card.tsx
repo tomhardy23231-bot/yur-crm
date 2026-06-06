@@ -84,7 +84,7 @@ export async function BoardCard({
         </div>
         <span
           className={cn(
-            'text-[11.5px] font-mono tabular-nums whitespace-nowrap',
+            'text-[11.5px] tabular-nums whitespace-nowrap',
             c.debt > 0 ? 'text-error' : 'text-text-subtle',
           )}
           title={c.debt > 0 ? t.cases.board.debtTitle : t.cases.board.noDebtTitle}

@@ -164,7 +164,7 @@ export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props)
         >
           <p className="font-medium">{t.users.create.successTitle}</p>
           <p className="mt-1 text-text">{t.users.create.successHint}</p>
-          <p className="mt-1 font-mono tabular-nums text-text">
+          <p className="mt-1 tabular-nums text-text">
             {state.createdEmail}
             <br />
             {t.users.create.tempPasswordLabel}{' '}

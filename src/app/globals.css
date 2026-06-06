@@ -19,8 +19,8 @@
 
   /* Text */
   --text:           #161A22;
-  --text-muted:     #525A68;  /* text-2 */
-  --text-subtle:    #858D9C;  /* text-3 */
+  --text-muted:     #454C5A;  /* text-2 — чуть темнее (заметнее), было #525A68 */
+  --text-subtle:    #6E7686;  /* text-3 — чуть темнее (AA на белом), было #858D9C */
 
   /* ── Brand — ОДИН синий акцент ─────────────────────────────── */
   --primary:        #2563EB;  /* blue */
@@ -246,6 +246,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Второстепенный текст (приглушённый/тихий) — чуть плотнее по весу (500 вместо
+   400), чтобы читался заметнее во всей системе. IBM Plex Sans не вариативный
+   (400/500/600/700), поэтому 500 — минимальный реальный шаг. Правило в @layer
+   base: любые явные утилиты веса (font-medium/semibold/bold/normal) перекрывают
+   его, а 500 применяется только там, где вес сейчас по умолчанию (400). */
+@layer base {
+  .text-text-muted,
+  .text-text-subtle {
+    font-weight: 500;
+  }
+}
+
 ::selection {
   background: var(--primary-subtle);
   color: var(--primary-pressed);
@@ -302,6 +314,12 @@ body {
 @keyframes screen-in {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Появление выпадающего меню этапа (case-stage-dropdown.tsx). */
+@keyframes stage-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .animate-fade-in-up {

@@ -92,7 +92,7 @@ export default async function UsersSettingsPage() {
                       <Avatar name={u.full_name} size="sm" />
                       <span className="flex flex-col">
                         <span className="text-[13px] text-text">{u.full_name}</span>
-                        <span className="text-[12px] text-text-muted font-mono">
+                        <span className="text-[12px] text-text-muted">
                           {u.email}
                         </span>
                       </span>
@@ -149,7 +149,7 @@ export default async function UsersSettingsPage() {
           <span className="text-[12px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
             {t.users.table.totalLabel}
           </span>
-          <span className="font-mono tabular-nums font-bold text-text">
+          <span className="tabular-nums font-bold text-text">
             {users.length}
           </span>
         </div>

@@ -71,7 +71,7 @@ export function ReportDocument({
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: DOC.muted }}>
               {docKind}
             </p>
-            <p className="font-mono text-[12px] font-medium tabular-nums" style={{ color: DOC.ink }}>
+            <p className="text-[12px] font-medium tabular-nums" style={{ color: DOC.ink }}>
               {docNumber}
             </p>
           </div>

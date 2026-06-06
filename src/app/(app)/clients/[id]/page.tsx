@@ -119,7 +119,7 @@ export default async function ClientDetailPage({
           {clientKindHasFullName(client.client_kind) && (
             <Section title={t.clients.detail.sectionBirthDate}>
               {client.birth_date ? (
-                <span className="font-mono text-[13.5px] text-text">
+                <span className="text-[13.5px] text-text">
                   {DATE_FMT.format(new Date(client.birth_date))}
                 </span>
               ) : (
@@ -130,7 +130,7 @@ export default async function ClientDetailPage({
 
           <Section title={clientKindHasFullName(client.client_kind) ? t.clients.detail.sectionInn : t.clients.detail.sectionInnEdrpou}>
             {client.inn ? (
-              <span className="font-mono text-[13.5px] text-text">{client.inn}</span>
+              <span className="text-[13.5px] text-text">{client.inn}</span>
             ) : (
               <Empty label={t.common.dash} />
             )}
@@ -138,7 +138,7 @@ export default async function ClientDetailPage({
 
           <Section title={t.clients.detail.sectionContractNumber}>
             {client.contract_number ? (
-              <span className="font-mono text-[13.5px] text-text">{client.contract_number}</span>
+              <span className="text-[13.5px] text-text">{client.contract_number}</span>
             ) : (
               <Empty label={t.common.dash} />
             )}
@@ -148,7 +148,7 @@ export default async function ClientDetailPage({
             {client.phone ? (
               <a
                 href={`tel:${client.phone}`}
-                className="inline-flex items-center gap-2 font-mono text-[13.5px] text-text hover:text-primary transition-colors"
+                className="inline-flex items-center gap-2 text-[13.5px] text-text hover:text-primary transition-colors"
               >
                 <Phone size={14} strokeWidth={1.75} className="text-text-muted" />
                 {client.phone}
@@ -162,7 +162,7 @@ export default async function ClientDetailPage({
             {client.email ? (
               <a
                 href={`mailto:${client.email}`}
-                className="inline-flex items-center gap-2 font-mono text-[13.5px] text-text hover:text-primary transition-colors"
+                className="inline-flex items-center gap-2 text-[13.5px] text-text hover:text-primary transition-colors"
               >
                 <Mail size={14} strokeWidth={1.75} className="text-text-muted" />
                 {client.email}
@@ -270,13 +270,13 @@ export default async function ClientDetailPage({
                       <Empty label={t.common.dash} />
                     )}
                   </TableCell>
-                  <TableCell className="font-mono text-[12.5px] text-text-muted">
+                  <TableCell className="text-[12.5px] text-text-muted">
                     {DATE_FMT.format(new Date(c.opened_at))}
                   </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">
                     {MONEY_FMT.format(c.contract_sum)} ₴
                   </TableCell>
-                  <TableCell className={`text-right font-mono tabular-nums whitespace-nowrap ${c.debt > 0 ? 'text-error' : 'text-text-muted'}`}>
+                  <TableCell className={`text-right tabular-nums whitespace-nowrap ${c.debt > 0 ? 'text-error' : 'text-text-muted'}`}>
                     {MONEY_FMT.format(c.debt)} ₴
                   </TableCell>
                 </TableRow>

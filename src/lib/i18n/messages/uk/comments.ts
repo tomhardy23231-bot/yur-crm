@@ -22,7 +22,16 @@ export const comments: CommentsMessages = {
 
   row: {
     deleteAria: 'Видалити коментар',
+    editAria: 'Редагувати коментар',
+    edited: 'ред.',
+    editedTitle: 'Відредаговано {date}',
     unknownAuthor: 'Невідомий автор',
+  },
+
+  edit: {
+    save: 'Зберегти',
+    saving: 'Збереження…',
+    cancel: 'Скасувати',
   },
 
   errors: {
@@ -30,5 +39,6 @@ export const comments: CommentsMessages = {
     empty: 'Введіть текст коментаря.',
     tooLong: 'Занадто довго (макс 5000 символів).',
     createFailed: 'Не вдалося зберегти коментар.',
+    updateFailed: 'Не вдалося зберегти зміни.',
   },
 };

@@ -12,15 +12,13 @@ import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { CategoryBadge } from '@/components/ui/category-badge';
-import { StageStepper } from '@/components/cases/stage-stepper';
-import { CaseStageStepper } from '@/components/cases/case-stage-stepper';
+import { CaseStageDropdown } from '@/components/cases/case-stage-dropdown';
 import { CaseActionBar } from '@/components/cases/case-action-bar';
 import { CaseInfoGrid } from '@/components/cases/case-info-grid';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { CaseActivityBlock } from '@/components/activity/case-activity-block';
 import { CaseCommentsBlock } from '@/components/comments/case-comments-block';
 import { CaseDocumentsBlock } from '@/components/documents/case-documents-block';
-import { CasePaymentsBlock } from '@/components/payments/case-payments-block';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { requireUser } from '@/lib/auth/require-role';
 import { cn, daysSince, formatMoney, formatPercent } from '@/lib/utils';
@@ -246,12 +244,22 @@ export default async function CaseDetailPage({
           </div>
         </div>
 
-        {/* Заголовок дела */}
-        <h1 className="mt-3 text-[20px] font-bold leading-tight tracking-[-0.01em] text-text">
-          {c.number_title}
-        </h1>
+        {/* Заголовок дела + выбор этапа (дропдаун воронки — движение только
+            вперёд, CLAUDE.md §6). Редактору кликабелен, остальным read-only. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="text-[20px] font-bold leading-tight tracking-[-0.01em] text-text">
+            {c.number_title}
+          </h1>
+          <CaseStageDropdown
+            caseId={c.id}
+            stage={c.stage}
+            allowedStages={allowedStages}
+            hasAct={hasAct}
+            canEdit={canEdit}
+          />
+        </div>
 
-        {/* Мета: тип дела · открыто/завершено · предмет договора. */}
+        {/* Мета: тип дела · открыто/завершено · предмет договора · дни на этапе. */}
         <p className="mt-1 text-[12.5px] text-text-muted">
           {t.enums.caseType[c.case_type]} · {t.caseCard.detail.openedAt}{' '}
           {DATE_FMT.format(new Date(c.opened_at))}
@@ -264,31 +272,6 @@ export default async function CaseDetailPage({
           )}
           {c.subject && <> · {c.subject}</>}
         </p>
-
-        {c.tags.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {c.tags.map((t) => (
-              <Badge key={t} tone="neutral">
-                {t}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* Степпер воронки — движение только вперёд (CLAUDE.md §6).
-            Редактору кликабелен (смена этапа), остальным — read-only. */}
-        <div className="mt-2.5">
-          {canEdit ? (
-            <CaseStageStepper
-              caseId={c.id}
-              stage={c.stage}
-              allowedStages={allowedStages}
-              hasAct={hasAct}
-            />
-          ) : (
-            <StageStepper stage={c.stage} />
-          )}
-        </div>
 
         {/* U6: сколько дней дело на текущем этапе (видно «зависшие»). */}
         {stageDays !== null && (
@@ -303,44 +286,41 @@ export default async function CaseDetailPage({
           </p>
         )}
 
+        {c.tags.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {c.tags.map((t) => (
+              <Badge key={t} tone="neutral">
+                {t}
+              </Badge>
+            ))}
+          </div>
+        )}
+
         {/* Детальная сетка «поле: значение»: Дело · Клиент · Финансы/Суд
             (по эталону карточки заказа). */}
         <div className="mt-4 border-t border-border pt-4">
-          <CaseInfoGrid c={c} />
+          <CaseInfoGrid c={c} canWrite={canEdit} canManage={canManagePay} />
         </div>
       </Card>
 
-      {/* ── Ряд A: рабочая колонка (документы + задачи) · sticky-сайдбар
-           «Вознаграждение команды». items-start, чтобы сайдбар мог прилипать.
-           Без начислений — одна колонка во всю ширину. ── */}
+      {/* ── Ряд A: комментарии · sticky-сайдбар «Вознаграждение команды».
+           items-start, чтобы сайдбар мог прилипать. Без начислений — одна
+           колонка во всю ширину. ── */}
       <div
         className={cn(
           'grid grid-cols-1 items-start gap-5',
           showReward && 'lg:grid-cols-[1.6fr_1fr]',
         )}
       >
-        {/* Левая: документы + задачи. Бывший блок «Реквизиты дела» удалён —
-            уникальные поля (тип оплаты, суд) перенесены в шапку, остальное
-            дублировало её. */}
-        <div className="flex flex-col gap-5">
-          {/* Документы (Шаг 8) */}
-          <section id="documents" className="scroll-mt-16">
-            <CaseDocumentsBlock
-              caseId={c.id}
-              canWrite={canEdit}
-              canDelete={canDeleteDoc}
-            />
-          </section>
-
-          {/* Задачи и заседания (Шаг 7) */}
-          <section id="tasks" className="scroll-mt-16">
-            <CaseTasksBlock
-              caseId={c.id}
-              canWrite={canEdit}
-              currentUserId={user.profile.id}
-            />
-          </section>
-        </div>
+        {/* Левая: комментарии — рядом со sticky-сайдбаром вознаграждения. */}
+        <section id="comments" className="scroll-mt-16">
+          <CaseCommentsBlock
+            caseId={c.id}
+            canWrite={canEdit}
+            currentUserId={user.profile.id}
+            isManager={isManager}
+          />
+        </section>
 
         {/* Правая: вознаграждение команды — прилипает при скролле рабочей колонки. */}
         <aside className="flex flex-col gap-5 lg:sticky lg:top-16 lg:self-start">
@@ -351,7 +331,7 @@ export default async function CaseDetailPage({
               </CardLabel>
 
               {/* Деньги одной строкой (компактнее трёх плиток + прогресса). */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] bg-surface-sunken px-3 py-2 font-mono text-[12px] tabular-nums">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] bg-surface-sunken px-3 py-2 text-[12px] tabular-nums">
                 <span className="text-text-muted">
                   {t.caseCard.detail.rewardSum}{' '}
                   <span className="font-bold text-text">
@@ -416,7 +396,7 @@ export default async function CaseDetailPage({
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-0.5">
-                          <span className="whitespace-nowrap rounded-md bg-surface-sunken px-2.5 py-1 font-mono text-[14px] font-bold tabular-nums text-text">
+                          <span className="whitespace-nowrap rounded-md bg-surface-sunken px-2.5 py-1 text-[14px] font-bold tabular-nums text-text">
                             {formatMoney(p.amount)} ₴
                           </span>
                           {p.amount > 0 &&
@@ -459,7 +439,7 @@ export default async function CaseDetailPage({
                     ? t.caseCard.detail.caseFund
                     : t.caseCard.detail.myAccrual}
                 </span>
-                <span className="font-mono text-[17px] font-extrabold tabular-nums text-text">
+                <span className="text-[17px] font-extrabold tabular-nums text-text">
                   {formatMoney(seeAllPayroll && payroll ? payroll.total : shownReward)} ₴
                 </span>
               </div>
@@ -470,7 +450,7 @@ export default async function CaseDetailPage({
                 const shownPaid = participants.reduce((s, p) => s + Math.min(p.paid, p.amount), 0);
                 const shownOutstanding = participants.reduce((s, p) => s + p.outstanding, 0);
                 return (
-                  <div className="mt-2 flex items-center justify-between rounded-[8px] bg-surface-sunken px-3 py-2 font-mono text-[12px] tabular-nums">
+                  <div className="mt-2 flex items-center justify-between rounded-[8px] bg-surface-sunken px-3 py-2 text-[12px] tabular-nums">
                     <span className="text-text-muted">
                       {t.caseCard.detail.paidLabel}{' '}
                       <span className="font-bold text-success">
@@ -494,24 +474,24 @@ export default async function CaseDetailPage({
         </aside>
       </div>
 
-      {/* ── Ряд B: комментарии и оплаты рядом (раньше были во всю ширину
-           и «разъезжались» на широком экране). ── */}
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
-        <section id="comments" className="scroll-mt-16">
-          <CaseCommentsBlock
+      {/* ── Ряд B: документы и задачи во всю ширину (раньше тут были
+           комментарии; поменяли местами с рабочей колонкой выше). ── */}
+      <div className="flex flex-col gap-5">
+        {/* Документы (Шаг 8) */}
+        <section id="documents" className="scroll-mt-16">
+          <CaseDocumentsBlock
             caseId={c.id}
             canWrite={canEdit}
-            currentUserId={user.profile.id}
-            isManager={isManager}
+            canDelete={canDeleteDoc}
           />
         </section>
 
-        <section id="finance" className="scroll-mt-16">
-          <CasePaymentsBlock
+        {/* Задачи и заседания (Шаг 7) */}
+        <section id="tasks" className="scroll-mt-16">
+          <CaseTasksBlock
             caseId={c.id}
             canWrite={canEdit}
-            canManage={canManagePay}
-            overpaid={c.overpaid}
+            currentUserId={user.profile.id}
           />
         </section>
       </div>
@@ -552,7 +532,7 @@ function MoneyStat({
       </span>
       <span
         className={cn(
-          'font-mono text-[14px] font-bold tabular-nums',
+          'text-[14px] font-bold tabular-nums',
           valueClass,
         )}
       >

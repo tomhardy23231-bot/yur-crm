@@ -60,7 +60,7 @@ export function PayrollRatesForm({
                   aria-label={fmt(t.payroll.settings.lawyerRateAria, {
                     category: t.enums.caseCategory[c],
                   })}
-                  className="font-mono"
+                  className=""
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -83,7 +83,7 @@ export function PayrollRatesForm({
                   aria-label={fmt(t.payroll.settings.expertRateAria, {
                     category: t.enums.caseCategory[c],
                   })}
-                  className="font-mono"
+                  className=""
                 />
               </div>
             </div>

@@ -18,6 +18,13 @@ export const payments: PaymentsMessages = {
     empty: 'Платежів за цією справою поки немає.',
   },
 
+  addDialog: {
+    trigger: 'Додати платіж',
+    title: 'Новий платіж',
+    subtitle: 'Сума автоматично оновить «Оплачено» і «Борг» у справі.',
+    close: 'Закрити',
+  },
+
   form: {
     amountLabel: 'Сума, ₴',
     amountPlaceholder: '0.00',

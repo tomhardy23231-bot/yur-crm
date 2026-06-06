@@ -222,7 +222,7 @@ export default async function PayrollEmployeePage({
           <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-[0.05em] text-text-muted">
             <Wallet size={13} strokeWidth={2} />{t.payroll.employee.toPayNow}
           </span>
-          <span className="font-mono text-[30px] font-extrabold leading-none tabular-nums text-warning">
+          <span className="text-[30px] font-extrabold leading-none tabular-nums text-warning">
             {MONEY.format(balance)} ₴
           </span>
           <span className="text-[12px] text-text-muted">
@@ -306,7 +306,7 @@ export default async function PayrollEmployeePage({
                         {t.enums.roleInCase[c.role_in_case]} · {MONEY.format(c.percent)}%
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="font-mono text-[13px] font-semibold tabular-nums text-text">
+                        <div className="text-[13px] font-semibold tabular-nums text-text">
                           {MONEY.format(c.earned)} ₴
                         </div>
                         <div className="text-[11px] text-text-subtle">
@@ -340,7 +340,7 @@ export default async function PayrollEmployeePage({
                       </TableCell>
                       <TableCell
                         className={cn(
-                          'whitespace-nowrap text-right font-mono text-[13px] font-semibold tabular-nums',
+                          'whitespace-nowrap text-right text-[13px] font-semibold tabular-nums',
                           c.outstanding > 0.001 ? 'text-warning' : 'text-text-subtle',
                         )}
                       >
@@ -365,7 +365,7 @@ export default async function PayrollEmployeePage({
             </h2>
           </div>
           {bonusMonth > 0 && (
-            <div className="flex items-baseline gap-4 font-mono text-[12.5px] tabular-nums">
+            <div className="flex items-baseline gap-4 text-[12.5px] tabular-nums">
               <span className="text-text-muted">
                 {t.payroll.employee.bonusAccrued}{' '}
                 <span className="font-semibold text-text">
@@ -408,7 +408,7 @@ export default async function PayrollEmployeePage({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="font-mono text-[14px] font-bold tabular-nums text-text">
+                    <span className="text-[14px] font-bold tabular-nums text-text">
                       +{MONEY.format(b.amount)} ₴
                     </span>
                     <span className="text-[12px] text-text-muted">
@@ -475,7 +475,7 @@ export default async function PayrollEmployeePage({
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="font-mono text-[14px] font-bold tabular-nums text-text">
+                      <span className="text-[14px] font-bold tabular-nums text-text">
                         −{MONEY.format(tx.amount)} ₴
                       </span>
                       <span className="text-[12px] text-text-muted">
@@ -494,7 +494,7 @@ export default async function PayrollEmployeePage({
                             className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[11.5px] text-text-muted transition-colors hover:border-border-strong hover:text-text"
                           >
                             {a.number_title}
-                            <span className="font-mono tabular-nums">
+                            <span className="tabular-nums">
                               {MONEY.format(a.amount)} ₴
                             </span>
                           </Link>
@@ -503,7 +503,7 @@ export default async function PayrollEmployeePage({
                           <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning-bg px-2 py-0.5 text-[11.5px] font-medium text-warning">
                             <Gift size={11} strokeWidth={2} />
                             {t.payroll.employee.payoutBonusChip}
-                            <span className="font-mono tabular-nums">
+                            <span className="tabular-nums">
                               {MONEY.format(bonusPortion)} ₴
                             </span>
                           </span>
@@ -549,7 +549,7 @@ function SummaryCell({
       <span className="text-[11px] uppercase tracking-[0.04em] text-text-muted">
         {label}
       </span>
-      <span className={cn('font-mono text-[18px] font-bold tabular-nums', color)}>
+      <span className={cn('text-[18px] font-bold tabular-nums', color)}>
         {value}
       </span>
       {caption && (

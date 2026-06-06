@@ -37,7 +37,7 @@ export default async function ProfilePage() {
               <p className="truncate text-[15px] font-semibold text-text">
                 {user.profile.full_name}
               </p>
-              <p className="truncate font-mono text-[13px] text-text-muted">
+              <p className="truncate text-[13px] text-text-muted">
                 {user.email}
               </p>
             </div>

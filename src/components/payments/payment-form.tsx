@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useRef, useEffect, useState } from 'react';
+import { useActionState, useId, useRef, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,8 @@ const INITIAL: CreatePaymentState = { ok: false };
 
 interface Props {
   caseId: string;
+  /** Вызывается после успешного сохранения (напр. закрыть модалку). */
+  onSuccess?: () => void;
 }
 
 function todayISO(): string {
@@ -39,8 +41,12 @@ function parseAmountClient(raw: string): number | null {
   return n;
 }
 
-export function PaymentForm({ caseId }: Props) {
+export function PaymentForm({ caseId, onSuccess }: Props) {
   const { t } = useI18n();
+  // Уникальный префикс id полей — форма может быть на странице в нескольких
+  // экземплярах (модалка в шапке + блок «Финансы»); без этого id дублируются.
+  const uid = useId();
+  const fid = (name: string) => `${uid}-${name}`;
   const [state, formAction, isPending] = useActionState<CreatePaymentState, FormData>(
     createPaymentAction,
     INITIAL,
@@ -62,8 +68,9 @@ export function PaymentForm({ caseId }: Props) {
       // (amountError сюда не сбрасываем: успешный submit возможен только когда
       // сумма уже валидна, т.е. amountError и так undefined — см. submit-хендлер.)
       idemKeyRef.current = null;
+      onSuccess?.();
     }
-  }, [state.ok]);
+  }, [state.ok, onSuccess]);
 
   useShakeInvalidFields(formRef, state);
 
@@ -99,12 +106,12 @@ export function PaymentForm({ caseId }: Props) {
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-[1fr_1fr_1fr]">
         <Field
           label={t.payments.form.amountLabel}
-          htmlFor="payment-amount"
+          htmlFor={fid('amount')}
           error={err('amount')}
           required
         >
           <Input
-            id="payment-amount"
+            id={fid('amount')}
             name="amount"
             type="text"
             inputMode="decimal"
@@ -121,34 +128,34 @@ export function PaymentForm({ caseId }: Props) {
               if (amountError) setAmountError(undefined);
             }}
             aria-invalid={err('amount') ? 'true' : undefined}
-            className="font-mono tabular-nums"
+            className="tabular-nums"
           />
         </Field>
 
         <Field
           label={t.payments.form.paidAtLabel}
-          htmlFor="payment-paid-at"
+          htmlFor={fid('paid-at')}
           error={err('paid_at')}
           required
         >
           <Input
-            id="payment-paid-at"
+            id={fid('paid-at')}
             name="paid_at"
             type="date"
             defaultValue={todayISO()}
             required
             aria-invalid={err('paid_at') ? 'true' : undefined}
-            className="font-mono"
+            className=""
           />
         </Field>
 
         <Field
           label={t.payments.form.methodLabel}
-          htmlFor="payment-method"
+          htmlFor={fid('method')}
           error={err('method')}
         >
           <Input
-            id="payment-method"
+            id={fid('method')}
             name="method"
             type="text"
             maxLength={80}
@@ -160,11 +167,11 @@ export function PaymentForm({ caseId }: Props) {
 
       <Field
         label={t.payments.form.noteLabel}
-        htmlFor="payment-note"
+        htmlFor={fid('note')}
         error={err('note')}
       >
         <Textarea
-          id="payment-note"
+          id={fid('note')}
           name="note"
           maxLength={500}
           rows={2}

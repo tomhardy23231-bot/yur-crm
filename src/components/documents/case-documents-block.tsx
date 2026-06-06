@@ -5,7 +5,7 @@ import { getT } from '@/lib/i18n/server';
 import { listDocumentsByCase } from '@/lib/documents/queries';
 import { onlyOfficeConfigured } from '@/lib/onlyoffice/config';
 
-import { DocumentRow } from './document-row';
+import { DocumentCard } from './document-card';
 import { DocumentUploadForm } from './document-upload-form';
 
 interface CaseDocumentsBlockProps {
@@ -65,9 +65,11 @@ export async function CaseDocumentsBlock({
           }
         />
       ) : (
-        <div>
+        // Горизонтальная сетка карточек (блок во всю ширину). Колонок —
+        // по ширине: 1 на мобиле, до 4 на широком экране.
+        <div className="grid grid-cols-2 gap-2.5 p-4 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
           {docs.map((d) => (
-            <DocumentRow
+            <DocumentCard
               key={d.id}
               doc={d}
               canDelete={canDelete}

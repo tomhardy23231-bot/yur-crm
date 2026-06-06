@@ -283,7 +283,7 @@ export default async function HelpPage() {
                     {r.cat}
                   </span>
                   <span
-                    className="font-mono text-[18px] font-extrabold tabular-nums"
+                    className="text-[18px] font-extrabold tabular-nums"
                     style={{ color: `var(${r.varName})` }}
                   >
                     {r.pct}
@@ -305,7 +305,7 @@ export default async function HelpPage() {
                 </span>
                 <span className="text-text-muted">{h.payroll.exampleCaseLabel}</span>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[13px] tabular-nums">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] tabular-nums">
                 <span className="text-text-muted">
                   {h.payroll.exampleSum}{' '}
                   <span className="font-bold text-text">{h.payroll.exampleSumValue}</span>
@@ -449,8 +449,8 @@ function PayRow({ role, base, amount }: { role: string; base: string; amount: st
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-[13px] font-semibold text-text">{role}</span>
-      <span className="font-mono text-[12px] text-text-subtle">{base}</span>
-      <span className="ml-auto whitespace-nowrap rounded-md bg-success-bg px-2.5 py-1 font-mono text-[14px] font-bold tabular-nums text-success">
+      <span className="text-[12px] text-text-subtle">{base}</span>
+      <span className="ml-auto whitespace-nowrap rounded-md bg-success-bg px-2.5 py-1 text-[14px] font-bold tabular-nums text-success">
         {amount}
       </span>
     </div>
