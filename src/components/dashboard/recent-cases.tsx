@@ -105,7 +105,7 @@ export function RecentCases({
                     <TableCell>
                       <Link
                         href={`/cases/${c.id}`}
-                        className="font-semibold text-primary transition-colors hover:text-primary-hover"
+                        className="font-semibold text-text transition-colors hover:text-primary"
                       >
                         {c.number_title}
                       </Link>

@@ -435,7 +435,7 @@ export default async function CasesPage({
                     />
                     <Link
                       href={`/cases/${c.id}`}
-                      className="relative inline-block font-semibold text-primary transition-[color,transform] duration-200 ease-out group-hover:translate-x-1 group-hover:text-primary-hover focus-visible:text-primary-hover focus-visible:outline-none"
+                      className="relative inline-block font-semibold text-text transition-[color,transform] duration-200 ease-out group-hover:translate-x-1 group-hover:text-primary focus-visible:text-primary focus-visible:outline-none"
                     >
                       {c.number_title}
                     </Link>

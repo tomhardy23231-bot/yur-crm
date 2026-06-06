@@ -199,7 +199,7 @@ export default async function ClientsPage({
                       className="relative -mx-2 -my-1 flex items-center gap-3 rounded-md px-2 py-1 transition-transform duration-200 ease-out group-hover:translate-x-1 focus-visible:bg-primary-subtle focus-visible:outline-none"
                     >
                       <Avatar name={c.name} size="sm" shape="square" />
-                      <span className="font-semibold text-primary transition-colors group-hover:text-primary-hover">
+                      <span className="font-semibold text-text transition-colors group-hover:text-primary">
                         {c.name}
                       </span>
                     </Link>

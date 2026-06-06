@@ -572,6 +572,9 @@ export type DocumentRow = {
   doc_type: DocType;
   uploaded_by: string;
   uploaded_at: string;
+  /** Время последнего изменения файла (правка через OnlyOffice). Опц. — есть
+   *  не во всех выборках; нужен для версионного ключа редактора. */
+  updated_at?: string | null;
 };
 
 export type DocumentWithUploader = DocumentRow & {

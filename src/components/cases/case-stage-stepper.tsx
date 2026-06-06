@@ -2,32 +2,10 @@
 
 import { useOptimistic, useTransition } from 'react';
 
-import { cn } from '@/lib/utils';
+import { StageCapsules } from '@/components/cases/stage-capsules';
 import { updateCaseStageAction } from '@/lib/cases/actions';
 import { useI18n } from '@/lib/i18n/provider';
-import { CASE_STAGES, type CaseStage } from '@/lib/types/db';
-
-// Синяя «лента» прогресса (бриф §7): текущий — синий, пройденные — серые,
-// будущие — бледные; превью при наведении на доступный этап — синее.
-const PASSED = 'var(--border-strong)';
-const CURRENT = 'var(--primary)';
-const FUTURE = 'var(--surface-sunken)';
-
-// Глубина «носа»/выемки стрелки (px). Воронка-стрелки: сегменты-шевроны встык,
-// каждый указывает на следующий этап — визуально читается как воронка дела.
-const ARROW = '11px';
-
-// clip-path сегмента в зависимости от позиции: первый — плоский слева, нос
-// справа; последний — выемка слева, плоский справа; средние — выемка + нос.
-function arrowClip(i: number, last: number): string {
-  if (i === 0) {
-    return `polygon(0 0, calc(100% - ${ARROW}) 0, 100% 50%, calc(100% - ${ARROW}) 100%, 0 100%)`;
-  }
-  if (i === last) {
-    return `polygon(0 0, 100% 0, 100% 100%, 0 100%, ${ARROW} 50%)`;
-  }
-  return `polygon(0 0, calc(100% - ${ARROW}) 0, 100% 50%, calc(100% - ${ARROW}) 100%, 0 100%, ${ARROW} 50%)`;
-}
+import { type CaseStage } from '@/lib/types/db';
 
 interface CaseStageStepperProps {
   caseId: string;
@@ -39,10 +17,9 @@ interface CaseStageStepperProps {
   hasAct?: boolean;
 }
 
-// Кликабельный степпер-воронка. Сегменты до текущего этапа включительно залиты
-// цветом своего этапа; будущие — нейтральный фон. Наведение на доступный этап
-// заливает его сегмент цветом-превью. Клик меняет этап оптимистично (мгновенный
-// UI из одного источника). Правило «только вперёд» и лог отката держит БД-триггер.
+// Кликабельная воронка-капсулы. Клик меняет этап оптимистично (мгновенный UI).
+// Правило «только вперёд» и лог отката держит БД-триггер. Рендер — общий
+// StageCapsules (тот же вид, что и в read-only варианте).
 export function CaseStageStepper({
   caseId,
   stage,
@@ -53,12 +30,8 @@ export function CaseStageStepper({
   const [optimisticStage, setOptimisticStage] = useOptimistic(stage);
   const [pending, startTransition] = useTransition();
 
-  const current = CASE_STAGES.indexOf(optimisticStage);
-  const last = CASE_STAGES.length - 1;
-  const allowed = new Set(allowedStages);
-
   const handleSelect = (s: CaseStage) => {
-    if (s === optimisticStage || !allowed.has(s) || pending) return;
+    if (s === optimisticStage || pending) return;
     // Мягкий контроль: завершить без акта можно, но с подтверждением.
     if (s === 'closed' && !hasAct) {
       const okToClose = window.confirm(
@@ -74,70 +47,18 @@ export function CaseStageStepper({
     });
   };
 
-  return (
-    <div className="flex items-stretch gap-1">
-      {CASE_STAGES.map((s, i) => {
-        const isCurrent = i === current;
-        const fill = i < current ? PASSED : isCurrent ? CURRENT : FUTURE;
-        const labelColor =
-          i < current
-            ? 'var(--text-muted)'
-            : isCurrent
-              ? 'var(--primary)'
-              : 'var(--text-subtle)';
-        const selectable = allowed.has(s) && !pending && !isCurrent;
+  // Текущий этап в кликабельную выборку не отдаём (это «вы здесь»).
+  const selectable = allowedStages.filter((s) => s !== optimisticStage);
 
-        return (
-          <button
-            key={s}
-            type="button"
-            disabled={!selectable}
-            onClick={() => handleSelect(s)}
-            aria-current={isCurrent ? 'step' : undefined}
-            title={
-              selectable
-                ? fmt(t.caseCard.stepper.moveTo, {
-                    stage: t.enums.caseStage[s],
-                  })
-                : t.enums.caseStage[s]
-            }
-            className={cn(
-              'group flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
-              selectable ? 'cursor-pointer' : 'cursor-default',
-            )}
-          >
-            {/* Сегмент-стрелка. Фон через CSS-переменные, чтобы ховер-превью
-                (класс) мог перекрыть committed-фон (тоже класс). */}
-            <span
-              style={
-                {
-                  clipPath: arrowClip(i, last),
-                  '--seg': CURRENT,
-                  '--seg-bg': fill,
-                } as React.CSSProperties
-              }
-              className={cn(
-                'block h-6 w-full [background:var(--seg-bg)]',
-                'transition-[background,box-shadow,filter] duration-200',
-                isCurrent && 'shadow-sm',
-                selectable &&
-                  'group-hover:[background:var(--seg)] group-hover:shadow-sm',
-              )}
-            />
-            {/* Подпись под стрелкой. */}
-            <span
-              className="px-1 text-center text-[11px] leading-tight transition-colors"
-              style={{
-                color: labelColor,
-                fontWeight: isCurrent ? 700 : 500,
-              }}
-            >
-              {t.enums.caseStage[s]}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+  return (
+    <StageCapsules
+      stage={optimisticStage}
+      allowedStages={selectable}
+      pending={pending}
+      onSelect={handleSelect}
+      selectableTitle={(s) =>
+        fmt(t.caseCard.stepper.moveTo, { stage: t.enums.caseStage[s] })
+      }
+    />
   );
 }

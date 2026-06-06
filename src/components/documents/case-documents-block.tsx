@@ -3,6 +3,7 @@ import { FileText, Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { getT } from '@/lib/i18n/server';
 import { listDocumentsByCase } from '@/lib/documents/queries';
+import { onlyOfficeConfigured } from '@/lib/onlyoffice/config';
 
 import { DocumentRow } from './document-row';
 import { DocumentUploadForm } from './document-upload-form';
@@ -22,6 +23,7 @@ export async function CaseDocumentsBlock({
 }: CaseDocumentsBlockProps) {
   const { t, plural } = await getT();
   const docs = await listDocumentsByCase(caseId);
+  const officeEnabled = onlyOfficeConfigured();
 
   return (
     // id="documents" + scroll-mt-20 — якорь для глобального поиска
@@ -65,7 +67,13 @@ export async function CaseDocumentsBlock({
       ) : (
         <div>
           {docs.map((d) => (
-            <DocumentRow key={d.id} doc={d} canDelete={canDelete} />
+            <DocumentRow
+              key={d.id}
+              doc={d}
+              canDelete={canDelete}
+              canWrite={canWrite}
+              officeEnabled={officeEnabled}
+            />
           ))}
         </div>
       )}

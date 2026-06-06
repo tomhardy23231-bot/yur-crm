@@ -10,6 +10,14 @@ import { createServerClient } from '@supabase/ssr';
 
 const PUBLIC_PATHS = new Set(['/login', '/forbidden']);
 
+// Машина-к-машине роуты OnlyOffice Document Server: у DS нет пользовательской
+// сессии — он авторизуется собственным JWT (content-токен на скачивание файла,
+// подпись на callback сохранения). НЕ редиректим их на /login, иначе DS получит
+// HTML логина вместо файла и не сможет ни открыть, ни сохранить документ. Сами
+// роуты проверяют JWT внутри (см. content/route.ts, oo-callback/route.ts).
+const OO_MACHINE_PATH =
+  /^\/api\/documents\/[0-9a-f-]{36}\/(content|oo-callback)$/i;
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const path = request.nextUrl.pathname;
 
@@ -21,7 +29,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // Логину сессия не нужна (страница сама зовёт getCurrentUser), поэтому
   // просто пропускаем — тело POST остаётся целым, login работает даже со
   // старой кукой (успешный вход перезапишет её свежей).
-  if (PUBLIC_PATHS.has(path)) {
+  if (PUBLIC_PATHS.has(path) || OO_MACHINE_PATH.test(path)) {
     return NextResponse.next();
   }
 

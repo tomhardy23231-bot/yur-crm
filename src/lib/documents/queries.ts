@@ -60,7 +60,9 @@ export async function getDocument(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('documents')
-    .select('id, case_id, file_name, storage_key, doc_type, uploaded_by, uploaded_at')
+    .select(
+      'id, case_id, file_name, storage_key, doc_type, uploaded_by, uploaded_at, updated_at',
+    )
     .eq('id', id)
     .maybeSingle();
 
@@ -87,6 +89,26 @@ export async function createSignedDownloadUrl(
   if (error || !data?.signedUrl) {
     throw new Error(
       `createSignedDownloadUrl failed: ${error?.message ?? 'no signed url'}`,
+    );
+  }
+  return data.signedUrl;
+}
+
+// =====================================================================
+// createSignedPreviewUrl — короткий signed URL БЕЗ флага download, чтобы
+// браузер открыл файл inline (в iframe/img), а не скачивал. TTL 600 сек.
+// =====================================================================
+export async function createSignedPreviewUrl(
+  storageKey: string,
+): Promise<string> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.storage
+    .from('case-documents')
+    .createSignedUrl(storageKey, 600);
+
+  if (error || !data?.signedUrl) {
+    throw new Error(
+      `createSignedPreviewUrl failed: ${error?.message ?? 'no signed url'}`,
     );
   }
   return data.signedUrl;
