@@ -23,6 +23,9 @@ comment on column public.case_comments.updated_at is
 --    WITH CHECK зеркалит USING — менеджер может сохранить чужую запись
 --    (author_id остаётся прежним автором, проверку проходит can_manage_users()).
 -- ========================================================================
+drop policy if exists case_comments_update_author_or_managers
+  on public.case_comments;
+
 create policy case_comments_update_author_or_managers
   on public.case_comments
   for update
@@ -55,14 +58,20 @@ begin
 end;
 $$;
 
+drop trigger if exists case_comments_guard_immutable on public.case_comments;
+
 create trigger case_comments_guard_immutable
   before update on public.case_comments
   for each row execute function private.case_comments_guard_immutable();
 
 -- ========================================================================
 -- 4) Allowlist activity_log: добавляем 'comment_edited' (таблица + функция).
---    'stage_corrected' в внутреннем allowlist функции по-прежнему ОТСУТСТВУЕТ
---    (его пишет только триггер прямым INSERT'ом — см. 20260527120000).
+--    ВАЖНО: пересоздаём ПОВЕРХ актуальной версии из 20260601100000
+--    (permission_overrides) — сохраняем payroll_*/user_* действия в табличном
+--    CHECK (иначе он отвергнет реальные прод-строки) и логику v_is_delete_action /
+--    entity_type='user' в функции (иначе регрессирует журналирование удалений и
+--    действий по пользователям). 'stage_corrected' остаётся в табличном CHECK,
+--    но НЕ во внутреннем allowlist функции (его пишет только триггер).
 -- ========================================================================
 alter table public.activity_log
   drop constraint if exists activity_log_action_check;
@@ -75,6 +84,9 @@ alter table public.activity_log
     'document_uploaded', 'document_deleted',
     'payment_created', 'payment_deleted',
     'task_created', 'task_updated', 'task_toggled', 'task_deleted',
+    'payroll_paid', 'payroll_reverted',
+    'user_created', 'user_role_changed', 'user_deactivated', 'user_reactivated',
+    'user_permissions_changed',
     'comment_edited'
   ));
 
@@ -90,6 +102,7 @@ set search_path = ''
 as $$
 declare
   v_uid uuid;
+  v_is_delete_action boolean;
 begin
   if p_entity_type is null or p_entity_id is null or p_action is null then
     return;
@@ -102,6 +115,9 @@ begin
     'document_uploaded', 'document_deleted',
     'payment_created', 'payment_deleted',
     'task_created', 'task_updated', 'task_toggled', 'task_deleted',
+    'payroll_paid', 'payroll_reverted',
+    'user_created', 'user_role_changed', 'user_deactivated', 'user_reactivated',
+    'user_permissions_changed',
     'comment_edited'
   ) then
     return;
@@ -117,16 +133,34 @@ begin
     return;
   end if;
 
-  if p_entity_type not in ('case', 'client') then
+  if p_entity_type not in ('case', 'client', 'user') then
     return;
   end if;
 
-  if p_entity_type = 'case' and not private.can_see_case(p_entity_id) then
-    return;
-  end if;
+  v_is_delete_action := p_action in ('case_deleted', 'client_deleted');
 
-  if p_entity_type = 'client' and not private.is_staff() then
-    return;
+  if v_is_delete_action then
+    -- Сущность уже удалена → can_see_case вернёт false. Пишем лог, если у актора
+    -- есть соответствующее право удаления (delete_* можно выдать персонально).
+    if p_action = 'case_deleted' and not private.can('delete_cases') then
+      return;
+    end if;
+    if p_action = 'client_deleted' and not private.can('delete_clients') then
+      return;
+    end if;
+  else
+    if p_entity_type = 'case' and not private.can_see_case(p_entity_id) then
+      return;
+    end if;
+
+    if p_entity_type = 'client' and not private.is_staff() then
+      return;
+    end if;
+
+    -- события по пользователям видит/пишет только обладатель manage_users.
+    if p_entity_type = 'user' and not private.can('manage_users') then
+      return;
+    end if;
   end if;
 
   insert into public.activity_log (entity_type, entity_id, user_id, action, changes)
@@ -139,4 +173,5 @@ end;
 $$;
 
 comment on function public.log_activity(text, uuid, text, jsonb) is
-  'Шаг 10 + CSO #1 + comment_edited: SECURITY DEFINER, allowlist actions, size cap 8 КБ.';
+  'permission_overrides + comment_edited: SECURITY DEFINER, allowlist (+payroll_*/user_*/comment_edited), '
+  'size cap 8 КБ. entity_type user видит/пишет только обладатель manage_users.';
