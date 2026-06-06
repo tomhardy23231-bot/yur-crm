@@ -52,6 +52,36 @@ export const caseCard: CaseCardMessages = {
       'Виплати позначаються в розділі «Фінанси і ЗП» → картка співробітника.',
   },
 
+  // ── Сітка «поле: значення» в шапці (case-info-grid.tsx) ──────────────
+  overview: {
+    colCase: 'Справа',
+    colClient: 'Клієнт',
+    colFinance: 'Оплата і суд',
+
+    number: '№ / назва',
+    caseType: 'Тип справи',
+    category: 'Категорія',
+    priority: 'Пріоритет',
+    opened: 'Відкрито',
+    closed: 'Завершено',
+    lawyer: 'Юрист (договір)',
+    expert: 'Експерт (виконавець)',
+
+    clientName: 'Клієнт',
+    clientKind: 'Тип',
+    phone: 'Телефон',
+    email: 'E-mail',
+    source: 'Джерело',
+
+    billing: 'Тип оплати',
+    court: 'Суд',
+    opponent: 'Опонент',
+    courtCaseNumber: '№ судової справи',
+
+    notSet: 'не вказано',
+    dash: '—',
+  },
+
   // ── Панель дій картки (case-action-bar.tsx) ──────────────────────────
   actionBar: {
     backToList: 'До списку справ',
@@ -59,6 +89,7 @@ export const caseCard: CaseCardMessages = {
     sectionOverview: 'Огляд',
     sectionDocuments: 'Документи',
     sectionTasks: 'Завдання',
+    sectionComments: 'Коментарі',
     sectionFinance: 'Фінанси',
     sectionHistory: 'Історія',
   },

@@ -18,6 +18,7 @@ const SECTION_IDS = [
   'overview',
   'documents',
   'tasks',
+  'comments',
   'finance',
   'history',
 ] as const;
@@ -40,6 +41,7 @@ export function CaseActionBar({
     { id: 'overview', label: t.caseCard.actionBar.sectionOverview },
     { id: 'documents', label: t.caseCard.actionBar.sectionDocuments },
     { id: 'tasks', label: t.caseCard.actionBar.sectionTasks },
+    { id: 'comments', label: t.caseCard.actionBar.sectionComments },
     { id: 'finance', label: t.caseCard.actionBar.sectionFinance },
     { id: 'history', label: t.caseCard.actionBar.sectionHistory },
   ] as const;

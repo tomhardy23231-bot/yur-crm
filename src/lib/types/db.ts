@@ -482,6 +482,10 @@ export type CaseWithRefs = Case & {
     id: string;
     name: string;
     client_kind: ClientKind;
+    // Контакты клиента — для блока «Клиент» в карточке (тел./email + действия).
+    phone: string | null;
+    email: string | null;
+    source: ClientSource | null;
   } | null;
   lawyer: {
     id: string;
@@ -532,6 +536,23 @@ export type Task = {
 export type TaskWithRefs = Task & {
   assignee: { id: string; full_name: string } | null;
   case: { id: string; number_title: string } | null;
+};
+
+// =====================================================================
+// Comments — заметки сотрудников к делу (рядом с задачами). Доступ
+// наследуется от дела (RLS, миграция 20260606130000_case_comments).
+// =====================================================================
+
+export type CaseComment = {
+  id: string;
+  case_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+};
+
+export type CaseCommentWithAuthor = CaseComment & {
+  author: { id: string; full_name: string } | null;
 };
 
 // =====================================================================

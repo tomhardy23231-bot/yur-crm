@@ -15,9 +15,10 @@ import { CategoryBadge } from '@/components/ui/category-badge';
 import { StageStepper } from '@/components/cases/stage-stepper';
 import { CaseStageStepper } from '@/components/cases/case-stage-stepper';
 import { CaseActionBar } from '@/components/cases/case-action-bar';
-import { BillingTypesBadges } from '@/components/cases/billing-types-badges';
+import { CaseInfoGrid } from '@/components/cases/case-info-grid';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { CaseActivityBlock } from '@/components/activity/case-activity-block';
+import { CaseCommentsBlock } from '@/components/comments/case-comments-block';
 import { CaseDocumentsBlock } from '@/components/documents/case-documents-block';
 import { CasePaymentsBlock } from '@/components/payments/case-payments-block';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
@@ -27,7 +28,7 @@ import { getCase } from '@/lib/cases/queries';
 import { getCasePayroll, getCasePaidByRole } from '@/lib/payroll/queries';
 import { caseHasDocOfType } from '@/lib/documents/queries';
 import { getT } from '@/lib/i18n/server';
-import { allowedStagesFor, STAFF_ROLES } from '@/lib/types/db';
+import { allowedStagesFor, MANAGER_ROLES, STAFF_ROLES } from '@/lib/types/db';
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
@@ -69,6 +70,8 @@ export default async function CaseDetailPage({
 
   // Этапы (откат/прыжок) — по роли staff (БД-триггер guard_stage_forward).
   const isStaff = STAFF_ROLES.includes(user.profile.role);
+  // owner/admin могут удалять чужие комментарии (зеркало private.can_manage_users).
+  const isManager = MANAGER_ROLES.includes(user.profile.role);
   // Видимость зарплаты по делу — по праву view_all_payroll (иначе только своё).
   const seeAllPayroll = user.caps.view_all_payroll;
   // RLS UPDATE = view_all_cases OR lawyer_id/responsible_id = uid. Маскируем Edit.
@@ -143,6 +146,9 @@ export default async function CaseDetailPage({
   }
   const shownReward = participants.reduce((s, p) => s + p.amount, 0);
   const hasOverride = participants.some((p) => p.override);
+  // Есть ли что показать в правом сайдбаре (карточка вознаграждения). Если нет —
+  // рабочая колонка раскрывается на всю ширину (нет зияющей пустой колонки).
+  const showReward = participants.length > 0;
 
   return (
     <main className="flex flex-col gap-4 px-3 py-2 sm:px-4">
@@ -172,8 +178,9 @@ export default async function CaseDetailPage({
 
       {/* ── Шапка дела ─────────────────────────────────────────── */}
       <Card id="overview" className="scroll-mt-16 px-4 py-3 sm:px-5 sm:py-3.5">
-        {/* Верхняя панель: мета слева, этап + действия справа — одна линия */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        {/* Верхняя панель: бейджи + клиент слева, тройка сумм справа (как
+            верхняя полоса эталонной карточки заказа). */}
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className="inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[12px] font-extrabold tracking-[0.01em] text-white shadow-sm"
@@ -211,27 +218,52 @@ export default async function CaseDetailPage({
             )}
           </div>
 
-          {/* Мета (тип · дата · предмет) переехала сюда из-под заголовка —
-              экономит отдельную строку по высоте. Текущий этап виден в степпере
-              ниже, отдельный бейдж не нужен. Действия — в панели сверху. */}
-          <p className="text-[12.5px] text-text-muted">
-            {t.enums.caseType[c.case_type]} · {t.caseCard.detail.openedAt}{' '}
-            {DATE_FMT.format(new Date(c.opened_at))}
-            {c.closed_at && (
-              <>
-                {' '}
-                · {t.caseCard.detail.closedAt}{' '}
-                {DATE_FMT.format(new Date(c.closed_at))}
-              </>
+          {/* Деньги «одним взглядом»: договор · оплачено · долг/переплата.
+              Детальная развёртка — в сетке «Финансы и суд» ниже. */}
+          <div className="flex shrink-0 items-stretch gap-2">
+            <MoneyStat
+              label={t.caseCard.detail.rewardSum}
+              value={formatMoney(c.contract_sum)}
+            />
+            <MoneyStat
+              label={t.caseCard.detail.rewardPaid}
+              value={formatMoney(c.paid_total)}
+              tone="success"
+            />
+            {c.overpaid > 0 ? (
+              <MoneyStat
+                label={t.caseCard.detail.rewardOverpaid}
+                value={`+${formatMoney(c.overpaid)}`}
+                tone="info"
+              />
+            ) : (
+              <MoneyStat
+                label={t.caseCard.detail.rewardDebt}
+                value={formatMoney(c.debt)}
+                tone={c.debt > 0 ? 'error' : 'muted'}
+              />
             )}
-            {c.subject && <> · {c.subject}</>}
-          </p>
+          </div>
         </div>
 
         {/* Заголовок дела */}
-        <h1 className="mt-2 text-[20px] font-bold leading-tight tracking-[-0.01em] text-text">
+        <h1 className="mt-3 text-[20px] font-bold leading-tight tracking-[-0.01em] text-text">
           {c.number_title}
         </h1>
+
+        {/* Мета: тип дела · открыто/завершено · предмет договора. */}
+        <p className="mt-1 text-[12.5px] text-text-muted">
+          {t.enums.caseType[c.case_type]} · {t.caseCard.detail.openedAt}{' '}
+          {DATE_FMT.format(new Date(c.opened_at))}
+          {c.closed_at && (
+            <>
+              {' '}
+              · {t.caseCard.detail.closedAt}{' '}
+              {DATE_FMT.format(new Date(c.closed_at))}
+            </>
+          )}
+          {c.subject && <> · {c.subject}</>}
+        </p>
 
         {c.tags.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -240,50 +272,6 @@ export default async function CaseDetailPage({
                 {t}
               </Badge>
             ))}
-          </div>
-        )}
-
-        {/* Уникальные поля бывшего блока «Реквизиты» (тип оплаты + суд) —
-            всё остальное там дублировало шапку. Показываем, только когда есть. */}
-        {(c.billing_types.length > 0 ||
-          c.opponent ||
-          c.court ||
-          c.court_case_number) && (
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-text-muted">
-            {c.billing_types.length > 0 && (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="text-text-subtle">
-                  {t.caseCard.detail.paymentLabel}
-                </span>
-                <BillingTypesBadges types={c.billing_types} />
-              </span>
-            )}
-            {c.opponent && (
-              <span>
-                <span className="text-text-subtle">
-                  {t.caseCard.detail.opponentLabel}
-                </span>{' '}
-                {c.opponent}
-              </span>
-            )}
-            {c.court && (
-              <span>
-                <span className="text-text-subtle">
-                  {t.caseCard.detail.courtLabel}
-                </span>{' '}
-                {c.court}
-              </span>
-            )}
-            {c.court_case_number && (
-              <span>
-                <span className="text-text-subtle">
-                  {t.caseCard.detail.caseNumberLabel}
-                </span>{' '}
-                <span className="font-mono tabular-nums">
-                  {c.court_case_number}
-                </span>
-              </span>
-            )}
           </div>
         )}
 
@@ -314,10 +302,23 @@ export default async function CaseDetailPage({
             {plural(t.caseCard.detail.stageDays, stageDays)}
           </p>
         )}
+
+        {/* Детальная сетка «поле: значение»: Дело · Клиент · Финансы/Суд
+            (по эталону карточки заказа). */}
+        <div className="mt-4 border-t border-border pt-4">
+          <CaseInfoGrid c={c} />
+        </div>
       </Card>
 
-      {/* ── Две колонки ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.9fr_1fr]">
+      {/* ── Ряд A: рабочая колонка (документы + задачи) · sticky-сайдбар
+           «Вознаграждение команды». items-start, чтобы сайдбар мог прилипать.
+           Без начислений — одна колонка во всю ширину. ── */}
+      <div
+        className={cn(
+          'grid grid-cols-1 items-start gap-5',
+          showReward && 'lg:grid-cols-[1.6fr_1fr]',
+        )}
+      >
         {/* Левая: документы + задачи. Бывший блок «Реквизиты дела» удалён —
             уникальные поля (тип оплаты, суд) перенесены в шапку, остальное
             дублировало её. */}
@@ -341,8 +342,8 @@ export default async function CaseDetailPage({
           </section>
         </div>
 
-        {/* Правая: вознаграждение команды (с составом команды внутри) */}
-        <div className="flex flex-col gap-5">
+        {/* Правая: вознаграждение команды — прилипает при скролле рабочей колонки. */}
+        <aside className="flex flex-col gap-5 lg:sticky lg:top-16 lg:self-start">
           {payroll && participants.length > 0 && (
             <Card className="p-4">
               <CardLabel className="mb-2.5">
@@ -490,23 +491,74 @@ export default async function CaseDetailPage({
               </p>
             </Card>
           )}
-        </div>
+        </aside>
       </div>
 
-      {/* ── Во всю ширину: платежи и история ───────────────────── */}
-      <section id="finance" className="scroll-mt-16">
-        <CasePaymentsBlock
-          caseId={c.id}
-          canWrite={canEdit}
-          canManage={canManagePay}
-          overpaid={c.overpaid}
-        />
-      </section>
+      {/* ── Ряд B: комментарии и оплаты рядом (раньше были во всю ширину
+           и «разъезжались» на широком экране). ── */}
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
+        <section id="comments" className="scroll-mt-16">
+          <CaseCommentsBlock
+            caseId={c.id}
+            canWrite={canEdit}
+            currentUserId={user.profile.id}
+            isManager={isManager}
+          />
+        </section>
 
+        <section id="finance" className="scroll-mt-16">
+          <CasePaymentsBlock
+            caseId={c.id}
+            canWrite={canEdit}
+            canManage={canManagePay}
+            overpaid={c.overpaid}
+          />
+        </section>
+      </div>
+
+      {/* ── Ряд C: история — во всю ширину рабочего лотка (в пределах max-width). ── */}
       <section id="history" className="scroll-mt-16">
         <CaseActivityBlock caseId={c.id} />
       </section>
     </main>
+  );
+}
+
+// Компактная плитка суммы для верхней полосы шапки (договор / оплачено / долг).
+// Подпись сверху, моноширинное значение снизу — как итоговые суммы на эталоне.
+function MoneyStat({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'success' | 'error' | 'info' | 'muted';
+}) {
+  const valueClass =
+    tone === 'success'
+      ? 'text-success'
+      : tone === 'error'
+        ? 'text-error'
+        : tone === 'info'
+          ? 'text-info'
+          : tone === 'muted'
+            ? 'text-text-muted'
+            : 'text-text';
+  return (
+    <div className="flex min-w-[88px] flex-col items-end rounded-[8px] bg-surface-sunken px-3 py-1.5">
+      <span className="text-[10px] font-medium uppercase tracking-[0.03em] text-text-subtle">
+        {label}
+      </span>
+      <span
+        className={cn(
+          'font-mono text-[14px] font-bold tabular-nums',
+          valueClass,
+        )}
+      >
+        {value} ₴
+      </span>
+    </div>
   );
 }
 

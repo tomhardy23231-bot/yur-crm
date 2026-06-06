@@ -60,6 +60,41 @@ export const caseCard = {
       'Выплаты отмечаются в разделе «Финансы и ЗП» → карточка сотрудника.',
   },
 
+  // ── Сетка «поле: значение» в шапке (case-info-grid.tsx) ──────────────
+  overview: {
+    // Заголовки трёх колонок
+    colCase: 'Дело',
+    colClient: 'Клиент',
+    colFinance: 'Оплата и суд',
+
+    // Колонка «Дело»
+    number: '№ / название',
+    caseType: 'Тип дела',
+    category: 'Категория',
+    priority: 'Приоритет',
+    opened: 'Открыто',
+    closed: 'Завершено',
+    lawyer: 'Юрист (договор)',
+    expert: 'Эксперт (исполнитель)',
+
+    // Колонка «Клиент»
+    clientName: 'Клиент',
+    clientKind: 'Тип',
+    phone: 'Телефон',
+    email: 'E-mail',
+    source: 'Источник',
+
+    // Колонка «Оплата и суд» (деньги — в шапке и «Вознаграждении команды»)
+    billing: 'Тип оплаты',
+    court: 'Суд',
+    opponent: 'Оппонент',
+    courtCaseNumber: '№ судебного дела',
+
+    // Общее
+    notSet: 'не указан',
+    dash: '—',
+  },
+
   // ── Панель действий карточки (case-action-bar.tsx) ───────────────────
   actionBar: {
     backToList: 'К списку дел',
@@ -67,6 +102,7 @@ export const caseCard = {
     sectionOverview: 'Обзор',
     sectionDocuments: 'Документы',
     sectionTasks: 'Задачи',
+    sectionComments: 'Комментарии',
     sectionFinance: 'Финансы',
     sectionHistory: 'История',
   },

@@ -11,6 +11,7 @@ import type {
   CaseType,
   CaseWithRefs,
   ClientKind,
+  ClientSource,
 } from '@/lib/types/db';
 
 export const CASES_PAGE_SIZE = 20;
@@ -313,7 +314,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     .select(
       'id, number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, priority, tags, ' +
         'contract_sum, paid_total, debt, overpaid, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, closed_without_act, stage_changed_at, created_at, ' +
-        'client:client_id(id, name, client_kind), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
+        'client:client_id(id, name, client_kind, phone, email, source), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
     )
     .eq('id', id)
     .maybeSingle();
@@ -339,8 +340,22 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     lawyer_rate_override: number | string | null;
     expert_rate_override: number | string | null;
     client:
-      | ReadonlyArray<{ id: string; name: string; client_kind: ClientKind }>
-      | { id: string; name: string; client_kind: ClientKind }
+      | ReadonlyArray<{
+          id: string;
+          name: string;
+          client_kind: ClientKind;
+          phone: string | null;
+          email: string | null;
+          source: ClientSource | null;
+        }>
+      | {
+          id: string;
+          name: string;
+          client_kind: ClientKind;
+          phone: string | null;
+          email: string | null;
+          source: ClientSource | null;
+        }
       | null;
     lawyer:
       | ReadonlyArray<{ id: string; full_name: string }>

@@ -30,7 +30,7 @@ export async function CaseActivityBlock({
 
   return (
     <Card>
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-border">
         <History size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[16px] font-semibold text-text">{t.activity.block.title}</h2>
         {entries.length > 0 && (

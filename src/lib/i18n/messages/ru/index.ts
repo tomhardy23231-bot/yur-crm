@@ -16,6 +16,7 @@ import { clients } from './clients';
 import { cases } from './cases';
 import { caseCard } from './caseCard';
 import { tasks } from './tasks';
+import { comments } from './comments';
 import { calendar } from './calendar';
 import { documents } from './documents';
 import { payments } from './payments';
@@ -41,6 +42,7 @@ export const ru = {
   cases,
   caseCard,
   tasks,
+  comments,
   calendar,
   documents,
   payments,
