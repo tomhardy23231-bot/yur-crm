@@ -23,6 +23,13 @@ export const nav: NavMessages = {
   help: 'Довідка',
   helpShort: 'Довідка',
 
+  // Мобільна нижня навігація: вкладка «Ще» відкриває шторку з рештою розділів.
+  more: 'Ще',
+  moreShort: 'Ще',
+  profile: 'Профіль',
+  menuAria: 'Відкрити меню',
+  moreSheetTitle: 'Меню',
+
   comingSoonTooltip: '{label} — скоро',
 
   brandHomeAria: 'ЮрКейс — на головну',

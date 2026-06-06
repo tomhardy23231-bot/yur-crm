@@ -22,6 +22,13 @@ export const nav = {
   help: 'Справка',
   helpShort: 'Справка',
 
+  // Мобильная нижняя навигация: вкладка «Ещё» открывает шторку со всем остальным.
+  more: 'Ещё',
+  moreShort: 'Ещё',
+  profile: 'Профиль',
+  menuAria: 'Открыть меню',
+  moreSheetTitle: 'Меню',
+
   // Тултип у пунктов-«заглушек»: «{label} — скоро».
   comingSoonTooltip: '{label} — скоро',
 

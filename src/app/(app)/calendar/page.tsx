@@ -227,8 +227,8 @@ function DayCell({
     <Link
       href={href}
       className={cn(
-        'relative min-h-[88px] p-2 border-r border-b border-border last:border-r-0',
-        'flex flex-col gap-1.5 transition-colors duration-[120ms] ease-out',
+        'relative min-h-[58px] p-1 sm:min-h-[88px] sm:p-2 border-r border-b border-border last:border-r-0',
+        'flex flex-col gap-1 sm:gap-1.5 transition-colors duration-[120ms] ease-out',
         inMonth ? 'bg-surface text-text' : 'bg-surface-muted/40 text-text-subtle',
         isSelected
           ? '!bg-primary-subtle'
@@ -248,32 +248,55 @@ function DayCell({
         {dayNum}
       </span>
 
-      {visible.length > 0 && (
-        <ul className="flex flex-col gap-0.5">
-          {visible.map((t) => (
-            <li
-              key={t.id}
-              className={cn(
-                'flex items-center gap-1 text-[11px] leading-tight truncate',
-                t.status === 'done' && 'opacity-50 line-through',
-              )}
-            >
+      {tasks.length > 0 && (
+        <>
+          {/* Мобильные: компактный ряд цветных точек (по виду задачи). */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-1 sm:hidden">
+            {tasks.slice(0, 4).map((t) => (
               <span
+                key={t.id}
                 className={cn(
-                  'w-1.5 h-1.5 rounded-full shrink-0',
+                  'h-1.5 w-1.5 rounded-full',
                   KIND_DOT[t.kind],
+                  t.status === 'done' && 'opacity-40',
                 )}
                 aria-hidden="true"
               />
-              <span className="truncate text-text">{t.title}</span>
-            </li>
-          ))}
-          {extra > 0 && (
-            <li className="text-[10.5px] text-text-muted pl-2.5">
-              +{extra}
-            </li>
-          )}
-        </ul>
+            ))}
+            {tasks.length > 4 && (
+              <span className="text-[9px] font-semibold leading-none text-text-muted">
+                +{tasks.length - 4}
+              </span>
+            )}
+          </div>
+
+          {/* ≥ sm: список с названиями. */}
+          <ul className="hidden flex-col gap-0.5 sm:flex">
+            {visible.map((t) => (
+              <li
+                key={t.id}
+                className={cn(
+                  'flex items-center gap-1 text-[11px] leading-tight truncate',
+                  t.status === 'done' && 'opacity-50 line-through',
+                )}
+              >
+                <span
+                  className={cn(
+                    'w-1.5 h-1.5 rounded-full shrink-0',
+                    KIND_DOT[t.kind],
+                  )}
+                  aria-hidden="true"
+                />
+                <span className="truncate text-text">{t.title}</span>
+              </li>
+            ))}
+            {extra > 0 && (
+              <li className="text-[10.5px] text-text-muted pl-2.5">
+                +{extra}
+              </li>
+            )}
+          </ul>
+        </>
       )}
     </Link>
   );

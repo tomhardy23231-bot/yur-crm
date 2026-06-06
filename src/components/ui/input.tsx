@@ -10,7 +10,8 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
         type={type}
         className={cn(
           "flex h-10 w-full",
-          "px-3 py-2 text-sm font-sans",
+          // 16px на мобильных — чтобы iOS Safari не зумил при фокусе; 14px на ≥ md.
+          "px-3 py-2 text-base font-sans md:text-sm",
           "bg-surface-muted text-text",
           "border border-transparent rounded-md",
           "placeholder:text-text-subtle",

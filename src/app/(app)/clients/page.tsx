@@ -14,6 +14,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { ClickableRow } from '@/components/ui/clickable-row';
 import { ClientKindBadge } from '@/components/clients/client-kind-badge';
 import { ClientsSearch } from '@/components/clients/clients-search';
+import { ClientListMobile } from '@/components/clients/client-list-mobile';
 import { cn } from '@/lib/utils';
 import { SortableHeader, type SortDir } from '@/components/ui/sortable-header';
 import {
@@ -120,9 +121,24 @@ export default async function ClientsPage({
         </div>
       )}
 
-      <div data-tour="clients-toolbar" className="flex flex-wrap items-center gap-3">
-        <ClientsSearch initial={q} />
-        <div role="tablist" aria-label={t.clients.list.kindFilterLabel} className="flex items-center gap-1.5">
+      <div data-tour="clients-toolbar" className="flex flex-col gap-3">
+        {/* Ряд 1: поиск + добавить (подпись кнопки прячется на мобильных). */}
+        <div className="flex items-center gap-2">
+          <ClientsSearch initial={q} />
+          <Button asChild className="shrink-0 px-3 sm:px-4">
+            <Link href="/clients/new" data-tour="clients-new">
+              <Plus size={16} strokeWidth={2} />
+              <span className="hidden sm:inline">{t.clients.list.addClient}</span>
+            </Link>
+          </Button>
+        </div>
+
+        {/* Ряд 2: фильтр по типу клиента. */}
+        <div
+          role="tablist"
+          aria-label={t.clients.list.kindFilterLabel}
+          className="flex flex-wrap items-center gap-1.5"
+        >
           {KIND_OPTIONS.map(({ value, label }) => {
             const active = (value === 'all' && !kind) || value === kind;
             return (
@@ -144,18 +160,17 @@ export default async function ClientsPage({
             );
           })}
         </div>
-        <Button asChild className="ml-auto">
-          <Link href="/clients/new" data-tour="clients-new">
-            <Plus size={16} strokeWidth={2} />
-            {t.clients.list.addClient}
-          </Link>
-        </Button>
       </div>
 
       {items.length === 0 ? (
         <EmptyState hasFilters={Boolean(q || kind)} t={t} />
       ) : (
-        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-x-auto">
+        <>
+        {/* Мобильное представление — карточки вместо таблицы. */}
+        <ClientListMobile items={items} />
+
+        {/* Таблица — на ≥ md. */}
+        <div className="hidden bg-surface rounded-lg border border-border shadow-sm overflow-x-auto md:block">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
@@ -222,6 +237,7 @@ export default async function ClientsPage({
             </TableBody>
           </Table>
         </div>
+        </>
       )}
 
       {pageCount > 1 && (

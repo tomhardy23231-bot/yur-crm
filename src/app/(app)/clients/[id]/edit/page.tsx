@@ -48,7 +48,7 @@ export default async function EditClientPage({
         <p className="text-[13px] text-text-muted">{client.name}</p>
       </div>
 
-      <Card className="p-6 sm:p-8">
+      <Card className="p-4 sm:p-6 lg:p-8">
         <ClientForm
           action={boundAction}
           client={client}

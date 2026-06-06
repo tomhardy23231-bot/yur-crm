@@ -14,7 +14,8 @@ const Select = React.forwardRef<
         ref={ref}
         className={cn(
           'appearance-none flex h-10 w-full',
-          'pl-3 pr-9 text-sm font-sans',
+          // 16px на мобильных — чтобы iOS Safari не зумил при фокусе; 14px на ≥ md.
+          'pl-3 pr-9 text-base font-sans md:text-sm',
           'bg-surface-muted text-text',
           'border border-transparent rounded-md',
           'transition-[border-color,background-color,box-shadow] duration-[180ms] ease-out',

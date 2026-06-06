@@ -34,7 +34,7 @@ export default async function PayrollSettingsPage() {
         <ChevronLeft size={14} strokeWidth={1.75} />{t.payroll.settings.backToPayroll}
       </Link>
 
-      <Card className="p-6 sm:p-8">
+      <Card className="p-4 sm:p-6 lg:p-8">
         <PayrollRatesForm rates={map} />
       </Card>
     </main>

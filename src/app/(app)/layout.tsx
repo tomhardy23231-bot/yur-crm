@@ -1,6 +1,7 @@
 import { CommandPaletteProvider } from '@/components/app/command-palette';
 import { OnboardingProvider } from '@/components/onboarding/onboarding-provider';
 import { Sidebar } from '@/components/app/sidebar';
+import { BottomNav } from '@/components/app/bottom-nav';
 import { Topbar } from '@/components/app/topbar';
 import { requireUser } from '@/lib/auth/require-role';
 import { countOpenTasksAssignedTo } from '@/lib/tasks/queries';
@@ -54,11 +55,19 @@ export default async function AppLayout({
               />
               <div
                 data-tour="page-content"
-                className="flex-1 min-w-0 overflow-y-auto"
+                className="flex-1 min-w-0 overflow-y-auto pb-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom))] md:pb-0"
               >
                 {children}
               </div>
             </div>
+
+            {/* Нижняя навигация — только на мобильных (< md), где скрыт боковой рейл. */}
+            <BottomNav
+              caps={user.caps}
+              counts={{ tasksOpen }}
+              userName={user.profile.full_name}
+              roleLabel={roleLabel}
+            />
           </div>
         </OnboardingProvider>
       </CommandPaletteProvider>

@@ -60,7 +60,7 @@ export function Topbar({
 
       <div className="flex-1" />
 
-      {/* Поиск — открывает командную палитру (Cmd/Ctrl-K). */}
+      {/* Поиск — открывает командную палитру (Cmd/Ctrl-K). Широкий вариант на ≥md. */}
       <button
         type="button"
         onClick={open}
@@ -77,12 +77,22 @@ export function Topbar({
         </kbd>
       </button>
 
-      {/* Справка и онбординг-тур. */}
+      {/* Компактный поиск-иконка — только на мобильных (< md). */}
+      <button
+        type="button"
+        onClick={open}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text md:hidden"
+        aria-label={t.topbar.searchAria}
+      >
+        <Search size={17} strokeWidth={1.75} />
+      </button>
+
+      {/* Справка и онбординг-тур. На мобильных — в шторке «Ещё». */}
       <Link
         href="/help"
         data-tour="topbar-help"
         aria-label={t.topbar.helpAria}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text"
+        className="hidden h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text md:inline-flex"
       >
         <HelpCircle size={17} strokeWidth={1.75} />
       </Link>
@@ -103,14 +113,18 @@ export function Topbar({
         )}
       </Link>
 
-      {/* Пользователь */}
-      <div className="flex items-center gap-2.5 pl-1">
+      {/* Пользователь → профиль (на мобильных профиль также в шторке «Ещё»). */}
+      <Link
+        href="/profile"
+        aria-label={t.nav.profileAria}
+        className="flex items-center gap-2.5 rounded-md pl-1 transition-opacity hover:opacity-90"
+      >
         <Avatar name={userName} size="md" />
         <div className="hidden leading-tight sm:block">
           <p className="text-[13px] font-semibold text-text">{userName}</p>
           <p className="text-[11px] text-text-muted">{roleLabel}</p>
         </div>
-      </div>
+      </Link>
     </header>
   );
 }

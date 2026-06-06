@@ -25,7 +25,7 @@ export function CasesFilterSelect({
   const [, startTransition] = useTransition();
 
   return (
-    <label className="inline-flex w-auto min-w-40" aria-label={ariaLabel}>
+    <label className="inline-flex w-auto min-w-40 shrink-0" aria-label={ariaLabel}>
       <Select
         name={name}
         defaultValue={value}

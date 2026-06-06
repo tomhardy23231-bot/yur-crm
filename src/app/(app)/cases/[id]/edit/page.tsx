@@ -56,7 +56,7 @@ export default async function EditCasePage({
         <p className="text-[13px] text-text-muted truncate">{c.number_title}</p>
       </div>
 
-      <Card className="p-6 sm:p-8">
+      <Card className="p-4 sm:p-6 lg:p-8">
         <CaseForm
           action={boundAction}
           caseRow={c}

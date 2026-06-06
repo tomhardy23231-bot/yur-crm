@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/status-filter-strip';
 import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { CasesSearch } from '@/components/cases/cases-search';
+import { CaseListMobile } from '@/components/cases/case-list-mobile';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
@@ -235,105 +236,111 @@ export default async function CasesPage({
         </div>
       )}
 
-      <div data-tour="cases-toolbar" className="flex flex-wrap items-center gap-3">
-        <CasesSearch initial={q} />
-
-        <CasesFilterSelect
-          name="type"
-          value={caseType ?? ''}
-          ariaLabel={t.cases.filters.typeAria}
-          options={[
-            { value: '', label: t.cases.filters.allTypes },
-            ...CASE_TYPES.map((ct) => ({
-              value: ct,
-              label: t.enums.caseType[ct],
-            })),
-          ]}
-        />
-
-        <CasesFilterSelect
-          name="category"
-          value={category ?? ''}
-          ariaLabel={t.cases.filters.categoryAria}
-          options={[
-            { value: '', label: t.cases.filters.allCategories },
-            ...CASE_CATEGORIES.map((c) => ({
-              value: c,
-              label: t.enums.caseCategory[c],
-            })),
-          ]}
-        />
-
-        {isStaff && (
-          <CasesFilterSelect
-            name="responsible"
-            value={responsibleId ?? ''}
-            ariaLabel={t.cases.filters.expertAria}
-            options={[
-              { value: '', label: t.cases.filters.allExperts },
-              ...experts.map((s) => ({
-                value: s.id,
-                label: s.full_name,
-              })),
-            ]}
-          />
-        )}
-
-        {isStaff && (
-          <CasesFilterSelect
-            name="lawyer"
-            value={lawyerId ?? ''}
-            ariaLabel={t.cases.filters.lawyerAria}
-            options={[
-              { value: '', label: t.cases.filters.allLawyers },
-              ...lawyers.map((s) => ({
-                value: s.id,
-                label: s.full_name,
-              })),
-            ]}
-          />
-        )}
-
-        {isStaff && (
-          <CasesFilterSelect
-            name="client"
-            value={clientId ?? ''}
-            ariaLabel={t.cases.filters.clientAria}
-            options={[
-              { value: '', label: t.cases.filters.allClients },
-              ...clients.map((c) => ({
-                value: c.id,
-                label: c.name,
-              })),
-            ]}
-          />
-        )}
-
-        {(stage || caseType || category || responsibleId || lawyerId || clientId || debtOnly) && (
-          <Link
-            href={buildHref({
-              stage: '', type: '', category: '', responsible: '',
-              lawyer: '', client: '', debt: '', page: 1,
-            })}
-            className="text-[13px] text-text-muted hover:text-text underline-offset-2 hover:underline"
-          >
-            {t.cases.toolbar.reset}
-          </Link>
-        )}
-        <div className="flex items-center gap-2 ml-auto">
-          <Button asChild variant="secondary">
+      <div data-tour="cases-toolbar" className="flex flex-col gap-3">
+        {/* Ряд 1: поиск + действия (доска · новое дело). На мобильных подписи
+            кнопок прячутся, остаются иконки — место отдаётся поиску. */}
+        <div className="flex items-center gap-2">
+          <CasesSearch initial={q} />
+          <Button asChild variant="secondary" className="shrink-0 px-3 sm:px-4">
             <Link href={boardHref()} data-tour="cases-board">
               <LayoutGrid size={16} strokeWidth={1.75} />
-              {t.cases.toolbar.board}
+              <span className="hidden sm:inline">{t.cases.toolbar.board}</span>
             </Link>
           </Button>
           {isStaff && (
-            <Button asChild>
+            <Button asChild className="shrink-0 px-3 sm:px-4">
               <Link href="/cases/new" data-tour="cases-new">
                 <Plus size={16} strokeWidth={2} />
-                {t.cases.toolbar.newCase}
+                <span className="hidden sm:inline">{t.cases.toolbar.newCase}</span>
               </Link>
             </Button>
+          )}
+        </div>
+
+        {/* Ряд 2: фильтры — горизонтальная лента (свайп) на узких экранах,
+            обычный перенос на ≥ sm. */}
+        <div className="no-scrollbar -mx-3 flex items-center gap-2 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0">
+          <CasesFilterSelect
+            name="type"
+            value={caseType ?? ''}
+            ariaLabel={t.cases.filters.typeAria}
+            options={[
+              { value: '', label: t.cases.filters.allTypes },
+              ...CASE_TYPES.map((ct) => ({
+                value: ct,
+                label: t.enums.caseType[ct],
+              })),
+            ]}
+          />
+
+          <CasesFilterSelect
+            name="category"
+            value={category ?? ''}
+            ariaLabel={t.cases.filters.categoryAria}
+            options={[
+              { value: '', label: t.cases.filters.allCategories },
+              ...CASE_CATEGORIES.map((c) => ({
+                value: c,
+                label: t.enums.caseCategory[c],
+              })),
+            ]}
+          />
+
+          {isStaff && (
+            <CasesFilterSelect
+              name="responsible"
+              value={responsibleId ?? ''}
+              ariaLabel={t.cases.filters.expertAria}
+              options={[
+                { value: '', label: t.cases.filters.allExperts },
+                ...experts.map((s) => ({
+                  value: s.id,
+                  label: s.full_name,
+                })),
+              ]}
+            />
+          )}
+
+          {isStaff && (
+            <CasesFilterSelect
+              name="lawyer"
+              value={lawyerId ?? ''}
+              ariaLabel={t.cases.filters.lawyerAria}
+              options={[
+                { value: '', label: t.cases.filters.allLawyers },
+                ...lawyers.map((s) => ({
+                  value: s.id,
+                  label: s.full_name,
+                })),
+              ]}
+            />
+          )}
+
+          {isStaff && (
+            <CasesFilterSelect
+              name="client"
+              value={clientId ?? ''}
+              ariaLabel={t.cases.filters.clientAria}
+              options={[
+                { value: '', label: t.cases.filters.allClients },
+                ...clients.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                })),
+              ]}
+            />
+          )}
+
+          {(stage || caseType || category || responsibleId || lawyerId || clientId || debtOnly) && (
+            <Link
+              href={buildHref({
+                stage: '', type: '', category: '', responsible: '',
+                lawyer: '', client: '', debt: '', page: 1,
+              })}
+              className="shrink-0 whitespace-nowrap px-1 text-[13px] text-text-muted underline-offset-2 hover:text-text hover:underline"
+            >
+              {t.cases.toolbar.reset}
+            </Link>
           )}
         </div>
       </div>
@@ -373,7 +380,12 @@ export default async function CasesPage({
           newCaseLabel={t.cases.toolbar.newCase}
         />
       ) : (
-        <div className="bg-surface rounded-lg border border-border shadow-sm overflow-x-auto">
+        <>
+        {/* Мобильное представление — компактные карточки вместо таблицы. */}
+        <CaseListMobile items={items} />
+
+        {/* Таблица — на ≥ md. */}
+        <div className="hidden bg-surface rounded-lg border border-border shadow-sm overflow-x-auto md:block">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
@@ -531,6 +543,7 @@ export default async function CasesPage({
             </TableBody>
           </Table>
         </div>
+        </>
       )}
 
       {pageCount > 1 && (

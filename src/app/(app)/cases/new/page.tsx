@@ -51,7 +51,7 @@ export default async function NewCasePage({
         </Link>
       </div>
 
-      <Card data-tour="case-form" className="p-6 sm:p-8">
+      <Card data-tour="case-form" className="p-4 sm:p-6 lg:p-8">
         <CaseForm
           action={createCaseAction}
           clients={clients}

@@ -11,7 +11,8 @@ const Textarea = React.forwardRef<
       ref={ref}
       className={cn(
         'flex w-full min-h-[88px]',
-        'px-3 py-2 text-sm font-sans leading-[1.55]',
+        // 16px на мобильных — чтобы iOS Safari не зумил при фокусе; 14px на ≥ md.
+        'px-3 py-2 text-base font-sans leading-[1.55] md:text-sm',
         'bg-surface-muted text-text',
         'border border-transparent rounded-md',
         'placeholder:text-text-subtle',

@@ -195,7 +195,7 @@ export default async function PayrollReportPage({
               ))}
             </TableBody>
           </Table>
-          <div className="flex items-center justify-end gap-6 border-t border-border bg-surface-muted/50 px-4 py-3 tabular-nums text-[13px]">
+          <div className="flex flex-wrap items-center justify-start gap-x-6 gap-y-1.5 border-t border-border bg-surface-muted/50 px-4 py-3 tabular-nums text-[13px] sm:justify-end">
             <span className="text-text-muted">
               {t.payroll.report.totalEarnedMonth}{' '}
               <span className="font-bold text-text">

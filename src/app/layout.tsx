@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { getLocale } from "@/lib/i18n/server";
@@ -23,6 +23,19 @@ const jetBrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "ЮрКейс — Legal CRM",
   description: "CRM-система для юридической компании",
+};
+
+// Мобильный вьюпорт: width=device-width + viewport-fit=cover, чтобы работали
+// safe-area-inset (нижняя навигация под «домашним» индикатором iOS/Android).
+// maximum-scale не ставим — не блокируем зум (доступность).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#C6D1DF" },
+    { media: "(prefers-color-scheme: dark)", color: "#172033" },
+  ],
 };
 
 export default async function RootLayout({

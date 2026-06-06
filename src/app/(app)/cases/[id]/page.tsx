@@ -217,8 +217,9 @@ export default async function CaseDetailPage({
           </div>
 
           {/* Деньги «одним взглядом»: договор · оплачено · долг/переплата.
+              На мобильных — три равные плитки во всю ширину; на ≥ sm — справа.
               Детальная развёртка — в сетке «Финансы и суд» ниже. */}
-          <div className="flex shrink-0 items-stretch gap-2">
+          <div className="flex w-full items-stretch gap-2 sm:w-auto sm:shrink-0">
             <MoneyStat
               label={t.caseCard.detail.rewardSum}
               value={formatMoney(c.contract_sum)}
@@ -526,7 +527,7 @@ function MoneyStat({
             ? 'text-text-muted'
             : 'text-text';
   return (
-    <div className="flex min-w-[88px] flex-col items-end rounded-[8px] bg-surface-sunken px-3 py-1.5">
+    <div className="flex flex-1 flex-col items-end rounded-[8px] bg-surface-sunken px-2.5 py-1.5 sm:min-w-[88px] sm:flex-none sm:px-3">
       <span className="text-[10px] font-medium uppercase tracking-[0.03em] text-text-subtle">
         {label}
       </span>

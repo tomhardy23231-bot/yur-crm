@@ -121,6 +121,11 @@
   --dur-micro:   80ms;
   --dur-short:  180ms;
   --dur-medium: 320ms;
+
+  /* Высота мобильной нижней навигации (без safe-area). Контент-зона добавляет
+     к этому env(safe-area-inset-bottom), чтобы последний ряд не прятался под
+     панелью. Меняется в одном месте. */
+  --bottom-nav-h: 58px;
 }
 
 /* Тема «Латунь»/«Изумруд» удалена при редизайне 2026-06-03 — теперь единый
@@ -281,6 +286,18 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
+
+/* Скрытый скроллбар — для горизонтальных «лент» фильтров на мобильных
+   (свайп пальцем, без полоски). */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
@@ -315,6 +332,25 @@ body {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Мобильная «шторка» снизу (вкладка «Ещё»): подложка-фейд + выезд листа снизу. */
+@keyframes sheet-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes sheet-up {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-sheet-fade { animation: sheet-fade 200ms var(--ease-out) both; }
+.animate-sheet-up   { animation: sheet-up 320ms var(--ease-out) both; }
+
+/* Появление панели нижней навигации при загрузке (мягкий подъём). */
+@keyframes bottomnav-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-bottomnav-in { animation: bottomnav-in 360ms var(--ease-out) both; }
 
 /* Появление выпадающего меню этапа (case-stage-dropdown.tsx). */
 @keyframes stage-menu-in {
@@ -410,6 +446,9 @@ body {
   .animate-fade-in-up,
   .animate-screen-in,
   .animate-bar-grow,
+  .animate-sheet-fade,
+  .animate-sheet-up,
+  .animate-bottomnav-in,
   .shake,
   .animate-field-error {
     animation: none;
