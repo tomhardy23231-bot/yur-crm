@@ -10,7 +10,12 @@
     "db:seed": "node --env-file=.env.local --import tsx scripts/seed.ts",
     "db:seed:demo": "node --env-file=.env.local --import tsx scripts/seed-demo.ts",
     "db:seed:more": "node --env-file=.env.local --import tsx scripts/seed-more.ts",
-    "smoke:rls": "node --env-file=.env.local --import tsx scripts/smoke-rls.ts"
+    "smoke:rls": "node --env-file=.env.local --import tsx scripts/smoke-rls.ts",
+    "test": "vitest run tests/unit",
+    "test:unit": "vitest run tests/unit",
+    "test:watch": "vitest tests/unit",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.8",
@@ -29,6 +34,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -37,6 +43,7 @@
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
     "tsx": "^4.19.2",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.6"
   }
 }
