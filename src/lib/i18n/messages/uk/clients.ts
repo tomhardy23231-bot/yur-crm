@@ -5,6 +5,7 @@ import type { ClientsMessages } from '../ru/clients';
 export const clients: ClientsMessages = {
   list: {
     deletedNotice: 'Клієнта видалено.',
+    tableAria: 'Список клієнтів',
     kindFilterLabel: 'Тип клієнта',
     addClient: 'Додати клієнта',
     colClient: 'Клієнт',
@@ -13,6 +14,9 @@ export const clients: ClientsMessages = {
     colEmail: 'E-mail',
     colCases: 'Справ',
     colCreated: 'Створений',
+    colActions: 'Дії',
+    actionOpen: 'Відкрити в новій вкладці',
+    actionEdit: 'Редагувати',
     paginationLabel: 'Пагінація',
     pageInfo: 'Сторінка {page} з {pageCount} · по {pageSize} на сторінці',
     prev: '← Назад',

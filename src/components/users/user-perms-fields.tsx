@@ -1,5 +1,6 @@
 'use client';
 
+import { Select } from '@/components/ui/select';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   CAPABILITIES,
@@ -92,16 +93,16 @@ function CapField({
         </label>
         <p className="text-[11.5px] text-text-muted">{t.enums.capabilityHint[cap]}</p>
       </div>
-      <select
+      <Select
         id={id}
         name={`cap_${cap}`}
         defaultValue={initial}
-        className="h-8 shrink-0 rounded-md border border-border bg-surface px-2 text-[12.5px] text-text outline-none transition-colors hover:border-border-strong focus:border-primary"
+        className="h-8 w-auto shrink-0 min-w-[150px] text-[12.5px]"
       >
         <option value="inherit">{inheritLabel}</option>
         <option value="grant">{t.users.perms.grant}</option>
         <option value="revoke">{t.users.perms.revoke}</option>
-      </select>
+      </Select>
     </div>
   );
 }

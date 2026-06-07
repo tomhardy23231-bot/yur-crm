@@ -456,6 +456,8 @@ body {
   .shake { transform: none; }
   .t-resize { transition: none; }
   .stage-dot-live::after { animation: none; opacity: 0; }
+  /* Меню Radix Select (анимация открытия задаётся inline-классом). */
+  [data-radix-select-content] { animation: none !important; }
 }
 
 /* ============================================================

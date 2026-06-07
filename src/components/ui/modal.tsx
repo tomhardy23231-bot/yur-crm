@@ -51,6 +51,9 @@ export function Modal({
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // ESC уже обработан вложенным слоем (открытый Radix-select сам ловит
+        // ESC и ставит defaultPrevented) — тогда модалку не закрываем.
+        if (e.defaultPrevented) return;
         e.preventDefault();
         onClose();
         return;

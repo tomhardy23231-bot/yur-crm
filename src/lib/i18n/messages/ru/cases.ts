@@ -14,6 +14,8 @@ export const cases = {
 
   // Метки и плейсхолдеры фильтров (aria-label селекта + пункт «Все …»)
   filters: {
+    stageAria: 'Этап',
+    allStages: 'Все этапы',
     typeAria: 'Тип дела',
     allTypes: 'Все типы',
     categoryAria: 'Категория',
@@ -26,8 +28,8 @@ export const cases = {
     allClients: 'Все клиенты',
   },
 
-  // Чип «Все» в строке статус-фильтров по этапам
-  allStages: 'Все',
+  // Доступное имя региона списка дел (role=table) для скринридеров.
+  tableAria: 'Список дел',
 
   // Уведомления и баннеры списка
   deletedNotice: 'Дело удалено.',
@@ -46,6 +48,7 @@ export const cases = {
     openedAt: 'Открыто',
     sum: 'Сумма',
     debt: 'Долг',
+    actions: 'Действия',
   },
 
   // Ячейки таблицы (бейджи, подсказки)
@@ -53,6 +56,10 @@ export const cases = {
     withoutAct: 'без акта',
     withoutActTitle: 'Дело завершено без акта приёма-передачи',
     overpaid: 'Переплата клиента',
+    // Иконки-действия в строке (открыть · история · редактировать)
+    actionOpen: 'Открыть в новой вкладке',
+    actionHistory: 'История изменений',
+    actionEdit: 'Редактировать',
     // Дни на этапе — множественное число (helper plural)
     stageDays: {
       one: '{n} день на этапе',

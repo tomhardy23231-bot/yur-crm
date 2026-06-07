@@ -35,9 +35,12 @@ interface StageBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   label?: string;
   /** Тихий вариант для плотных таблиц: цветная точка + тёмный текст, без заливки. */
   quiet?: boolean;
+  /** Пульсация точки активного этапа. Выключаем в длинных списках (десятки строк
+      с бесконечной анимацией дёргают скролл). По умолчанию включена. */
+  pulse?: boolean;
 }
 
-export function StageBadge({ stage, label, quiet = false, className, ...props }: StageBadgeProps) {
+export function StageBadge({ stage, label, quiet = false, pulse = true, className, ...props }: StageBadgeProps) {
   const { t } = useI18n();
   // «Живой» этап (не завершён) — точка пульсирует. Завершённый — статичная.
   const live = stage !== "closed";
@@ -79,7 +82,7 @@ export function StageBadge({ stage, label, quiet = false, className, ...props }:
         aria-hidden="true"
         className={cn(
           "w-[7px] h-[7px] rounded-full bg-current shrink-0",
-          live && "stage-dot-live",
+          live && pulse && "stage-dot-live",
         )}
       />
       {label ?? t.enums.caseStage[stage]}

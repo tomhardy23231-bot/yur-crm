@@ -5,6 +5,8 @@ export const clients = {
   // Список клиентов (/clients)
   list: {
     deletedNotice: 'Клиент удалён.',
+    // Доступное имя региона списка клиентов (role=table) для скринридеров.
+    tableAria: 'Список клиентов',
     kindFilterLabel: 'Тип клиента',
     addClient: 'Добавить клиента',
     // Колонки таблицы
@@ -14,6 +16,10 @@ export const clients = {
     colEmail: 'E-mail',
     colCases: 'Дел',
     colCreated: 'Создан',
+    colActions: 'Действия',
+    // Иконки-действия в строке (открыть · редактировать)
+    actionOpen: 'Открыть в новой вкладке',
+    actionEdit: 'Редактировать',
     // Пагинация
     paginationLabel: 'Пагинация',
     pageInfo: 'Страница {page} из {pageCount} · по {pageSize} на странице',

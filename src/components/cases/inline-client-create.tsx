@@ -52,10 +52,12 @@ export function InlineClientCreate({
     }
   }, [state, onCreated]);
 
-  // ESC закрывает модалку.
+  // ESC закрывает модалку — но НЕ если событие уже обработано вложенным слоем
+  // (открытый Radix-select ловит ESC и ставит defaultPrevented). Иначе один ESC
+  // закрывал бы и выпадашку, и всю модалку с введёнными данными.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !e.defaultPrevented) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

@@ -1,0 +1,151 @@
+import * as React from 'react';
+import Link from 'next/link';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+
+import { getT } from '@/lib/i18n/server';
+import { cn } from '@/lib/utils';
+import { type SortDir } from '@/components/ui/sortable-header';
+
+// «Карточки-строки» — десктоп-представление списков (дела, клиенты): каждая
+// строка парит отдельной карточкой на сером paper-фоне (эталон-скрин заказчика),
+// вместо плотной таблицы в одном контейнере. Семантика таблицы сохранена через
+// role=table/row/columnheader/cell; выравнивание шапки и строк — общий
+// grid-template-columns (передаётся через `cols`).
+//
+// Контейнер скроллится по горизонтали на узких экранах (< minWidth), внутренняя
+// сетка держит минимальную ширину, чтобы колонки не схлопывались. Сами строки —
+// клиентский <ClickableCard>; шапка, сорт-заголовки и иконки-действия — серверные.
+
+export function CardListShell({
+  cols,
+  header,
+  ariaLabel,
+  minWidth = 1100,
+  children,
+  className,
+}: {
+  cols: string;
+  header: React.ReactNode;
+  ariaLabel?: string;
+  minWidth?: number;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn('no-scrollbar hidden overflow-x-auto pb-1 md:block', className)}>
+      <div role="table" aria-label={ariaLabel} style={{ minWidth }} className="flex flex-col gap-2">
+        <div role="row" style={{ gridTemplateColumns: cols }} className="grid items-center gap-3 px-4 pb-0.5">
+          {header}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Подпись колонки (несортируемая).
+export function CardHead({
+  children,
+  align = 'left',
+  className,
+}: {
+  children?: React.ReactNode;
+  align?: 'left' | 'right' | 'center';
+  className?: string;
+}) {
+  return (
+    <div
+      role="columnheader"
+      className={cn(
+        'text-[10px] font-bold uppercase tracking-[0.05em] text-text-subtle',
+        align === 'right' && 'text-right',
+        align === 'center' && 'text-center',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Сортируемая подпись колонки — зеркало SortableHeader, но в grid (без <th>).
+// Серверный async-компонент: статичный Link с предвычисленным href.
+export async function CardSortHead({
+  column,
+  currentSort,
+  currentDir,
+  hrefFor,
+  align = 'left',
+  children,
+}: {
+  column: string;
+  currentSort: string | null;
+  currentDir: SortDir;
+  hrefFor: (sort: string, dir: SortDir) => string;
+  align?: 'left' | 'right';
+  children: React.ReactNode;
+}) {
+  const { t, fmt } = await getT();
+  const isActive = currentSort === column;
+  const nextDir: SortDir = isActive && currentDir === 'asc' ? 'desc' : 'asc';
+  const href = hrefFor(column, nextDir);
+  const Icon = !isActive ? ArrowUpDown : currentDir === 'asc' ? ArrowUp : ArrowDown;
+  const ariaSort: 'ascending' | 'descending' | 'none' = !isActive
+    ? 'none'
+    : currentDir === 'asc'
+      ? 'ascending'
+      : 'descending';
+
+  return (
+    <div role="columnheader" aria-sort={ariaSort} className={cn(align === 'right' && 'text-right')}>
+      <Link
+        href={href}
+        scroll={false}
+        className={cn(
+          'inline-flex select-none items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.05em]',
+          align === 'right' && 'flex-row-reverse',
+          isActive
+            ? 'text-text'
+            : 'text-text-subtle transition-colors duration-[80ms] hover:text-text',
+        )}
+        aria-label={fmt(t.ui.sort.label, {
+          column: typeof children === 'string' ? children : column,
+          state: isActive
+            ? currentDir === 'asc'
+              ? t.ui.sort.ascending
+              : t.ui.sort.descending
+            : t.ui.sort.none,
+        })}
+      >
+        <span>{children}</span>
+        <Icon size={12} strokeWidth={2} className={cn('shrink-0', !isActive && 'opacity-60')} aria-hidden="true" />
+      </Link>
+    </div>
+  );
+}
+
+// Иконка-действие в правой колонке карточки (открыть · история · редактировать).
+// Настоящий <Link> — клик по нему ClickableCard игнорирует (правило INTERACTIVE).
+export function RowAction({
+  href,
+  label,
+  icon,
+  external = false,
+}: {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  external?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      aria-label={label}
+      title={label}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-text-subtle transition-colors hover:border-border hover:bg-surface-sunken hover:text-text"
+    >
+      {icon}
+    </Link>
+  );
+}

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Briefcase, LayoutGrid, Plus } from 'lucide-react';
+import { Briefcase, ExternalLink, History, LayoutGrid, Pencil, Plus } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -8,18 +8,12 @@ import { StageBadge } from '@/components/ui/stage-badge';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { PaymentProgress } from '@/components/cases/payment-progress';
 import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table';
-import { ClickableRow } from '@/components/ui/clickable-row';
-import {
-  StatusFilterStrip,
-  type StatusChip,
-} from '@/components/ui/status-filter-strip';
+  CardListShell,
+  CardHead,
+  CardSortHead,
+  RowAction,
+} from '@/components/ui/card-table';
+import { ClickableCard } from '@/components/ui/clickable-card';
 import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { CaseListMobile } from '@/components/cases/case-list-mobile';
@@ -27,7 +21,7 @@ import { PriorityBadge } from '@/components/cases/priority-badge';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { daysSince, formatMoney } from '@/lib/utils';
-import { SortableHeader, type SortDir } from '@/components/ui/sortable-header';
+import { type SortDir } from '@/components/ui/sortable-header';
 import {
   CASES_DEFAULT_SORT,
   CASES_PAGE_SIZE,
@@ -58,14 +52,12 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 // U6: порог «застоя» дела на этапе — дольше подсвечиваем предупреждающим цветом.
 const STALE_STAGE_DAYS = 14;
 
-// Цвет точки этапа для строки статус-фильтров.
-const STAGE_DOT: Record<CaseStage, string> = {
-  new_request: 'bg-stage-new',
-  consultation: 'bg-stage-consultation',
-  in_progress: 'bg-stage-in-progress',
-  awaiting_decision: 'bg-stage-awaiting',
-  closed: 'bg-stage-closed',
-};
+// Колонки «карточек-строк» десктоп-списка (общие для шапки и строк):
+// номер/клиент·тип · этап · категория · приоритет · эксперт · открыто · сумма ·
+// долг · действия. Гибкие колонки (fr) тянутся на широких экранах, ниже minWidth
+// контейнер скроллится по горизонтали.
+const CASES_COLS =
+  'minmax(210px,1.6fr) minmax(150px,1fr) 132px 116px minmax(160px,1fr) 104px 152px 116px 120px';
 
 function isCaseStage(value: string): value is CaseStage {
   return (CASE_STAGES as readonly string[]).includes(value);
@@ -209,27 +201,18 @@ export default async function CasesPage({
     return s ? `/cases/board?${s}` : '/cases/board';
   }
 
-  // Строка статус-фильтров по этапам (бриф §6): «Все» + 5 этапов со счётчиками.
-  const stageChips: StatusChip[] = [
-    {
-      key: 'all',
-      label: t.cases.allStages,
-      count: totalByStage,
-      href: buildHref({ stage: '', page: 1 }),
-      active: !stage,
-    },
+  // Опции фильтра этапа (выпадающий список в ряду фильтров): «Все этапы» +
+  // 5 этапов воронки, со счётчиками в подписях (бриф §6).
+  const stageOptions = [
+    { value: '', label: `${t.cases.filters.allStages} · ${totalByStage}` },
     ...CASE_STAGES.map((s) => ({
-      key: s,
-      label: t.enums.caseStage[s],
-      count: stageCounts[s],
-      dotClass: STAGE_DOT[s],
-      href: buildHref({ stage: s, page: 1 }),
-      active: stage === s,
+      value: s,
+      label: `${t.enums.caseStage[s]} · ${stageCounts[s]}`,
     })),
   ];
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
+    <main className="flex flex-col gap-3 px-3 py-2 sm:px-4">
       {deleted && (
         <div className="text-[13px] text-success bg-success-bg border border-success/20 rounded-md px-3 py-2 max-w-md">
           {t.cases.deletedNotice}
@@ -260,6 +243,15 @@ export default async function CasesPage({
         {/* Ряд 2: фильтры — горизонтальная лента (свайп) на узких экранах,
             обычный перенос на ≥ sm. */}
         <div className="no-scrollbar -mx-3 flex items-center gap-2 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0">
+          {/* Фильтр этапа — главный (воронка): переехал из отдельной ленты-чипов
+              сюда, в общий ряд фильтров. Счётчики в подписях. */}
+          <CasesFilterSelect
+            name="stage"
+            value={stage ?? ''}
+            ariaLabel={t.cases.filters.stageAria}
+            options={stageOptions}
+          />
+
           <CasesFilterSelect
             name="type"
             value={caseType ?? ''}
@@ -345,8 +337,6 @@ export default async function CasesPage({
         </div>
       </div>
 
-      <StatusFilterStrip chips={stageChips} />
-
       {debtOnly && (
         <p className="-mt-2 text-[12.5px] text-text-muted">
           {t.cases.debtNotice}
@@ -384,165 +374,163 @@ export default async function CasesPage({
         {/* Мобильное представление — компактные карточки вместо таблицы. */}
         <CaseListMobile items={items} />
 
-        {/* Таблица — на ≥ md. */}
-        <div className="hidden bg-surface rounded-lg border border-border shadow-sm overflow-x-auto md:block">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-surface">
-                <SortableHeader
-                  column="number_title"
-                  currentSort={sort}
-                  currentDir={dir}
-                  hrefFor={sortHref}
-                >
-                  {t.cases.columns.numberTitle}
-                </SortableHeader>
-                <TableHead>{t.cases.columns.client}</TableHead>
-                <TableHead>{t.cases.columns.stage}</TableHead>
-                <TableHead>{t.cases.columns.type}</TableHead>
-                <TableHead>{t.cases.columns.category}</TableHead>
-                <TableHead>{t.cases.columns.priority}</TableHead>
-                <TableHead>{t.cases.columns.expert}</TableHead>
-                <SortableHeader
-                  column="opened_at"
-                  currentSort={sort}
-                  currentDir={dir}
-                  hrefFor={sortHref}
-                >
-                  {t.cases.columns.openedAt}
-                </SortableHeader>
-                <SortableHeader
-                  column="contract_sum"
-                  currentSort={sort}
-                  currentDir={dir}
-                  hrefFor={sortHref}
-                  align="right"
-                >
-                  {t.cases.columns.sum}
-                </SortableHeader>
-                <SortableHeader
-                  column="debt"
-                  currentSort={sort}
-                  currentDir={dir}
-                  hrefFor={sortHref}
-                  align="right"
-                >
-                  {t.cases.columns.debt}
-                </SortableHeader>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((c, i) => (
-                <ClickableRow
-                  key={c.id}
-                  href={`/cases/${c.id}`}
-                  data-tour={i === 0 ? 'first-case-row' : undefined}
-                  className="group cursor-pointer"
-                >
-                  <TableCell className="relative">
-                    {/* Латунная полоска слева — заполняется из центра при наведении на строку */}
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-0 rounded-l-lg [box-shadow:inset_3px_0_0_var(--primary)] [clip-path:inset(50%_0)] transition-[clip-path] duration-[400ms] ease-out group-hover:[clip-path:inset(0)]"
-                    />
-                    <Link
-                      href={`/cases/${c.id}`}
-                      className="relative inline-block font-semibold text-text transition-[color,transform] duration-200 ease-out group-hover:translate-x-1 group-hover:text-primary focus-visible:text-primary focus-visible:outline-none"
-                    >
-                      {c.number_title}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
+        {/* Десктоп (≥ md) — «карточки-строки»: каждое дело отдельной карточкой. */}
+        <CardListShell
+          cols={CASES_COLS}
+          minWidth={1340}
+          ariaLabel={t.cases.tableAria}
+          header={
+            <>
+              <CardSortHead column="number_title" currentSort={sort} currentDir={dir} hrefFor={sortHref}>
+                {t.cases.columns.numberTitle}
+              </CardSortHead>
+              <CardHead>{t.cases.columns.stage}</CardHead>
+              <CardHead>{t.cases.columns.category}</CardHead>
+              <CardHead>{t.cases.columns.priority}</CardHead>
+              <CardHead>{t.cases.columns.expert}</CardHead>
+              <CardSortHead column="opened_at" currentSort={sort} currentDir={dir} hrefFor={sortHref}>
+                {t.cases.columns.openedAt}
+              </CardSortHead>
+              <CardSortHead column="contract_sum" currentSort={sort} currentDir={dir} hrefFor={sortHref} align="right">
+                {t.cases.columns.sum}
+              </CardSortHead>
+              <CardSortHead column="debt" currentSort={sort} currentDir={dir} hrefFor={sortHref} align="right">
+                {t.cases.columns.debt}
+              </CardSortHead>
+              <CardHead align="right">{t.cases.columns.actions}</CardHead>
+            </>
+          }
+        >
+          {items.map((c, i) => {
+            const days = c.stage !== 'closed' ? daysSince(c.stage_changed_at) : null;
+            return (
+              <ClickableCard
+                key={c.id}
+                href={`/cases/${c.id}`}
+                cols={CASES_COLS}
+                data-tour={i === 0 ? 'first-case-row' : undefined}
+              >
+                {/* Номер / название + «клиент · тип» */}
+                <div role="cell" className="min-w-0">
+                  <Link
+                    href={`/cases/${c.id}`}
+                    className="block truncate font-semibold text-text transition-colors group-hover:text-primary focus-visible:text-primary focus-visible:outline-none"
+                  >
+                    {c.number_title}
+                  </Link>
+                  <div className="mt-0.5 truncate text-[12px] text-text-muted">
                     {c.client ? (
-                      <Link
-                        href={`/clients/${c.client.id}`}
-                        className="text-[13px] text-text-muted hover:text-primary transition-colors"
-                      >
+                      <Link href={`/clients/${c.client.id}`} className="transition-colors hover:text-primary">
                         {c.client.name}
                       </Link>
                     ) : (
                       <Empty />
                     )}
-                  </TableCell>
-                  <TableCell>
-                    <span className="inline-flex items-center gap-1.5">
-                      <StageBadge stage={c.stage} quiet />
-                      {c.closed_without_act && (
-                        <Badge
-                          tone="warning"
-                          title={t.cases.row.withoutActTitle}
-                        >
-                          {t.cases.row.withoutAct}
-                        </Badge>
-                      )}
-                    </span>
-                    {/* U6: сколько дней дело на текущем этапе (видно зависшие). */}
-                    {c.stage !== 'closed' &&
-                      (() => {
-                        const days = daysSince(c.stage_changed_at);
-                        return (
-                          <StageDays
-                            days={days}
-                            label={plural(t.cases.row.stageDays, days)}
-                            title={plural(t.cases.row.stageDaysTitle, days)}
-                          />
-                        );
-                      })()}
-                  </TableCell>
-                  <TableCell className="text-[13px] text-text-muted">
-                    {t.enums.caseType[c.case_type]}
-                  </TableCell>
-                  <TableCell>
-                    <CategoryBadge category={c.category} quiet />
-                  </TableCell>
-                  <TableCell>
-                    <PriorityBadge priority={c.priority} />
-                  </TableCell>
-                  <TableCell>
-                    {c.responsible ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Avatar name={c.responsible.full_name} size="sm" shape="square" />
-                        <span className="text-[13px] text-text">
-                          {c.responsible.full_name}
-                        </span>
-                      </span>
-                    ) : (
-                      <Empty />
+                    <span className="text-text-subtle"> · {t.enums.caseType[c.case_type]}</span>
+                  </div>
+                </div>
+
+                {/* Этап (залитая плашка) + дни на этапе */}
+                <div role="cell" className="min-w-0">
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <StageBadge stage={c.stage} pulse={false} />
+                    {c.closed_without_act && (
+                      <Badge tone="warning" title={t.cases.row.withoutActTitle}>
+                        {t.cases.row.withoutAct}
+                      </Badge>
                     )}
-                  </TableCell>
-                  <TableCell className="text-[12.5px] text-text-muted">
-                    {DATE_FMT.format(new Date(c.opened_at))}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="ml-auto flex w-32 flex-col items-end gap-1">
-                      <span className="tabular-nums whitespace-nowrap">
-                        {formatMoney(c.contract_sum)} ₴
-                      </span>
-                      <PaymentProgress
-                        paid={Math.max(0, c.contract_sum - c.debt)}
-                        total={c.contract_sum}
-                        className="w-full"
-                      />
+                  </span>
+                  {days !== null && (
+                    <StageDays
+                      days={days}
+                      label={plural(t.cases.row.stageDays, days)}
+                      title={plural(t.cases.row.stageDaysTitle, days)}
+                    />
+                  )}
+                </div>
+
+                {/* Категория */}
+                <div role="cell" className="min-w-0">
+                  <CategoryBadge category={c.category} quiet />
+                </div>
+
+                {/* Приоритет */}
+                <div role="cell" className="min-w-0">
+                  <PriorityBadge priority={c.priority} />
+                </div>
+
+                {/* Эксперт: аватар + имя + роль */}
+                <div role="cell" className="min-w-0">
+                  {c.responsible ? (
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Avatar name={c.responsible.full_name} size="sm" shape="square" />
+                      <div className="min-w-0 leading-tight">
+                        <div className="truncate text-[13px] text-text">{c.responsible.full_name}</div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-subtle">
+                          {t.enums.roleInCase.expert}
+                        </div>
+                      </div>
                     </div>
-                  </TableCell>
-                  {/* U7: долг ИЛИ переплата (взаимоисключающи). Переплата —
-                      info-цветом со знаком +, чтобы её было видно (раньше показывался 0). */}
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">
-                    {c.overpaid > 0 ? (
-                      <span className="text-info" title={t.cases.row.overpaid}>
-                        +{formatMoney(c.overpaid)} ₴
-                      </span>
-                    ) : (
-                      <span className={c.debt > 0 ? 'text-error' : 'text-text-muted'}>
-                        {formatMoney(c.debt)} ₴
-                      </span>
-                    )}
-                  </TableCell>
-                </ClickableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                  ) : (
+                    <Empty />
+                  )}
+                </div>
+
+                {/* Открыто */}
+                <div role="cell" className="text-[12.5px] tabular-nums text-text-muted">
+                  {DATE_FMT.format(new Date(c.opened_at))}
+                </div>
+
+                {/* Сумма + прогресс оплаты */}
+                <div role="cell" className="text-right">
+                  <div className="ml-auto flex w-full flex-col items-end gap-1">
+                    <span className="whitespace-nowrap tabular-nums">{formatMoney(c.contract_sum)} ₴</span>
+                    <PaymentProgress
+                      paid={Math.max(0, c.contract_sum - c.debt)}
+                      total={c.contract_sum}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+
+                {/* U7: долг ИЛИ переплата (взаимоисключающи). */}
+                <div role="cell" className="whitespace-nowrap text-right tabular-nums">
+                  {c.overpaid > 0 ? (
+                    <span className="text-info" title={t.cases.row.overpaid}>
+                      +{formatMoney(c.overpaid)} ₴
+                    </span>
+                  ) : (
+                    <span className={c.debt > 0 ? 'text-error' : 'text-text-muted'}>
+                      {formatMoney(c.debt)} ₴
+                    </span>
+                  )}
+                </div>
+
+                {/* Действия: открыть · история · редактировать (последнее — staff) */}
+                <div role="cell" className="flex items-center justify-end gap-1">
+                  <RowAction
+                    href={`/cases/${c.id}`}
+                    external
+                    label={t.cases.row.actionOpen}
+                    icon={<ExternalLink size={15} strokeWidth={1.75} />}
+                  />
+                  <RowAction
+                    href={`/cases/${c.id}#history`}
+                    label={t.cases.row.actionHistory}
+                    icon={<History size={15} strokeWidth={1.75} />}
+                  />
+                  {isStaff && (
+                    <RowAction
+                      href={`/cases/${c.id}/edit`}
+                      label={t.cases.row.actionEdit}
+                      icon={<Pencil size={15} strokeWidth={1.75} />}
+                    />
+                  )}
+                </div>
+              </ClickableCard>
+            );
+          })}
+        </CardListShell>
         </>
       )}
 

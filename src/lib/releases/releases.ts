@@ -59,10 +59,22 @@ export type Release = {
 };
 
 // Текущая версия системы. Поднимается с каждым заметным обновлением.
-export const APP_VERSION = '2.5';
+export const APP_VERSION = '2.6';
 
 // Свежие релизы — сверху. RELEASES[0] = текущий (по нему строится модалка).
 export const RELEASES: ReadonlyArray<Release> = [
+  {
+    version: '2.6',
+    titleKey: 'v2_6Title',
+    date: '2026-06-07',
+    leadKey: 'v2_6Lead',
+    sections: [
+      {
+        headingKey: 'headingChanged',
+        itemKeys: ['v2_6Changed1', 'v2_6Changed2', 'v2_6Changed3'],
+      },
+    ],
+  },
   {
     version: '2.5',
     titleKey: 'v2_5Title',

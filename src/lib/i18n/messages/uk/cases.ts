@@ -12,6 +12,8 @@ export const cases: CasesMessages = {
   },
 
   filters: {
+    stageAria: 'Етап',
+    allStages: 'Усі етапи',
     typeAria: 'Тип справи',
     allTypes: 'Усі типи',
     categoryAria: 'Категорія',
@@ -24,7 +26,7 @@ export const cases: CasesMessages = {
     allClients: 'Усі клієнти',
   },
 
-  allStages: 'Усі',
+  tableAria: 'Список справ',
 
   deletedNotice: 'Справу видалено.',
   debtNotice: 'Показано лише справи з непогашеним боргом · ',
@@ -41,12 +43,16 @@ export const cases: CasesMessages = {
     openedAt: 'Відкрито',
     sum: 'Сума',
     debt: 'Борг',
+    actions: 'Дії',
   },
 
   row: {
     withoutAct: 'без акта',
     withoutActTitle: 'Справу завершено без акта приймання-передачі',
     overpaid: 'Переплата клієнта',
+    actionOpen: 'Відкрити в новій вкладці',
+    actionHistory: 'Історія змін',
+    actionEdit: 'Редагувати',
     stageDays: {
       one: '{n} день на етапі',
       few: '{n} дні на етапі',
