@@ -96,4 +96,32 @@ export const cases: CasesMessages = {
     empty: 'Поки порожньо',
     overflow: 'і ще {n}…',
   },
+
+  tabs: {
+    aria: 'Вкладки списку справ',
+    active: 'Активні',
+    archive: 'Архів',
+  },
+
+  archive: {
+    closedAtColumn: 'Закрито',
+    closedFromLabel: 'Закрито з',
+    closedToLabel: 'по',
+    closedFromAria: 'Дата закриття: з',
+    closedToAria: 'Дата закриття: по',
+    dateFilterReset: 'Скинути дати',
+    archiveAction: 'В архів',
+    restoreAction: 'Відновити',
+    confirmArchive: 'Надіслати справу «{title}» в архів?',
+    confirmRestore: 'Повернути справу «{title}» з архіву до активного списку?',
+    badge: 'В архіві',
+    emptyTitle: 'Архів порожній',
+    emptyHint:
+      'Завершені справи з’являться тут після того, як ви надішлете їх в архів кнопкою «В архів».',
+    emptyFilteredHint:
+      'За вибраним періодом закриття нічого не знайшли. Змініть дати або скиньте фільтр.',
+    detailBadge: 'Справа в архіві',
+    detailHint:
+      'Справа в архіві. Щоб змінити етап, спершу відновіть її.',
+  },
 };

@@ -39,6 +39,10 @@ export type CaseListItem = {
   stage_changed_at: string;
   // Дело closed без акта (Задача 4) — для бейджа «без акта» в списке.
   closed_without_act: boolean;
+  // Дата закрытия дела (NULL пока не закрыто) — колонка/фильтр на вкладке «Архив».
+  closed_at: string | null;
+  // Время отправки в архив (NULL — активно). Признак вкладки «Архив».
+  archived_at: string | null;
   client: { id: string; name: string } | null;
   lawyer: { id: string; full_name: string } | null;
   responsible: { id: string; full_name: string } | null;
@@ -69,6 +73,15 @@ export type ListCasesParams = {
   clientId?: string;
   /** Только дела с непогашенным долгом (KPI «Задолженность» → /cases?debt=true). */
   debtOnly?: boolean;
+  /**
+   * Вкладка «Архив»: true → только архивные дела; false/undefined → только активные
+   * (не в архиве). Архив отделён от воронки: дело лежит в архиве по archived_at,
+   * а не по этапу. См. миграцию 20260607120000_cases_archive.
+   */
+  archived?: boolean;
+  /** Фильтр вкладки «Архив» по дате закрытия дела (closed_at), YYYY-MM-DD включительно. */
+  closedFrom?: string;
+  closedTo?: string;
   page?: number;
   sort?: CasesSortColumn;
   dir?: SortDir;
@@ -116,6 +129,8 @@ export async function listCases(
     overpaid: number | string;
     stage_changed_at: string;
     closed_without_act: boolean;
+    closed_at: string | null;
+    archived_at: string | null;
     client:
       | ReadonlyArray<{ id: string; name: string }>
       | { id: string; name: string }
@@ -131,7 +146,7 @@ export async function listCases(
   };
 
   const SELECT =
-    'id, number_title, stage, case_type, category, priority, opened_at, contract_sum, debt, overpaid, stage_changed_at, closed_without_act, ' +
+    'id, number_title, stage, case_type, category, priority, opened_at, contract_sum, debt, overpaid, stage_changed_at, closed_without_act, closed_at, archived_at, ' +
     'client:client_id(id, name), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)';
 
   if (q) {
@@ -148,6 +163,9 @@ export async function listCases(
         p_category: params.category ?? null,
         p_lawyer_id: params.lawyerId ?? null,
         p_client_id: params.clientId ?? null,
+        p_archived: params.archived ?? false,
+        p_closed_from: params.closedFrom ?? null,
+        p_closed_to: params.closedTo ?? null,
         p_limit: CASES_PAGE_SIZE,
         p_offset: offset,
         p_sort: sortColumn,
@@ -204,6 +222,13 @@ export async function listCases(
     .order('id', { ascending: false })
     .range(offset, offset + CASES_PAGE_SIZE - 1);
 
+  // Вкладка: архив (archived_at not null) vs активные (archived_at null).
+  if (params.archived) query = query.not('archived_at', 'is', null);
+  else query = query.is('archived_at', null);
+  // Фильтр архива по дате закрытия дела (closed_at — date, включительно).
+  if (params.closedFrom) query = query.gte('closed_at', params.closedFrom);
+  if (params.closedTo) query = query.lte('closed_at', params.closedTo);
+
   if (params.stage) query = query.eq('stage', params.stage);
   if (params.caseType) query = query.eq('case_type', params.caseType);
   if (params.category) query = query.eq('category', params.category);
@@ -235,7 +260,9 @@ export async function countCasesByStage(
   params: Omit<ListCasesParams, 'stage' | 'page' | 'sort' | 'dir' | 'q'> = {},
 ): Promise<Record<CaseStage, number>> {
   const supabase = await createSupabaseServerClient();
-  let query = supabase.from('cases').select('stage');
+  // Счётчики этапов питают фильтр на АКТИВНОЙ вкладке → архив исключаем,
+  // чтобы цифры совпадали с тем, что реально откроется по клику.
+  let query = supabase.from('cases').select('stage').is('archived_at', null);
   if (params.caseType) query = query.eq('case_type', params.caseType);
   if (params.category) query = query.eq('category', params.category);
   if (params.responsibleId) query = query.eq('responsible_id', params.responsibleId);
@@ -270,6 +297,8 @@ function normalizeRow(r: {
   overpaid: number | string;
   stage_changed_at: string;
   closed_without_act: boolean;
+  closed_at: string | null;
+  archived_at: string | null;
   client:
     | ReadonlyArray<{ id: string; name: string }>
     | { id: string; name: string }
@@ -301,6 +330,8 @@ function normalizeRow(r: {
     overpaid: Number(r.overpaid),
     stage_changed_at: r.stage_changed_at,
     closed_without_act: Boolean(r.closed_without_act),
+    closed_at: r.closed_at,
+    archived_at: r.archived_at,
     client,
     lawyer,
     responsible,
@@ -313,7 +344,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     .from('cases')
     .select(
       'id, number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, priority, tags, ' +
-        'contract_sum, paid_total, debt, overpaid, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, closed_without_act, stage_changed_at, created_at, ' +
+        'contract_sum, paid_total, debt, overpaid, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, closed_without_act, stage_changed_at, archived_at, archived_by, created_at, ' +
         'client:client_id(id, name, client_kind, phone, email, source), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
     )
     .eq('id', id)
@@ -403,6 +434,8 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     closed_at: r.closed_at,
     closed_without_act: Boolean(r.closed_without_act),
     stage_changed_at: r.stage_changed_at,
+    archived_at: r.archived_at,
+    archived_by: r.archived_by,
     created_at: r.created_at,
     client,
     lawyer,

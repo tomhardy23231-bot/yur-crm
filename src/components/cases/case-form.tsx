@@ -61,6 +61,11 @@ interface CaseFormProps {
    * `cases_validate_stage_forward` всё равно защитит на стороне БД.
    */
   allowedStages?: ReadonlyArray<CaseStage>;
+  /**
+   * Дело в архиве: этап заблокирован на 'closed' (через allowedStages=['closed'])
+   * — показываем эту подсказку под полем этапа. undefined → не в архиве.
+   */
+  stageLockedHint?: string;
   /** Можно ли создавать клиента «на месте» (Задача 5). Эксперту — нельзя. */
   canCreateClient?: boolean;
 }
@@ -76,6 +81,7 @@ export function CaseForm({
   cancelHref,
   defaultResponsibleId,
   allowedStages,
+  stageLockedHint,
   canEditRates = false,
   canCreateClient = false,
 }: CaseFormProps) {
@@ -381,6 +387,11 @@ export function CaseForm({
                 </option>
               ))}
             </Select>
+            {stageLockedHint && (
+              <p className="mt-1 text-[11px] text-text-subtle">
+                {stageLockedHint}
+              </p>
+            )}
           </Field>
 
           <Field

@@ -17,6 +17,7 @@ import {
   CASE_PRIORITIES,
   CASE_STAGES,
   CASE_TYPES,
+  STAFF_ROLES,
   type AccrualMode,
   type BillingType,
   type CaseCategory,
@@ -436,6 +437,7 @@ export async function updateCaseAction(
     subject: string | null;
     stage: string;
     closed_at: string | null;
+    archived_at: string | null;
     priority: string;
     contract_sum: number | string;
     billing_types: string[] | null;
@@ -450,12 +452,26 @@ export async function updateCaseAction(
   const { data: beforeRaw } = await supabase
     .from('cases')
     .select(
-      'number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, closed_at, ' +
+      'number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, closed_at, archived_at, ' +
         'priority, contract_sum, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, tags',
     )
     .eq('id', caseId)
     .maybeSingle();
   const before = beforeRaw as CaseBeforeRow | null;
+
+  // Дело в архиве → этап менять нельзя (CHECK cases_archived_requires_closed
+  // отвергнет уход из 'closed' при archived_at IS NOT NULL). Возвращаем понятную
+  // ошибку на поле этапа вместо сырого 23514. Прочие поля архивного дела править
+  // можно (этап в форме редактирования и так заблокирован на 'closed').
+  if (before && before.archived_at != null && result.data.stage !== 'closed') {
+    return {
+      ok: false,
+      values: result.values,
+      selectedBillingTypes: result.selectedBillingTypes,
+      fieldErrors: { stage: t.cases.archive.detailHint },
+      message: t.cases.archive.detailHint,
+    };
+  }
 
   // closed_at — историческая дата закрытия. Если дело уже было закрыто, любая
   // правка admin'ом не должна перезаписывать оригинальный closed_at на сегодня
@@ -607,17 +623,24 @@ export async function updateCaseStageAction(
 
   const { data: before } = await supabase
     .from('cases')
-    .select('stage, closed_at, client_id')
+    .select('stage, closed_at, client_id, archived_at')
     .eq('id', caseId)
     .maybeSingle<{
       stage: string;
       closed_at: string | null;
       client_id: string;
+      archived_at: string | null;
     }>();
 
   // RLS отрезала дело (или его нет) → ничего не делаем.
   if (!before) return { ok: false, message: t.caseCard.actions.caseNotFound };
   if (before.stage === stage) return { ok: true }; // no-op
+
+  // Дело в архиве → менять этап нельзя (иначе CHECK cases_archived_requires_closed
+  // отвергнет переход из closed). Понятное сообщение вместо сырого 23514.
+  if (before.archived_at != null && stage !== 'closed') {
+    return { ok: false, message: t.cases.archive.detailHint };
+  }
 
   // closed_at синхронен stage='closed'. При входе в closed ставим сегодня;
   // при выходе — null. (Если дело уже было закрыто — сюда не попадём из-за
@@ -703,6 +726,90 @@ export async function deleteCaseAction(formData: FormData): Promise<void> {
 
   revalidatePath('/cases');
   redirect('/cases?deleted=1');
+}
+
+// ── Архив дела (вкладка «Архив») ──────────────────────────────────────────
+// Архивирование отделено от воронки: дело лежит в архиве по cases.archived_at,
+// а не по этапу. Правила (миграция 20260607120000_cases_archive):
+//   • в архив можно отправить ТОЛЬКО завершённое дело (stage='closed');
+//   • архивируют/восстанавливают только staff (owner/admin/office_manager);
+//   • archived_by проставляет БД-триггер cases_guard_archive из active_uid().
+// requireUser + STAFF_ROLES здесь — UX-гард; настоящая защита — БД-триггер.
+// bare void action под кнопку-форму в строке списка; redirect'а нет — остаёмся
+// с текущими фильтрами/страницей, список освежается revalidatePath.
+
+async function setCaseArchived(
+  formData: FormData,
+  archive: boolean,
+): Promise<void> {
+  const user = await requireUser();
+
+  const caseId = getString(formData, 'case_id');
+  if (!UUID_RE.test(caseId)) return;
+  // UX-гард: кнопки и так показываем только staff, но форс-POST не пройдёт.
+  if (!STAFF_ROLES.includes(user.profile.role)) return;
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: before } = await supabase
+    .from('cases')
+    .select('number_title, stage, archived_at, client_id')
+    .eq('id', caseId)
+    .maybeSingle<{
+      number_title: string;
+      stage: string;
+      archived_at: string | null;
+      client_id: string;
+    }>();
+
+  // RLS отрезала дело / его нет — тихо (как advanceCaseStageAction на гонке).
+  if (!before) {
+    revalidatePath('/cases');
+    return;
+  }
+
+  // No-op: уже в нужном состоянии. Архивировать незакрытое дело нельзя
+  // (CHECK cases_archived_requires_closed; кнопку и так не показываем).
+  const alreadyInTarget = archive
+    ? before.archived_at !== null
+    : before.archived_at === null;
+  if (alreadyInTarget || (archive && before.stage !== 'closed')) {
+    revalidatePath('/cases');
+    return;
+  }
+
+  // archived_by ставит триггер; здесь — только флаг времени / снятие.
+  const { error } = await supabase
+    .from('cases')
+    .update({ archived_at: archive ? new Date().toISOString() : null })
+    .eq('id', caseId);
+
+  if (error) {
+    // Триггер cases_guard_archive мог отвергнуть (не staff / не closed) — тихо.
+    revalidatePath('/cases');
+    return;
+  }
+
+  await logActivity({
+    entity_type: 'case',
+    entity_id: caseId,
+    action: archive ? 'case_archived' : 'case_restored',
+    changes: {
+      before: { number_title: before.number_title, stage: before.stage },
+    },
+  });
+
+  revalidatePath('/cases');
+  revalidatePath(`/cases/${caseId}`);
+  if (before.client_id) revalidatePath(`/clients/${before.client_id}`);
+}
+
+export async function archiveCaseAction(formData: FormData): Promise<void> {
+  await setCaseArchived(formData, true);
+}
+
+export async function unarchiveCaseAction(formData: FormData): Promise<void> {
+  await setCaseArchived(formData, false);
 }
 
 // Канбан-доска: продвинуть дело на следующий этап (только вперёд).

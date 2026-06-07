@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
+  Archive,
   Briefcase,
   Building2,
   Check,
@@ -108,6 +109,9 @@ export default async function CaseDetailPage({
   const missingAct = c.stage === 'closed' && !hasAct;
 
   const isClosed = c.stage === 'closed';
+  // Дело в архиве: этап менять нельзя (нужно сперва восстановить — иначе CHECK
+  // cases_archived_requires_closed отвергнет откат). Архивируют только staff.
+  const isArchived = c.archived_at != null;
   // U6: дни на текущем этапе (для незакрытых дел) + признак «застоя».
   const stageDays = isClosed ? null : daysSince(c.stage_changed_at);
   const stageStale = stageDays !== null && stageDays >= 14;
@@ -155,6 +159,8 @@ export default async function CaseDetailPage({
         caseId={c.id}
         canEdit={canEdit}
         canDelete={canDelete}
+        canArchive={isStaff && (isArchived || isClosed)}
+        archived={isArchived}
         caseTitle={c.number_title}
       />
 
@@ -251,14 +257,26 @@ export default async function CaseDetailPage({
           <h1 className="text-[20px] font-bold leading-tight tracking-[-0.01em] text-text">
             {c.number_title}
           </h1>
+          {/* В архиве этап не меняем (read-only пилюля) — сперва «Восстановить». */}
           <CaseStageDropdown
             caseId={c.id}
             stage={c.stage}
             allowedStages={allowedStages}
             hasAct={hasAct}
-            canEdit={canEdit}
+            canEdit={canEdit && !isArchived}
           />
+          {isArchived && (
+            <Badge tone="neutral" className="gap-1">
+              <Archive size={12} strokeWidth={2} />
+              {t.cases.archive.badge}
+            </Badge>
+          )}
         </div>
+        {isArchived && (
+          <p className="mt-1.5 text-[12px] text-text-subtle">
+            {t.cases.archive.detailHint}
+          </p>
+        )}
 
         {/* Мета: тип дела · открыто/завершено · предмет договора · дни на этапе. */}
         <p className="mt-1 text-[12.5px] text-text-muted">

@@ -13,7 +13,7 @@ import {
 } from '@/lib/cases/queries';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
-import { allowedStagesFor, STAFF_ROLES } from '@/lib/types/db';
+import { allowedStagesFor, STAFF_ROLES, type CaseStage } from '@/lib/types/db';
 
 export default async function EditCasePage({
   params,
@@ -41,7 +41,13 @@ export default async function EditCasePage({
   // На БД дополнительно стоит триггер cases_validate_stage_forward — UI-фильтр
   // лишь для UX, не для безопасности.
   const isStaff = STAFF_ROLES.includes(user.profile.role);
-  const allowedStages = allowedStagesFor(c.stage, isStaff);
+  // Дело в архиве (archived_at != null) всегда closed. Этап в форме блокируем
+  // на 'closed' (одна опция) + подсказка — иначе смена этапа упрётся в CHECK
+  // cases_archived_requires_closed. Прочие поля архивного дела править можно.
+  const isArchived = c.archived_at != null;
+  const allowedStages: ReadonlyArray<CaseStage> = isArchived
+    ? ['closed']
+    : allowedStagesFor(c.stage, isStaff);
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
@@ -66,6 +72,7 @@ export default async function EditCasePage({
           submitLabel={t.common.save}
           cancelHref={`/cases/${id}`}
           allowedStages={allowedStages}
+          stageLockedHint={isArchived ? t.cases.archive.detailHint : undefined}
           canEditRates={user.caps.edit_rate_overrides}
           canCreateClient={user.caps.create_clients}
         />

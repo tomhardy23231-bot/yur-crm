@@ -473,6 +473,10 @@ export type Case = {
   closed_without_act: boolean;
   // Момент входа в текущий этап — для «N дней на этапе» (U6).
   stage_changed_at: string;
+  // Архив: время отправки дела в архив (NULL — активно). Архивировать можно только
+  // завершённое дело; менять может только staff (БД-триггер cases_guard_archive).
+  archived_at: string | null;
+  archived_by: string | null;
   created_at: string;
 };
 

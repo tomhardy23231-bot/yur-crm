@@ -6,6 +6,7 @@ import { ChevronLeft, Pencil } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { DeleteCaseForm } from '@/components/cases/delete-case-form';
+import { ArchiveCaseForm } from '@/components/cases/archive-case-form';
 import { useI18n } from '@/lib/i18n/provider';
 import { cn } from '@/lib/utils';
 
@@ -26,11 +27,17 @@ export function CaseActionBar({
   caseId,
   canEdit,
   canDelete,
+  canArchive = false,
+  archived = false,
   caseTitle,
 }: {
   caseId: string;
   canEdit: boolean;
   canDelete: boolean;
+  /** Показать кнопку «В архив»/«Восстановить» (staff, дело закрыто или уже в архиве). */
+  canArchive?: boolean;
+  /** Дело сейчас в архиве → кнопка «Восстановить», иначе «В архив». */
+  archived?: boolean;
   caseTitle: string;
 }) {
   const { t } = useI18n();
@@ -102,7 +109,7 @@ export function CaseActionBar({
           </nav>
         </div>
 
-        {(canEdit || canDelete) && (
+        {(canEdit || canDelete || canArchive) && (
           <div className="flex shrink-0 items-center gap-2">
             {canEdit && (
               <Button asChild variant="secondary" size="sm">
@@ -111,6 +118,14 @@ export function CaseActionBar({
                   {t.caseCard.actionBar.edit}
                 </Link>
               </Button>
+            )}
+            {canArchive && (
+              <ArchiveCaseForm
+                caseId={caseId}
+                caseTitle={caseTitle}
+                mode={archived ? 'restore' : 'archive'}
+                variant="button"
+              />
             )}
             {canDelete && (
               <DeleteCaseForm caseId={caseId} caseTitle={caseTitle} />

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Briefcase, ExternalLink, History, LayoutGrid, Pencil, Plus } from 'lucide-react';
+import { Archive, Briefcase, ExternalLink, History, LayoutGrid, Pencil, Plus } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -15,12 +15,14 @@ import {
 } from '@/components/ui/card-table';
 import { ClickableCard } from '@/components/ui/clickable-card';
 import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
+import { CasesDateFilter } from '@/components/cases/cases-date-filter';
+import { ArchiveCaseForm } from '@/components/cases/archive-case-form';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { CaseListMobile } from '@/components/cases/case-list-mobile';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
-import { daysSince, formatMoney } from '@/lib/utils';
+import { cn, daysSince, formatMoney } from '@/lib/utils';
 import { type SortDir } from '@/components/ui/sortable-header';
 import {
   CASES_DEFAULT_SORT,
@@ -57,7 +59,10 @@ const STALE_STAGE_DAYS = 14;
 // долг · действия. Гибкие колонки (fr) тянутся на широких экранах, ниже minWidth
 // контейнер скроллится по горизонтали.
 const CASES_COLS =
-  'minmax(210px,1.6fr) minmax(150px,1fr) 132px 116px minmax(160px,1fr) 104px 152px 116px 120px';
+  'minmax(210px,1.6fr) minmax(150px,1fr) 132px 116px minmax(160px,1fr) 104px 152px 116px 156px';
+
+// Дата YYYY-MM-DD — для фильтра по дате закрытия (вкладка «Архив»).
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isCaseStage(value: string): value is CaseStage {
   return (CASE_STAGES as readonly string[]).includes(value);
@@ -91,6 +96,9 @@ export default async function CasesPage({
     lawyer?: string;
     client?: string;
     debt?: string;
+    archived?: string;
+    closed_from?: string;
+    closed_to?: string;
     page?: string;
     deleted?: string;
     sort?: string;
@@ -101,9 +109,14 @@ export default async function CasesPage({
   const { t, fmt, plural } = await getT();
   const sp = await searchParams;
 
+  // Вкладка «Архив»: дело лежит в архиве по отдельному признаку (не по этапу).
+  const archived = sp.archived === '1';
+
   const q = sp.q?.trim() ?? '';
-  const stage = sp.stage && isCaseStage(sp.stage) ? sp.stage : undefined;
-  const debtOnly = sp.debt === 'true';
+  // Этап — фильтр только активной вкладки (в архиве все дела завершены).
+  const stage =
+    !archived && sp.stage && isCaseStage(sp.stage) ? sp.stage : undefined;
+  const debtOnly = !archived && sp.debt === 'true';
   const caseType = sp.type && isCaseType(sp.type) ? sp.type : undefined;
   const category =
     sp.category && isCaseCategory(sp.category) ? sp.category : undefined;
@@ -113,6 +126,15 @@ export default async function CasesPage({
     sp.lawyer && UUID_RE.test(sp.lawyer) ? sp.lawyer : undefined;
   const clientId =
     sp.client && UUID_RE.test(sp.client) ? sp.client : undefined;
+  // Фильтр по дате закрытия — только на вкладке «Архив».
+  const closedFrom =
+    archived && sp.closed_from && DATE_RE.test(sp.closed_from)
+      ? sp.closed_from
+      : undefined;
+  const closedTo =
+    archived && sp.closed_to && DATE_RE.test(sp.closed_to)
+      ? sp.closed_to
+      : undefined;
   const page = sp.page ? Math.max(1, Number(sp.page) || 1) : 1;
   const deleted = sp.deleted === '1';
   const sort: CasesSortColumn =
@@ -135,12 +157,20 @@ export default async function CasesPage({
 
   const [result, stageCounts] = await Promise.all([
     listCases({
-      q, stage, caseType, category, responsibleId, lawyerId, clientId, debtOnly, page, sort, dir,
+      q, stage, caseType, category, responsibleId, lawyerId, clientId, debtOnly,
+      archived, closedFrom, closedTo, page, sort, dir,
     }),
     countCasesByStage({ caseType, category, responsibleId, lawyerId, clientId, debtOnly }),
   ]);
   const { items, pageCount } = result;
   const totalByStage = CASE_STAGES.reduce((sum, s) => sum + stageCounts[s], 0);
+
+  // Активны ли фильтры внутри текущей вкладки (вкладка «Архив» сама по себе
+  // фильтром не считается — иначе «нет фильтров» и empty-state были бы неверны).
+  const hasFilters = Boolean(
+    q || stage || caseType || category || responsibleId || lawyerId || clientId ||
+      closedFrom || closedTo,
+  );
 
   function buildHref(
     overrides: Partial<{
@@ -152,6 +182,9 @@ export default async function CasesPage({
       lawyer: string;
       client: string;
       debt: string;
+      archived: string;
+      closed_from: string;
+      closed_to: string;
       page: number;
       sort: string;
       dir: string;
@@ -159,17 +192,25 @@ export default async function CasesPage({
   ): string {
     const params = new URLSearchParams();
     const nextQ = overrides.q ?? q;
-    const nextStage = overrides.stage ?? stage ?? '';
+    const nextArchived = overrides.archived ?? (archived ? '1' : '');
+    const isArchive = nextArchived === '1';
+    // На архивной вкладке этап/долг неактуальны; на активной — даты закрытия.
+    const nextStage = isArchive ? '' : overrides.stage ?? stage ?? '';
     const nextType = overrides.type ?? caseType ?? '';
     const nextCategory = overrides.category ?? category ?? '';
     const nextResp = overrides.responsible ?? responsibleId ?? '';
     const nextLawyer = overrides.lawyer ?? lawyerId ?? '';
     const nextClient = overrides.client ?? clientId ?? '';
-    const nextDebt = overrides.debt ?? (debtOnly ? 'true' : '');
+    const nextDebt = isArchive ? '' : overrides.debt ?? (debtOnly ? 'true' : '');
+    const nextClosedFrom = isArchive
+      ? overrides.closed_from ?? closedFrom ?? ''
+      : '';
+    const nextClosedTo = isArchive ? overrides.closed_to ?? closedTo ?? '' : '';
     const nextPage = overrides.page ?? page;
     const nextSort = overrides.sort ?? sort;
     const nextDir = overrides.dir ?? dir;
     if (nextQ) params.set('q', nextQ);
+    if (nextArchived) params.set('archived', nextArchived);
     if (nextStage) params.set('stage', nextStage);
     if (nextType) params.set('type', nextType);
     if (nextCategory) params.set('category', nextCategory);
@@ -177,6 +218,8 @@ export default async function CasesPage({
     if (nextLawyer) params.set('lawyer', nextLawyer);
     if (nextClient) params.set('client', nextClient);
     if (nextDebt) params.set('debt', nextDebt);
+    if (nextClosedFrom) params.set('closed_from', nextClosedFrom);
+    if (nextClosedTo) params.set('closed_to', nextClosedTo);
     if (nextPage > 1) params.set('page', String(nextPage));
     // Не шумим в URL дефолтным sort'ом — храним только когда отличается.
     if (nextSort !== CASES_DEFAULT_SORT.sort || nextDir !== CASES_DEFAULT_SORT.dir) {
@@ -185,6 +228,13 @@ export default async function CasesPage({
     }
     const s = params.toString();
     return s ? `/cases?${s}` : '/cases';
+  }
+
+  // Переход между вкладками «Активные» / «Архив» с сохранением совместимых
+  // фильтров (тип/категория/эксперт/юрист/клиент/поиск); этап и даты сбрасывает
+  // buildHref сам по принадлежности к вкладке. Возврат на 1-ю страницу.
+  function tabHref(toArchive: boolean): string {
+    return buildHref({ archived: toArchive ? '1' : '', page: 1 });
   }
 
   function sortHref(nextSort: string, nextDir: SortDir): string {
@@ -220,9 +270,11 @@ export default async function CasesPage({
       )}
 
       <div data-tour="cases-toolbar" className="flex flex-col gap-3">
-        {/* Ряд 1: поиск + действия (доска · новое дело). На мобильных подписи
-            кнопок прячутся, остаются иконки — место отдаётся поиску. */}
-        <div className="flex items-center gap-2">
+        {/* Ряд 1: поиск + действия (доска · новое дело) + вкладки Активные/Архив
+            в правом углу (ml-auto). На мобильных подписи кнопок прячутся; если
+            не хватает ширины, вкладки переносятся на новую строку, оставаясь
+            справа (flex-wrap). */}
+        <div className="flex flex-wrap items-center gap-2">
           <CasesSearch initial={q} />
           <Button asChild variant="secondary" className="shrink-0 px-3 sm:px-4">
             <Link href={boardHref()} data-tour="cases-board">
@@ -238,19 +290,62 @@ export default async function CasesPage({
               </Link>
             </Button>
           )}
+
+          {/* Вкладки: активные дела / архив — в правом углу строки поиска. */}
+          <div
+            role="tablist"
+            aria-label={t.cases.tabs.aria}
+            className="ml-auto flex items-center gap-1.5"
+          >
+            {[
+              { archive: false, label: t.cases.tabs.active },
+              { archive: true, label: t.cases.tabs.archive },
+            ].map((tab) => {
+              const active = tab.archive === archived;
+              return (
+                <Link
+                  key={tab.label}
+                  href={tabHref(tab.archive)}
+                  role="tab"
+                  aria-selected={active}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium',
+                    'border transition-colors duration-[80ms] ease-out',
+                    active
+                      ? 'bg-primary-subtle text-primary border-primary-border'
+                      : 'bg-surface text-text-muted border-border hover:text-text hover:border-border-strong',
+                  )}
+                >
+                  {tab.archive && <Archive size={14} strokeWidth={1.75} />}
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </div>
         </div>
 
         {/* Ряд 2: фильтры — горизонтальная лента (свайп) на узких экранах,
             обычный перенос на ≥ sm. */}
         <div className="no-scrollbar -mx-3 flex items-center gap-2 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0">
-          {/* Фильтр этапа — главный (воронка): переехал из отдельной ленты-чипов
-              сюда, в общий ряд фильтров. Счётчики в подписях. */}
-          <CasesFilterSelect
-            name="stage"
-            value={stage ?? ''}
-            ariaLabel={t.cases.filters.stageAria}
-            options={stageOptions}
-          />
+          {/* Активная вкладка — фильтр этапа (воронка) со счётчиками.
+              Вкладка «Архив» — фильтр по дате закрытия дела (этапы там не нужны). */}
+          {archived ? (
+            <CasesDateFilter
+              from={closedFrom ?? ''}
+              to={closedTo ?? ''}
+              fromLabel={t.cases.archive.closedFromLabel}
+              toLabel={t.cases.archive.closedToLabel}
+              fromAria={t.cases.archive.closedFromAria}
+              toAria={t.cases.archive.closedToAria}
+            />
+          ) : (
+            <CasesFilterSelect
+              name="stage"
+              value={stage ?? ''}
+              ariaLabel={t.cases.filters.stageAria}
+              options={stageOptions}
+            />
+          )}
 
           <CasesFilterSelect
             name="type"
@@ -323,11 +418,12 @@ export default async function CasesPage({
             />
           )}
 
-          {(stage || caseType || category || responsibleId || lawyerId || clientId || debtOnly) && (
+          {(hasFilters || debtOnly) && (
             <Link
               href={buildHref({
                 stage: '', type: '', category: '', responsible: '',
-                lawyer: '', client: '', debt: '', page: 1,
+                lawyer: '', client: '', debt: '', closed_from: '', closed_to: '',
+                page: 1,
               })}
               className="shrink-0 whitespace-nowrap px-1 text-[13px] text-text-muted underline-offset-2 hover:text-text hover:underline"
             >
@@ -351,33 +447,41 @@ export default async function CasesPage({
 
       {items.length === 0 ? (
         <EmptyState
-          hasFilters={Boolean(
-            q || stage || caseType || category || responsibleId || lawyerId || clientId,
-          )}
-          isStaff={isStaff}
+          // Создавать дело предлагаем только на активной вкладке без фильтров.
+          hasFilters={hasFilters}
+          isStaff={isStaff && !archived}
+          archived={archived}
           title={
-            Boolean(q || stage || caseType || category || responsibleId || lawyerId || clientId)
-              ? t.cases.empty.notFoundTitle
-              : t.cases.empty.title
+            archived
+              ? hasFilters
+                ? t.cases.empty.notFoundTitle
+                : t.cases.archive.emptyTitle
+              : hasFilters
+                ? t.cases.empty.notFoundTitle
+                : t.cases.empty.title
           }
           hint={
-            Boolean(q || stage || caseType || category || responsibleId || lawyerId || clientId)
-              ? t.cases.empty.notFoundHint
-              : isStaff
-                ? t.cases.empty.staffHint
-                : t.cases.empty.nonStaffHint
+            archived
+              ? hasFilters
+                ? t.cases.archive.emptyFilteredHint
+                : t.cases.archive.emptyHint
+              : hasFilters
+                ? t.cases.empty.notFoundHint
+                : isStaff
+                  ? t.cases.empty.staffHint
+                  : t.cases.empty.nonStaffHint
           }
           newCaseLabel={t.cases.toolbar.newCase}
         />
       ) : (
         <>
         {/* Мобильное представление — компактные карточки вместо таблицы. */}
-        <CaseListMobile items={items} />
+        <CaseListMobile items={items} isStaff={isStaff} archived={archived} />
 
         {/* Десктоп (≥ md) — «карточки-строки»: каждое дело отдельной карточкой. */}
         <CardListShell
           cols={CASES_COLS}
-          minWidth={1340}
+          minWidth={1376}
           ariaLabel={t.cases.tableAria}
           header={
             <>
@@ -388,9 +492,14 @@ export default async function CasesPage({
               <CardHead>{t.cases.columns.category}</CardHead>
               <CardHead>{t.cases.columns.priority}</CardHead>
               <CardHead>{t.cases.columns.expert}</CardHead>
-              <CardSortHead column="opened_at" currentSort={sort} currentDir={dir} hrefFor={sortHref}>
-                {t.cases.columns.openedAt}
-              </CardSortHead>
+              {/* На «Архиве» дата закрытия важнее даты открытия (по ней фильтр). */}
+              {archived ? (
+                <CardHead>{t.cases.archive.closedAtColumn}</CardHead>
+              ) : (
+                <CardSortHead column="opened_at" currentSort={sort} currentDir={dir} hrefFor={sortHref}>
+                  {t.cases.columns.openedAt}
+                </CardSortHead>
+              )}
               <CardSortHead column="contract_sum" currentSort={sort} currentDir={dir} hrefFor={sortHref} align="right">
                 {t.cases.columns.sum}
               </CardSortHead>
@@ -476,9 +585,17 @@ export default async function CasesPage({
                   )}
                 </div>
 
-                {/* Открыто */}
+                {/* Открыто (актив) / Закрыто (архив — по этой дате фильтр) */}
                 <div role="cell" className="text-[12.5px] tabular-nums text-text-muted">
-                  {DATE_FMT.format(new Date(c.opened_at))}
+                  {archived ? (
+                    c.closed_at ? (
+                      DATE_FMT.format(new Date(c.closed_at))
+                    ) : (
+                      <Empty />
+                    )
+                  ) : (
+                    DATE_FMT.format(new Date(c.opened_at))
+                  )}
                 </div>
 
                 {/* Сумма + прогресс оплаты */}
@@ -506,7 +623,9 @@ export default async function CasesPage({
                   )}
                 </div>
 
-                {/* Действия: открыть · история · редактировать (последнее — staff) */}
+                {/* Действия: открыть · история · редактировать · архив/восстановить
+                    (правка/архив — только staff). «В архив» — лишь у завершённых
+                    дел на активной вкладке; «Восстановить» — на вкладке «Архив». */}
                 <div role="cell" className="flex items-center justify-end gap-1">
                   <RowAction
                     href={`/cases/${c.id}`}
@@ -524,6 +643,20 @@ export default async function CasesPage({
                       href={`/cases/${c.id}/edit`}
                       label={t.cases.row.actionEdit}
                       icon={<Pencil size={15} strokeWidth={1.75} />}
+                    />
+                  )}
+                  {isStaff && archived && (
+                    <ArchiveCaseForm
+                      caseId={c.id}
+                      caseTitle={c.number_title}
+                      mode="restore"
+                    />
+                  )}
+                  {isStaff && !archived && c.stage === 'closed' && (
+                    <ArchiveCaseForm
+                      caseId={c.id}
+                      caseTitle={c.number_title}
+                      mode="archive"
                     />
                   )}
                 </div>
@@ -595,12 +728,14 @@ function PageLink({
 function EmptyState({
   hasFilters,
   isStaff,
+  archived = false,
   title,
   hint,
   newCaseLabel,
 }: {
   hasFilters: boolean;
   isStaff: boolean;
+  archived?: boolean;
   title: string;
   hint: string;
   newCaseLabel: string;
@@ -611,7 +746,11 @@ function EmptyState({
         className="inline-flex w-12 h-12 items-center justify-center rounded-full text-primary bg-primary-subtle mb-4"
         aria-hidden="true"
       >
-        <Briefcase size={20} strokeWidth={1.75} />
+        {archived ? (
+          <Archive size={20} strokeWidth={1.75} />
+        ) : (
+          <Briefcase size={20} strokeWidth={1.75} />
+        )}
       </span>
       <h2 className="text-[18px] font-semibold text-text mb-1">{title}</h2>
       <p className="text-[13px] text-text-muted max-w-md mb-5">{hint}</p>
