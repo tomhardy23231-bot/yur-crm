@@ -61,15 +61,28 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     },
   });
 
-  // ВАЖНО: getUser() (а не getSession()) — он контактирует с Auth-сервером
-  // и валидирует токен; getSession() читает cookie без проверки и не годится
-  // для решений о доступе (см. @supabase/ssr README).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Проверяем сессию через getClaims(): при асимметричных JWT-ключах подпись
+  // валидируется ЛОКАЛЬНО по кэшированному JWKS — без сетевого round-trip к
+  // Auth-серверу на КАЖДЫЙ запрос (главный системный тормоз). При симметричном
+  // ключе (HS256) getClaims внутри откатывается на getUser() — поведение не
+  // ухудшается. ВАЖНО: вызываем БЕЗ аргумента — тогда внутри идёт getSession(),
+  // который рефрешит протухший токен, и setAll выше обновляет cookie. Передать
+  // токен явно — значит отключить рефреш и ловить throw на истёкшем exp.
+  //
+  // getClaims может бросить НЕ-AuthError (сбой fetch JWKS, кривой alg, ошибка
+  // WebCrypto). Непойманный throw в Edge-middleware = 500 на каждый маршрут,
+  // поэтому fail-closed: любой сбой проверки трактуем как «не залогинен» → /login
+  // (старый getUser возвращал ошибку, а не падал — сохраняем это поведение).
+  let claims: { sub?: string } | null = null;
+  try {
+    const { data: claimsData } = await supabase.auth.getClaims();
+    claims = claimsData?.claims ?? null;
+  } catch {
+    claims = null;
+  }
 
-  // Не залогинен → шлём на /login (публичные пути уже отсеяны выше).
-  if (!user) {
+  // Не залогинен или сбой проверки → шлём на /login (публичные пути отсеяны выше).
+  if (!claims?.sub) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/login';
     loginUrl.searchParams.set('next', path);
