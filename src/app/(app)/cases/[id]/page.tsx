@@ -337,6 +337,7 @@ export default async function CaseDetailPage({
             caseId={c.id}
             canWrite={canEdit}
             currentUserId={user.profile.id}
+            currentUserName={user.profile.full_name}
             isManager={isManager}
           />
         </section>

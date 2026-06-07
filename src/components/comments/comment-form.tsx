@@ -15,10 +15,24 @@ const INITIAL: CommentActionState = { ok: false };
 
 // Поле комментария: всегда видимо на карточке (не в details, как форма задачи) —
 // заметку оставляют часто. После успешной отправки очищаем textarea.
-export function CommentForm({ caseId }: { caseId: string }) {
+//
+// addOptimistic (опц.) — колбэк из CommentList: добавляет «призрак»-комментарий
+// в список сразу. Вызываем ВНУТРИ action useActionState (= внутри transition),
+// иначе useOptimistic ругается на апдейт вне transition.
+export function CommentForm({
+  caseId,
+  addOptimistic,
+}: {
+  caseId: string;
+  addOptimistic?: (input: { id: string; body: string }) => void;
+}) {
   const { t } = useI18n();
   const [state, formAction] = useActionState<CommentActionState, FormData>(
-    createCommentAction,
+    async (prev, formData) => {
+      const body = String(formData.get('body') ?? '').trim();
+      if (body && addOptimistic) addOptimistic({ id: crypto.randomUUID(), body });
+      return createCommentAction(prev, formData);
+    },
     INITIAL,
   );
   const formRef = useRef<HTMLFormElement>(null);

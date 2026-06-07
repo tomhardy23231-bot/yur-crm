@@ -14,12 +14,16 @@ import {
   type CreatePaymentState,
 } from '@/lib/payments/actions';
 
+import type { OptimisticPaymentInput } from './payments-list';
+
 const INITIAL: CreatePaymentState = { ok: false };
 
 interface Props {
   caseId: string;
   /** Вызывается после успешного сохранения (напр. закрыть модалку). */
   onSuccess?: () => void;
+  /** Оптимистичное добавление строки платежа в список (из PaymentsList). */
+  addOptimistic?: (input: OptimisticPaymentInput) => void;
 }
 
 function todayISO(): string {
@@ -41,14 +45,35 @@ function parseAmountClient(raw: string): number | null {
   return n;
 }
 
-export function PaymentForm({ caseId, onSuccess }: Props) {
+export function PaymentForm({ caseId, onSuccess, addOptimistic }: Props) {
   const { t } = useI18n();
   // Уникальный префикс id полей — форма может быть на странице в нескольких
   // экземплярах (модалка в шапке + блок «Финансы»); без этого id дублируются.
   const uid = useId();
   const fid = (name: string) => `${uid}-${name}`;
   const [state, formAction, isPending] = useActionState<CreatePaymentState, FormData>(
-    createPaymentAction,
+    async (prev, formData) => {
+      // Оптимистично добавляем строку в список — ВНУТРИ action useActionState
+      // (= внутри transition, иначе useOptimistic ругается). Сумму парсим тем же
+      // правилом, что и клиентская валидация; addOptimistic зовём только если
+      // сумма валидна (submitWithIdempotencyKey уже отсеял невалидную до сюда).
+      if (addOptimistic) {
+        const amount = parseAmountClient(String(formData.get('amount') ?? ''));
+        const paidAt = String(formData.get('paid_at') ?? '').trim();
+        // Дату валидируем хотя бы на непустоту (клиент строго валидирует только
+        // сумму) — иначе «призрак» мигнул бы при пустой/битой дате до отката.
+        if (amount !== null && paidAt) {
+          addOptimistic({
+            id: crypto.randomUUID(),
+            amount,
+            paid_at: paidAt,
+            method: String(formData.get('method') ?? '').trim() || null,
+            note: String(formData.get('note') ?? '').trim() || null,
+          });
+        }
+      }
+      return createPaymentAction(prev, formData);
+    },
     INITIAL,
   );
   const formRef = useRef<HTMLFormElement>(null);

@@ -1,5 +1,6 @@
 'use client';
 
+import { useOptimistic, useTransition } from 'react';
 import Link from 'next/link';
 import { Check, Trash2 } from 'lucide-react';
 
@@ -37,7 +38,26 @@ const DATE_ONLY_FMT = new Intl.DateTimeFormat('ru-RU', {
 
 export function TaskRow({ task, canManage, showCase = false }: TaskRowProps) {
   const { t } = useI18n();
-  const done = task.status === 'done';
+  // Оптимистичный статус: галочка/перечёркивание срабатывают мгновенно, не
+  // дожидаясь round-trip + revalidate (паттерн как в case-stage-dropdown).
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(task.status);
+  const [pending, startToggle] = useTransition();
+  const done = optimisticStatus === 'done';
+
+  function handleToggle() {
+    // current = состояние ДО клика (action сам инвертирует). Берём из optimistic,
+    // чтобы быстрые повторные клики оставались согласованными с сервером.
+    const current = optimisticStatus;
+    const next = current === 'open' ? 'done' : 'open';
+    startToggle(async () => {
+      setOptimisticStatus(next);
+      const fd = new FormData();
+      fd.set('task_id', task.id);
+      fd.set('current_status', current);
+      fd.set('case_id', task.case_id);
+      await toggleTaskStatusAction(fd);
+    });
+  }
 
   return (
     <div
@@ -49,23 +69,20 @@ export function TaskRow({ task, canManage, showCase = false }: TaskRowProps) {
     >
       {/* Toggle status */}
       {canManage ? (
-        <form action={toggleTaskStatusAction} className="shrink-0 mt-0.5">
-          <input type="hidden" name="task_id" value={task.id} />
-          <input type="hidden" name="current_status" value={task.status} />
-          <input type="hidden" name="case_id" value={task.case_id} />
-          <button
-            type="submit"
-            aria-label={done ? t.tasks.row.reopenAria : t.tasks.row.markDoneAria}
-            className={cn(
-              'inline-flex items-center justify-center w-5 h-5 rounded-md border transition-colors',
-              done
-                ? 'bg-success text-white border-success'
-                : 'bg-surface border-border-strong hover:border-primary hover:bg-primary-subtle',
-            )}
-          >
-            {done && <Check size={12} strokeWidth={3} />}
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={pending}
+          aria-label={done ? t.tasks.row.reopenAria : t.tasks.row.markDoneAria}
+          className={cn(
+            'shrink-0 mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-md border transition-colors',
+            done
+              ? 'bg-success text-white border-success'
+              : 'bg-surface border-border-strong hover:border-primary hover:bg-primary-subtle',
+          )}
+        >
+          {done && <Check size={12} strokeWidth={3} />}
+        </button>
       ) : (
         <span
           aria-hidden="true"
