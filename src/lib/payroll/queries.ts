@@ -7,6 +7,7 @@ import type {
   CasePayroll,
   CaseStage,
   LedgerStatus,
+  ManagedUserSalary,
   PayrollBySpecialist,
   PayrollEmployeeCase,
   PayrollEmployeeSummary,
@@ -17,6 +18,7 @@ import type {
   PayrollTransaction,
   PayrollTxKind,
   RoleInCase,
+  SalaryMode,
 } from '@/lib/types/db';
 
 // Начисление по конкретному делу (public.case_payroll). SECURITY INVOKER →
@@ -98,6 +100,31 @@ export async function getPayrollRates(): Promise<PayrollRate[]> {
     lawyer_percent: Number(r.lawyer_percent),
     expert_percent: Number(r.expert_percent),
     updated_at: r.updated_at,
+  }));
+}
+
+// Режим зарплаты и оклад для редактора (v2 Этап 4). RPC manage_user_salaries —
+// SECURITY DEFINER: вернёт строки тех, кого зритель видит по ЗП (payroll_user_visible),
+// с флагом can_edit (право менять). Колонки salary_* защищены column-level
+// привилегиями — читаются ТОЛЬКО через этот RPC, не прямым select по users.
+export async function listManagedUserSalaries(): Promise<ManagedUserSalary[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('manage_user_salaries');
+  if (error) {
+    throw new Error(`listManagedUserSalaries failed: ${error.message}`);
+  }
+  type Row = {
+    user_id: string;
+    salary_mode: SalaryMode;
+    salary_fixed_amount: number | string | null;
+    can_edit: boolean;
+  };
+  return ((data ?? []) as Row[]).map((r) => ({
+    user_id: r.user_id,
+    salary_mode: r.salary_mode,
+    salary_fixed_amount:
+      r.salary_fixed_amount === null ? null : Number(r.salary_fixed_amount),
+    can_edit: r.can_edit,
   }));
 }
 
@@ -242,17 +269,21 @@ export async function getPayrollEmployeeSummary(
     user_id: string;
     full_name: string;
     earned: number | string;
+    fixed: number | string;
     bonus: number | string;
     payout: number | string;
     balance: number | string;
+    salary_mode: SalaryMode;
   };
   let rows = ((data ?? []) as Row[]).map((r) => ({
     user_id: r.user_id,
     full_name: r.full_name,
     earned: Number(r.earned),
+    fixed: Number(r.fixed),
     bonus: Number(r.bonus),
     payout: Number(r.payout),
     balance: Number(r.balance),
+    salary_mode: r.salary_mode,
   }));
 
   if (departmentId) {

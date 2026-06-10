@@ -251,6 +251,33 @@ export function isVisibilityScope(value: unknown): value is VisibilityScope {
   return value === 'department' || value === 'all';
 }
 
+// Режим зарплаты сотрудника (v2 Этап 4). percent — % от оплат (дефолт);
+// fixed — фиксированный оклад в месяц (процентная часть зануляется);
+// fixed_percent — оклад + процент. Меняет owner / admin своего подразделения
+// (БД-гард users_guard_salary_fields). Поля salary_* защищены column-level
+// привилегиями: читаются только через SECURITY DEFINER-функции отчёта/управления.
+export type SalaryMode = 'percent' | 'fixed' | 'fixed_percent';
+
+export const SALARY_MODES: ReadonlyArray<SalaryMode> = [
+  'percent',
+  'fixed',
+  'fixed_percent',
+];
+
+export function isSalaryMode(value: unknown): value is SalaryMode {
+  return value === 'percent' || value === 'fixed' || value === 'fixed_percent';
+}
+
+// Строка manage_user_salaries() — режим/оклад для редактора (/settings/users).
+// can_edit зеркалит private.can_manage_user_salary (owner — всем; admin — своего
+// подразделения, не себе, управляемых ролей).
+export type ManagedUserSalary = {
+  user_id: string;
+  salary_mode: SalaryMode;
+  salary_fixed_amount: number | null;
+  can_edit: boolean;
+};
+
 export type UserProfile = {
   id: string;
   full_name: string;
@@ -796,10 +823,12 @@ export const ROLE_IN_CASE_LABEL: Record<RoleInCase, string> = {
 export type PayrollEmployeeSummary = {
   user_id: string;
   full_name: string;
-  earned: number;   // начислено за дела (live, обе роли)
+  earned: number;   // начислено % за дела за месяц (у режима fixed = 0)
+  fixed: number;    // оклад за месяц (fixed/fixed_percent), справочно; в balance НЕ входит
   bonus: number;    // премии (+)
   payout: number;   // выплачено (−)
-  balance: number;  // earned + bonus − payout = «к выплате»
+  balance: number;  // % + премии − выплаты = «к выплате» (оклад НЕ входит, v1)
+  salary_mode: SalaryMode;
 };
 
 // Строка разбивки по делам в карточке сотрудника (public.payroll_employee_cases).

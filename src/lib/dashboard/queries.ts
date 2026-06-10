@@ -1,13 +1,33 @@
 import 'server-only';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import {
-  CASE_CATEGORIES,
-  CASE_STAGES,
-  type CaseCategory,
-  type CaseStage,
-  type PayrollRate,
+import type {
+  CaseCategory,
+  CaseStage,
+  PayrollRate,
 } from '@/lib/types/db';
+import type {
+  DashboardAnalytics,
+  DashboardCaseRow,
+  MetricSeries,
+} from './compute';
+
+// Чистые агрегаторы вынесены в ./compute (юнит-тестируемы без 'server-only').
+// Реэкспортируем, чтобы существующие импорты из этого модуля продолжали работать.
+export {
+  computeDashboardStats,
+  computeDelta,
+  computePersonalEarnings,
+} from './compute';
+export type {
+  CategoryRevenueEntry,
+  DashboardAnalytics,
+  DashboardCaseRow,
+  DashboardStats,
+  FunnelEntry,
+  MetricSeries,
+  PersonalEarning,
+} from './compute';
 
 // ============================================================================
 // Слой данных дашборда. Всё читается под сессией пользователя → RLS сам
@@ -15,22 +35,6 @@ import {
 // lawyer_id, Эксперт — где responsible_id. Поэтому воронка, выручка и личные
 // начисления автоматически считаются «по своим» для специалистов.
 // ============================================================================
-
-export type DashboardCaseRow = {
-  id: string;
-  number_title: string;
-  stage: CaseStage;
-  category: CaseCategory;
-  contract_sum: number;
-  paid_total: number;
-  debt: number;
-  opened_at: string;
-  // Нужны для расчёта личных начислений (роль пользователя в деле + override %).
-  lawyer_id: string;
-  responsible_id: string;
-  lawyer_rate_override: number | null;
-  expert_rate_override: number | null;
-};
 
 // Все RLS-видимые дела (без пагинации) — база для KPI, воронки и выручки.
 // Объём в Phase 1 умеренный; та же стратегия, что у канбан-доски.
@@ -110,6 +114,24 @@ export async function getRevenueThisMonth(): Promise<number> {
   );
 }
 
+// Сотрудники на окладе (salary_mode='fixed') в зоне видимости зрителя по ЗП.
+// v2 Этап 4: их процентная часть зануляется в метриках дашборда (личное «начислено
+// мне» и фонд ЗП). salary_mode защищён column-level привилегиями → читаем через
+// SECURITY DEFINER-RPC manage_user_salaries (специалист получит лишь свою строку —
+// этого достаточно для его личных метрик; staff — всех в своей зоне видимости).
+export async function getFixedSalaryUserIds(): Promise<Set<string>> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('manage_user_salaries');
+  if (error) {
+    throw new Error(`getFixedSalaryUserIds failed: ${error.message}`);
+  }
+  const out = new Set<string>();
+  for (const r of (data ?? []) as Array<{ user_id: string; salary_mode: string }>) {
+    if (r.salary_mode === 'fixed') out.add(r.user_id);
+  }
+  return out;
+}
+
 // Текущий год/месяц (1–12) в часовом поясе фирмы (Europe/Kyiv), независимо от
 // TZ сервера. Используется для границ месяца и подписи месяца на дашборде.
 export function currentKyivMonth(): { year: number; month: number } {
@@ -125,153 +147,11 @@ export function currentKyivMonth(): { year: number; month: number } {
 }
 
 // ============================================================================
-// Чистые агрегаторы (без БД) — считаются из getDashboardCases().
-// ============================================================================
-
-export type FunnelEntry = { stage: CaseStage; count: number };
-export type CategoryRevenueEntry = {
-  category: CaseCategory;
-  paid: number;
-  count: number;
-};
-
-export type DashboardStats = {
-  activeCases: number; // все, кроме closed
-  totalCases: number;
-  totalDebt: number;
-  totalPaid: number;
-  totalContract: number;
-  funnel: FunnelEntry[]; // все 5 этапов в порядке воронки
-  revenueByCategory: CategoryRevenueEntry[]; // все 3 категории в порядке
-};
-
-export function computeDashboardStats(
-  rows: ReadonlyArray<DashboardCaseRow>,
-): DashboardStats {
-  const funnel = new Map<CaseStage, number>(CASE_STAGES.map((s) => [s, 0]));
-  const catPaid = new Map<CaseCategory, number>(
-    CASE_CATEGORIES.map((c) => [c, 0]),
-  );
-  const catCount = new Map<CaseCategory, number>(
-    CASE_CATEGORIES.map((c) => [c, 0]),
-  );
-
-  let totalDebt = 0;
-  let totalPaid = 0;
-  let totalContract = 0;
-  let activeCases = 0;
-
-  for (const r of rows) {
-    funnel.set(r.stage, (funnel.get(r.stage) ?? 0) + 1);
-    catPaid.set(r.category, (catPaid.get(r.category) ?? 0) + r.paid_total);
-    catCount.set(r.category, (catCount.get(r.category) ?? 0) + 1);
-    totalDebt += r.debt;
-    totalPaid += r.paid_total;
-    totalContract += r.contract_sum;
-    if (r.stage !== 'closed') activeCases += 1;
-  }
-
-  return {
-    activeCases,
-    totalCases: rows.length,
-    totalDebt,
-    totalPaid,
-    totalContract,
-    funnel: CASE_STAGES.map((stage) => ({
-      stage,
-      count: funnel.get(stage) ?? 0,
-    })),
-    revenueByCategory: CASE_CATEGORIES.map((category) => ({
-      category,
-      paid: catPaid.get(category) ?? 0,
-      count: catCount.get(category) ?? 0,
-    })),
-  };
-}
-
-// ============================================================================
-// Личные начисления специалиста (юрист/Эксперт).
-// Для не-staff RLS возвращает только ЕГО дела, поэтому каждое видимое дело —
-// то, по которому он получает полный % категории. earned = paid_total × % / 100.
-// Совпадает с public.payroll_by_specialist для этого пользователя.
-// ============================================================================
-
-export type PersonalEarning = {
-  id: string;
-  number_title: string;
-  stage: CaseStage;
-  category: CaseCategory;
-  role_in_case: 'lawyer' | 'expert';
-  paid_total: number;
-  percent: number;
-  earned: number;
-};
-
-// Эффективная ставка пользователя по делу = его роль в деле (lawyer/expert),
-// override этой роли при наличии, иначе дефолт категории для роли.
-export function computePersonalEarnings(
-  rows: ReadonlyArray<DashboardCaseRow>,
-  rates: ReadonlyArray<PayrollRate>,
-  userId: string,
-): PersonalEarning[] {
-  const rateByCategory = new Map<CaseCategory, PayrollRate>(
-    rates.map((r) => [r.category, r]),
-  );
-
-  return rows
-    .map((r) => {
-      const isLawyer = r.lawyer_id === userId;
-      const role_in_case: 'lawyer' | 'expert' = isLawyer ? 'lawyer' : 'expert';
-      const rate = rateByCategory.get(r.category);
-      const override = isLawyer ? r.lawyer_rate_override : r.expert_rate_override;
-      const categoryDefault = isLawyer
-        ? (rate?.lawyer_percent ?? 0)
-        : (rate?.expert_percent ?? 0);
-      const percent = override ?? categoryDefault;
-      return {
-        id: r.id,
-        number_title: r.number_title,
-        stage: r.stage,
-        category: r.category,
-        role_in_case,
-        paid_total: r.paid_total,
-        percent,
-        earned: (r.paid_total * percent) / 100,
-      };
-    })
-    .sort((a, b) => b.earned - a.earned || b.paid_total - a.paid_total);
-}
-
-// ============================================================================
 // Аналитический слой (бриф §3.1, §8): сравнение с прошлым периодом + спарклайны.
 // Всё под сессией пользователя → RLS уже ограничивает видимость. Для staff —
 // метрики по всей компании; для специалиста (передан userId) — по его делам,
 // и «начислено» считается по ЕГО роли в деле (юрист ИЛИ эксперт), а не как фонд.
 // ============================================================================
-
-export type MetricSeries = {
-  current: number; // текущий месяц / снимок «сейчас»
-  prev: number; // прошлый месяц — база для дельты
-  series: number[]; // последние 6 месяцев (для спарклайна), от старого к новому
-};
-
-export type DashboardAnalytics = {
-  revenue: MetricSeries; // помесячные поступления (поток)
-  debt: MetricSeries; // задолженность на конец месяца (запас)
-  salary: MetricSeries; // начислено: фонд (staff) либо личное (специалист)
-  activeCases: MetricSeries; // открытые (не закрытые) дела на конец месяца
-};
-
-// Дельта в % и направление (бриф: фронт считает (now - prev) / prev).
-// percent = null, если базы нет (prev = 0) — тогда процент не показываем.
-export function computeDelta(
-  current: number,
-  prev: number,
-): { percent: number | null; direction: 'up' | 'down' | 'flat' } {
-  const direction = current > prev ? 'up' : current < prev ? 'down' : 'flat';
-  if (prev === 0) return { percent: null, direction };
-  return { percent: ((current - prev) / Math.abs(prev)) * 100, direction };
-}
 
 // Границы месяца со сдвигом offset (0 = текущий) в TZ фирмы (Europe/Kyiv).
 function kyivMonthWindow(offset: number): { firstISO: string; nextISO: string } {
@@ -302,9 +182,11 @@ type AnalyticsCaseRow = {
 type AnalyticsPaymentRow = { case_id: string; amount: number; paid_at: string };
 
 // Считает 4 метрики за 6 последних месяцев под текущей сессией (RLS).
+// fixedUserIds (v2 Этап 4) — сотрудники на окладе: их % обнуляется и в личной
+// метрике «начислено мне», и в фонде ЗП (staff).
 export async function getDashboardAnalytics(
   rates: ReadonlyArray<PayrollRate>,
-  opts?: { userId?: string },
+  opts?: { userId?: string; fixedUserIds?: ReadonlySet<string> },
 ): Promise<DashboardAnalytics> {
   const supabase = await createSupabaseServerClient();
 
@@ -360,12 +242,18 @@ export async function getDashboardAnalytics(
   const caseById = new Map(cases.map((c) => [c.id, c]));
   const rateByCategory = new Map(rates.map((r) => [r.category, r]));
   const userId = opts?.userId;
+  const fixedUserIds = opts?.fixedUserIds ?? new Set<string>();
 
-  // Ставка ЗП на деле: фонд (юрист% + эксперт%) для staff; роль пользователя — для специалиста.
+  // Ставка ЗП на деле: фонд (юрист% + эксперт%) для staff; роль пользователя — для
+  // специалиста. Режим salary_mode='fixed' зануляет % соответствующей роли.
   function salaryRate(c: AnalyticsCaseRow): number {
     const rate = rateByCategory.get(c.category);
-    const lawyerEff = c.lawyer_rate_override ?? rate?.lawyer_percent ?? 0;
-    const expertEff = c.expert_rate_override ?? rate?.expert_percent ?? 0;
+    const lawyerEff = fixedUserIds.has(c.lawyer_id)
+      ? 0
+      : (c.lawyer_rate_override ?? rate?.lawyer_percent ?? 0);
+    const expertEff = fixedUserIds.has(c.responsible_id)
+      ? 0
+      : (c.expert_rate_override ?? rate?.expert_percent ?? 0);
     if (!userId) return lawyerEff + expertEff;
     if (c.lawyer_id === userId) return lawyerEff;
     if (c.responsible_id === userId) return expertEff;

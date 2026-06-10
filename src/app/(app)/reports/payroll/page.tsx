@@ -69,12 +69,15 @@ export default async function PayrollReportPage({
   const totals = rows.reduce(
     (acc, r) => ({
       earned: acc.earned + r.earned,
+      fixed: acc.fixed + r.fixed,
       bonus: acc.bonus + r.bonus,
       payout: acc.payout + r.payout,
       balance: acc.balance + r.balance,
     }),
-    { earned: 0, bonus: 0, payout: 0, balance: 0 },
+    { earned: 0, fixed: 0, bonus: 0, payout: 0, balance: 0 },
   );
+  // Колонку «Оклад» показываем, только если у кого-то из видимых есть оклад.
+  const showFixed = rows.some((r) => r.salary_mode !== 'percent');
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
@@ -172,6 +175,9 @@ export default async function PayrollReportPage({
               <TableRow className="hover:bg-surface">
                 <TableHead>{t.payroll.report.colEmployee}</TableHead>
                 <TableHead className="text-right">{t.payroll.report.colEarnedMonth}</TableHead>
+                {showFixed && (
+                  <TableHead className="text-right">{t.payroll.report.colFixedMonth}</TableHead>
+                )}
                 <TableHead className="text-right">{t.payroll.report.colBonusMonth}</TableHead>
                 <TableHead className="text-right">{t.payroll.report.colPaidMonth}</TableHead>
                 <TableHead className="text-right">{t.payroll.report.colBalanceTotal}</TableHead>
@@ -199,6 +205,11 @@ export default async function PayrollReportPage({
                   <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text">
                     {MONEY.format(r.earned)} ₴
                   </TableCell>
+                  {showFixed && (
+                    <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text">
+                      {r.salary_mode !== 'percent' ? `${MONEY.format(r.fixed)} ₴` : '—'}
+                    </TableCell>
+                  )}
                   <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text-muted">
                     {r.bonus > 0 ? `+${MONEY.format(r.bonus)} ₴` : '—'}
                   </TableCell>
@@ -222,6 +233,14 @@ export default async function PayrollReportPage({
                 {MONEY.format(totals.earned + totals.bonus)} ₴
               </span>
             </span>
+            {showFixed && (
+              <span className="text-text-muted">
+                {t.payroll.report.totalFixedMonth}{' '}
+                <span className="font-bold text-text">
+                  {MONEY.format(totals.fixed)} ₴
+                </span>
+              </span>
+            )}
             <span className="text-text-muted">
               {t.payroll.report.totalPaidMonth}{' '}
               <span className="font-bold text-success">
@@ -236,6 +255,10 @@ export default async function PayrollReportPage({
             </span>
           </div>
         </div>
+      )}
+
+      {showFixed && (
+        <p className="text-[12px] text-text-subtle">{t.payroll.report.fixedNote}</p>
       )}
     </main>
   );

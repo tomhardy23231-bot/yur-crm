@@ -39,13 +39,17 @@ export const payroll = {
 
     colEmployee: 'Сотрудник',
     colEarnedMonth: 'Начислено за месяц',
+    colFixedMonth: 'Оклад (мес.)',
     colBonusMonth: 'Премии за месяц',
     colPaidMonth: 'Выплачено за месяц',
     colBalanceTotal: 'К выплате (всего)',
 
     totalEarnedMonth: 'начислено за месяц',
+    totalFixedMonth: 'оклад за месяц',
     totalPaidMonth: 'выплачено за месяц',
     totalBalanceTotal: 'к выплате всего',
+    // Подсказка про оклад (v1): не входит в «К выплате».
+    fixedNote: 'Оклад показан справочно за месяц и в «К выплате» не входит.',
   },
 
   // ── Карточка сотрудника (/reports/payroll/[userId]) ─────────────────────
@@ -66,6 +70,14 @@ export const payroll = {
     paidMonth: 'Выплачено за месяц',
     // fmt: {cases} {bonus} — суммы.
     paidMonthCaption: 'дела {cases} · премии {bonus}',
+
+    // Оклад (v2 Этап 4): блок на карточке сотрудника.
+    salaryTitle: 'Оклад',
+    // fmt: {mode} — название режима зарплаты.
+    salaryMode: 'Режим: {mode}',
+    // fmt: {amount} — сумма оклада за месяц.
+    salaryPerMonth: '{amount} ₴ / мес',
+    salaryNote: 'Оклад платится отдельно; в «К выплате» (v1) не входит.',
 
     // Дела
     // fmt: {month} — подпись месяца.

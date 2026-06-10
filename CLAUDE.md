@@ -159,7 +159,20 @@ department_id (→ departments, NULL = вне структуры; для admin/o
 переходное «видит всё»), position (должность, свободный текст — на права НЕ влияет,
 права задаёт role), visibility_scope (department|all — для admin/office_manager,
 действует в RLS с Этапа 2 v2: department = только своё подразделение, all = вся
-компания; выставляет только owner, БД-гард `users_guard_visibility_fields`), created_at`
+компания; выставляет только owner, БД-гард `users_guard_visibility_fields`),
+salary_mode (percent|fixed|fixed_percent, v2 Этап 4; default percent),
+salary_fixed_amount (оклад ₴/мес для fixed/fixed_percent, иначе NULL; check
+консистентности), created_at`
+— **salary_*** (v2 Этап 4): режим оплаты труда сотрудника. `percent` — % от оплат
+(текущая модель); `fixed` — фиксированный оклад/мес, процентная часть зануляется;
+`fixed_percent` — оклад + процент. Меняет owner (любому) либо admin своего
+подразделения (НЕ себе, только роли office_manager/lawyer/expert; admin без
+подразделения — никому). БД-гард `users_guard_salary_fields` + право
+`private.can_manage_user_salary`. **Приватность:** колонки `salary_*` защищены
+column-level привилегиями (revoke табличного SELECT + grant безопасного списка),
+читаются ТОЛЬКО через SECURITY DEFINER-функции (`payroll_employee_summary`,
+`manage_user_salaries` и пр.) под `payroll_user_visible`. ⚠ Новые колонки `users`
+в будущих миграциях добавлять в этот grant.
 
 **departments** (подразделения/филиалы) — v2, Этап 1
 `id, name (unique), is_active, created_at`
@@ -204,6 +217,13 @@ opponent, court_case_number, court, closed_at, created_at`
 P1.2). Редактирует только `owner`. См. §7-4. На конкретном деле % переопределяется:
 `cases.lawyer_rate_override` / `expert_rate_override` (NULL → ставка категории; менять
 может только owner/admin, БД-триггер `cases_guard_rate_overrides` — доработка P1.1).
+— **Режим зарплаты (v2 Этап 4)** живёт на сотруднике (`users.salary_mode`): процентная
+механика выше применяется для режимов `percent`/`fixed_percent`, а для `fixed`
+**зануляется** в отчётных функциях (`case_payroll`, `payroll_by_specialist`,
+`payroll_employee_summary`, `payroll_employee_cases`) и в метриках дашборда
+(`computePersonalEarnings` / `getDashboardAnalytics` через `getFixedSalaryUserIds`).
+Оклад (`salary_fixed_amount`) показывается в `/reports/payroll` справочно за месяц и
+**в накопленный остаток «К выплате» / выплаты v1 не входит**.
 
 **payroll_ledger** (леджер начислений/выплат) — доработка P1.3
 `id, case_id, user_id, role_in_case (lawyer|expert), base_amount, percent, amount,
@@ -211,7 +231,11 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 — фиксирует начисление как запись. Когда фиксируется — задаёт `cases.accrual_mode`
 (`on_completion` при закрытии / `per_payment` по мере оплат — доработка P2.1). Синхрон
 триггером `cases_sync_ledger`. Отметку «выплачено»/откат делает только owner/admin.
-НЕ путать с `payments` (оплаты клиента).
+НЕ путать с `payments` (оплаты клиента). v2 Этап 4: леджер остаётся процентным и в
+текущем UI не отображается (компонент `CaseLedgerBlock`/`payroll_payout_by_specialist`
+не рендерятся; источник правды отчёта — `payroll_employee_summary`/`*_cases`). Оклад
+(`salary_mode=fixed/fixed_percent`) в леджер НЕ пишем; интеграция режимов в леджер
+отложена (Phase 2, если леджер вернут в UI).
 
 **activity_log** (история изменений)
 `id, entity_type, entity_id, user_id, action, changes (jsonb), created_at`
@@ -258,6 +282,13 @@ status (accrued|paid), accrued_at, paid_at, created_by`
    меняет только `owner`, override на деле — owner/admin. Live-расчёт —
    `public.case_payroll` / `public.payroll_by_specialist`; фиксация начисления/выплаты
    — в `payroll_ledger` (P1.3), момент задаёт `cases.accrual_mode` (P2.1).
+   **Режим зарплаты на сотруднике (v2 Этап 4, `users.salary_mode`):** `percent` —
+   только процент (выше); `fixed` — фиксированный оклад/мес, **процентная часть = 0**;
+   `fixed_percent` — оклад + процент. Оклад (`salary_fixed_amount`) — справочно за
+   месяц в отчёте, в накопленный остаток «К выплате» и выплаты v1 НЕ входит. Меняет
+   owner (любому) или admin своего подразделения (БД-гард `users_guard_salary_fields`,
+   право `private.can_manage_user_salary`); колонки `salary_*` приватны (column-level
+   привилегии), читаются только через SECURITY DEFINER-функции.
 5. **admin и office_manager видят финансы/ЗП своего подразделения** (v2 Этап 2;
    `visibility_scope='all'`/`department_id IS NULL` → всей компании); office_manager не
    удаляет записи и не правит платежи; управление пользователями — только owner/admin
@@ -282,12 +313,14 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 > сальдо-отчётом. Разделы §4–§7 описывают систему ДО v2 — по мере закрытия этапов
 > они обновляются (это часть DoD каждого этапа).
 >
-> **Готово (этапы 1–3):** БД-фундамент подразделений + департаментная RLS-видимость
-> (§4–§5, §7), и **UI**: `/settings/departments` (owner — создание/переименование/
-> (де)активация, команда, назначение `department_id`/`position`/`visibility_scope`),
-> поля подразделения в `/settings/users` и форме создания, фильтр «Подразделение»
-> в `/cases` и `/reports/payroll` (только для видящих >1). Дальше — этапы 4–7
-> (ЗП-режимы, акты, отпуска, касса).
+> **Готово (этапы 1–4):** БД-фундамент подразделений + департаментная RLS-видимость
+> (§4–§5, §7), **UI** подразделений (`/settings/departments`, поля в `/settings/users`
+> и форме создания, фильтр «Подразделение» в `/cases` и `/reports/payroll`), и
+> **ЗП-режимы** (Этап 4): `users.salary_mode` (percent/fixed/fixed_percent) +
+> `salary_fixed_amount`, гард прав owner/admin-подразделения, редактор «Зарплата» в
+> `/settings/users`, колонка «Оклад (мес.)» в отчёте и блок оклада на карточке
+> сотрудника; отчётные функции учитывают режим (§5, §7-4). Дальше — этапы 5–7
+> (акты, отпуска, касса).
 
 **Phase 1 — MVP (готово):**
 - Auth + роли + RLS (модель доступа из §4);

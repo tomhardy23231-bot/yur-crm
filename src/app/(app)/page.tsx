@@ -16,6 +16,7 @@ import {
   computePersonalEarnings,
   getDashboardAnalytics,
   getDashboardCases,
+  getFixedSalaryUserIds,
   type MetricSeries,
 } from '@/lib/dashboard/queries';
 import { getPayrollRates } from '@/lib/payroll/queries';
@@ -186,7 +187,8 @@ async function StaffDashboard({
   locale: Locale;
 }) {
   const rates = await getPayrollRates();
-  const a = await getDashboardAnalytics(rates);
+  const fixedUserIds = await getFixedSalaryUserIds();
+  const a = await getDashboardAnalytics(rates, { fixedUserIds });
   // Подпись месяца — в часовом поясе фирмы (как и границы окна выручки).
   const monthName = new Intl.DateTimeFormat(LOCALE_BCP47[locale], {
     month: 'long',
@@ -265,9 +267,10 @@ async function PersonalDashboard({
   fmt: I18n['fmt'];
 }) {
   const rates = await getPayrollRates();
+  const fixedUserIds = await getFixedSalaryUserIds();
   const [a, earnings] = await Promise.all([
-    getDashboardAnalytics(rates, { userId }),
-    Promise.resolve(computePersonalEarnings(cases, rates, userId)),
+    getDashboardAnalytics(rates, { userId, fixedUserIds }),
+    Promise.resolve(computePersonalEarnings(cases, rates, userId, fixedUserIds)),
   ]);
 
   return (

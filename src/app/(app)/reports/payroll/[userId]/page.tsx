@@ -99,6 +99,10 @@ export default async function PayrollEmployeePage({
   // Накопленный общий долг (за всё время) — «К выплате сейчас».
   const balance = row?.balance ?? 0;
 
+  // Режим зарплаты и оклад (v2 Этап 4). Оклад — справочно за месяц, в balance не входит.
+  const salaryMode = row?.salary_mode ?? 'percent';
+  const fixedMonthly = row?.fixed ?? 0;
+
   // Накопленные разбивки (за всё время) — для карточки долга и модалки выплаты.
   const caseAllocatedAll = allCases.reduce((s, c) => s + c.paid, 0);
   const payoutTotalAll = allTx
@@ -212,6 +216,23 @@ export default async function PayrollEmployeePage({
           )}
         </div>
       </div>
+
+      {/* Оклад (v2 Этап 4) — показывается для режимов fixed / fixed_percent */}
+      {salaryMode !== 'percent' && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface px-4 py-3 shadow-sm">
+          <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-text">
+            <Wallet size={15} strokeWidth={1.75} className="text-text-muted" />
+            {t.payroll.employee.salaryTitle}:{' '}
+            <span className="tabular-nums">
+              {fmt(t.payroll.employee.salaryPerMonth, { amount: MONEY.format(fixedMonthly) })}
+            </span>
+          </span>
+          <span className="text-[12.5px] text-text-muted">
+            {fmt(t.payroll.employee.salaryMode, { mode: t.enums.salaryMode[salaryMode] })}
+          </span>
+          <span className="text-[12px] text-text-subtle">{t.payroll.employee.salaryNote}</span>
+        </div>
+      )}
 
       {/* Сводка: «к выплате» крупно + разбивка */}
       <Card

@@ -29,6 +29,84 @@
 
 ---
 
+## Сессия 2026-06-10 (5) — v2 Этап 4: ЗП-режимы (фикс / фикс+% / %) ✅
+
+_Этап 4 из 7 (docs/PLAN-V2.md). Режим оплаты труда на сотруднике + права руководителя
++ отражение в отчёте. Согласованы 2 развилки: оклад — только показ за месяц (в «К
+выплате»/выплаты v1 не входит); редактор — в `/settings/users`._
+
+### Что сделано
+- **Миграция `20260610140000_user_salary_modes.sql`** (аддитивная):
+  - `users.salary_mode` (percent|fixed|fixed_percent, default percent) +
+    `salary_fixed_amount numeric(14,2)`; check-консистентность (percent→NULL,
+    fixed/fixed_percent→≥0 not null).
+  - **Приватность:** `revoke select on users` + `grant select(<безопасный список>)` —
+    `salary_*` читаются ТОЛЬКО через DEFINER-функции (RLS колонку не скрывает).
+    ⚠ новые колонки users в будущих миграциях добавлять в этот grant.
+  - **Право/гард:** `private.can_manage_user_salary` (owner — всем; manage_users —
+    своего подразделения, не себе, роли office_manager/lawyer/expert) + триггер
+    `users_guard_salary_fields` (service_role-путь пропускает; страж в коде).
+  - **Расчёт под режим:** `case_payroll` (INVOKER→DEFINER + явный `case_visible`),
+    `payroll_by_specialist`, `payroll_employee_summary` (+ `fixed`/`salary_mode`,
+    окладники без дел в списке), `payroll_employee_cases` — `fixed` зануляет процент;
+    `fixed_percent` = оклад + %. Оклад в balance/выплаты НЕ входит.
+  - **allowlist activity_log:** + `user_salary_changed` (мёрдж всего прежнего, база
+    20260610120000 — 23514 не задета).
+- **Слой данных:** типы `SalaryMode`/`SALARY_MODES`/`isSalaryMode`/`ManagedUserSalary`,
+  `PayrollEmployeeSummary` + `fixed`/`salary_mode`; `listManagedUserSalaries`
+  (RPC `manage_user_salaries`); `updateUserSalaryAction` (зеркало гарда + лог).
+- **UI:** `UserSalaryEditor` (раскрывающийся, как `UserAssignmentEditor`) + колонка
+  «Зарплата» в `/settings/users` (оклад показан только в зоне видимости зрителя, иначе
+  «—»); колонка «Оклад (мес.)» + сноска в `/reports/payroll`; блок оклада на карточке
+  `/reports/payroll/[userId]`.
+- **Дашборд:** `computePersonalEarnings`/`getDashboardAnalytics` учитывают режим через
+  `getFixedSalaryUserIds()` (множество окладников из manage_user_salaries) — у `fixed`
+  «Начислено мне» и фонд ЗП обнуляются по проценту. Чистые агрегаторы вынесены в
+  `src/lib/dashboard/compute.ts` (юнит-тестируемы без 'server-only').
+- **i18n** ru/uk: `enums.salaryMode`/`salaryModeHint`, `users.salary`,
+  `payroll.report.col/totalFixedMonth`+`fixedNote`, `payroll.employee.salary*`.
+
+### Решения и почему
+- **Леджер не трогали.** План: «леджер продолжает фиксировать процент, фикс не пишем».
+  Проверено: `CaseLedgerBlock` и `payroll_payout_by_specialist` в текущем UI НЕ
+  рендерятся → процентный леджер для окладника пользователю не виден, нестыковки нет.
+  Источник правды отчёта — `payroll_employee_summary`/`*_cases` (mode-aware).
+- **`case_payroll` → DEFINER.** Чтобы читать `users.salary_mode` под column-revoke,
+  заменил RLS-гейтинг на явный `private.case_visible` (= политика SELECT на cases).
+- **Приватность через column-level grant**, а не отдельную таблицу — план задаёт
+  `users.salary_*`; RLS колонку скрыть не умеет, поэтому revoke+grant.
+- **admin без подразделения зарплату не меняет** (NULL не матчит) — строго по спеке
+  «admin своего подразделения»; переходное правило NULL=видит-всё на ЗАПИСЬ не
+  распространяется. owner делает всегда.
+
+### Проверки (DoD)
+- `npx supabase db reset` — чисто; tsc/lint/build — зелёные.
+- unit **54/54** (+5: режимы в computePersonalEarnings), integration **45/45** (+8:
+  3 режима расчёта, гард своего/чужого/NULL-подразделения, приватность колонок
+  salary_*, manage_user_salaries.can_edit).
+- Ревью — 6-агентный адверсариальный проход (gstack `/review`/`/cso` на Windows не
+  запускаются, как в Этапах 2–3). Нашёл+исправил **1 HIGH**: дашборд считал «Начислено
+  мне»/фонд в TS без учёта salary_mode → окладник видел бы ненулевой процент (фикс +
+  unit-тест). Приватность колонок, гард эскалации, 4 отчётные функции, allowlist —
+  подтверждены чистыми.
+
+### Незакрытые вопросы / заметки для следующих этапов
+- [ ] **Пуш на прод НЕ делался** (ни git push, ни db push) — ждёт «ок». При `db push`:
+  миграция аддитивная; пересоздаёт allowlist мёрджем (23514 не грозит); дамп прода
+  перед push обязателен (PLAN-V2 «Бэкап и откат»). Хеш Этапа 4 → follow-up в таблице.
+- [ ] **allowlist activity_log** теперь включает `user_salary_changed` — база мёрджа
+  для будущих миграций = **20260610140000**.
+- [ ] **Браузерный `/qa`** по флоу (owner/admin меняет оклад → отчёт) не прогонялся
+  (нужен живой dev). Автогейты зелёные.
+- [ ] **Этап 5 (Акты как платёжные документы)** — следующий ⬜.
+
+### Handoff для следующей сессии
+- **Стартовать с:** CLAUDE.md → docs/PLAN-V2.md (следующий ⬜ — **Этап 5 «Акты как
+  платёжные документы»**, образец `docs/samples/rahunok-akt-sample.xlsx`) → эта запись.
+- Локальный Supabase: порт 48321 (Studio :48323). Тестовые логины — `scripts/seed.ts`.
+
+---
+
 ## Сессия 2026-06-10 (4) — v2 Этап 3: UI подразделений, команда, доступы ✅
 
 _Этап 3 из 7 (docs/PLAN-V2.md). Чисто UI-этап: RLS видимости уже была в Этапах 1–2.

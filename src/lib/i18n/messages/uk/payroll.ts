@@ -37,13 +37,16 @@ export const payroll: PayrollMessages = {
 
     colEmployee: 'Співробітник',
     colEarnedMonth: 'Нараховано за місяць',
+    colFixedMonth: 'Оклад (міс.)',
     colBonusMonth: 'Премії за місяць',
     colPaidMonth: 'Виплачено за місяць',
     colBalanceTotal: 'До виплати (усього)',
 
     totalEarnedMonth: 'нараховано за місяць',
+    totalFixedMonth: 'оклад за місяць',
     totalPaidMonth: 'виплачено за місяць',
     totalBalanceTotal: 'до виплати всього',
+    fixedNote: 'Оклад показано довідково за місяць і до «До виплати» не входить.',
   },
 
   employee: {
@@ -60,6 +63,12 @@ export const payroll: PayrollMessages = {
     bonusMonth: 'Премії за місяць',
     paidMonth: 'Виплачено за місяць',
     paidMonthCaption: 'справи {cases} · премії {bonus}',
+
+    // Оклад (v2 Етап 4): блок на картці співробітника.
+    salaryTitle: 'Оклад',
+    salaryMode: 'Режим: {mode}',
+    salaryPerMonth: '{amount} ₴ / міс',
+    salaryNote: 'Оклад сплачується окремо; до «До виплати» (v1) не входить.',
 
     casesTitle: 'Заробіток по справах — {month}',
     casesCount: { one: '{n} справа', few: '{n} справи', many: '{n} справ' },

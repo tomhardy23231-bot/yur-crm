@@ -16,6 +16,7 @@ import { requireCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { listManagedUsers } from '@/lib/users/queries';
 import { listActiveDepartments } from '@/lib/departments/queries';
+import { listManagedUserSalaries } from '@/lib/payroll/queries';
 import { assignableRoles, canManageTargetUser } from '@/lib/types/db';
 import { UserCreateForm } from '@/components/users/user-create-form';
 import {
@@ -24,6 +25,7 @@ import {
 } from '@/components/users/user-row-controls';
 import { UserPermsEditor } from '@/components/users/user-perms-editor';
 import { UserAssignmentEditor } from '@/components/users/user-assignment-editor';
+import { UserSalaryEditor } from '@/components/users/user-salary-editor';
 
 // Управление пользователями, ролями и персональными правами. Доступ — обладатель
 // права manage_users (по умолчанию owner/admin). Ступенчатые права: не-owner
@@ -31,10 +33,14 @@ import { UserAssignmentEditor } from '@/components/users/user-assignment-editor'
 // (private.can_manage_target_user) и server-actions.
 export default async function UsersSettingsPage() {
   const actor = await requireCap('manage_users');
-  const [users, departments] = await Promise.all([
+  const [users, departments, salaries] = await Promise.all([
     listManagedUsers(),
     listActiveDepartments(),
+    listManagedUserSalaries(),
   ]);
+  // Режим/оклад читаются только через DEFINER-RPC (salary_* защищены column-level
+  // привилегиями). Сопоставляем по user_id; отсутствие строки → процент / read-only.
+  const salaryById = new Map(salaries.map((s) => [s.user_id, s]));
   const assignable = assignableRoles(actor.profile.role, actor.caps.manage_users);
   const actorIsOwner = actor.profile.role === 'owner';
   const { t } = await getT();
@@ -82,6 +88,7 @@ export default async function UsersSettingsPage() {
               <TableHead>{t.users.table.colUser}</TableHead>
               <TableHead>{t.users.table.colRole}</TableHead>
               <TableHead>{t.users.table.colDepartment}</TableHead>
+              <TableHead>{t.users.salary.column}</TableHead>
               <TableHead>{t.users.table.colStatus}</TableHead>
               <TableHead className="text-right">{t.users.table.colPerms}</TableHead>
               <TableHead className="text-right">{t.users.table.colAction}</TableHead>
@@ -142,6 +149,24 @@ export default async function UsersSettingsPage() {
                         )}
                       </span>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const sal = salaryById.get(u.id);
+                      // Оклад виден, только если строка пришла из DEFINER-RPC (зона
+                      // видимости зрителя по ЗП). Иначе — скрыт («—»).
+                      if (!u.is_active || !sal) {
+                        return <span className="text-[12px] text-text-subtle">—</span>;
+                      }
+                      return (
+                        <UserSalaryEditor
+                          userId={u.id}
+                          salaryMode={sal.salary_mode}
+                          fixedAmount={sal.salary_fixed_amount}
+                          canEdit={sal.can_edit}
+                        />
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     {u.is_active ? (

@@ -12,10 +12,12 @@ import {
   canManageTargetUser,
   canGrantCapability,
   isRole,
+  isSalaryMode,
   isVisibilityScope,
   CAPABILITIES,
   type Role,
   type PermOverrides,
+  type SalaryMode,
   type VisibilityScope,
 } from '@/lib/types/db';
 
@@ -479,4 +481,76 @@ export async function assignUserDepartmentAction(formData: FormData): Promise<vo
 
   revalidatePath('/settings/users');
   revalidatePath('/settings/departments');
+}
+
+// ============================================================================
+// Режим зарплаты и оклад (v2 Этап 4, bare action — форма редактора).
+// Менять может owner (любому) либо обладатель manage_users (admin) — сотруднику
+// СВОЕГО подразделения, не себе и только управляемых ролей. Дублируется БД-гардом
+// users_guard_salary_fields + private.can_manage_user_salary (зеркало can_edit).
+// Колонки salary_* защищены column-level привилегиями: before-state читаем через
+// SECURITY DEFINER-RPC manage_user_salaries, а не прямым select.
+// ============================================================================
+
+export async function updateUserSalaryAction(formData: FormData): Promise<void> {
+  const actor = await requireUser();
+  if (!actor.caps.manage_users) return;
+
+  const user_id = String(formData.get('user_id') ?? '').trim();
+  if (!UUID_RE.test(user_id)) return;
+
+  const modeRaw = String(formData.get('salary_mode') ?? '').trim();
+  if (!isSalaryMode(modeRaw)) return;
+  const mode: SalaryMode = modeRaw;
+
+  // Оклад: percent → null; fixed/fixed_percent → число ≥ 0 (до 2 знаков).
+  let amount: number | null = null;
+  if (mode !== 'percent') {
+    const amountRaw = String(formData.get('salary_fixed_amount') ?? '')
+      .trim()
+      .replace(',', '.');
+    const parsed = Number(amountRaw);
+    if (amountRaw === '' || !Number.isFinite(parsed) || parsed < 0) return;
+    amount = Math.round(parsed * 100) / 100;
+  }
+
+  const supabase = await createSupabaseServerClient();
+  // before-state и право — через DEFINER-RPC (salary_* недоступны прямым select).
+  const { data: salaries } = await supabase.rpc('manage_user_salaries');
+  const before = (
+    (salaries ?? []) as Array<{
+      user_id: string;
+      salary_mode: SalaryMode;
+      salary_fixed_amount: number | string | null;
+      can_edit: boolean;
+    }>
+  ).find((s) => s.user_id === user_id);
+  if (!before || !before.can_edit) return; // не виден / нет права (зеркало гарда)
+
+  const beforeAmount =
+    before.salary_fixed_amount === null ? null : Number(before.salary_fixed_amount);
+  if (before.salary_mode === mode && beforeAmount === amount) return; // no-op
+
+  // RLS users_update_managed_roles + гард users_guard_salary_fields дублируют.
+  const { error } = await supabase
+    .from('users')
+    .update({ salary_mode: mode, salary_fixed_amount: amount })
+    .eq('id', user_id);
+  if (error) {
+    console.error('updateUserSalaryAction failed:', error.code, error.message);
+    return;
+  }
+
+  await logActivity({
+    entity_type: 'user',
+    entity_id: user_id,
+    action: 'user_salary_changed',
+    changes: {
+      before: { salary_mode: before.salary_mode, salary_fixed_amount: beforeAmount },
+      after: { salary_mode: mode, salary_fixed_amount: amount },
+    },
+  });
+
+  revalidatePath('/settings/users');
+  revalidatePath(`/reports/payroll/${user_id}`);
 }
