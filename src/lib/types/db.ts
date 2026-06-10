@@ -749,6 +749,35 @@ export type OrgRequisites = {
 };
 
 // =====================================================================
+// Absences — отпуска/отсутствия сотрудника (v2 Этап 6). Видимость по
+// подразделению (как дела); RLS — private.absence_user_visible / absence_can_write.
+// =====================================================================
+
+export type AbsenceKind = 'vacation' | 'sick' | 'other';
+
+export const ABSENCE_KINDS: ReadonlyArray<AbsenceKind> = ['vacation', 'sick', 'other'];
+
+export function isAbsenceKind(value: unknown): value is AbsenceKind {
+  return value === 'vacation' || value === 'sick' || value === 'other';
+}
+
+export type Absence = {
+  id: string;
+  user_id: string;
+  kind: AbsenceKind;
+  starts_on: string; // date YYYY-MM-DD
+  ends_on: string;   // date YYYY-MM-DD
+  note: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+// Отсутствие + имя сотрудника (для общего календаря, где видны отпуска подразделения).
+export type AbsenceWithUser = Absence & {
+  user: { id: string; full_name: string } | null;
+};
+
+// =====================================================================
 // Payments — оплаты по делу (CLAUDE.md §5, §8 Phase 1).
 // paid_total и debt пересчитываются триггерами в БД — UI читает их из cases.
 // =====================================================================

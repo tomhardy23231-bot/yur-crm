@@ -29,6 +29,84 @@
 
 ---
 
+## Сессия 2026-06-10 (7) — v2 Этап 6: Отпуска / отсутствия ✅
+
+_Этап 6 из 7 (docs/PLAN-V2.md). Новая сущность `absences` (отпуск/больничный/иное на
+период) с РОЛЕВОЙ видимостью по подразделению; блок на карточке сотрудника + маркеры в
+общем календаре. Этапы 1–5 уже закрыты._
+
+### Что сделано
+- **Миграция `20260610180000_absences.sql`** (аддитивная): таблица `absences`
+  (`user_id` → users on delete cascade, `kind` vacation|sick|other, `starts_on`/`ends_on`
+  + CHECK `ends_on ≥ starts_on`, `note` ≤500, `created_by` restrict; индексы по user_id и
+  диапазону). **2 предиката доступа (SECURITY DEFINER, search_path=''):**
+  - `private.absence_user_visible(user_id)` — ЧТЕНИЕ: сам · owner · admin/office_manager
+    своего подразделения (либо `scope_is_all()` = scope='all'/dept NULL);
+  - `private.absence_can_write(user_id)` — ЗАПИСЬ: сам · owner · **admin** подразделения.
+    office_manager СЮДА НЕ входит (внешний гейт `current_user_role()='admin'`) — он
+    отсутствия только читает (PLAN-V2 §6).
+  - **RLS:** SELECT (`absence_user_visible`), INSERT (`created_by=active_uid()` AND
+    `absence_can_write`), DELETE (`absence_can_write` ИЛИ автор). **UPDATE-политики НЕТ**
+    (правка = удалить+создать). `activity_log` НЕ трогали (не «по делам» → гоча 23514 не
+    задета).
+- **Слой данных:** `lib/absences/queries.ts` (`listAbsencesByUser`,
+  `listAbsencesInRange` — overlap по диапазону для календаря), `actions.ts`
+  (`createAbsenceAction`/`deleteAbsenceAction`, ранний гейт через `canManageAbsencesOf`),
+  `access.ts` (чистые TS-предикаты `canViewAbsencesOf`/`canManageAbsencesOf` — зеркало
+  SQL, под юнит-тест). Типы `Absence`/`AbsenceKind`/`AbsenceWithUser` в `types/db.ts`.
+- **UI:** блок «Отпуска и отсутствия» (`components/absences/{absences-block,
+  absence-create-form,delete-absence-button}.tsx`) внизу карточки
+  `/reports/payroll/[userId]` (бейджи типа, период, дней, статус сейчас/предстоит/
+  завершено, форма+удаление видны при `canManage`); в общем календаре `/calendar` —
+  violet-маркеры (раскрытие диапазона по дням сетки), пункт легенды, список в панели дня.
+- **i18n** ru/uk: словарь `absences` (+register в index), enum `absenceKind`. Токен
+  `--absence` (#7C3AED) в globals.css + `@theme inline` + таблица семантики DESIGN.md.
+
+### Решения и почему
+- **Доступ ролевой, не по cap.** Спека §6 формулирует видимость через роли
+  (admin/office_manager своего подразделения), а не через `view_all_payroll`. Поэтому 2
+  отдельных предиката, а не переиспользование `payroll_user_visible` (иначе отзыв
+  ЗП-права у руководителя сломал бы видимость отпусков — семантически неверно).
+- **office_manager только читает** (PLAN-V2 §6): write-гейт `current_user_role()='admin'`.
+- **Сотрудник может удалить свой отпуск** (DELETE: автор `created_by=active_uid`) —
+  мягкое расширение спеки, согласовано в плане сессии («ок»).
+- **Календарь — пер-дневные маркеры** (не спан-полосы): ложится на текущую модель
+  day-cell. Блок — на карточке `/reports/payroll/[userId]` (единственная «карточка
+  сотрудника»; сам сотрудник всегда видит свою).
+- **Без `activity_log`** (отпуска не «по делам»; DoD §6 логирование не требует).
+
+### Проверки (DoD)
+- `npx supabase db reset` — чисто; tsc/lint/build — зелёные.
+- unit **81/81** (+13 предикаты доступа), integration **72/72** (+20 RLS отпусков:
+  видимость сам/admin-своё/admin-чужое/office_manager-чтение/scope=all/NULL/owner;
+  INSERT сам/admin/owner + запреты чужому/office_manager/спуф created_by; DELETE
+  admin-своё/автор + запреты office_manager/чужой admin; CHECK range/kind).
+- Фикстуры расширены: добавлены `owner` и `officeKyiv` (office_manager) + чистка
+  `absences` в `destroyWorld`. Починена коллизия email в `system.test.ts` (тест
+  department-CRUD отрефакторен на `world.users.owner` вместо собственного IT-owner).
+- Ревью — 6-агентный адверсариальный workflow (security/RLS + корректность + полнота →
+  верификация каждой находки; gstack на Windows не идёт). Эксплуатируемых CRIT/HIGH/MED
+  нет. 2 LOW исправлены: комментарий о намеренном silent-fail `deleteAbsenceAction`
+  (зеркало `deleteActAction`), `--absence` внесён в DESIGN.md.
+
+### Незакрытые вопросы / заметки для следующих этапов
+- [ ] **Пуш на прод НЕ делался** (ни git push, ни db push) — ждёт «ок». Миграция
+  аддитивная; `activity_log` не трогали (23514 не грозит); дамп прода перед push
+  обязателен (PLAN-V2 «Бэкап и откат»). Хеш Этапа 6 → follow-up в статус-таблице.
+- [ ] **Браузерный `/qa`** по отпускам (добавить/удалить из карточки, увидеть в
+  календаре, проверить скоуп office_manager) не прогонялся — нужен живой dev. Автогейты
+  зелёные.
+- [ ] **Этап 7 (Касса и сальдо-отчёт)** — следующий и ПОСЛЕДНИЙ ⬜. Образец
+  `docs/samples/oborotka-olimp-sample.xls`. Право `users.can_manage_cash`, `cash_accounts`
+  /`cash_entries`, автоприход платежей, отчёт `/reports/cash` с разворотом по дням.
+
+### Handoff для следующей сессии
+- **Стартовать с:** CLAUDE.md → docs/PLAN-V2.md (следующий ⬜ — **Этап 7 «Касса»**) → эта запись.
+- Локальный Supabase: порт 48321 (Studio :48323). Тестовые логины — `scripts/seed.ts`.
+- Новый токен дизайна: `--absence` (#7C3AED violet) — для новых «отсутствие»-элементов.
+
+---
+
 ## Сессия 2026-06-10 (6) — v2 Этап 5: Акты (Рахунок-Акт) как платёжные документы ✅
 
 _Этап 5 из 7 (docs/PLAN-V2.md). Цикл: акт issued → подтверждение оплаты (скан+сумма) →

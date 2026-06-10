@@ -38,7 +38,10 @@ import {
   monthParam,
   nextMonth,
 } from '@/lib/payroll/month';
-import { MANAGER_ROLES } from '@/lib/types/db';
+import { listAbsencesByUser } from '@/lib/absences/queries';
+import { canManageAbsencesOf } from '@/lib/absences/access';
+import { AbsencesBlock } from '@/components/absences/absences-block';
+import { MANAGER_ROLES, type Role } from '@/lib/types/db';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
@@ -75,19 +78,32 @@ export default async function PayrollEmployeePage({
 
   const supabase = await createSupabaseServerClient();
   // За месяц — для цифр секций; за всё время — для накопленного долга и модалки выплаты.
-  const [{ data: userRow }, summary, monthCases, allCases, monthTx, allTx] =
+  const [{ data: userRow }, summary, monthCases, allCases, monthTx, allTx, absences] =
     await Promise.all([
       supabase
         .from('users')
-        .select('full_name')
+        .select('full_name, department_id, role')
         .eq('id', userId)
-        .maybeSingle<{ full_name: string }>(),
+        .maybeSingle<{ full_name: string; department_id: string | null; role: Role }>(),
       getPayrollEmployeeSummary(month),
       getPayrollEmployeeCases(userId, month),
       getPayrollEmployeeCases(userId),
       getPayrollTransactions(userId, month),
       getPayrollTransactions(userId),
+      listAbsencesByUser(userId),
     ]);
+
+  // Может ли зритель вносить/удалять отсутствия этого сотрудника (зеркало RLS
+  // absence_can_write): сам / owner / admin своего подразделения.
+  const canManageAbsences = canManageAbsencesOf(
+    {
+      id: user.profile.id,
+      role: user.profile.role,
+      department_id: user.profile.department_id,
+      visibility_scope: user.profile.visibility_scope,
+    },
+    { id: userId, department_id: userRow?.department_id ?? null },
+  );
 
   const row = summary.find((r) => r.user_id === userId);
   const fullName = userRow?.full_name ?? row?.full_name ?? t.payroll.employee.fallbackName;
@@ -544,6 +560,9 @@ export default async function PayrollEmployeePage({
           </ul>
         )}
       </section>
+
+      {/* Отпуска / отсутствия (v2 Этап 6) */}
+      <AbsencesBlock userId={userId} absences={absences} canManage={canManageAbsences} />
     </main>
   );
 }

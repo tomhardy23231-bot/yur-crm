@@ -214,6 +214,21 @@ opponent, court_case_number, court, closed_at, created_at`
 `id, case_id, title, description, kind (task|hearing|deadline), assignee_id, created_by, due_at, status (open|done), created_at`
 — юрист (продажник) и staff могут ставить задачи. Питает общий календарь.
 
+**absences** (отпуска/отсутствия сотрудника) — v2 Этап 6
+`id, user_id (→ users, on delete cascade), kind (vacation|sick|other, default vacation),
+starts_on date, ends_on date (check ends_on ≥ starts_on), note (≤500), created_by
+(→ users restrict), created_at`
+— отпуск/больничный/иное отсутствие сотрудника на период. **Видимость — РОЛЕВАЯ, по
+подразделению** (не по cap, в отличие от ЗП): читают — сам сотрудник, owner (всё),
+admin/office_manager своего подразделения (либо `visibility_scope='all'` /
+`department_id IS NULL` — переходное); вносят (INSERT) — сам, owner, admin своего
+подразделения (office_manager **только читает**); удаляют — кто вправе писать ИЛИ автор
+записи (сотрудник может снять свой отпуск). UPDATE-политики НЕТ (правка = удалить +
+создать). Предикаты `private.absence_user_visible(user_id)` / `private.absence_can_write(user_id)`
+(SECURITY DEFINER, зеркало в TS — `lib/absences/access.ts`). `activity_log` для отпусков
+НЕ ведётся (не «по делам»). Показывается в карточке сотрудника (`/reports/payroll/[userId]`)
+и в общем календаре (violet-маркер `--absence`, отличим от заседаний/дедлайнов).
+
 **payments** (оплаты)
 `id, case_id, amount, paid_at, method, note, created_by, act_id (опц. → case_acts)`
 — `paid_total` и `debt` в case считаются из платежей и `contract_sum` (триггеры).
@@ -355,18 +370,21 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 > сальдо-отчётом. Разделы §4–§7 описывают систему ДО v2 — по мере закрытия этапов
 > они обновляются (это часть DoD каждого этапа).
 >
-> **Готово (этапы 1–5):** БД-фундамент подразделений + департаментная RLS-видимость
+> **Готово (этапы 1–6):** БД-фундамент подразделений + департаментная RLS-видимость
 > (§4–§5, §7), **UI** подразделений (`/settings/departments`, поля в `/settings/users`
 > и форме создания, фильтр «Подразделение» в `/cases` и `/reports/payroll`),
 > **ЗП-режимы** (Этап 4): `users.salary_mode` (percent/fixed/fixed_percent) +
 > `salary_fixed_amount`, гард прав owner/admin-подразделения, редактор «Зарплата» в
 > `/settings/users`, колонка «Оклад (мес.)» в отчёте и блок оклада на карточке
-> сотрудника; отчётные функции учитывают режим (§5, §7-4), и **Акты** (Этап 5):
+> сотрудника; отчётные функции учитывают режим (§5, §7-4), **Акты** (Этап 5):
 > `case_acts` (Рахунок-Акт: issued→paid, скан+сумма→автоплатёж→ЗП, completion
 > накопительно), `org_requisites` (реквизиты, `/settings/requisites`), `payments.act_id`,
 > печатная форма XLSX по образцу, секция «Акты» на карточке дела; закрытие дела —
-> мягкое предупреждение (жёсткий блок не включён, см. §6/§7-8). Дальше — этапы 6–7
-> (отпуска, касса).
+> мягкое предупреждение (жёсткий блок не включён, см. §6/§7-8), и **Отпуска** (Этап 6):
+> `absences` (vacation/sick/other, период, ролевая видимость по подразделению —
+> `private.absence_user_visible`/`absence_can_write`; office_manager только читает),
+> блок «Отпуска и отсутствия» на карточке сотрудника + violet-маркеры в общем
+> календаре (`--absence`). Дальше — этап 7 (касса с сальдо-отчётом).
 
 **Phase 1 — MVP (готово):**
 - Auth + роли + RLS (модель доступа из §4);

@@ -21,6 +21,7 @@ import { caseCard } from './caseCard';
 import { tasks } from './tasks';
 import { comments } from './comments';
 import { calendar } from './calendar';
+import { absences } from './absences';
 import { documents } from './documents';
 import { acts } from './acts';
 import { requisites } from './requisites';
@@ -50,6 +51,7 @@ export const uk: Messages = {
   tasks,
   comments,
   calendar,
+  absences,
   documents,
   acts,
   requisites,

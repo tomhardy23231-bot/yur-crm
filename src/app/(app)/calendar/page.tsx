@@ -9,14 +9,19 @@ import { getT } from '@/lib/i18n/server';
 import { LOCALE_BCP47 } from '@/lib/i18n/config';
 import type { CalendarMessages } from '@/lib/i18n/messages/ru/calendar';
 import { listTasksInRange } from '@/lib/tasks/queries';
+import { listAbsencesInRange } from '@/lib/absences/queries';
 import { cn } from '@/lib/utils';
-import type { TaskKind, TaskWithRefs } from '@/lib/types/db';
+import type { TaskKind, TaskWithRefs, AbsenceWithUser } from '@/lib/types/db';
 
 const KIND_DOT: Record<TaskKind, string> = {
   task: 'bg-text-muted',
   hearing: 'bg-info',
   deadline: 'bg-warning',
 };
+
+// Отсутствия (отпуска/больничные) — единый violet-маркер (--absence), отличимый
+// от видов задач. Тип отсутствия раскрывается в панели дня (v2 Этап 6).
+const ABSENCE_DOT = 'bg-absence';
 
 export default async function CalendarPage({
   searchParams,
@@ -45,12 +50,14 @@ export default async function CalendarPage({
   const gridStart = startOfWeekMonday(firstOfMonth);
   const gridEnd = addDays(gridStart, 42);
 
-  const tasks = await listTasksInRange({
-    from: gridStart.toISOString(),
-    to: gridEnd.toISOString(),
-  });
+  // Последний день сетки (включительно) — для overlap-выборки отсутствий по диапазону.
+  const gridLastKey = isoDayKey(addDays(gridStart, 41));
+  const [tasks, absences] = await Promise.all([
+    listTasksInRange({ from: gridStart.toISOString(), to: gridEnd.toISOString() }),
+    listAbsencesInRange({ from: isoDayKey(gridStart), to: gridLastKey }),
+  ]);
 
-  // Группируем по локальному дню (YYYY-MM-DD).
+  // Группируем задачи по локальному дню (YYYY-MM-DD).
   const tasksByDay = new Map<string, TaskWithRefs[]>();
   for (const t of tasks) {
     if (!t.due_at) continue;
@@ -60,9 +67,14 @@ export default async function CalendarPage({
     tasksByDay.set(key, arr);
   }
 
+  // Отсутствия охватывают диапазон дат — раскрываем их в каждый покрытый день сетки.
+  const absencesOnDay = (key: string): AbsenceWithUser[] =>
+    absences.filter((a) => key >= a.starts_on && key <= a.ends_on);
+
   const todayKey = isoDayKey(today);
   const selectedDayKey = sp.day && /^\d{4}-\d{2}-\d{2}$/.test(sp.day) ? sp.day : '';
   const selectedDayTasks = selectedDayKey ? (tasksByDay.get(selectedDayKey) ?? []) : [];
+  const selectedDayAbsences = selectedDayKey ? absencesOnDay(selectedDayKey) : [];
   const selectedDate = selectedDayKey ? new Date(selectedDayKey + 'T00:00:00') : null;
 
   // Заголовок месяца, ссылки prev/next.
@@ -78,6 +90,7 @@ export default async function CalendarPage({
     inMonth: boolean;
     isToday: boolean;
     tasks: TaskWithRefs[];
+    absences: AbsenceWithUser[];
   }> = [];
   for (let i = 0; i < 42; i++) {
     const d = addDays(gridStart, i);
@@ -88,6 +101,7 @@ export default async function CalendarPage({
       inMonth: d.getMonth() === monthIdx,
       isToday: key === todayKey,
       tasks: tasksByDay.get(key) ?? [],
+      absences: absencesOnDay(key),
     });
   }
 
@@ -130,7 +144,7 @@ export default async function CalendarPage({
         <NavLink href={buildHref({ month: nextMonth, day: null })} ariaLabel={t.calendar.nextMonth}>
           <ChevronRight size={14} strokeWidth={1.75} />
         </NavLink>
-        <Legend labels={t.enums.taskKind} />
+        <Legend labels={t.enums.taskKind} absenceLabel={t.absences.calendar.legend} />
       </div>
 
       <Card className="overflow-hidden">
@@ -153,6 +167,7 @@ export default async function CalendarPage({
               key={cell.key}
               date={cell.date}
               tasks={cell.tasks}
+              absences={cell.absences}
               inMonth={cell.inMonth}
               isToday={cell.isToday}
               isSelected={cell.key === selectedDayKey}
@@ -178,23 +193,47 @@ export default async function CalendarPage({
               {t.calendar.hide}
             </Link>
           </div>
-          {selectedDayTasks.length === 0 ? (
+          {selectedDayTasks.length === 0 && selectedDayAbsences.length === 0 ? (
             <Card className="py-10 px-6 text-center">
               <p className="text-[13px] text-text-muted">
                 {t.calendar.noTasksDay}
               </p>
             </Card>
           ) : (
-            <Card className="overflow-hidden">
-              {selectedDayTasks.map((t) => (
-                <TaskRow key={t.id} task={t} canManage={true} showCase />
-              ))}
-            </Card>
+            <>
+              {selectedDayTasks.length > 0 && (
+                <Card className="overflow-hidden">
+                  {selectedDayTasks.map((t) => (
+                    <TaskRow key={t.id} task={t} canManage={true} showCase />
+                  ))}
+                </Card>
+              )}
+              {selectedDayAbsences.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
+                    {t.absences.calendar.dayHeading}
+                  </h3>
+                  <Card className="divide-y divide-border overflow-hidden">
+                    {selectedDayAbsences.map((a) => (
+                      <div key={a.id} className="flex items-center gap-2.5 px-4 py-2.5">
+                        <span className={cn('h-2 w-2 shrink-0 rounded-full', ABSENCE_DOT)} aria-hidden="true" />
+                        <span className="text-[13.5px] font-medium text-text">
+                          {a.user?.full_name ?? '—'}
+                        </span>
+                        <span className="text-[12.5px] text-text-muted">
+                          · {t.enums.absenceKind[a.kind]}
+                        </span>
+                      </div>
+                    ))}
+                  </Card>
+                </div>
+              )}
+            </>
           )}
         </section>
       )}
 
-      {tasks.length === 0 && !selectedDate && (
+      {tasks.length === 0 && absences.length === 0 && !selectedDate && (
         <div className="flex items-center gap-2 text-[13px] text-text-muted">
           <CalendarDays size={14} strokeWidth={1.75} />
           {t.calendar.noTasksMonth}
@@ -207,6 +246,7 @@ export default async function CalendarPage({
 function DayCell({
   date,
   tasks,
+  absences,
   inMonth,
   isToday,
   isSelected,
@@ -214,14 +254,19 @@ function DayCell({
 }: {
   date: Date;
   tasks: TaskWithRefs[];
+  absences: AbsenceWithUser[];
   inMonth: boolean;
   isToday: boolean;
   isSelected: boolean;
   href: string;
 }) {
   const dayNum = date.getDate();
-  const visible = tasks.slice(0, 3);
-  const extra = tasks.length - visible.length;
+  const shownAbs = absences.slice(0, 2);
+  const shownTasks = tasks.slice(0, 3);
+  // Переполнение списка ≥sm — суммарно по обоим типам.
+  const extra =
+    (absences.length - shownAbs.length) + (tasks.length - shownTasks.length);
+  const hasItems = tasks.length > 0 || absences.length > 0;
 
   return (
     <Link
@@ -248,10 +293,17 @@ function DayCell({
         {dayNum}
       </span>
 
-      {tasks.length > 0 && (
+      {hasItems && (
         <>
-          {/* Мобильные: компактный ряд цветных точек (по виду задачи). */}
+          {/* Мобильные: ряд точек — сначала отсутствия (violet), затем задачи. */}
           <div className="mt-0.5 flex flex-wrap items-center gap-1 sm:hidden">
+            {absences.slice(0, 2).map((a) => (
+              <span
+                key={a.id}
+                className={cn('h-1.5 w-1.5 rounded-full', ABSENCE_DOT)}
+                aria-hidden="true"
+              />
+            ))}
             {tasks.slice(0, 4).map((t) => (
               <span
                 key={t.id}
@@ -263,16 +315,25 @@ function DayCell({
                 aria-hidden="true"
               />
             ))}
-            {tasks.length > 4 && (
+            {(tasks.length > 4 || absences.length > 2) && (
               <span className="text-[9px] font-semibold leading-none text-text-muted">
-                +{tasks.length - 4}
+                +{Math.max(0, tasks.length - 4) + Math.max(0, absences.length - 2)}
               </span>
             )}
           </div>
 
-          {/* ≥ sm: список с названиями. */}
+          {/* ≥ sm: список — отсутствия (имя сотрудника) + задачи (название). */}
           <ul className="hidden flex-col gap-0.5 sm:flex">
-            {visible.map((t) => (
+            {shownAbs.map((a) => (
+              <li key={a.id} className="flex items-center gap-1 text-[11px] leading-tight truncate">
+                <span
+                  className={cn('w-1.5 h-1.5 rounded-full shrink-0', ABSENCE_DOT)}
+                  aria-hidden="true"
+                />
+                <span className="truncate text-text">{a.user?.full_name ?? '—'}</span>
+              </li>
+            ))}
+            {shownTasks.map((t) => (
               <li
                 key={t.id}
                 className={cn(
@@ -322,12 +383,13 @@ function NavLink({
   );
 }
 
-function Legend({ labels }: { labels: Record<TaskKind, string> }) {
+function Legend({ labels, absenceLabel }: { labels: Record<TaskKind, string>; absenceLabel: string }) {
   return (
     <div className="ml-auto flex flex-wrap items-center gap-3 text-[11px] text-text-muted">
       <LegendItem dotClass={KIND_DOT.task} label={labels.task} />
       <LegendItem dotClass={KIND_DOT.hearing} label={labels.hearing} />
       <LegendItem dotClass={KIND_DOT.deadline} label={labels.deadline} />
+      <LegendItem dotClass={ABSENCE_DOT} label={absenceLabel} />
     </div>
   );
 }

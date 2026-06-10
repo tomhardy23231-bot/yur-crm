@@ -37,14 +37,18 @@ export type World = {
   prefix: string; // 'IT-<runId>-' — фильтр наших дел среди прочих в БД
   admin: SupabaseClient;
   users: Record<
+    // owner — режим бога (видит/правит всё, для матрицы отпусков Этапа 6);
     // staffAdmin — БЕЗ подразделения (переходное правило «NULL = видит всё»);
     // kyivAdmin/dniproAdmin/lvivAdmin — admin scope='department' своего филиала;
-    // allAdmin — admin в Києві, но scope='all' (видит всю компанию).
+    // allAdmin — admin в Києві, но scope='all' (видит всю компанию);
+    // officeKyiv — office_manager Києва (видит отпуска подразделения, но НЕ пишет).
+    | 'owner'
     | 'staffAdmin'
     | 'kyivAdmin'
     | 'dniproAdmin'
     | 'lvivAdmin'
     | 'allAdmin'
+    | 'officeKyiv'
     | 'lawyer1'
     | 'lawyer2'
     | 'expert1'
@@ -59,7 +63,7 @@ export type World = {
   caseS: string; // lawyer1(Київ) + expert1(Дніпро), document, new_request → видят Київ і Дніпро
 };
 
-type Role = 'admin' | 'lawyer' | 'expert';
+type Role = 'owner' | 'admin' | 'office_manager' | 'lawyer' | 'expert';
 
 type UserOpts = {
   department?: string | null; // имя подразделения из миграции 20260610100000 (null — вне структуры)
@@ -110,6 +114,8 @@ export async function createWorld(): Promise<World> {
     return { id, email };
   }
 
+  // owner — режим бога (видит и правит отпуска кого угодно; Этап 6).
+  const owner = await mkUser('owner', 'owner');
   // staffAdmin — без подразделения: переходное правило «NULL = видит всё».
   const staffAdmin = await mkUser('admin', 'admin');
   // Скоупленные руководители подразделений (scope='department' по умолчанию).
@@ -118,6 +124,8 @@ export async function createWorld(): Promise<World> {
   const lvivAdmin = await mkUser('lvivadmin', 'admin', { department: 'Львівський' });
   // Admin в Києві, но видит всю компанию (scope='all' перекрывает подразделение).
   const allAdmin = await mkUser('alladmin', 'admin', { department: 'Київський', scope: 'all' });
+  // office_manager Києва — для матрицы отпусков: читает отсутствия подразделения, НЕ пишет.
+  const officeKyiv = await mkUser('officekyiv', 'office_manager', { department: 'Київський' });
   const lawyer1 = await mkUser('lawyer1', 'lawyer', { department: 'Київський' });
   const lawyer2 = await mkUser('lawyer2', 'lawyer', { department: 'Дніпровський' });
   const expert1 = await mkUser('expert1', 'expert', { department: 'Дніпровський' });
@@ -183,11 +191,13 @@ export async function createWorld(): Promise<World> {
     prefix,
     admin,
     users: {
+      owner,
       staffAdmin,
       kyivAdmin,
       dniproAdmin,
       lvivAdmin,
       allAdmin,
+      officeKyiv,
       lawyer1,
       lawyer2,
       expert1,
@@ -215,6 +225,10 @@ export async function destroyWorld(w: World): Promise<void> {
   await admin.from('tasks').delete().in('case_id', caseIds);
   await admin.from('cases').delete().in('id', caseIds);
   await admin.from('clients').delete().eq('id', w.clientId);
+  // absences (Этап 6): user_id ON DELETE CASCADE, но created_by RESTRICT — чистим до
+  // удаления пользователей (и по user_id, и по created_by — на случай чужого автора).
+  await admin.from('absences').delete().in('user_id', userIds);
+  await admin.from('absences').delete().in('created_by', userIds);
   await admin.from('users').delete().in('id', userIds);
   for (const id of userIds) {
     await admin.auth.admin.deleteUser(id);

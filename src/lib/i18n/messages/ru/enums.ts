@@ -75,6 +75,13 @@ export const enums = {
     deadline: 'Дедлайн',
   },
 
+  // Тип отсутствия сотрудника (v2 Этап 6).
+  absenceKind: {
+    vacation: 'Отпуск',
+    sick: 'Больничный',
+    other: 'Отсутствие',
+  },
+
   taskStatus: {
     open: 'Открыта',
     done: 'Завершена',

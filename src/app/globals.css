@@ -70,6 +70,8 @@
   --error-bg:   #FEE2E2;
   --info:       #2563EB;  /* = primary (синий) */
   --info-bg:    #DBE7FE;
+  --absence:    #7C3AED;  /* violet — отпуска/отсутствия в календаре (v2 Этап 6) */
+  --absence-bg: #EDE9FE;
 
   /* Priority (в БД normal|urgent; mid оставлен на будущее) */
   --prio-low:     #16A34A;
@@ -169,6 +171,8 @@
   --color-error-bg:   var(--error-bg);
   --color-info:       var(--info);
   --color-info-bg:    var(--info-bg);
+  --color-absence:    var(--absence);
+  --color-absence-bg: var(--absence-bg);
 
   /* Priority */
   --color-prio-low:     var(--prio-low);
