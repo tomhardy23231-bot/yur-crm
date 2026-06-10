@@ -20,6 +20,8 @@ import { tasks } from './tasks';
 import { comments } from './comments';
 import { calendar } from './calendar';
 import { documents } from './documents';
+import { acts } from './acts';
+import { requisites } from './requisites';
 import { payments } from './payments';
 import { payroll } from './payroll';
 import { payrollPrint } from './payrollPrint';
@@ -47,6 +49,8 @@ export const ru = {
   comments,
   calendar,
   documents,
+  acts,
+  requisites,
   payments,
   payroll,
   payrollPrint,

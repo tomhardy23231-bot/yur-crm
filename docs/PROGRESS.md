@@ -29,6 +29,96 @@
 
 ---
 
+## Сессия 2026-06-10 (6) — v2 Этап 5: Акты (Рахунок-Акт) как платёжные документы ✅
+
+_Этап 5 из 7 (docs/PLAN-V2.md). Цикл: акт issued → подтверждение оплаты (скан+сумма) →
+автоплатёж по делу → пересчёт долга/ЗП → completion накопительно. Согласованы 3 развилки:
+печать = exceljs→XLSX; реквизиты = таблица org_requisites; закрытие дела = мягкое
+предупреждение (без жёсткого блока). Перед этим закоммичен хвост Этапа 4 (e9ee0da +
+hash-коммит dc924d8)._
+
+### Что сделано
+- **3 миграции (аддитивные):**
+  - `20260610150000_org_requisites.sql` — single-row (id=1) реквизиты ВИКОНАВЦЯ
+    (org_name/edrpou/address/phone/iban/bank_name/mfo/tax_status_lines[]); RLS SELECT
+    всем активным, UPDATE только owner; засеяна реквизитами ОЛІМП из образца.
+  - `20260610160000_case_acts.sql` — таблица `case_acts` (number через sequence,
+    amount/confirmed_amount/completion/status/issued_at/paid_at/scan_document_id +
+    CHECK консистентности issued↔paid) + `payments.act_id` (unique, один платёж на акт).
+    RLS: SELECT от дела (`can_see_case`), INSERT Експерт своего дела/staff,
+    DELETE только issued (owner/admin или автор), **UPDATE-политики НЕТ** (статус paid
+    меняется только через DEFINER-RPC → нет тамперинга). DEFINER `confirm_act_paid`
+    (FOR UPDATE → атомарно: скан→documents + payment(act_id) + акт paid + пересчёт
+    completion + журнал; право: lawyer дела ИЛИ owner/admin по роли),
+    `set_act_completion` (staff override), `recompute_case_act_completions` (единый
+    источник completion — накопительно по paid_at), триггер
+    `case_acts_revert_on_payment_delete` (удаление платежа → акт обратно в issued +
+    пересчёт completion дела).
+  - `20260610170000_activity_log_act_actions.sql` — + `act_created`/`act_paid`
+    (entity_type='case'), мёрдж всего прежнего allowlist (база 20260610140000 — 23514
+    не задета).
+- **Слой данных:** типы `CaseAct`/`CaseActWithScan`/`OrgRequisites`/`ActStatus`/
+  `ActCompletion`; `lib/org` (get/update requisites owner), `lib/acts`
+  (queries: listActsByCase/getActPrintData; actions: createAct/confirmActPaid[скан→
+  storage→RPC, откат storage]/deleteAct/setActCompletion; xlsx-генератор;
+  amount-in-words укр.).
+- **UI:** секция «Акты» на карточке дела (`CaseActsBlock` + формы создания/подтверждения
+  + контролы удаления/override), `/settings/requisites` + плитка в хабе, маршрут
+  `/cases/:id/acts/:actId/xlsx` (скачивание XLSX). Поле tax_id формы клиента уже было
+  (`clients.inn`).
+- **i18n** ru/uk: словари `acts`, `requisites`, enum `actStatus`/`actCompletion`,
+  `settings.requisitesCard`.
+
+### Решения и почему
+- **Печать = exceljs→XLSX** (выбор пользователя), сборка кодом по merge-карте образца
+  `rahunok-akt-sample.xlsx` (без бинарного шаблона). Сумма прописью — своя укр-утилита
+  (совпадает с образцом «Дев'ятнадцять тисяч гривень 00 копійок»).
+- **Реквизиты — отдельная таблица** (generic app_settings в проекте нет).
+- **Закрытие — мягкое предупреждение** (без жёсткого блока): решение пользователя, до
+  подтверждения клиентом; completion всё равно считается (бейджи + будущий блок одной
+  правкой). Открытый вопрос №1 PLAN-V2 переведён в «решено: пока soft».
+- **`tax_id` не вводили** — есть `clients.inn` (РНОКПП/ЄДРПОУ), форма уже собирает.
+- **«Право эксперта на задачи» уже работало** (RLS `can_write_case` + UI `canEdit`
+  включают responsible_id) — только правка §7-6 в доках.
+- **Скан создаётся ВНУТРИ confirm_act_paid** (а не отдельным INSERT в action) — чтобы
+  при ошибке RPC не оставалось осиротевшей documents-строки (юрист не имеет DELETE на
+  documents); action откатывает лишь storage-файл.
+
+### Проверки (DoD)
+- `npx supabase db reset` — чисто; tsc/lint/build — зелёные.
+- unit **68/68** (+10 сумма прописью, +4 XLSX-генератор), integration **52/52**
+  (+7: создание Експерт / запрет lawyer; запрет подтверждения Експертом; подтверждение
+  lawyer → full + платёж + долг 0 + скан-документ; повторное подтверждение отвергнуто;
+  partial; реверт акта при удалении платежа).
+- Ревью — 2 адверсариальных агента (security/RLS + корректность; gstack на Windows не
+  идёт). Эксплуатируемых CRIT/HIGH нет. Исправлено 4 MEDIUM: (1) рассинхрон гейта
+  подтверждения (action/UI выровнены на роль owner/admin = RPC `can_manage_users`),
+  (2) осиротевший documents при откате (скан внутри атомарной RPC), (3) стейл completion
+  соседних актов при удалении платежа (recompute из реверта), (4) FOR UPDATE в confirm +
+  сверка case_id в xlsx-route. Печать «Усього/До оплати» = `amount` (сумма счёта) —
+  by design.
+
+### Незакрытые вопросы / заметки для следующих этапов
+- [ ] **Пуш на прод НЕ делался** (ни git push, ни db push) — ждёт «ок». При `db push`:
+  миграции аддитивные; allowlist мёрджем (23514 не грозит); дамп прода перед push
+  обязателен (PLAN-V2 «Бэкап и откат»). Хеш Этапа 5 → follow-up в таблице.
+- [ ] **allowlist activity_log** теперь включает `act_created`/`act_paid` — база мёрджа
+  для будущих миграций = **20260610170000**.
+- [ ] **Браузерный `/qa`** по флоу актов (создать → скачать XLSX → подтвердить оплату →
+  проверить долг/ЗП) не прогонялся (нужен живой dev). Печатную форму сверить с образцом
+  глазами. Автогейты зелёные.
+- [ ] **Жёсткий блок закрытия** (нет акта full+paid → нельзя в closed) — включается одной
+  правкой триггера, если клиент подтвердит (PLAN-V2 Открытый вопрос №1).
+- [ ] **Этап 6 (Отпуска / отсутствия)** — следующий ⬜.
+
+### Handoff для следующей сессии
+- **Стартовать с:** CLAUDE.md → docs/PLAN-V2.md (следующий ⬜ — **Этап 6 «Отпуска /
+  отсутствия»**) → эта запись.
+- Локальный Supabase: порт 48321 (Studio :48323). Тестовые логины — `scripts/seed.ts`.
+- Новая зависимость: **exceljs** (генерация XLSX, серверный модуль `lib/acts/xlsx.ts`).
+
+---
+
 ## Сессия 2026-06-10 (5) — v2 Этап 4: ЗП-режимы (фикс / фикс+% / %) ✅
 
 _Этап 4 из 7 (docs/PLAN-V2.md). Режим оплаты труда на сотруднике + права руководителя

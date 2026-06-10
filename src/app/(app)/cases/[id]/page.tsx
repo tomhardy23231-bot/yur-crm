@@ -20,12 +20,14 @@ import { PriorityBadge } from '@/components/cases/priority-badge';
 import { CaseActivityBlock } from '@/components/activity/case-activity-block';
 import { CaseCommentsBlock } from '@/components/comments/case-comments-block';
 import { CaseDocumentsBlock } from '@/components/documents/case-documents-block';
+import { CaseActsBlock } from '@/components/acts/case-acts-block';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { requireUser } from '@/lib/auth/require-role';
 import { cn, daysSince, formatMoney, formatPercent } from '@/lib/utils';
 import { getCase } from '@/lib/cases/queries';
 import { getCasePayroll, getCasePaidByRole } from '@/lib/payroll/queries';
 import { caseHasDocOfType } from '@/lib/documents/queries';
+import { getOrgRequisites, requisitesAreUsable } from '@/lib/org/queries';
 import { getT } from '@/lib/i18n/server';
 import { allowedStagesFor, MANAGER_ROLES, STAFF_ROLES } from '@/lib/types/db';
 
@@ -88,11 +90,21 @@ export default async function CaseDetailPage({
   const allowedStages = allowedStagesFor(c.stage, isStaff);
   const errorMessage = error ? ERROR_MESSAGES[error] : undefined;
 
-  // Начисление зарплаты (live) + сколько уже выплачено по делу (по ролям).
-  const [payroll, paidByRole] = await Promise.all([
+  // Начисление зарплаты (live) + сколько уже выплачено по делу (по ролям) +
+  // реквизиты компании (для предупреждения «незаполнены» в блоке актов).
+  const [payroll, paidByRole, org] = await Promise.all([
     getCasePayroll(c.id),
     getCasePaidByRole(c.id),
+    getOrgRequisites(),
   ]);
+  const requisitesUsable = requisitesAreUsable(org);
+
+  // Акты (v2 Этап 5): выписывает Експерт своего дела + staff; подтверждает оплату
+  // юрист дела + owner/admin (зеркало RLS / confirm_act_paid).
+  const canCreateActs = isStaff || c.responsible_id === user.profile.id;
+  // Подтверждает оплату lawyer дела ИЛИ owner/admin (по роли — зеркало
+  // confirm_act_paid, гейт role-only can_manage_users(), не cap-оверрайд).
+  const canConfirmActs = isManager || c.lawyer_id === user.profile.id;
 
   // Роль зрителя в этом деле — чтобы не-staff видел ТОЛЬКО своё начисление,
   // а не сумму/ставку коллеги (CLAUDE.md §4: «свои начисления»).
@@ -494,9 +506,22 @@ export default async function CaseDetailPage({
         </aside>
       </div>
 
-      {/* ── Ряд B: документы и задачи во всю ширину (раньше тут были
+      {/* ── Ряд B: акты, документы и задачи во всю ширину (раньше тут были
            комментарии; поменяли местами с рабочей колонкой выше). ── */}
       <div className="flex flex-col gap-5">
+        {/* Акты (Рахунок-Акт) — v2 Этап 5 */}
+        <section id="acts" className="scroll-mt-16">
+          <CaseActsBlock
+            caseId={c.id}
+            canCreate={canCreateActs}
+            canConfirm={canConfirmActs}
+            isManager={isManager}
+            isStaff={isStaff}
+            currentUserId={user.profile.id}
+            requisitesUsable={requisitesUsable}
+          />
+        </section>
+
         {/* Документы (Шаг 8) */}
         <section id="documents" className="scroll-mt-16">
           <CaseDocumentsBlock

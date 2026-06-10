@@ -130,6 +130,15 @@ export const enums: EnumsMessages = {
     fixed_percent: 'Оклад на місяць плюс відсоток від оплат за справами.',
   },
 
+  actStatus: {
+    issued: 'Виставлено',
+    paid: 'Оплачено',
+  },
+  actCompletion: {
+    full: 'Виконано повністю',
+    partial: 'Частково',
+  },
+
   capabilityLabel: {
     view_all_cases: 'Бачити всі справи',
     create_cases: 'Створювати справи',

@@ -131,6 +131,17 @@ export const enums = {
     fixed_percent: 'Оклад в месяц плюс процент от оплат по делам.',
   },
 
+  // Статус акта (v2 Этап 5).
+  actStatus: {
+    issued: 'Выставлен',
+    paid: 'Оплачен',
+  },
+  // Отметка выполнения по акту.
+  actCompletion: {
+    full: 'Выполнено полностью',
+    partial: 'Частично',
+  },
+
   // Персональные права (per-user capability overrides) — экран настроек.
   capabilityLabel: {
     view_all_cases: 'Видеть все дела',

@@ -183,9 +183,14 @@ column-level привилегиями (revoke табличного SELECT + gran
 через `private.case_visible` / `payroll_user_visible` (см. §4 и docs/PLAN-V2.md).
 
 **clients** (доверители)
-`id, name, client_kind (individual|company), phone, email, address,
-source (website|referral|advertising|repeat|other, опц.), notes, created_by, created_at`
-— у одного клиента может быть несколько дел. `source` — откуда пришёл клиент (Концепция, раздел 7).
+`id, name, client_kind (individual|company|entrepreneur), phone, email, address,
+source (website|referral|advertising|repeat|other, опц.), notes,
+last_name/first_name/middle_name/birth_date/inn/contract_number (опц.; физлицо/ФОП),
+created_by, created_at`
+— у одного клиента может быть несколько дел. `source` — откуда пришёл клиент (Концепция,
+раздел 7). `inn` — РНОКПП (физлицо/ФОП) или ЄДРПОУ (компания), 8–12 цифр; используется
+как идентификатор ЗАМОВНИКА в печатной форме акта (v2 Этап 5 — отдельный `tax_id` НЕ
+вводился).
 
 **cases** (дела; оно же договор — центральная сущность)
 `id, number_title (обязат.), client_id (обязат.),
@@ -201,15 +206,44 @@ opponent, court_case_number, court, closed_at, created_at`
 
 **documents**
 `id, case_id, file_name, storage_key, doc_type (contract|claim|power_of_attorney|correspondence|act|other), uploaded_by, uploaded_at`
-— `act` = акт приёма-передачи выполненных работ (загружается перед закрытием дела).
+— `act` = акт приёма-передачи / скан подписанного «Рахунок-Акта». Скан подтверждения
+оплаты акта (v2 Этап 5) создаётся как `documents(doc_type='act')` автоматически внутри
+`confirm_act_paid` и привязывается к акту (`case_acts.scan_document_id`).
 
 **tasks** (задачи и сроки)
 `id, case_id, title, description, kind (task|hearing|deadline), assignee_id, created_by, due_at, status (open|done), created_at`
 — юрист (продажник) и staff могут ставить задачи. Питает общий календарь.
 
 **payments** (оплаты)
-`id, case_id, amount, paid_at, method, note, created_by`
+`id, case_id, amount, paid_at, method, note, created_by, act_id (опц. → case_acts)`
 — `paid_total` и `debt` в case считаются из платежей и `contract_sum` (триггеры).
+`act_id` (v2 Этап 5) — платёж, созданный подтверждением акта (один платёж на акт,
+unique-индекс); при удалении такого платежа триггер `case_acts_revert_on_payment_delete`
+возвращает акт в `issued` и пересчитывает completion дела.
+
+**case_acts** (Рахунок-Акт — платёжный документ) — v2 Этап 5
+`id, case_id, number (sequence — сквозная нумерация), service_name (default «Юридичні
+послуги»), service_period (опц.), amount (>0 — «До оплати»), confirmed_amount (опц.,
+прописанная при подтверждении), completion (full|partial), status (issued|paid),
+issued_at, paid_at, scan_document_id (→ documents), note, created_by, created_at`
+— цикл: **issued → paid**. Создаёт (issued) Експерт своего дела (`responsible_id`) или
+staff с доступом; подтверждает оплату (issued→paid) **lawyer дела или owner/admin** (по
+роли, НЕ office_manager) через SECURITY DEFINER `confirm_act_paid`: атомарно создаёт скан
+(documents), платёж (`act_id`) и переводит акт в paid. `completion` считается накопительно
+по оплаченным актам дела (Σ confirmed_amount по paid-актам в порядке `paid_at` ≥
+`contract_sum` → `full`, иначе `partial`; источник правды —
+`private.recompute_case_act_completions`); staff может переопределить вручную
+(`set_act_completion`). RLS: SELECT наследует от дела (`can_see_case`); INSERT — Експерт
+дела/staff; UPDATE-политики НЕТ (статус paid меняется только через DEFINER-RPC); DELETE —
+только `issued`, owner/admin или автор. Печатная форма — XLSX по образцу
+(`docs/samples/rahunok-akt-sample.xlsx`), маршрут `/cases/:id/acts/:actId/xlsx`.
+
+**org_requisites** (реквизиты компании-исполнителя, ВИКОНАВЕЦЬ) — v2 Этап 5
+`id (=1, single-row), org_name, edrpou, address, phone, iban, bank_name, mfo,
+tax_status_lines (text[]), updated_at, updated_by`
+— шапка/подвал печатной формы акта. Читают все активные сотрудники, правит только owner
+(`/settings/requisites`, RLS `org_requisites_update_owner`). Засеяна реквизитами из
+образца клиента (ОЛІМП).
 
 **payroll_rates** (ставки зарплаты по категории дела) — Концепция
 `category (document|claim|representation), lawyer_percent, expert_percent, updated_at`
@@ -259,8 +293,11 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 5. `closed` — Завершено (акт подписан, в архив)
 
 > Клиент подтвердил воронку и отсутствие отката. `stage` — enum, расширяемый при
-> необходимости. Закрытие дела связано с загрузкой акта приёма-передачи (`doc_type='act'`);
-> отсутствие акта при `closed` показывается мягким предупреждением в UI, не блокирует.
+> необходимости. Закрытие дела связано с актом (`documents.doc_type='act'` / `case_acts`);
+> отсутствие акта при `closed` показывается мягким предупреждением в UI, **не блокирует**.
+> (v2 Этап 5: `case_acts` считает `completion` full/partial, но **жёсткий блок закрытия
+> без full+paid НЕ включён** — решение пользователя, до подтверждения клиентом; см.
+> PLAN-V2 «Открытые вопросы» №1. Включается одной правкой триггера при необходимости.)
 
 ---
 
@@ -293,10 +330,15 @@ status (accrued|paid), accrued_at, paid_at, created_by`
    `visibility_scope='all'`/`department_id IS NULL` → всей компании); office_manager не
    удаляет записи и не правит платежи; управление пользователями — только owner/admin
    (НЕ скоупится по подразделению); системные настройки — только owner.
-6. **Задачи** ставят юристы (продажники) и staff.
+6. **Задачи** ставят юристы (продажники), staff **и Експерт по своим делам**
+   (v2 Этап 5; RLS `tasks_insert_via_case` уже это разрешает через `can_write_case`).
 7. **Источник клиента фиксируем** (`clients.source`).
-8. **Закрытие дела** связано с актом приёма-передачи (`documents.doc_type='act'`).
-   Закрытие без акта — мягкое предупреждение в UI, не блок.
+8. **Закрытие дела** связано с актом (`documents.doc_type='act'` / `case_acts`).
+   Закрытие без акта — мягкое предупреждение в UI, не блок (v2 Этап 5: жёсткий блок
+   по `case_acts.completion='full'`+`status='paid'` НЕ включён — решение до подтверждения
+   клиентом). **Акты как платёжные документы (v2 Этап 5):** «Рахунок-Акт» создаётся
+   (issued) → подтверждается оплата (скан + сумма → автоплатёж по делу) → пересчёт
+   `paid_total`/долга/ЗП. См. §5 `case_acts`/`org_requisites`.
 9. Все изменения по делам пишутся в `activity_log` (кто, что, когда).
 
 ---
@@ -313,14 +355,18 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 > сальдо-отчётом. Разделы §4–§7 описывают систему ДО v2 — по мере закрытия этапов
 > они обновляются (это часть DoD каждого этапа).
 >
-> **Готово (этапы 1–4):** БД-фундамент подразделений + департаментная RLS-видимость
+> **Готово (этапы 1–5):** БД-фундамент подразделений + департаментная RLS-видимость
 > (§4–§5, §7), **UI** подразделений (`/settings/departments`, поля в `/settings/users`
-> и форме создания, фильтр «Подразделение» в `/cases` и `/reports/payroll`), и
+> и форме создания, фильтр «Подразделение» в `/cases` и `/reports/payroll`),
 > **ЗП-режимы** (Этап 4): `users.salary_mode` (percent/fixed/fixed_percent) +
 > `salary_fixed_amount`, гард прав owner/admin-подразделения, редактор «Зарплата» в
 > `/settings/users`, колонка «Оклад (мес.)» в отчёте и блок оклада на карточке
-> сотрудника; отчётные функции учитывают режим (§5, §7-4). Дальше — этапы 5–7
-> (акты, отпуска, касса).
+> сотрудника; отчётные функции учитывают режим (§5, §7-4), и **Акты** (Этап 5):
+> `case_acts` (Рахунок-Акт: issued→paid, скан+сумма→автоплатёж→ЗП, completion
+> накопительно), `org_requisites` (реквизиты, `/settings/requisites`), `payments.act_id`,
+> печатная форма XLSX по образцу, секция «Акты» на карточке дела; закрытие дела —
+> мягкое предупреждение (жёсткий блок не включён, см. §6/§7-8). Дальше — этапы 6–7
+> (отпуска, касса).
 
 **Phase 1 — MVP (готово):**
 - Auth + роли + RLS (модель доступа из §4);

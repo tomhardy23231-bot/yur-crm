@@ -846,4 +846,247 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
       }
     });
   });
+
+  // ============================================================
+  // v2 Этап 5 — Акты (Рахунок-Акт) как платёжные документы.
+  //   Дела создаём свои (чтобы не ломать наборы предыдущих тестов):
+  //     actCase  — document 7%, contract 19000, lawyer1+expert1;
+  //     actCase2 — document 7%, contract 30000, lawyer1+expert1.
+  // ============================================================
+  describe('Акты — создание, подтверждение оплаты, completion', () => {
+    let actCase = '';
+    let actCase2 = '';
+
+    const mkActCase = async (suffix: string, contract: number): Promise<string> => {
+      const { data, error } = await world.admin
+        .from('cases')
+        .insert({
+          number_title: `${world.prefix}${suffix}`,
+          client_id: world.clientId,
+          lawyer_id: world.users.lawyer1.id,
+          responsible_id: world.users.expert1.id,
+          opened_at: '2026-05-01',
+          case_type: 'civil',
+          category: 'document',
+          stage: 'in_progress',
+          priority: 'normal',
+          contract_sum: contract,
+        })
+        .select('id')
+        .single();
+      if (error || !data) throw new Error(`mkActCase ${suffix}: ${error?.message}`);
+      return data.id as string;
+    };
+
+    // Скан передаётся в RPL как storage_key + file_name; documents-строку создаёт
+    // сама confirm_act_paid (атомарно). Для интеграции реальный файл не нужен.
+    const scanArgs = (caseId: string) => ({
+      p_storage_key: `cases/${caseId}/it-scan-${Math.random().toString(36).slice(2)}.pdf`,
+      p_file_name: 'scan.pdf',
+    });
+
+    beforeAll(async () => {
+      actCase = await mkActCase('ACT', 19000);
+      actCase2 = await mkActCase('ACT2', 30000);
+    });
+
+    afterAll(async () => {
+      const ids = [actCase, actCase2].filter(Boolean);
+      await world.admin.from('case_acts').delete().in('case_id', ids);
+      await world.admin.from('payments').delete().in('case_id', ids);
+      await world.admin.from('documents').delete().in('case_id', ids);
+      await world.admin.from('cases').delete().in('id', ids);
+    });
+
+    it('юрист-продажник НЕ может выписать акт (RLS: только Експерт/staff)', async () => {
+      const lawyer1 = await signIn(world.users.lawyer1.email);
+      const { error } = await lawyer1.from('case_acts').insert({
+        case_id: actCase,
+        service_name: 'Юридичні послуги',
+        amount: 19000,
+        created_by: world.users.lawyer1.id,
+      });
+      expect(error).not.toBeNull(); // нарушение WITH CHECK
+      const { count } = await world.admin
+        .from('case_acts')
+        .select('id', { count: 'exact', head: true })
+        .eq('case_id', actCase);
+      expect(count ?? 0).toBe(0);
+    });
+
+    it('Експерт своего дела выписывает акт (issued)', async () => {
+      const expert1 = await signIn(world.users.expert1.email);
+      const { data, error } = await expert1
+        .from('case_acts')
+        .insert({
+          case_id: actCase,
+          service_name: 'Юридичні послуги',
+          amount: 19000,
+          created_by: world.users.expert1.id,
+        })
+        .select('id, status, number')
+        .single();
+      expect(error).toBeNull();
+      expect(data?.status).toBe('issued');
+      expect(typeof data?.number).toBe('number');
+    });
+
+    it('Експерт (не юрист/owner/admin) НЕ может подтвердить оплату', async () => {
+      const expert1 = await signIn(world.users.expert1.email);
+      const { data: act } = await world.admin
+        .from('case_acts')
+        .select('id')
+        .eq('case_id', actCase)
+        .single();
+      const { error } = await expert1.rpc('confirm_act_paid', {
+        p_act_id: act!.id,
+        p_confirmed_amount: 19000,
+        p_paid_at: '2026-05-20',
+        ...scanArgs(actCase),
+        p_method: 'act',
+        p_note: null,
+      });
+      expect(error).not.toBeNull(); // insufficient privilege
+      // акт остаётся issued (RPC атомарна → документ/платёж не создались)
+      const { data: after } = await world.admin
+        .from('case_acts')
+        .select('status')
+        .eq('id', act!.id)
+        .single();
+      expect(after?.status).toBe('issued');
+    });
+
+    it('юрист дела подтверждает оплату → платёж, completion=full, долг 0', async () => {
+      const lawyer1 = await signIn(world.users.lawyer1.email);
+      const { data: act } = await world.admin
+        .from('case_acts')
+        .select('id')
+        .eq('case_id', actCase)
+        .single();
+      const { error } = await lawyer1.rpc('confirm_act_paid', {
+        p_act_id: act!.id,
+        p_confirmed_amount: 19000,
+        p_paid_at: '2026-05-20',
+        ...scanArgs(actCase),
+        p_method: 'act',
+        p_note: null,
+      });
+      expect(error).toBeNull();
+
+      const { data: paidAct } = await world.admin
+        .from('case_acts')
+        .select('status, completion, confirmed_amount, scan_document_id')
+        .eq('id', act!.id)
+        .single();
+      expect(paidAct?.status).toBe('paid');
+      expect(paidAct?.completion).toBe('full'); // 19000 ≥ 19000
+      expect(Number(paidAct?.confirmed_amount)).toBe(19000);
+      expect(paidAct?.scan_document_id).not.toBeNull(); // documents-строка создана RPC
+
+      // Скан-документ создан внутри RPC (doc_type='act').
+      const { data: scanDoc } = await world.admin
+        .from('documents')
+        .select('id, doc_type')
+        .eq('id', paidAct!.scan_document_id);
+      expect(scanDoc?.length).toBe(1);
+      expect(scanDoc?.[0]?.doc_type).toBe('act');
+
+      // Автоплатёж создан и связан с актом.
+      const { data: pay } = await world.admin
+        .from('payments')
+        .select('amount, act_id')
+        .eq('case_id', actCase);
+      expect(pay?.length).toBe(1);
+      expect(Number(pay?.[0]?.amount)).toBe(19000);
+      expect(pay?.[0]?.act_id).toBe(act!.id);
+
+      // Триггеры пересчитали деньги дела.
+      const { data: cse } = await world.admin
+        .from('cases')
+        .select('paid_total, debt')
+        .eq('id', actCase)
+        .single();
+      expect(Number(cse?.paid_total)).toBe(19000);
+      expect(Number(cse?.debt)).toBe(0);
+    });
+
+    it('повторное подтверждение оплаченного акта отвергается', async () => {
+      const lawyer1 = await signIn(world.users.lawyer1.email);
+      const { data: act } = await world.admin
+        .from('case_acts')
+        .select('id')
+        .eq('case_id', actCase)
+        .single();
+      const { error } = await lawyer1.rpc('confirm_act_paid', {
+        p_act_id: act!.id,
+        p_confirmed_amount: 1000,
+        p_paid_at: '2026-05-21',
+        ...scanArgs(actCase),
+        p_method: 'act',
+        p_note: null,
+      });
+      expect(error).not.toBeNull(); // act is not in issued status
+    });
+
+    it('частичная оплата → completion=partial, долг остаётся', async () => {
+      // staff (admin без подразделения) выписывает акт на actCase2 (contract 30000).
+      const staff = await signIn(world.users.staffAdmin.email);
+      const { data: act, error: insErr } = await staff
+        .from('case_acts')
+        .insert({
+          case_id: actCase2,
+          service_name: 'Юридичні послуги',
+          amount: 10000,
+          created_by: world.users.staffAdmin.id,
+        })
+        .select('id')
+        .single();
+      expect(insErr).toBeNull();
+
+      const lawyer1 = await signIn(world.users.lawyer1.email);
+      const { error } = await lawyer1.rpc('confirm_act_paid', {
+        p_act_id: act!.id,
+        p_confirmed_amount: 10000,
+        p_paid_at: '2026-05-22',
+        ...scanArgs(actCase2),
+        p_method: 'act',
+        p_note: null,
+      });
+      expect(error).toBeNull();
+
+      const { data: paidAct } = await world.admin
+        .from('case_acts')
+        .select('completion')
+        .eq('id', act!.id)
+        .single();
+      expect(paidAct?.completion).toBe('partial'); // 10000 < 30000
+
+      const { data: cse } = await world.admin
+        .from('cases')
+        .select('paid_total, debt')
+        .eq('id', actCase2)
+        .single();
+      expect(Number(cse?.paid_total)).toBe(10000);
+      expect(Number(cse?.debt)).toBe(20000);
+    });
+
+    it('удаление платежа возвращает акт в issued (целостность)', async () => {
+      const { data: act } = await world.admin
+        .from('case_acts')
+        .select('id')
+        .eq('case_id', actCase)
+        .single();
+      // Удаляем автоплатёж акта → триггер реверта возвращает акт в issued.
+      await world.admin.from('payments').delete().eq('act_id', act!.id);
+      const { data: reverted } = await world.admin
+        .from('case_acts')
+        .select('status, completion, confirmed_amount, paid_at')
+        .eq('id', act!.id)
+        .single();
+      expect(reverted?.status).toBe('issued');
+      expect(reverted?.completion).toBeNull();
+      expect(reverted?.confirmed_amount).toBeNull();
+      expect(reverted?.paid_at).toBeNull();
+    });
+  });
 });

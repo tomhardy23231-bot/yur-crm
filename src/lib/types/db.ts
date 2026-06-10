@@ -696,6 +696,59 @@ export type DocumentWithUploader = DocumentRow & {
 };
 
 // =====================================================================
+// Acts — «Рахунок-Акт» как платёжный документ (v2 Этап 5).
+// Цикл: issued → paid (скан + сумма → автоплатёж по делу). completion
+// (full/partial) вычисляется при оплате накопительно по актам дела.
+// =====================================================================
+
+export type ActStatus = 'issued' | 'paid';
+export const ACT_STATUSES: ReadonlyArray<ActStatus> = ['issued', 'paid'];
+
+export type ActCompletion = 'full' | 'partial';
+export const ACT_COMPLETIONS: ReadonlyArray<ActCompletion> = ['full', 'partial'];
+
+export type CaseAct = {
+  id: string;
+  case_id: string;
+  number: number;
+  service_name: string;
+  service_period: string | null;
+  // numeric(14,2) → нормализуем в number при чтении.
+  amount: number;
+  confirmed_amount: number | null;
+  completion: ActCompletion | null;
+  status: ActStatus;
+  issued_at: string; // date YYYY-MM-DD
+  paid_at: string | null;
+  scan_document_id: string | null;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+// Акт + краткая ссылка на подтверждающий скан (для строки в UI).
+export type CaseActWithScan = CaseAct & {
+  scan: { id: string; file_name: string } | null;
+};
+
+// =====================================================================
+// Org requisites — реквизиты компании-исполнителя (ВИКОНАВЕЦЬ) для печатной
+// формы акта (v2 Этап 5). Single-row (id=1), правит только owner.
+// =====================================================================
+
+export type OrgRequisites = {
+  org_name: string;
+  edrpou: string;
+  address: string;
+  phone: string;
+  iban: string;
+  bank_name: string;
+  mfo: string;
+  tax_status_lines: string[];
+  updated_at: string;
+};
+
+// =====================================================================
 // Payments — оплаты по делу (CLAUDE.md §5, §8 Phase 1).
 // paid_total и debt пересчитываются триггерами в БД — UI читает их из cases.
 // =====================================================================

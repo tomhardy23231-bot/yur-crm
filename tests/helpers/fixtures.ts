@@ -207,7 +207,11 @@ export async function destroyWorld(w: World): Promise<void> {
 
   // Порядок важен: дети cases стоят on delete restrict.
   await admin.from('payroll_ledger').delete().in('case_id', caseIds);
+  // case_acts → payments.act_id (set null) → потом сами платежи; акты/документы
+  // тоже on delete restrict у cases, поэтому чистим их ДО удаления дел.
+  await admin.from('case_acts').delete().in('case_id', caseIds);
   await admin.from('payments').delete().in('case_id', caseIds);
+  await admin.from('documents').delete().in('case_id', caseIds);
   await admin.from('tasks').delete().in('case_id', caseIds);
   await admin.from('cases').delete().in('id', caseIds);
   await admin.from('clients').delete().eq('id', w.clientId);
