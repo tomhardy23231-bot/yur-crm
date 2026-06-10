@@ -15,6 +15,7 @@ import {
 import { requireCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { listManagedUsers } from '@/lib/users/queries';
+import { listActiveDepartments } from '@/lib/departments/queries';
 import { assignableRoles, canManageTargetUser } from '@/lib/types/db';
 import { UserCreateForm } from '@/components/users/user-create-form';
 import {
@@ -22,6 +23,7 @@ import {
   UserActiveControl,
 } from '@/components/users/user-row-controls';
 import { UserPermsEditor } from '@/components/users/user-perms-editor';
+import { UserAssignmentEditor } from '@/components/users/user-assignment-editor';
 
 // Управление пользователями, ролями и персональными правами. Доступ — обладатель
 // права manage_users (по умолчанию owner/admin). Ступенчатые права: не-owner
@@ -29,8 +31,12 @@ import { UserPermsEditor } from '@/components/users/user-perms-editor';
 // (private.can_manage_target_user) и server-actions.
 export default async function UsersSettingsPage() {
   const actor = await requireCap('manage_users');
-  const users = await listManagedUsers();
+  const [users, departments] = await Promise.all([
+    listManagedUsers(),
+    listActiveDepartments(),
+  ]);
   const assignable = assignableRoles(actor.profile.role, actor.caps.manage_users);
+  const actorIsOwner = actor.profile.role === 'owner';
   const { t } = await getT();
 
   const backHref = '/settings';
@@ -62,6 +68,8 @@ export default async function UsersSettingsPage() {
             assignableRoles={assignable}
             actorRole={actor.profile.role}
             actorCaps={actor.caps}
+            departments={departments}
+            actorIsOwner={actorIsOwner}
           />
         </Card>
       </section>
@@ -73,6 +81,7 @@ export default async function UsersSettingsPage() {
             <TableRow className="hover:bg-surface">
               <TableHead>{t.users.table.colUser}</TableHead>
               <TableHead>{t.users.table.colRole}</TableHead>
+              <TableHead>{t.users.table.colDepartment}</TableHead>
               <TableHead>{t.users.table.colStatus}</TableHead>
               <TableHead className="text-right">{t.users.table.colPerms}</TableHead>
               <TableHead className="text-right">{t.users.table.colAction}</TableHead>
@@ -106,6 +115,33 @@ export default async function UsersSettingsPage() {
                       manageable={manageable}
                       isActive={u.is_active}
                     />
+                  </TableCell>
+                  <TableCell>
+                    {manageable && u.is_active ? (
+                      <UserAssignmentEditor
+                        userId={u.id}
+                        departmentId={u.department_id}
+                        departmentName={u.department_name}
+                        position={u.position}
+                        visibilityScope={u.visibility_scope}
+                        showsScope={
+                          u.role === 'admin' || u.role === 'office_manager'
+                        }
+                        departments={departments}
+                        actorIsOwner={actorIsOwner}
+                      />
+                    ) : (
+                      <span className="flex flex-col leading-tight">
+                        <span className="text-[13px] text-text">
+                          {u.department_name ?? t.departments.assign.none}
+                        </span>
+                        {u.position && (
+                          <span className="text-[12px] text-text-muted">
+                            {u.position}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {u.is_active ? (

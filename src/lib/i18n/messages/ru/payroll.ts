@@ -27,6 +27,8 @@ export const payroll = {
       'Начислено, премии и выплаты за {month}. «К выплате» — общий накопленный долг за всё время.',
     summaryReport: 'Сводный отчёт',
     configureRates: 'Настроить ставки',
+    departmentAria: 'Подразделение',
+    allDepartments: 'Все подразделения',
 
     ratesTitle: 'Ставки',
     rateLawyer: 'юрист',

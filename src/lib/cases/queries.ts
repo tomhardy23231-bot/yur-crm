@@ -23,6 +23,31 @@ function sanitizeSearch(value: string): string {
   return value.replace(/[,()*'"\\%_]/g, '').trim();
 }
 
+// Дело видно подразделению, если ЕГО юрист ИЛИ эксперт состоит в подразделении.
+// PostgREST не выражает OR по двум разным FK-связям одним фильтром, поэтому в
+// обычном списке (без q) резолвим id членов подразделения и фильтруем
+// lawyer_id.in(...) OR responsible_id.in(...). Поиск (q) делает то же внутри
+// RPC search_case_ids (p_department_id) — там это выражается SQL-ом.
+// Возвращает null, если подразделение пустое (→ дел нет, вызывающий вернёт пусто).
+async function resolveDepartmentMemberIds(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  departmentId: string,
+): Promise<string[] | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id')
+    .eq('department_id', departmentId);
+  if (error) throw new Error(`resolveDepartmentMemberIds failed: ${error.message}`);
+  const ids = (data ?? []).map((r) => (r as { id: string }).id);
+  return ids.length > 0 ? ids : null;
+}
+
+// Строит PostgREST .or()-фильтр «дело принадлежит подразделению» по id членов.
+function departmentOrFilter(memberIds: string[]): string {
+  const list = memberIds.join(',');
+  return `lawyer_id.in.(${list}),responsible_id.in.(${list})`;
+}
+
 export type CaseListItem = {
   id: string;
   number_title: string;
@@ -71,6 +96,12 @@ export type ListCasesParams = {
   responsibleId?: string;
   lawyerId?: string;
   clientId?: string;
+  /**
+   * Подразделение (v2 Этап 3): дела, где юрист ЛИБО эксперт состоит в нём.
+   * Фильтр предлагается только тем, кто видит >1 подразделения (owner / staff
+   * со scope='all' либо department_id IS NULL); RLS всё равно ограничивает выдачу.
+   */
+  departmentId?: string;
   /** Только дела с непогашенным долгом (KPI «Задолженность» → /cases?debt=true). */
   debtOnly?: boolean;
   /**
@@ -163,6 +194,7 @@ export async function listCases(
         p_category: params.category ?? null,
         p_lawyer_id: params.lawyerId ?? null,
         p_client_id: params.clientId ?? null,
+        p_department_id: params.departmentId ?? null,
         p_archived: params.archived ?? false,
         p_closed_from: params.closedFrom ?? null,
         p_closed_to: params.closedTo ?? null,
@@ -213,6 +245,15 @@ export async function listCases(
     return { items, total, page, pageSize: CASES_PAGE_SIZE, pageCount };
   }
 
+  // Фильтр подразделения (без q): резолвим членов; пусто → дел нет.
+  let deptMemberIds: string[] | null = null;
+  if (params.departmentId) {
+    deptMemberIds = await resolveDepartmentMemberIds(supabase, params.departmentId);
+    if (deptMemberIds === null) {
+      return { items: [], total: 0, page, pageSize: CASES_PAGE_SIZE, pageCount: 1 };
+    }
+  }
+
   // Без q — обычный listCases с .eq фильтрами и count:'exact'.
   // Tie-breaker: id desc — стабильный порядок если в sortColumn одинаковые значения.
   let query = supabase
@@ -221,6 +262,8 @@ export async function listCases(
     .order(sortColumn, { ascending })
     .order('id', { ascending: false })
     .range(offset, offset + CASES_PAGE_SIZE - 1);
+
+  if (deptMemberIds) query = query.or(departmentOrFilter(deptMemberIds));
 
   // Вкладка: архив (archived_at not null) vs активные (archived_at null).
   if (params.archived) query = query.not('archived_at', 'is', null);
@@ -262,6 +305,18 @@ export async function countCasesByStage(
   const supabase = await createSupabaseServerClient();
   // Счётчики этапов питают фильтр на АКТИВНОЙ вкладке → архив исключаем,
   // чтобы цифры совпадали с тем, что реально откроется по клику.
+  // Фильтр подразделения: резолвим членов; пусто → все счётчики 0.
+  let deptMemberIds: string[] | null = null;
+  if (params.departmentId) {
+    deptMemberIds = await resolveDepartmentMemberIds(supabase, params.departmentId);
+    if (deptMemberIds === null) {
+      return Object.fromEntries(CASE_STAGES.map((s) => [s, 0])) as Record<
+        CaseStage,
+        number
+      >;
+    }
+  }
+
   let query = supabase.from('cases').select('stage').is('archived_at', null);
   if (params.caseType) query = query.eq('case_type', params.caseType);
   if (params.category) query = query.eq('category', params.category);
@@ -269,6 +324,7 @@ export async function countCasesByStage(
   if (params.lawyerId) query = query.eq('lawyer_id', params.lawyerId);
   if (params.clientId) query = query.eq('client_id', params.clientId);
   if (params.debtOnly) query = query.gt('debt', 0);
+  if (deptMemberIds) query = query.or(departmentOrFilter(deptMemberIds));
 
   const { data, error } = await query;
   if (error) throw new Error(`countCasesByStage failed: ${error.message}`);

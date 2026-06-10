@@ -108,6 +108,16 @@ export const enums: EnumsMessages = {
     expert: 'Експерт',
   },
 
+  // Скоуп видимості для admin/office_manager (v2). Виставляє лише власник.
+  visibilityScope: {
+    department: 'Свій підрозділ',
+    all: 'Уся компанія',
+  },
+  visibilityScopeHint: {
+    department: 'Бачить справи та фінанси лише свого підрозділу.',
+    all: 'Бачить справи та фінанси всієї компанії.',
+  },
+
   capabilityLabel: {
     view_all_cases: 'Бачити всі справи',
     create_cases: 'Створювати справи',

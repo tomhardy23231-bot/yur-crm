@@ -109,6 +109,16 @@ export const enums = {
     expert: 'Эксперт',
   },
 
+  // Скоуп видимости для admin/office_manager (v2). Выставляет только владелец.
+  visibilityScope: {
+    department: 'Своё подразделение',
+    all: 'Вся компания',
+  },
+  visibilityScopeHint: {
+    department: 'Видит дела и финансы только своего подразделения.',
+    all: 'Видит дела и финансы всей компании.',
+  },
+
   // Персональные права (per-user capability overrides) — экран настроек.
   capabilityLabel: {
     view_all_cases: 'Видеть все дела',

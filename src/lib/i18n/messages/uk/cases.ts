@@ -24,6 +24,8 @@ export const cases: CasesMessages = {
     allLawyers: 'Усі юристи',
     clientAria: 'Клієнт',
     allClients: 'Усі клієнти',
+    departmentAria: 'Підрозділ',
+    allDepartments: 'Усі підрозділи',
   },
 
   tableAria: 'Список справ',

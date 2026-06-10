@@ -12,6 +12,7 @@ export const users = {
   table: {
     colUser: 'Сотрудник',
     colRole: 'Роль',
+    colDepartment: 'Подразделение',
     colStatus: 'Статус',
     colPerms: 'Права',
     colAction: 'Действие',

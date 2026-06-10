@@ -224,8 +224,12 @@ export async function listPayrollPayoutBySpecialist(): Promise<
 
 // Список сотрудников с итогами (для /reports/payroll). month — первый день месяца
 // ('YYYY-MM-01') для помесячного режима; null/undefined → за всё время.
+// departmentId (v2 Этап 3) — пост-фильтр по подразделению сотрудника: RPC уже
+// скоупит видимость (payroll_user_visible), здесь лишь сужаем до выбранного
+// подразделения для тех, кто видит >1. Маппинг user→department читаем под RLS.
 export async function getPayrollEmployeeSummary(
   month?: string | null,
+  departmentId?: string | null,
 ): Promise<PayrollEmployeeSummary[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('payroll_employee_summary', {
@@ -242,7 +246,7 @@ export async function getPayrollEmployeeSummary(
     payout: number | string;
     balance: number | string;
   };
-  return ((data ?? []) as Row[]).map((r) => ({
+  let rows = ((data ?? []) as Row[]).map((r) => ({
     user_id: r.user_id,
     full_name: r.full_name,
     earned: Number(r.earned),
@@ -250,6 +254,20 @@ export async function getPayrollEmployeeSummary(
     payout: Number(r.payout),
     balance: Number(r.balance),
   }));
+
+  if (departmentId) {
+    const { data: members, error: memErr } = await supabase
+      .from('users')
+      .select('id')
+      .eq('department_id', departmentId);
+    if (memErr) {
+      throw new Error(`getPayrollEmployeeSummary (dept) failed: ${memErr.message}`);
+    }
+    const allow = new Set((members ?? []).map((m) => (m as { id: string }).id));
+    rows = rows.filter((r) => allow.has(r.user_id));
+  }
+
+  return rows;
 }
 
 // Разбивка ЗП сотрудника по делам (для карточки). RPC режет видимость.

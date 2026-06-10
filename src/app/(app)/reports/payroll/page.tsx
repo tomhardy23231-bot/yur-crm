@@ -16,7 +16,10 @@ import { ClickableRow } from '@/components/ui/clickable-row';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { getPayrollEmployeeSummary, getPayrollRates } from '@/lib/payroll/queries';
+import { listActiveDepartments } from '@/lib/departments/queries';
+import { canSeeAllCases } from '@/lib/types/db';
 import { MonthPicker } from '@/components/payroll/month-picker';
+import { PayrollDepartmentFilter } from '@/components/payroll/payroll-department-filter';
 import {
   normalizeMonth,
   monthLabel,
@@ -30,15 +33,18 @@ const MONEY = new Intl.NumberFormat('ru-RU', {
   maximumFractionDigits: 2,
 });
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function PayrollReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; department?: string }>;
 }) {
   const user = await requireUser();
   const { t } = await getT();
   const monthNames = monthNamesFrom(t.payroll);
-  const { month: monthParam } = await searchParams;
+  const { month: monthParam, department: departmentParam } = await searchParams;
   const month = normalizeMonth(monthParam);
   const [subtitleBefore, subtitleAfter] = t.payroll.report.subtitle.split('{month}');
 
@@ -47,9 +53,17 @@ export default async function PayrollReportPage({
   const showLawyerRate = seeAll || user.profile.role === 'lawyer';
   const showExpertRate = seeAll || user.profile.role === 'expert';
 
-  const [rows, rates] = await Promise.all([
-    getPayrollEmployeeSummary(month),
+  // Фильтр подразделения — только тем, кто видит >1 (owner / scope='all' / NULL-dept).
+  const canSeeDepartments = canSeeAllCases(user.profile, user.caps);
+  const departmentId =
+    canSeeDepartments && departmentParam && UUID_RE.test(departmentParam)
+      ? departmentParam
+      : undefined;
+
+  const [rows, rates, departments] = await Promise.all([
+    getPayrollEmployeeSummary(month, departmentId),
     getPayrollRates(),
+    canSeeDepartments ? listActiveDepartments() : Promise.resolve([]),
   ]);
 
   const totals = rows.reduce(
@@ -74,6 +88,12 @@ export default async function PayrollReportPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canSeeDepartments && (
+            <PayrollDepartmentFilter
+              value={departmentId ?? ''}
+              departments={departments}
+            />
+          )}
           <MonthPicker month={month} />
           {seeAll && rows.length > 0 && (
             <Button asChild size="sm">

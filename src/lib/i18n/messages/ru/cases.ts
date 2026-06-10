@@ -26,6 +26,8 @@ export const cases = {
     allLawyers: 'Все юристы',
     clientAria: 'Клиент',
     allClients: 'Все клиенты',
+    departmentAria: 'Подразделение',
+    allDepartments: 'Все подразделения',
   },
 
   // Доступное имя региона списка дел (role=table) для скринридеров.

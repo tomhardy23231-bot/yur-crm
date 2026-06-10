@@ -39,7 +39,7 @@
 |---|------|--------|------|--------|
 | 1 | БД-фундамент: departments, должности, видимость | ✅ | 2026-06-10 | 0e69959 |
 | 2 | RLS: новая модель доступа | ✅ | 2026-06-10 | 307b9d3 |
-| 3 | UI: подразделения, команда, доступы | ⬜ | | |
+| 3 | UI: подразделения, команда, доступы | ✅ | 2026-06-10 | _follow-up_ |
 | 4 | ЗП-режимы: фикс / фикс+% / % | ⬜ | | |
 | 5 | Акты как платёжные документы | ⬜ | | |
 | 6 | Отпуска / отсутствия | ⬜ | | |
@@ -196,6 +196,33 @@ DoD: тесты матрицы зелёные; `/cso` + `/review` пройден
 
 DoD: owner может завести подразделение, перекинуть сотрудника, сменить scope —
 и видимость меняется (ручная проверка + `/qa` по флоу). Доки: CLAUDE.md §8.
+
+> **✅ Закрыт 2026-06-10.** UI-этап (RLS уже был в Этапах 1–2). Что сделано:
+> - **`/settings/departments`** (owner): создание/переименование/(де)активация
+>   подразделений + плитка в хабе настроек; карточка каждого подразделения с
+>   командой и редактором назначения (`UserAssignmentEditor`): department + scope
+>   (owner) + position (любой `manage_users`). Те же поля — в `/settings/users`
+>   (колонка «Подразделение») и в форме создания пользователя.
+> - **Фильтр «Подразделение»** в `/cases` (обычный список — `.or(lawyer_id.in…,
+>   responsible_id.in…)`; поиск — RPC `search_case_ids` + `p_department_id`) и в
+>   `/reports/payroll` (пост-фильтр членов). Показывается только тем, кто видит >1
+>   (хелпер `canSeeAllCases`, зеркало SQL `can_see_all_cases`).
+> - **2 миграции** (аддитивные): `20260610120000` — allowlist `activity_log`
+>   + `department_*`/`user_department_changed` + entity_type `department`
+>   (owner-gate; ВЕСЬ прежний allowlist сохранён — нет риска 23514);
+>   `20260610130000` — `search_case_ids` + `p_department_id` (SECURITY INVOKER,
+>   OR по подразделению юриста/эксперта).
+> - Двуязычные тексты (ru/uk: словарь `departments` + enum `visibilityScope`).
+> - **Прогон:** db reset чистый, tsc/lint/build зелёные, unit 49/49, integration
+>   37/37 (+1: фильтр `search_case_ids` по подразделению). Ревью —
+>   адверсариальный проход (Windows: gstack-bash не запускается): 0 CRITICAL/HIGH,
+>   2 LOW = задокументированное переходное правило `department_id IS NULL ⇒ видит
+>   всё` (решение Этапа 2, не новая эскалация). owner-gating подтверждён и на
+>   service_role-пути `createUserAction`.
+> - **owner-only** для department/scope: код (createUserAction service_role-путь +
+>   assignUserDepartmentAction) + БД-гард `users_guard_visibility_fields` +
+>   client-гейт. position — любой `manage_users`.
+> - Пуш на прод (git + `db push`) НЕ делался — ждёт «ок». Хеш этапа — follow-up.
 
 ## Этап 4 — ЗП-режимы
 

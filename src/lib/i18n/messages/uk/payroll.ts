@@ -25,6 +25,8 @@ export const payroll: PayrollMessages = {
       'Нараховано, премії та виплати за {month}. «До виплати» — загальний накопичений борг за весь час.',
     summaryReport: 'Зведений звіт',
     configureRates: 'Налаштувати ставки',
+    departmentAria: 'Підрозділ',
+    allDepartments: 'Усі підрозділи',
 
     ratesTitle: 'Ставки',
     rateLawyer: 'юрист',

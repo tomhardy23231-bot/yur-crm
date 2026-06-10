@@ -51,28 +51,50 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const authEmail = typeof claims.email === 'string' ? claims.email : undefined;
 
   const BASE_COLS = 'id, full_name, email, role, is_active, created_at';
+  // Поля v2 (Этап 1/3): подразделение, должность, скоуп видимости.
+  const EXT_COLS = 'perm_overrides, language, department_id, position, visibility_scope';
   let { data: profile, error: profileError } = await supabase
     .from('users')
-    .select(`${BASE_COLS}, perm_overrides, language`)
+    .select(`${BASE_COLS}, ${EXT_COLS}`)
     .eq('id', authId)
     .maybeSingle<UserProfile>();
 
-  // Защита от рассинхрона деплоя/отката: если колонок perm_overrides/language
-  // ещё нет (код выкатился раньше миграции) или уже нет (миграцию откатили) — НЕ
+  // Защита от рассинхрона деплоя/отката: если расширенных колонок
+  // (perm_overrides/language/department_id/position/visibility_scope) ещё нет
+  // (код выкатился раньше миграции) или уже нет (миграцию откатили) — НЕ
   // разлогиниваем всех (иначе тотальный локаут без возможности войти). Читаем
   // профиль без них и работаем по дефолтам (поведение до миграции, fail-safe).
   if (
     profileError &&
     (profileError.message.includes('perm_overrides') ||
-      profileError.message.includes('language'))
+      profileError.message.includes('language') ||
+      profileError.message.includes('department_id') ||
+      profileError.message.includes('position') ||
+      profileError.message.includes('visibility_scope'))
   ) {
     const fallback = await supabase
       .from('users')
       .select(BASE_COLS)
       .eq('id', authId)
-      .maybeSingle<Omit<UserProfile, 'perm_overrides' | 'language'>>();
+      .maybeSingle<
+        Omit<
+          UserProfile,
+          | 'perm_overrides'
+          | 'language'
+          | 'department_id'
+          | 'position'
+          | 'visibility_scope'
+        >
+      >();
     if (!fallback.error && fallback.data) {
-      profile = { ...fallback.data, perm_overrides: {}, language: DEFAULT_LOCALE };
+      profile = {
+        ...fallback.data,
+        perm_overrides: {},
+        language: DEFAULT_LOCALE,
+        department_id: null,
+        position: null,
+        visibility_scope: 'department',
+      };
       profileError = null;
     }
   }

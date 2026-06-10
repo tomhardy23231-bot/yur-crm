@@ -220,6 +220,37 @@ export function canGrantCapability(
   return true;
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Подразделения (v2) — справочник филиалов. Видимость admin/office_manager
+// скоупится по ним с Этапа 2 (private.case_visible / payroll_user_visible).
+// ────────────────────────────────────────────────────────────────────────
+
+export type Department = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+// Подразделение со счётчиком активных сотрудников (для списка /settings/departments).
+export type DepartmentWithCount = Department & {
+  member_count: number;
+};
+
+// Настраиваемая видимость для admin/office_manager (выставляет только owner).
+//   department — видит только своё подразделение; all — всю компанию.
+// Для owner/lawyer/expert поле не действует (owner — всё, lawyer/expert — свои).
+export type VisibilityScope = 'department' | 'all';
+
+export const VISIBILITY_SCOPES: ReadonlyArray<VisibilityScope> = [
+  'department',
+  'all',
+];
+
+export function isVisibilityScope(value: unknown): value is VisibilityScope {
+  return value === 'department' || value === 'all';
+}
+
 export type UserProfile = {
   id: string;
   full_name: string;
@@ -231,7 +262,36 @@ export type UserProfile = {
   perm_overrides: PermOverrides;
   // Язык интерфейса (двуязычный UI). Дефолт 'uk'. Меняется в профиле.
   language: Locale;
+  // Подразделение сотрудника (v2). NULL — вне структуры; для admin/office_manager
+  // NULL = переходное «видит всё». Меняет только owner (БД-гард).
+  department_id: string | null;
+  // Отображаемая должность (свободный текст). На права НЕ влияет.
+  position: string | null;
+  // Скоуп видимости (см. VisibilityScope). Меняет только owner (БД-гард).
+  visibility_scope: VisibilityScope;
 };
+
+// Член команды подразделения (строка карточки подразделения / экрана пользователей).
+export type ManagedUser = UserProfile & {
+  // Имя подразделения (join), null — вне структуры.
+  department_name: string | null;
+};
+
+// Зеркало private.can_see_all_cases() (SQL, Этап 2): видит ли актор дела всей
+// компании. owner — всегда; admin/office_manager — при view_all_cases И
+// scope_is_all (visibility_scope='all' ИЛИ department_id IS NULL — гейт по роли).
+// Используется в UI, чтобы показывать фильтр «Подразделение» только тем, чей
+// набор видимых дел может охватывать больше одного подразделения.
+export function canSeeAllCases(
+  profile: Pick<UserProfile, 'role' | 'visibility_scope' | 'department_id'>,
+  caps: EffectiveCaps,
+): boolean {
+  if (profile.role === 'owner') return true;
+  const scopeIsAll =
+    (profile.role === 'admin' || profile.role === 'office_manager') &&
+    (profile.visibility_scope === 'all' || profile.department_id === null);
+  return caps.view_all_cases && scopeIsAll;
+}
 
 // =====================================================================
 // Clients

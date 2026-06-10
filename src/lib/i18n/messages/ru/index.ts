@@ -9,6 +9,7 @@ import { auth } from './auth';
 import { errors } from './errors';
 import { account } from './account';
 import { settings } from './settings';
+import { departments } from './departments';
 import { commandPalette } from './commandPalette';
 
 import { dashboard } from './dashboard';
@@ -36,6 +37,7 @@ export const ru = {
   errors,
   account,
   settings,
+  departments,
   commandPalette,
   dashboard,
   clients,

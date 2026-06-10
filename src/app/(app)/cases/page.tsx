@@ -35,11 +35,13 @@ import {
   listExpertsForFilter,
   listLawyersForFilter,
 } from '@/lib/cases/queries';
+import { listActiveDepartments } from '@/lib/departments/queries';
 import {
   CASE_CATEGORIES,
   CASE_STAGES,
   CASE_TYPES,
   STAFF_ROLES,
+  canSeeAllCases,
   type CaseCategory,
   type CaseStage,
   type CaseType,
@@ -95,6 +97,7 @@ export default async function CasesPage({
     responsible?: string;
     lawyer?: string;
     client?: string;
+    department?: string;
     debt?: string;
     archived?: string;
     closed_from?: string;
@@ -126,6 +129,13 @@ export default async function CasesPage({
     sp.lawyer && UUID_RE.test(sp.lawyer) ? sp.lawyer : undefined;
   const clientId =
     sp.client && UUID_RE.test(sp.client) ? sp.client : undefined;
+  // Фильтр подразделения — только тем, кто видит >1 (owner / staff со scope='all'
+  // либо department_id IS NULL). RLS всё равно ограничивает выдачу.
+  const canSeeDepartments = canSeeAllCases(user.profile, user.caps);
+  const departmentId =
+    canSeeDepartments && sp.department && UUID_RE.test(sp.department)
+      ? sp.department
+      : undefined;
   // Фильтр по дате закрытия — только на вкладке «Архив».
   const closedFrom =
     archived && sp.closed_from && DATE_RE.test(sp.closed_from)
@@ -147,20 +157,23 @@ export default async function CasesPage({
   // Списки для staff-фильтров (юрист / эксперт / клиент). Юристам/Експертам они
   // не нужны: те и так видят только свои дела. Эксперты/юристы — только «реальные»
   // роли (без owner/admin) — U3.
-  const [experts, lawyers, clients] = isStaff
+  const [experts, lawyers, clients, departments] = isStaff
     ? await Promise.all([
         listExpertsForFilter(),
         listLawyersForFilter(),
         listClientsForSelect(),
+        canSeeDepartments ? listActiveDepartments() : Promise.resolve([]),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
 
   const [result, stageCounts] = await Promise.all([
     listCases({
-      q, stage, caseType, category, responsibleId, lawyerId, clientId, debtOnly,
-      archived, closedFrom, closedTo, page, sort, dir,
+      q, stage, caseType, category, responsibleId, lawyerId, clientId, departmentId,
+      debtOnly, archived, closedFrom, closedTo, page, sort, dir,
     }),
-    countCasesByStage({ caseType, category, responsibleId, lawyerId, clientId, debtOnly }),
+    countCasesByStage({
+      caseType, category, responsibleId, lawyerId, clientId, departmentId, debtOnly,
+    }),
   ]);
   const { items, pageCount } = result;
   const totalByStage = CASE_STAGES.reduce((sum, s) => sum + stageCounts[s], 0);
@@ -169,7 +182,7 @@ export default async function CasesPage({
   // фильтром не считается — иначе «нет фильтров» и empty-state были бы неверны).
   const hasFilters = Boolean(
     q || stage || caseType || category || responsibleId || lawyerId || clientId ||
-      closedFrom || closedTo,
+      departmentId || closedFrom || closedTo,
   );
 
   function buildHref(
@@ -181,6 +194,7 @@ export default async function CasesPage({
       responsible: string;
       lawyer: string;
       client: string;
+      department: string;
       debt: string;
       archived: string;
       closed_from: string;
@@ -201,6 +215,7 @@ export default async function CasesPage({
     const nextResp = overrides.responsible ?? responsibleId ?? '';
     const nextLawyer = overrides.lawyer ?? lawyerId ?? '';
     const nextClient = overrides.client ?? clientId ?? '';
+    const nextDepartment = overrides.department ?? departmentId ?? '';
     const nextDebt = isArchive ? '' : overrides.debt ?? (debtOnly ? 'true' : '');
     const nextClosedFrom = isArchive
       ? overrides.closed_from ?? closedFrom ?? ''
@@ -217,6 +232,7 @@ export default async function CasesPage({
     if (nextResp) params.set('responsible', nextResp);
     if (nextLawyer) params.set('lawyer', nextLawyer);
     if (nextClient) params.set('client', nextClient);
+    if (nextDepartment) params.set('department', nextDepartment);
     if (nextDebt) params.set('debt', nextDebt);
     if (nextClosedFrom) params.set('closed_from', nextClosedFrom);
     if (nextClosedTo) params.set('closed_to', nextClosedTo);
@@ -418,12 +434,24 @@ export default async function CasesPage({
             />
           )}
 
+          {canSeeDepartments && (
+            <CasesFilterSelect
+              name="department"
+              value={departmentId ?? ''}
+              ariaLabel={t.cases.filters.departmentAria}
+              options={[
+                { value: '', label: t.cases.filters.allDepartments },
+                ...departments.map((d) => ({ value: d.id, label: d.name })),
+              ]}
+            />
+          )}
+
           {(hasFilters || debtOnly) && (
             <Link
               href={buildHref({
                 stage: '', type: '', category: '', responsible: '',
-                lawyer: '', client: '', debt: '', closed_from: '', closed_to: '',
-                page: 1,
+                lawyer: '', client: '', department: '', debt: '', closed_from: '',
+                closed_to: '', page: 1,
               })}
               className="shrink-0 whitespace-nowrap px-1 text-[13px] text-text-muted underline-offset-2 hover:text-text hover:underline"
             >

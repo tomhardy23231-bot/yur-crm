@@ -29,6 +29,94 @@
 
 ---
 
+## Сессия 2026-06-10 (4) — v2 Этап 3: UI подразделений, команда, доступы ✅
+
+_Этап 3 из 7 (docs/PLAN-V2.md). Чисто UI-этап: RLS видимости уже была в Этапах 1–2.
+Дал owner'у интерфейс управления структурой + фильтр «Подразделение» в списках/отчёте._
+
+### Что сделано
+- **Экраны:**
+  - `/settings/departments` (owner-only, `requireRole(['owner'])`): создание,
+    переименование (inline), (де)активация подразделений; плитка в хабе `/settings`.
+    Карточка каждого подразделения — команда (активные члены) + редактор назначения.
+    Секция «Вне структуры» для не привязанных.
+  - Общий `UserAssignmentEditor` (раскрывающийся, как `UserPermsEditor`): department +
+    visibility_scope (**owner**) + position (любой `manage_users`). Используется и на
+    карточке подразделения, и в `/settings/users` (новая колонка «Подразделение»).
+  - Форма создания пользователя: поля подразделение/должность/скоуп (department/scope —
+    только owner; scope-селект — только для admin/office_manager).
+  - Фильтр «Подразделение» в `/cases` и `/reports/payroll` — показывается только тем,
+    кто видит >1 подразделения (`canSeeAllCases` = зеркало SQL `can_see_all_cases`).
+- **2 миграции (аддитивные):**
+  - `20260610120000_activity_log_department_actions.sql` — allowlist `activity_log`:
+    + `department_created/renamed/activated/deactivated` (entity_type `department`,
+    **owner-gate** в `log_activity`) + `user_department_changed` (entity_type `user`).
+    ⚠ Пересоздаёт CHECK + функцию ПОВЕРХ 20260607120000 — **весь прежний allowlist
+    сохранён** (гоча 23514, см. «Подводные камни» PLAN-V2). entity_type-список
+    расширен до `('case','client','user','department')`.
+  - `20260610130000_search_case_ids_department.sql` — RPC `search_case_ids`
+    + `p_department_id` (SECURITY INVOKER → под RLS; `exists` по lawyer_id ИЛИ
+    responsible_id в подразделении). DROP старой 14-арг сигнатуры + CREATE 15-арг.
+- **Слой данных:** `lib/departments/{queries,actions}.ts` (CRUD owner, 23505→«имя
+  занято»); `UserProfile` + `department_id/position/visibility_scope`, тип
+  `Department`/`ManagedUser`, хелпер `canSeeAllCases`; `getCurrentUser` догружает
+  новые колонки с тем же fail-safe фолбэком, что perm_overrides/language;
+  `listManagedUsers` + join имени подразделения; `assignUserDepartmentAction` +
+  поля в `createUserAction` (owner-gate на service_role-пути); фильтр подразделения
+  в `listCases`/`countCasesByStage` (.or) и `getPayrollEmployeeSummary` (пост-фильтр).
+- **i18n:** новый словарь `departments` (ru+uk) + enum `visibilityScope` + ключи в
+  settings/users/cases/payroll. tsc enforce-ит паритет uk↔ru.
+
+### Решения и почему
+- **department/scope меняет только owner — тройная защита:** код
+  (`createUserAction` service_role-путь + `assignUserDepartmentAction`) + БД-гард
+  `users_guard_visibility_fields` (сессионный путь) + client-гейт. position — любой
+  `manage_users` (косметика, БД не охраняет). На service_role-пути (создание юзера)
+  БД-гард пропускает (auth.uid()=null) → код единственный страж, поэтому owner-gate там
+  обязателен (подтвердил адвер-ревью).
+- **Фильтр подразделения только сужает:** показывается/применяется лишь при
+  `canSeeAllCases`; скоупленный admin с `?department=<чужое>` → `departmentId=undefined`
+  + RLS всё равно режет. Не может расширить видимость.
+- **Назначение из двух мест** (карточка подразделения + экран пользователей) через ОДИН
+  компонент `UserAssignmentEditor` — без дублирования логики.
+- **Команда на карточке подразделения — активные члены** (счётчик считает активных) —
+  чтобы цифра и список совпадали; деактивированные правятся на экране пользователей.
+
+### Проверки (DoD)
+- `npx supabase db reset` — чисто (обе миграции применились); `tsc --noEmit` / `lint`
+  / `build` — зелёные (маршрут `/settings/departments` собран);
+- unit **49/49**, integration **37/37** (+1: `search_case_ids` p_department_id —
+  Львів→только B, Київ→A,S не B);
+- **Ревью:** структурный критический проход + независимый адверсариальный субагент
+  (gstack `/review`/`/cso` bash на Windows не запускается — как в Этапе 2). Итог:
+  **0 CRITICAL/HIGH**; 2 LOW = задокументированное переходное правило
+  `department_id IS NULL ⇒ видит всё` (решение Этапа 2, RLS его же enforce-ит — не
+  новая эскалация). Allowlist полный (нет 23514), OR-семантика и owner-gating верны.
+
+### Незакрытые вопросы / заметки для следующих этапов
+- [ ] **Браузерный `/qa` по флоу** (owner: завести подразделение → перекинуть человека →
+  сменить scope → увидеть смену видимости) НЕ прогонялся (нужен живой dev + интерактив).
+  Автогейты (build/tests/адвер-ревью) зелёные; QA можно прогнать перед/после прода.
+- [ ] **Переходное правило** `department_id IS NULL ⇒ admin/office_manager видит всё`:
+  manage_users-холдер может создать office_manager без подразделения → тот видит всю
+  компанию, пока owner не назначит подразделение. Осознанно (спека §4, Этап 2). Если
+  захотят жёстче — обсудить с клиентом (требовать назначение перед view_all).
+- [ ] **Этап 4 (ЗП-режимы):** скоуп ЗАПИСИ admin'а по подразделению (salary-поля),
+  гард по образцу `cases_guard_rate_overrides` (см. запись Этапа 2).
+- [ ] **allowlist `activity_log`** теперь включает department_* — при будущих миграциях,
+  пересоздающих CHECK/функцию, база мёрджа = **20260610120000** (не раньше).
+
+### Handoff для следующей сессии
+- **Стартовать с:** CLAUDE.md → docs/PLAN-V2.md (статус: следующий ⬜ — **Этап 4
+  «ЗП-режимы: фикс / фикс+% / %»**) → эта запись.
+- **Пуш на прод НЕ делался** (ни git push, ни db push) — ждёт «ок». При `db push`:
+  обе миграции аддитивные; `20260610120000` пересоздаёт allowlist, но мёрджем
+  (23514 не грозит); дамп прода перед push обязателен (PLAN-V2 «Бэкап и откат»).
+- **Хеш коммита Этапа 3** впишется в статус-таблицу follow-up'ом (как Этапы 1–2).
+- Локальный Supabase: порт 48321 (Studio :48323).
+
+---
+
 ## Сессия 2026-06-10 (3) — v2 Этап 2: RLS по подразделениям ✅
 
 _Этап 2 из 7 (docs/PLAN-V2.md). Переключение видимости данных «staff видит всё» →

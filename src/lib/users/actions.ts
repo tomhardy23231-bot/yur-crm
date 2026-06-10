@@ -12,9 +12,11 @@ import {
   canManageTargetUser,
   canGrantCapability,
   isRole,
+  isVisibilityScope,
   CAPABILITIES,
   type Role,
   type PermOverrides,
+  type VisibilityScope,
 } from '@/lib/types/db';
 
 // Считывает переопределения прав из формы (поля cap_<key> ∈ inherit|grant|revoke).
@@ -122,6 +124,22 @@ export async function createUserAction(
     role,
   );
 
+  // v2 Этап 3: подразделение/должность/скоуп при создании. Создание идёт через
+  // service_role (auth.uid() null → БД-гард users_guard_visibility_fields
+  // пропускает), поэтому owner-only для department_id/visibility_scope
+  // ENFORCE здесь. position — любой обладатель manage_users.
+  const isOwnerActor = actor.profile.role === 'owner';
+  const positionRaw = String(formData.get('position') ?? '').trim();
+  const position = positionRaw === '' ? null : positionRaw.slice(0, 120);
+  let department_id: string | null = null;
+  let visibility_scope: VisibilityScope = 'department';
+  if (isOwnerActor) {
+    const deptRaw = String(formData.get('department_id') ?? '').trim();
+    department_id = deptRaw !== '' && UUID_RE.test(deptRaw) ? deptRaw : null;
+    const scopeRaw = String(formData.get('visibility_scope') ?? '').trim();
+    if (isVisibilityScope(scopeRaw)) visibility_scope = scopeRaw;
+  }
+
   const admin = createSupabaseAdminClient();
   const password = generateTempPassword();
 
@@ -147,6 +165,9 @@ export async function createUserAction(
     role,
     is_active: true,
     perm_overrides: permOverrides,
+    department_id,
+    position,
+    visibility_scope,
   });
   if (profErr) {
     // Профиль не записался — удаляем осиротевшего auth-пользователя, чтобы
@@ -364,4 +385,98 @@ export async function setUserActiveAction(formData: FormData): Promise<void> {
     changes: { is_active: nextActive },
   });
   revalidatePath('/settings/users');
+}
+
+// ============================================================================
+// Назначение подразделения / должности / скоупа видимости (v2 Этап 3).
+// department_id и visibility_scope меняет ТОЛЬКО owner (спека + БД-гард
+// users_guard_visibility_fields дублирует на пути сессии). position —
+// любой обладатель manage_users в зоне управления (как роль/права).
+// Деактивированному не правим (сначала реактивировать).
+// ============================================================================
+
+export async function assignUserDepartmentAction(formData: FormData): Promise<void> {
+  const actor = await requireUser();
+  if (!actor.caps.manage_users) return;
+
+  const user_id = String(formData.get('user_id') ?? '').trim();
+  if (!UUID_RE.test(user_id)) return;
+
+  const isOwnerActor = actor.profile.role === 'owner';
+
+  const supabase = await createSupabaseServerClient();
+  const { data: target } = await supabase
+    .from('users')
+    .select('id, role, is_active, department_id, position, visibility_scope')
+    .eq('id', user_id)
+    .maybeSingle<{
+      id: string;
+      role: Role;
+      is_active: boolean;
+      department_id: string | null;
+      position: string | null;
+      visibility_scope: VisibilityScope;
+    }>();
+  if (!target || !target.is_active) return;
+  if (!canManageTargetUser(actor.profile.role, actor.caps.manage_users, target.role)) {
+    return;
+  }
+
+  const update: {
+    position?: string | null;
+    department_id?: string | null;
+    visibility_scope?: VisibilityScope;
+  } = {};
+
+  // position — любой обладатель manage_users.
+  const positionRaw = String(formData.get('position') ?? '').trim();
+  const nextPosition = positionRaw === '' ? null : positionRaw.slice(0, 120);
+  if (nextPosition !== (target.position ?? null)) update.position = nextPosition;
+
+  // department_id / visibility_scope — только owner.
+  if (isOwnerActor) {
+    const deptRaw = String(formData.get('department_id') ?? '').trim();
+    const nextDept = deptRaw === '' ? null : UUID_RE.test(deptRaw) ? deptRaw : target.department_id;
+    if (nextDept !== target.department_id) update.department_id = nextDept;
+
+    const scopeRaw = String(formData.get('visibility_scope') ?? '').trim();
+    const nextScope = isVisibilityScope(scopeRaw) ? scopeRaw : target.visibility_scope;
+    if (nextScope !== target.visibility_scope) update.visibility_scope = nextScope;
+  }
+
+  if (Object.keys(update).length === 0) return; // no-op
+
+  // RLS users_update_managed_roles + гард users_guard_visibility_fields дублируют.
+  const { error } = await supabase.from('users').update(update).eq('id', user_id);
+  if (error) {
+    console.error('assignUserDepartmentAction failed:', error.code, error.message);
+    return;
+  }
+
+  // Журналим смену подразделения/scope (аудит видимости). position — косметика,
+  // в журнал не пишем (как и БД-гард его не охраняет).
+  if ('department_id' in update || 'visibility_scope' in update) {
+    await logActivity({
+      entity_type: 'user',
+      entity_id: user_id,
+      action: 'user_department_changed',
+      changes: {
+        before: {
+          department_id: target.department_id,
+          visibility_scope: target.visibility_scope,
+        },
+        after: {
+          department_id:
+            'department_id' in update ? update.department_id : target.department_id,
+          visibility_scope:
+            'visibility_scope' in update
+              ? update.visibility_scope
+              : target.visibility_scope,
+        },
+      },
+    });
+  }
+
+  revalidatePath('/settings/users');
+  revalidatePath('/settings/departments');
 }

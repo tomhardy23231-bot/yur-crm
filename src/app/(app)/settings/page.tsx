@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Coins, Languages, ShieldCheck, Users, ChevronRight } from 'lucide-react';
+import { Building2, Coins, Languages, ShieldCheck, Users, ChevronRight } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ export default async function SettingsPage() {
   const { t } = await getT();
   const canManageUsers = actor.caps.manage_users;
   const canEditRates = actor.caps.edit_payroll_rates;
+  const isOwner = actor.profile.role === 'owner';
   if (!canManageUsers && !canEditRates) redirect('/forbidden');
 
   return (
@@ -63,6 +64,30 @@ export default async function SettingsPage() {
               </span>
               <span className="block text-[13px] text-text-muted">
                 {t.settings.usersCard.desc}
+              </span>
+            </span>
+            <ChevronRight
+              size={18}
+              strokeWidth={1.75}
+              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
+            />
+          </Link>
+        )}
+
+        {isOwner && (
+          <Link
+            href="/settings/departments"
+            className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+              <Building2 size={20} strokeWidth={1.75} />
+            </span>
+            <span className="flex-1">
+              <span className="block text-[15px] font-semibold text-text">
+                {t.settings.departmentsCard.title}
+              </span>
+              <span className="block text-[13px] text-text-muted">
+                {t.settings.departmentsCard.desc}
               </span>
             </span>
             <ChevronRight

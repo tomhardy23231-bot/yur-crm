@@ -11,6 +11,7 @@ export const users: UsersMessages = {
   table: {
     colUser: 'Співробітник',
     colRole: 'Роль',
+    colDepartment: 'Підрозділ',
     colStatus: 'Статус',
     colPerms: 'Права',
     colAction: 'Дія',

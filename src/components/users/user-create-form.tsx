@@ -11,6 +11,8 @@ import { Select } from '@/components/ui/select';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import { useI18n } from '@/lib/i18n/provider';
 import {
+  VISIBILITY_SCOPES,
+  type Department,
   type EffectiveCaps,
   type Role,
 } from '@/lib/types/db';
@@ -30,9 +32,18 @@ interface Props {
   // Роль и эффективные права актора — для гейтинга настраиваемых прав по выбранной роли.
   actorRole: Role;
   actorCaps: EffectiveCaps;
+  // Активные подразделения (для селекта при создании; owner-only поле).
+  departments: ReadonlyArray<Department>;
+  actorIsOwner: boolean;
 }
 
-export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props) {
+export function UserCreateForm({
+  assignableRoles,
+  actorRole,
+  actorCaps,
+  departments,
+  actorIsOwner,
+}: Props) {
   const { t } = useI18n();
   const [state, formAction] = useActionState<CreateUserState, FormData>(
     createUserAction,
@@ -109,6 +120,47 @@ export function UserCreateForm({ assignableRoles, actorRole, actorCaps }: Props)
             ))}
           </Select>
         </Field>
+      </div>
+
+      {/* Подразделение / должность / скоуп (v2). department/scope — только owner;
+          должность — любой обладатель manage_users. Скоуп — только для
+          admin/office_manager (для остальных ролей не действует). */}
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-[1.2fr_1.2fr_1fr]">
+        {actorIsOwner && (
+          <Field label={t.departments.assign.departmentLabel} htmlFor="user-department">
+            <Select id="user-department" name="department_id" defaultValue="">
+              <option value="">{t.departments.assign.noDepartment}</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        <Field label={t.departments.assign.positionLabel} htmlFor="user-position">
+          <Input
+            id="user-position"
+            name="position"
+            type="text"
+            maxLength={120}
+            placeholder={t.departments.assign.positionPlaceholder}
+          />
+        </Field>
+
+        {actorIsOwner &&
+          (selectedRole === 'admin' || selectedRole === 'office_manager') && (
+            <Field label={t.departments.assign.scopeLabel} htmlFor="user-scope">
+              <Select id="user-scope" name="visibility_scope" defaultValue="department">
+                {VISIBILITY_SCOPES.map((s) => (
+                  <option key={s} value={s}>
+                    {t.enums.visibilityScope[s]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
       </div>
 
       {/* Персональные права (опционально) — доступны после выбора роли.
