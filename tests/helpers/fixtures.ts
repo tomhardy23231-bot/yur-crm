@@ -229,6 +229,11 @@ export async function destroyWorld(w: World): Promise<void> {
   // удаления пользователей (и по user_id, и по created_by — на случай чужого автора).
   await admin.from('absences').delete().in('user_id', userIds);
   await admin.from('absences').delete().in('created_by', userIds);
+  // Касса (Этап 7): авто-приходы уже удалены каскадом вместе с payments выше; здесь
+  // снимаем ручные операции и счета (created_by → users RESTRICT). Сначала операции
+  // (account_id → cash_accounts RESTRICT), потом сами счета.
+  await admin.from('cash_entries').delete().in('created_by', userIds);
+  await admin.from('cash_accounts').delete().in('created_by', userIds);
   await admin.from('users').delete().in('id', userIds);
   for (const id of userIds) {
     await admin.auth.admin.deleteUser(id);

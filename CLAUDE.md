@@ -145,7 +145,13 @@ npm run db:seed   # появится в Шаге 1; использует SUPABAS
   правка платежей) — **НЕ** скоупится по подразделению (Этап 2 — про видимость данных);
 - документы/задачи/платежи/комментарии/storage/лог дела наследуют доступ от своего дела
   (`can_see_case` → `case_visible`); клиенты — `can_see_client`; журнал по пользователям —
-  по праву `manage_users`.
+  по праву `manage_users`;
+- **касса (v2 Этап 7)** — `cash_accounts`/`cash_entries` целиком по праву
+  `private.can('can_manage_cash')` (НЕ по подразделению; owner имеет по дефолту роли).
+  `can_manage_cash` — 12-е настраиваемое право в системе `perm_overrides`; дефолт —
+  только owner, **выдаёт его тоже только owner** (`can_grant_cap`, owner-only ветка,
+  как `edit_payroll_rates`). Авто-приход от платежей создаётся SECURITY DEFINER-триггером
+  в обход RLS кассы (платёж вносит юрист/Експерт без этого права).
 
 ---
 
@@ -286,13 +292,38 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 (`salary_mode=fixed/fixed_percent`) в леджер НЕ пишем; интеграция режимов в леджер
 отложена (Phase 2, если леджер вернут в UI).
 
+**cash_accounts** (счета кассы) — v2 Этап 7
+`id, name, kind (card|bank|cash, default bank), opening_balance numeric(14,2) (default 0),
+opening_date date, is_active bool (default true), is_default bool (default false,
+partial-unique: ≤1 на компанию), created_by, created_at`
+— счета кассы (Карта/Рахунок/Готівка + добавляемые). `kind` задаёт маппинг
+`payments.method`→счёт автоприхода; `is_default` — фолбэк, когда метод не лёг ни на один
+kind. Засеяны 3 счёта в `scripts/seed.ts` (не миграцией — начальные остатки реальны,
+зависят от компании). Доступ — право `can_manage_cash` (см. ниже).
+
+**cash_entries** (журнал операций кассы) — v2 Этап 7
+`id, account_id (→ cash_accounts, on delete restrict), entry_date date,
+direction (in|out), amount numeric(14,2) (>0), description (≤300, not null),
+case_id (→ cases, set null, опц.), payment_id (→ payments, on delete cascade, опц.,
+unique), created_by (→ users restrict), created_at`
+— приход/расход за день, свободное описание (аренда/налоги/реклама — НЕ привязаны к делам).
+**Авто-приход:** платёж по делу автоматически создаёт `cash_entries(direction='in')` на
+счёт (триггер `cash_sync_on_payment` на `payments`, SECURITY DEFINER): счёт выбирается
+`private.cash_resolve_account(method)` (kind по методу: card/bank/cash, `'act'`→bank;
+фолбэк — дефолтный счёт; нет касс → **операция пропускается, триггер не падает**). Удаление
+платежа снимает строку (FK cascade); правка платежа пересоздаёт её. Авто-строки
+(`payment_id IS NULL=false`) пользователю на UPDATE/DELETE не отдаются (правятся через сам
+платёж); ручные (`payment_id IS NULL`) правит/удаляет cash-manager. Сальдо считается
+накопительно в TS (`lib/cash/saldo.ts`, юнит-тест по образцу ОЛІМП), отчёт — `/reports/cash`
+(вкладки счетов + Total, разворот по дням, итоги месяца).
+
 **activity_log** (история изменений)
 `id, entity_type, entity_id, user_id, action, changes (jsonb), created_at`
 
 **Phase 2/3 (проектируем позже):** `document_templates` (если понадобятся),
-`invoices`, `client_portal_users`, `client_requests` (обращения с портала). Учёт
-времени (`time_entries`) и почасовая оплата из плана **исключены** — заменены моделью
-«зарплата = % от оплат».
+`client_portal_users`, `client_requests` (обращения с портала). Учёт времени
+(`time_entries`) и почасовая оплата из плана **исключены** — заменены моделью «зарплата =
+% от оплат». Тема `invoices` закрыта актами (v2 Этап 5, `case_acts`) и кассой (Этап 7).
 
 ---
 
@@ -370,7 +401,9 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 > сальдо-отчётом. Разделы §4–§7 описывают систему ДО v2 — по мере закрытия этапов
 > они обновляются (это часть DoD каждого этапа).
 >
-> **Готово (этапы 1–6):** БД-фундамент подразделений + департаментная RLS-видимость
+> **✅ ЦИКЛ v2 ЗАВЕРШЁН (этапы 1–7, 2026-06-11).** Все 7 этапов закрыты.
+>
+> **Готово (этапы 1–7):** БД-фундамент подразделений + департаментная RLS-видимость
 > (§4–§5, §7), **UI** подразделений (`/settings/departments`, поля в `/settings/users`
 > и форме создания, фильтр «Подразделение» в `/cases` и `/reports/payroll`),
 > **ЗП-режимы** (Этап 4): `users.salary_mode` (percent/fixed/fixed_percent) +
@@ -384,7 +417,13 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 > `absences` (vacation/sick/other, период, ролевая видимость по подразделению —
 > `private.absence_user_visible`/`absence_can_write`; office_manager только читает),
 > блок «Отпуска и отсутствия» на карточке сотрудника + violet-маркеры в общем
-> календаре (`--absence`). Дальше — этап 7 (касса с сальдо-отчётом).
+> календаре (`--absence`), и **Касса** (Этап 7): `cash_accounts`/`cash_entries`
+> (счета Карта/Рахунок/Готівка, журнал приход/расход), право `can_manage_cash`
+> (12-й cap, owner-дефолт + owner-only грант), авто-приход платежей по делу
+> (триггер `cash_sync_on_payment`, маппинг method→счёт), сальдо накопительно
+> (`lib/cash/saldo.ts`, юнит-тест по образцу ОЛІМП), отчёт `/reports/cash`
+> (вкладки счетов + Total, разворот по дням, итоги месяца) + пункт «Касса» в
+> навигации (cap-gated). См. §4–§5, §7-8.
 
 **Phase 1 — MVP (готово):**
 - Auth + роли + RLS (модель доступа из §4);

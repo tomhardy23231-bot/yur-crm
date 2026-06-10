@@ -81,6 +81,18 @@ export const enums: EnumsMessages = {
     other: 'Відсутність',
   },
 
+  // Вид рахунку каси (v2 Етап 7).
+  cashAccountKind: {
+    card: 'Картка',
+    bank: 'Розрахунковий рахунок',
+    cash: 'Готівка',
+  },
+  // Напрям операції каси.
+  cashDirection: {
+    in: 'Надходження',
+    out: 'Видаток',
+  },
+
   taskStatus: {
     open: 'Відкрита',
     done: 'Завершена',
@@ -158,6 +170,7 @@ export const enums: EnumsMessages = {
     edit_rate_overrides: 'Змінювати % зарплати у справі',
     manage_users: 'Керування користувачами',
     edit_payroll_rates: 'Системні налаштування (ставки)',
+    can_manage_cash: 'Керування касою',
   },
 
   capabilityHint: {
@@ -173,5 +186,6 @@ export const enums: EnumsMessages = {
     edit_rate_overrides: 'Задавати індивідуальний % зарплати в конкретній справі.',
     manage_users: 'Створювати співробітників і змінювати їхні ролі та права.',
     edit_payroll_rates: 'Змінювати базові ставки зарплати за категоріями справ.',
+    can_manage_cash: 'Доступ до каси: рахунки, операції (надходження/видаток) і сальдо-звіт.',
   },
 };

@@ -22,6 +22,7 @@ import { tasks } from './tasks';
 import { comments } from './comments';
 import { calendar } from './calendar';
 import { absences } from './absences';
+import { cash } from './cash';
 import { documents } from './documents';
 import { acts } from './acts';
 import { requisites } from './requisites';
@@ -52,6 +53,7 @@ export const uk: Messages = {
   comments,
   calendar,
   absences,
+  cash,
   documents,
   acts,
   requisites,

@@ -59,7 +59,8 @@ const WORK_ITEMS: ReadonlyArray<NavItem> = [
   { id: 'calendar',  href: '/calendar',  icon: Calendar,        enabled: true, tourId: 'nav-calendar' },
   { id: 'payroll',   href: '/reports/payroll', icon: Coins,     enabled: true, tourId: 'nav-payroll'  },
   { id: 'documents', href: '/documents', icon: FileText,        enabled: false },
-  { id: 'finance',   href: '/finance',   icon: Wallet,          enabled: false },
+  // Касса — только обладателю права can_manage_cash (по дефолту owner). RLS дублирует.
+  { id: 'finance',   href: '/reports/cash', icon: Wallet,       enabled: true, requiredCaps: ['can_manage_cash'], tourId: 'nav-cash' },
 ];
 
 // Администрирование. Единый вход — «Настройки». Виден обладателям права
@@ -161,13 +162,14 @@ export function SidebarNav({
     );
   };
 
-  const adminItems = ADMIN_ITEMS.filter(
-    (item) => !item.requiredCaps || item.requiredCaps.some((c) => caps[c]),
-  );
+  const hasCap = (item: NavItem) =>
+    !item.requiredCaps || item.requiredCaps.some((c) => caps[c]);
+  const workItems = WORK_ITEMS.filter(hasCap);
+  const adminItems = ADMIN_ITEMS.filter(hasCap);
 
   return (
     <nav className="flex flex-1 flex-col items-center gap-[3px] overflow-x-hidden overflow-y-auto px-0 py-1">
-      {WORK_ITEMS.map(renderItem)}
+      {workItems.map(renderItem)}
       {adminItems.length > 0 && (
         <>
           <div className="my-1.5 h-px w-7 bg-sidebar-border" aria-hidden="true" />

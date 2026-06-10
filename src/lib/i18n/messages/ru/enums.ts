@@ -82,6 +82,18 @@ export const enums = {
     other: 'Отсутствие',
   },
 
+  // Вид счёта кассы (v2 Этап 7).
+  cashAccountKind: {
+    card: 'Карта',
+    bank: 'Расчётный счёт',
+    cash: 'Наличные',
+  },
+  // Направление операции кассы.
+  cashDirection: {
+    in: 'Приход',
+    out: 'Расход',
+  },
+
   taskStatus: {
     open: 'Открыта',
     done: 'Завершена',
@@ -162,6 +174,7 @@ export const enums = {
     edit_rate_overrides: 'Менять % зарплаты на деле',
     manage_users: 'Управление пользователями',
     edit_payroll_rates: 'Системные настройки (ставки)',
+    can_manage_cash: 'Управление кассой',
   },
 
   capabilityHint: {
@@ -177,6 +190,7 @@ export const enums = {
     edit_rate_overrides: 'Задавать индивидуальный % зарплаты на конкретном деле.',
     manage_users: 'Создавать сотрудников и менять их роли и права.',
     edit_payroll_rates: 'Менять базовые ставки зарплаты по категориям дел.',
+    can_manage_cash: 'Доступ к кассе: счета, операции (приход/расход) и сальдо-отчёт.',
   },
 };
 

@@ -283,10 +283,48 @@ async function seedDomain(ids: Map<string, string>): Promise<void> {
   );
 }
 
+// Касса (v2 Этап 7): три счёта по образцу ОЛІМП + право can_manage_cash офис-менеджеру
+// (для QA не-owner кассира). Заводим ДО seedDomain, чтобы платёж по делу авто-приходом
+// попал на дефолтный счёт (Рахунок) через триггер cash_sync_on_payment.
+async function seedCash(ids: Map<string, string>): Promise<void> {
+  const ownerId = ids.get('owner@yur.local')!;
+  const officeId = ids.get('office@yur.local')!;
+
+  await getOrCreate(
+    'cash_accounts',
+    { name: 'Картка ПриватБанк' },
+    { name: 'Картка ПриватБанк', kind: 'card', opening_balance: 1500, opening_date: '2026-05-01', is_default: false, created_by: ownerId },
+  );
+  await getOrCreate(
+    'cash_accounts',
+    { name: 'Рахунок ПриватБанк' },
+    { name: 'Рахунок ПриватБанк', kind: 'bank', opening_balance: 139031.19, opening_date: '2026-05-01', is_default: true, created_by: ownerId },
+  );
+  await getOrCreate(
+    'cash_accounts',
+    { name: 'Готівка в касі' },
+    { name: 'Готівка в касі', kind: 'cash', opening_balance: 1500, opening_date: '2026-05-01', is_default: false, created_by: ownerId },
+  );
+
+  // Право управления кассой — офис-менеджеру (merge поверх существующих оверрайдов).
+  const { data: u } = await admin
+    .from('users')
+    .select('perm_overrides')
+    .eq('id', officeId)
+    .maybeSingle<{ perm_overrides: Record<string, boolean> | null }>();
+  const overrides = { ...(u?.perm_overrides ?? {}), can_manage_cash: true };
+  const { error } = await admin.from('users').update({ perm_overrides: overrides }).eq('id', officeId);
+  if (error) throw error;
+}
+
 async function main(): Promise<void> {
   console.log('Сидим пользователей...');
   const ids = await seedUsers();
   console.log(`  готово: ${ids.size} аккаунтов (пароль для всех: ${PASSWORD})`);
+
+  console.log('Сидим кассу...');
+  await seedCash(ids);
+  console.log('  готово');
 
   console.log('Сидим доменные данные...');
   await seedDomain(ids);

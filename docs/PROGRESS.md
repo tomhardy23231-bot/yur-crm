@@ -29,6 +29,95 @@
 
 ---
 
+## Сессия 2026-06-11 (8) — v2 Этап 7: Касса и сальдо-отчёт ✅ (ЦИКЛ v2 ЗАВЕРШЁН)
+
+_Этап 7 из 7 — ПОСЛЕДНИЙ (docs/PLAN-V2.md). Касса по образцу ОЛІМП
+(`docs/samples/oborotka-olimp-sample.xls`): счета + журнал операций приход/расход,
+авто-приход платежей по делу, сальдо-отчёт с разворотом по дням. Этапы 1–6 закрыты._
+
+### Что сделано
+- **Миграция `20260610190000_cash_register.sql`** (аддитивная):
+  - `cash_accounts` (name, kind card|bank|cash, opening_balance/opening_date, is_active,
+    is_default — partial-unique ≤1 на компанию, created_by RESTRICT);
+  - `cash_entries` (account_id RESTRICT, entry_date, direction in|out, amount>0,
+    description ≤300 not null, case_id SET NULL, payment_id CASCADE+unique, created_by);
+  - **Право `can_manage_cash` — 12-е в системе `perm_overrides`** (расширены
+    `cap_role_default` [owner-default], `validate_perm_overrides` [allowlist],
+    `can_grant_cap` [owner-only ветка, как edit_payroll_rates]). RLS обеих таблиц —
+    `private.can('can_manage_cash')` (раздельные SELECT/INSERT/UPDATE/DELETE; insert
+    без спуфа created_by; cash_entries: вставка/правка/удаление ТОЛЬКО ручных
+    `payment_id IS NULL`, авто-приходы система не отдаёт пользователю);
+  - **Автоприход**: триггер `cash_sync_on_payment` на `payments` (AFTER INSERT/UPDATE,
+    SECURITY DEFINER — платёж вносит юрист без cap, строку кассы создаём в обход RLS).
+    Счёт = `cash_resolve_account(method)` (kind по методу card/bank/cash, `'act'`→bank;
+    фолбэк — дефолтный; нет касс → пропуск, триггер НЕ падает). DELETE платежа → FK
+    cascade снимает приход.
+- **Слой данных** `lib/cash/`: `saldo.ts` (чистые функции накопительного сальдо —
+  `rollForwardDays`/`buildAccountSaldo`/`balanceAsOf`/`buildTotalRows`/`monthTotals`,
+  под юнит-тест), `queries.ts` (`listCashAccounts`/`getCashReportData`), `actions.ts`
+  (create/update счёта, ручная операция, удаление — cap-гейт + RLS). Типы `CashAccount`/
+  `CashEntry`/`CashAccountKind`/`CashDirection` + `can_manage_cash` в CAPABILITIES/
+  CAP_ROLE_DEFAULTS/OWNER_ONLY/canGrantCapability (`lib/types/db.ts`).
+- **UI** `/reports/cash` (requireCap `can_manage_cash`): `CashAccountsManager`
+  (список + создание/правка счетов), `CashReport` (вкладки счетов + Total, разворот по
+  дням, итоги месяца, журнал с удалением ручных), `CashEntryForm` (ручная операция).
+  Моноширинные цифры, минус красным. Пункт «Касса» в сайдбаре + мобильной шторке
+  (cap-gated, репрпоз stub `finance`→`/reports/cash`). i18n ru/uk (`cash` namespace +
+  enum `cashAccountKind`/`cashDirection` + `capabilityLabel/Hint.can_manage_cash`).
+- **Сидинг**: 3 счёта (Картка/Рахунок[default]/Готівка) + право `can_manage_cash`
+  офис-менеджеру в `scripts/seed.ts`. Платёж по делу авто-приходом падает на Рахунок.
+
+### Решения и почему
+- **Право как cap, НЕ boolean-колонка** (буква плана говорила `users.can_manage_cash
+  boolean`). Причина: в проекте уже есть унифицированная система `perm_overrides` +
+  `private.can`; 12-й cap автоматически попадает в редактор прав, RLS-предикат и
+  TS-зеркало — без дублирования. owner-default + owner-only грант = эквивалент «выдаёт
+  только owner; owner всегда имеет доступ».
+- **«Выбор счёта» = маппинг method→счёт** (а не UI-picker). Чтение
+  «(маппинг payments.method → счёт по умолчанию)» — это и есть механизм выбора;
+  picker на форме платежа не добавляли (платёж вносят юристы/Експерты без доступа к
+  кассе). **Адвер-ревью подтвердил** это как верное чтение спеки.
+- **Сальдо в TS, не в SQL**: сложение по дням тривиально, зато точный юнит-тест по
+  контрольному примеру XLS (DoD).
+
+### Проверки (DoD)
+- `npx supabase db reset` — чисто; tsc/lint/build — зелёные.
+- unit **93/93** (+12: сальдо сходится с образцом ОЛІМП — Рахунок 139031.19 →
+  68962.54/59685.09/23266.10/33266.10, Total по дням, переносы, итоги месяца).
+- integration **85/85** (+13: видимость по cap [owner/cash-manager да, юрист нет],
+  автоприход bank + act→bank, cascade при удалении платежа, ручные операции [вставка/
+  удаление], запрет спуфа payment_id и created_by, owner-only грант can_manage_cash).
+- Фикстуры: `destroyWorld` чистит cash_entries/cash_accounts (by created_by) до users.
+- **Адвер-ревью** — 15-агентный workflow (security/RLS + correctness + spec-completeness
+  → верификация каждой находки; gstack `/review`/`/cso` на Windows не идут). Из 35
+  находок подтверждено 5, исправлены:
+  - **HIGH** — `cash_sync_on_payment` удалял старую строку ДО резолва счёта → правка
+    платежа в метод без счёта (NULL без дефолта) теряла приход. Фикс: резолв ПЕРВЫМ,
+    удаляем/пересоздаём только если счёт нашёлся (psql-проверено: приход сохраняется).
+  - **MEDIUM** — гард неизменности `created_by`/`created_at` кассы (BEFORE UPDATE
+    `cash_*_guard_audit`, пин к old). НЕ через WITH CHECK `=active_uid` (сломало бы
+    правку чужого счёта другим cash-manager — ошибка в предложенном ревьюером фиксе).
+  - **MEDIUM** — добавлен integration-тест акт→касса.
+  - Отклонено: race на дефолтном счёте (partial-unique защищает целостность, 23505 →
+    friendly dup-сообщение), UI-hint act→bank (запутал бы не-cash act-confirmer).
+
+### Незакрытые вопросы / заметки
+- [ ] **Пуш на прод НЕ делался** (ни git push, ни db push) — ждёт «ок». Миграция
+  аддитивная; `activity_log` не трогали (23514 не грозит); дамп прода перед push
+  обязателен (PLAN-V2 «Бэкап и откат»). Хеш Этапа 7 → follow-up в статус-таблице.
+- [ ] **Браузерный `/qa`** по кассе (создать счёт, ручная операция, увидеть авто-приход
+  от платежа, вкладки/Total, сальдо) не прогонялся — нужен живой dev. Автогейты зелёные.
+- ✅ **ЦИКЛ v2 «Подразделения» ЗАВЕРШЁН** — все 7 этапов закрыты. Следующий цикл —
+  по новой спеке от пользователя.
+
+### Handoff для следующей сессии
+- **Стартовать с:** CLAUDE.md → docs/PLAN-V2.md (все 7 этапов ✅) → эта запись.
+- Локальный Supabase: порт 48321 (Studio :48323). Тестовые логины — `scripts/seed.ts`
+  (office@yur.local имеет can_manage_cash для QA кассы не-owner кассиром).
+- Касса: `/reports/cash`; сальдо-движок — `src/lib/cash/saldo.ts` (под юнит-тест).
+
+---
+
 ## Сессия 2026-06-10 (7) — v2 Этап 6: Отпуска / отсутствия ✅
 
 _Этап 6 из 7 (docs/PLAN-V2.md). Новая сущность `absences` (отпуск/больничный/иное на

@@ -11,6 +11,7 @@ import {
   HelpCircle,
   LogOut,
   Settings,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -73,6 +74,9 @@ export function MobileMoreSheet({
   const items: SheetItem[] = [
     { id: 'calendar', href: '/calendar', icon: Calendar, label: t.nav.calendar },
     { id: 'payroll', href: '/reports/payroll', icon: Coins, label: t.nav.payroll },
+    ...(caps.can_manage_cash
+      ? [{ id: 'cash', href: '/reports/cash', icon: Wallet, label: t.nav.finance }]
+      : []),
     ...(canAdmin
       ? [{ id: 'settings', href: '/settings', icon: Settings, label: t.nav.settings }]
       : []),

@@ -1,0 +1,96 @@
+// Касса и сальдо-отчёт (v2 Этап 7). Счета (Карта/Рахунок/Готівка), журнал операций
+// приход/расход, разворот по дням с накопительным остатком + сводный Total.
+
+export const cash = {
+  report: {
+    heading: 'Касса',
+    subtitle: 'Счета, операции и сальдо по дням',
+    // Вкладки: по счёту + сводная.
+    tabTotal: 'Свод',
+    tabsAria: 'Счета кассы',
+    // Таблица разворота по дням.
+    colDate: 'Дата',
+    colOpening: 'Остаток на начало',
+    colInflow: 'Приход',
+    colOutflow: 'Расход',
+    colClosing: 'Остаток на конец',
+    colAccount: 'Счёт',
+    colTotalAmount: 'Всього',
+    openingRow: 'Остаток на начало месяца',
+    monthInflow: 'Приход за месяц',
+    monthOutflow: 'Расход за месяц',
+    monthNet: 'Чистое изменение',
+    emptyMonth: 'За этот месяц операций по счёту нет.',
+    emptyTotal: 'За этот месяц операций нет.',
+    noAccounts: 'Счета кассы ещё не заведены.',
+    noAccountsHint: 'Добавьте первый счёт, чтобы вести кассу и видеть сальдо.',
+    beforeOpeningWarning:
+      'Есть операции раньше даты начального остатка — сальдо может быть неточным.',
+    // Журнал операций.
+    journalHeading: 'Операции за месяц',
+    journalEmpty: 'Операций за месяц нет.',
+    autoBadge: 'авто',
+    autoHint: 'Приход создан подтверждением оплаты по делу — правится через сам платёж.',
+  },
+
+  accounts: {
+    heading: 'Счета',
+    add: 'Добавить счёт',
+    createTitle: 'Новый счёт',
+    editTitle: 'Счёт',
+    name: 'Название',
+    namePlaceholder: 'Напр. Рахунок ПриватБанк',
+    kind: 'Вид',
+    openingBalance: 'Начальный остаток',
+    openingDate: 'Дата начального остатка',
+    isDefault: 'Счёт по умолчанию для автоприхода',
+    isDefaultHint: 'Платёж по делу без явного счёта попадёт сюда.',
+    isActive: 'Активен',
+    defaultBadge: 'по умолчанию',
+    inactiveBadge: 'неактивен',
+    edit: 'Изменить',
+    save: 'Сохранить',
+    saving: 'Сохранение…',
+    cancel: 'Отмена',
+    closingNow: 'Текущий остаток',
+  },
+
+  entry: {
+    add: 'Добавить операцию',
+    heading: 'Новая операция',
+    account: 'Счёт',
+    selectAccount: 'Выберите счёт',
+    direction: 'Тип',
+    amount: 'Сумма',
+    amountPlaceholder: '0',
+    date: 'Дата',
+    description: 'Описание',
+    descriptionPlaceholder: 'Напр. аренда, налоги, реклама',
+    submit: 'Добавить',
+    submitting: 'Добавление…',
+    delete: 'Удалить операцию',
+    saved: 'Операция добавлена.',
+  },
+
+  actions: {
+    noPermission: 'Недостаточно прав для управления кассой.',
+    notFound: 'Счёт не найден.',
+    nameRequired: 'Укажите название счёта.',
+    nameTooLong: 'Слишком длинное название (до 120 символов).',
+    kindInvalid: 'Выберите вид счёта.',
+    accountInvalid: 'Выберите счёт.',
+    directionInvalid: 'Выберите тип операции.',
+    amountRequired: 'Укажите сумму.',
+    amountInvalid: 'Некорректная сумма.',
+    dateRequired: 'Укажите дату.',
+    dateInvalid: 'Некорректная дата.',
+    descriptionRequired: 'Укажите описание операции.',
+    descriptionTooLong: 'Слишком длинное описание (до 300 символов).',
+    checkForm: 'Проверьте корректность полей.',
+    saveFailed: 'Не удалось сохранить. Попробуйте ещё раз.',
+    accountSaved: 'Счёт сохранён.',
+    entrySaved: 'Операция добавлена.',
+  },
+};
+
+export type CashMessages = typeof cash;

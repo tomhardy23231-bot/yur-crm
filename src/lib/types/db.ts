@@ -118,6 +118,7 @@ export const CAPABILITIES = [
   'edit_rate_overrides',
   'manage_users',
   'edit_payroll_rates',
+  'can_manage_cash',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -138,10 +139,14 @@ export const CAP_ROLE_DEFAULTS: Record<Capability, readonly Role[]> = {
   edit_rate_overrides: ['owner', 'admin'],
   manage_users: ['owner', 'admin'],
   edit_payroll_rates: ['owner'],
+  can_manage_cash: ['owner'],
 };
 
-// Право, которое выдаёт ТОЛЬКО владелец (системные настройки).
-export const OWNER_ONLY_CAPABILITIES: readonly Capability[] = ['edit_payroll_rates'];
+// Права, которые выдаёт ТОЛЬКО владелец (системные настройки и касса).
+export const OWNER_ONLY_CAPABILITIES: readonly Capability[] = [
+  'edit_payroll_rates',
+  'can_manage_cash',
+];
 
 // Подписи прав для UI настроек (русский).
 export const CAPABILITY_LABELS: Record<Capability, string> = {
@@ -156,6 +161,7 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   edit_rate_overrides: 'Менять % зарплаты на деле',
   manage_users: 'Управление пользователями',
   edit_payroll_rates: 'Системные настройки (ставки)',
+  can_manage_cash: 'Управление кассой',
 };
 
 export const CAPABILITY_HINTS: Record<Capability, string> = {
@@ -171,6 +177,7 @@ export const CAPABILITY_HINTS: Record<Capability, string> = {
   edit_rate_overrides: 'Задавать индивидуальный % зарплаты на конкретном деле.',
   manage_users: 'Создавать сотрудников и менять их роли и права.',
   edit_payroll_rates: 'Менять базовые ставки зарплаты по категориям дел.',
+  can_manage_cash: 'Доступ к кассе: счета, операции (приход/расход) и сальдо-отчёт.',
 };
 
 // Дефолт права по роли. Зеркало private.cap_role_default.
@@ -213,6 +220,7 @@ export function canGrantCapability(
     return false; // вне зоны управления / нет manage_users
   }
   if (cap === 'edit_payroll_rates' && actorRole !== 'owner') return false; // owner-only
+  if (cap === 'can_manage_cash' && actorRole !== 'owner') return false; // owner-only (касса)
   if (cap === 'manage_users' && actorRole !== 'owner' && actorRole !== 'admin') {
     return false; // manage_users выдают только owner/admin по роли
   }
@@ -800,6 +808,65 @@ export type PaymentRow = {
 
 export type PaymentWithCreator = PaymentRow & {
   creator: { id: string; full_name: string } | null;
+};
+
+// =====================================================================
+// Cash — касса и сальдо-отчёт (v2 Этап 7). Счета (Карта/Рахунок/Готівка) с
+// начальным остатком; журнал операций приход/расход; платежи по делам автоматом
+// падают приходом (триггер cash_sync_on_payment). Доступ — право can_manage_cash
+// (по умолчанию только owner; выдаёт точечно тоже только owner). Сальдо считается
+// накопительно в TS (lib/cash/saldo.ts) от opening_balance/opening_date.
+// =====================================================================
+
+// card = Карта, bank = Рахунок (расчётный счёт), cash = Готівка. Тип задаёт
+// маппинг payments.method → счёт автоприхода (private.cash_kind_for_method).
+export type CashAccountKind = 'card' | 'bank' | 'cash';
+
+export const CASH_ACCOUNT_KINDS: ReadonlyArray<CashAccountKind> = ['card', 'bank', 'cash'];
+
+export function isCashAccountKind(value: unknown): value is CashAccountKind {
+  return value === 'card' || value === 'bank' || value === 'cash';
+}
+
+export type CashDirection = 'in' | 'out';
+
+export const CASH_DIRECTIONS: ReadonlyArray<CashDirection> = ['in', 'out'];
+
+export function isCashDirection(value: unknown): value is CashDirection {
+  return value === 'in' || value === 'out';
+}
+
+export type CashAccount = {
+  id: string;
+  name: string;
+  kind: CashAccountKind;
+  // numeric(14,2) → нормализуем в number при чтении.
+  opening_balance: number;
+  opening_date: string; // date YYYY-MM-DD
+  is_active: boolean;
+  // Дефолтный счёт-фолбэк автоприхода (≤1 на компанию). Обычно — Рахунок.
+  is_default: boolean;
+  created_by: string;
+  created_at: string;
+};
+
+export type CashEntry = {
+  id: string;
+  account_id: string;
+  entry_date: string; // date YYYY-MM-DD
+  direction: CashDirection;
+  amount: number;
+  description: string;
+  // Привязка к делу/платежу — только у авто-строк (приход от оплаты по делу).
+  case_id: string | null;
+  payment_id: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+// Операция кассы + краткая ссылка на дело (для строки отчёта с авто-приходом).
+export type CashEntryWithCase = CashEntry & {
+  case: { id: string; number_title: string } | null;
 };
 
 // =====================================================================
