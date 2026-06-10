@@ -12,7 +12,7 @@ const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 
 export const hasSupabaseEnv = Boolean(URL && ANON && SERVICE);
 
-const PASSWORD = 'test12345!';
+export const PASSWORD = 'test12345!';
 
 export function adminClient(): SupabaseClient {
   return createClient(URL, SERVICE, {

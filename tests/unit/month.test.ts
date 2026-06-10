@@ -76,7 +76,7 @@ describe('monthLabel', () => {
   });
 
   it('использует переданные локализованные названия', () => {
-    const uk = [...MONTH_NAMES_RU];
+    const uk: string[] = [...MONTH_NAMES_RU];
     uk[5] = 'Червень';
     expect(monthLabel('2026-06-01', uk)).toBe('Червень 2026');
   });

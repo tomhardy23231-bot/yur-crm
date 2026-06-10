@@ -5,6 +5,7 @@ import {
   createWorld,
   destroyWorld,
   signIn,
+  PASSWORD,
   type World,
 } from '../helpers/fixtures';
 
@@ -269,6 +270,146 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
         .eq('id', world.caseS)
         .single();
       expect(data?.stage).toBe('new_request');
+    });
+  });
+
+  // ============================================================
+  describe('RLS — справочник подразделений (v2 Этап 1)', () => {
+    it('активный сотрудник (юрист) читает справочник', async () => {
+      const lawyer1 = await signIn(world.users.lawyer1.email);
+      const { data, error } = await lawyer1.from('departments').select('id, name');
+      expect(error).toBeNull();
+      expect((data ?? []).length).toBeGreaterThanOrEqual(10); // 10 засеяны миграцией
+    });
+
+    it('не-owner (admin) не может создать подразделение', async () => {
+      const staff = await signIn(world.users.staffAdmin.email);
+      const { error } = await staff
+        .from('departments')
+        .insert({ name: `${world.prefix}Філія` });
+      expect(error).not.toBeNull(); // with check (is_owner) → 42501
+    });
+
+    it('не-owner (admin) не может переименовать (RLS режет апдейт молча)', async () => {
+      const staff = await signIn(world.users.staffAdmin.email);
+      const { data: dep } = await world.admin
+        .from('departments')
+        .select('id, name')
+        .eq('name', 'Київський')
+        .single();
+      await staff
+        .from('departments')
+        .update({ name: `${world.prefix}X` })
+        .eq('id', dep!.id);
+      const { data: after } = await world.admin
+        .from('departments')
+        .select('name')
+        .eq('id', dep!.id)
+        .single();
+      expect(after?.name).toBe('Київський');
+    });
+
+    it('гард: admin не может выдать юристу visibility_scope/department_id', async () => {
+      const staff = await signIn(world.users.staffAdmin.email);
+      // RLS пропускает (users_update_managed_roles: admin правит lawyer),
+      // но триггер users_guard_visibility_fields обязан отбить не-owner'а.
+      const { error: scopeErr } = await staff
+        .from('users')
+        .update({ visibility_scope: 'all' })
+        .eq('id', world.users.lawyer1.id);
+      expect(scopeErr?.message ?? '').toContain('only owner');
+
+      const { data: dep } = await world.admin
+        .from('departments')
+        .select('id')
+        .eq('name', 'Київський')
+        .single();
+      const { error: depErr } = await staff
+        .from('users')
+        .update({ department_id: dep!.id })
+        .eq('id', world.users.lawyer1.id);
+      expect(depErr?.message ?? '').toContain('only owner');
+
+      const { data: after } = await world.admin
+        .from('users')
+        .select('visibility_scope, department_id')
+        .eq('id', world.users.lawyer1.id)
+        .single();
+      expect(after?.visibility_scope).toBe('department');
+      expect(after?.department_id).toBeNull();
+    });
+
+    it('owner: CRUD подразделения, назначение полей, FK держит удаление', async () => {
+      // В world нет owner — создаём IT-owner по образцу mkUser и убираем за собой.
+      const email = `it-${world.runId}-owner@yur.test`;
+      const { data: au, error: aErr } = await world.admin.auth.admin.createUser({
+        email,
+        password: PASSWORD,
+        email_confirm: true,
+      });
+      expect(aErr).toBeNull();
+      const ownerId = au!.user!.id;
+      await world.admin.from('users').upsert(
+        { id: ownerId, full_name: `IT owner ${world.runId}`, email, role: 'owner', is_active: true },
+        { onConflict: 'id' },
+      );
+      try {
+        const owner = await signIn(email);
+
+        // owner создаёт подразделение
+        const { data: created, error: insErr } = await owner
+          .from('departments')
+          .insert({ name: `${world.prefix}Філія` })
+          .select('id')
+          .single();
+        expect(insErr).toBeNull();
+
+        // owner назначает юристу подразделение и scope (гард пропускает owner'а)
+        const { error: assignErr } = await owner
+          .from('users')
+          .update({ department_id: created!.id, visibility_scope: 'all' })
+          .eq('id', world.users.lawyer1.id);
+        expect(assignErr).toBeNull();
+
+        // FK без on delete: удалить подразделение с сотрудником нельзя (23503)
+        const { error: delBlocked } = await owner
+          .from('departments')
+          .delete()
+          .eq('id', created!.id);
+        expect(delBlocked).not.toBeNull();
+
+        // откатываем назначение → теперь удаление проходит
+        const { error: resetErr } = await owner
+          .from('users')
+          .update({ department_id: null, visibility_scope: 'department' })
+          .eq('id', world.users.lawyer1.id);
+        expect(resetErr).toBeNull();
+        const { error: delErr } = await owner
+          .from('departments')
+          .delete()
+          .eq('id', created!.id);
+        expect(delErr).toBeNull();
+      } finally {
+        await world.admin.from('users').delete().eq('id', ownerId);
+        await world.admin.auth.admin.deleteUser(ownerId);
+      }
+    });
+
+    it('деактивированный сотрудник с живым токеном не читает справочник', async () => {
+      const lawyer2 = await signIn(world.users.lawyer2.email); // токен получен ДО деактивации
+      try {
+        await world.admin
+          .from('users')
+          .update({ is_active: false })
+          .eq('id', world.users.lawyer2.id);
+        const { data } = await lawyer2.from('departments').select('id');
+        expect(data ?? []).toHaveLength(0); // active_uid() → null → select-политика не пускает
+      } finally {
+        await world.admin
+          .from('users')
+          .update({ is_active: true })
+          .eq('id', world.users.lawyer2.id);
+      }
     });
   });
 });

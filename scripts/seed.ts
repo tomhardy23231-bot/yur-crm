@@ -49,18 +49,25 @@ type Account = {
   email: string;
   full_name: string;
   role: Role;
+  // Имя подразделения из миграции 20260610100000_departments (null — вне структуры).
+  department: string | null;
+  position: string | null;
 };
 
 // Два юриста и два Експерта — чтобы smoke-rls мог проверить изоляцию видимости
 // (юрист видит дела по lawyer_id, Експерт — по responsible_id).
+// Подразделения разложены под матрицу видимости Этапа 2 (PLAN-V2):
+//   дело A = Київ продал (lawyer) / Дніпро исполняет (expert) — видят оба руководителя;
+//   дело B = Дніпро продал (lawyer2) / Львів исполняет (expert2);
+//   admin Киева НЕ должен видеть дело B (после Этапа 2).
 const ACCOUNTS: Account[] = [
-  { email: 'owner@yur.local', full_name: 'Влад Владелец', role: 'owner' },
-  { email: 'admin@yur.local', full_name: 'Анна Админ', role: 'admin' },
-  { email: 'office@yur.local', full_name: 'Оля Секретарёва', role: 'office_manager' },
-  { email: 'lawyer@yur.local', full_name: 'Лев Юристов', role: 'lawyer' },
-  { email: 'lawyer2@yur.local', full_name: 'Лиза Договорова', role: 'lawyer' },
-  { email: 'expert@yur.local', full_name: 'Эдуард Экспертов', role: 'expert' },
-  { email: 'expert2@yur.local', full_name: 'Елена Экспертова', role: 'expert' },
+  { email: 'owner@yur.local', full_name: 'Влад Владелец', role: 'owner', department: null, position: null },
+  { email: 'admin@yur.local', full_name: 'Анна Админ', role: 'admin', department: 'Київський', position: 'керівник' },
+  { email: 'office@yur.local', full_name: 'Оля Секретарёва', role: 'office_manager', department: 'Київський', position: 'адміністратор' },
+  { email: 'lawyer@yur.local', full_name: 'Лев Юристов', role: 'lawyer', department: 'Київський', position: 'юрист ВП' },
+  { email: 'lawyer2@yur.local', full_name: 'Лиза Договорова', role: 'lawyer', department: 'Дніпровський', position: 'юрист ВП' },
+  { email: 'expert@yur.local', full_name: 'Эдуард Экспертов', role: 'expert', department: 'Дніпровський', position: 'експерт' },
+  { email: 'expert2@yur.local', full_name: 'Елена Экспертова', role: 'expert', department: 'Львівський', position: 'експерт' },
 ];
 
 async function ensureAuthUser(email: string): Promise<string> {
@@ -84,7 +91,26 @@ async function ensureAuthUser(email: string): Promise<string> {
   return data.user.id;
 }
 
-async function upsertPublicUser(id: string, acc: Account): Promise<void> {
+// Подразделения сидятся миграцией (20260610100000_departments) — здесь только
+// читаем их id, чтобы привязать сотрудников.
+async function loadDepartmentIds(): Promise<Map<string, string>> {
+  const { data, error } = await admin.from('departments').select('id, name');
+  if (error) throw error;
+  return new Map((data ?? []).map((d) => [d.name as string, d.id as string]));
+}
+
+async function upsertPublicUser(
+  id: string,
+  acc: Account,
+  departments: Map<string, string>,
+): Promise<void> {
+  let departmentId: string | null = null;
+  if (acc.department) {
+    const found = departments.get(acc.department);
+    if (!found) throw new Error(`Подразделение «${acc.department}» не найдено — миграции применены?`);
+    departmentId = found;
+  }
+
   const { error } = await admin.from('users').upsert(
     {
       id,
@@ -92,6 +118,8 @@ async function upsertPublicUser(id: string, acc: Account): Promise<void> {
       email: acc.email,
       role: acc.role,
       is_active: true,
+      department_id: departmentId,
+      position: acc.position,
     },
     { onConflict: 'id' },
   );
@@ -99,11 +127,12 @@ async function upsertPublicUser(id: string, acc: Account): Promise<void> {
 }
 
 async function seedUsers(): Promise<Map<string, string>> {
+  const departments = await loadDepartmentIds();
   const idByEmail = new Map<string, string>();
   for (const acc of ACCOUNTS) {
     const id = await ensureAuthUser(acc.email);
     idByEmail.set(acc.email, id);
-    await upsertPublicUser(id, acc);
+    await upsertPublicUser(id, acc, departments);
   }
   return idByEmail;
 }

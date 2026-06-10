@@ -136,7 +136,17 @@ npm run db:seed   # появится в Шаге 1; использует SUPABAS
 > Имена таблиц/полей — английские. Глоссы в скобках — для понимания домена.
 
 **users** — сотрудники
-`id, full_name, email, role (owner|admin|office_manager|lawyer|expert), is_active, created_at`
+`id, full_name, email, role (owner|admin|office_manager|lawyer|expert), is_active,
+department_id (→ departments, NULL = вне структуры), position (должность, свободный
+текст — на права НЕ влияет, права задаёт role), visibility_scope (department|all —
+для admin/office_manager; начнёт действовать в RLS с Этапа 2 v2), created_at`
+
+**departments** (подразделения/филиалы) — v2, Этап 1
+`id, name (unique), is_active, created_at`
+— 10 штук засеяны миграцией (Київський, Дніпровський, Львівський, Одеський +
+«Підрозділ 5…10», переименуют позже). Читают все активные сотрудники, создаёт/правит
+только owner. Дело «принадлежит» подразделениям юриста И Експерта одновременно;
+скоуп видимости по подразделениям включается в Этапе 2 (см. docs/PLAN-V2.md).
 
 **clients** (доверители)
 `id, name, client_kind (individual|company), phone, email, address,
