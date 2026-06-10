@@ -38,7 +38,7 @@
 | # | Этап | Статус | Дата | Коммит |
 |---|------|--------|------|--------|
 | 1 | БД-фундамент: departments, должности, видимость | ✅ | 2026-06-10 | 0e69959 |
-| 2 | RLS: новая модель доступа | ⬜ | | |
+| 2 | RLS: новая модель доступа | ✅ | 2026-06-10 | _(впишется)_ |
 | 3 | UI: подразделения, команда, доступы | ⬜ | | |
 | 4 | ЗП-режимы: фикс / фикс+% / % | ⬜ | | |
 | 5 | Акты как платёжные документы | ⬜ | | |
@@ -166,6 +166,20 @@ DoD: `db reset` чистый; tsc/lint/build зелёные; поведение 
 
 DoD: тесты матрицы зелёные; `/cso` + `/review` пройдены.
 Доки: CLAUDE.md §4 (матрица доступа), §7-3, §7-5.
+
+> **✅ Закрыт 2026-06-10.** Миграция `20260610110000_department_scope_rls.sql`:
+> единый предикат `private.case_visible(lawyer_id, responsible_id)` (его зовут политики
+> cases И `can_see_case` → documents/tasks/payments/comments/storage/лог дела
+> наследуют автоматически); `can_see_client`; `payroll_user_visible` (ledger/transactions/
+> allocations + 3 RPC). Хелперы `can_see_all_cases`/`scope_is_all`/`current_user_department`/
+> `payroll_see_all`. clients/activity_log переписаны; журнал юзеров — по `manage_users`.
+> **⚠ Находка адвер-аудита (HIGH, исправлена):** транзишн-правило `department_id IS NULL`
+> в `scope_is_all` обязано быть гейтнуто ролью (`admin`/`office_manager`) — иначе admin,
+> выдав юристу право `view_all_cases`, эскалировал бы его до видимости всей компании
+> (у не-owner `department_id` по умолчанию NULL). Регресс-тесты на эскалацию добавлены.
+> Прогон: db reset чистый, tsc/lint/build, unit 49/49, integration 36/36, `/review`
+> (critical-pass: clean), security-аудит = 6-агентный адвер-воркфлоу (нашёл+исправил
+> HIGH). Пуш/`db push` на прод НЕ делались — ждут «ок».
 
 ## Этап 3 — UI: подразделения, команда, доступы
 

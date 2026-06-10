@@ -37,23 +37,53 @@ export type World = {
   prefix: string; // 'IT-<runId>-' — фильтр наших дел среди прочих в БД
   admin: SupabaseClient;
   users: Record<
-    'staffAdmin' | 'lawyer1' | 'lawyer2' | 'expert1' | 'expert2',
+    // staffAdmin — БЕЗ подразделения (переходное правило «NULL = видит всё»);
+    // kyivAdmin/dniproAdmin/lvivAdmin — admin scope='department' своего филиала;
+    // allAdmin — admin в Києві, но scope='all' (видит всю компанию).
+    | 'staffAdmin'
+    | 'kyivAdmin'
+    | 'dniproAdmin'
+    | 'lvivAdmin'
+    | 'allAdmin'
+    | 'lawyer1'
+    | 'lawyer2'
+    | 'expert1'
+    | 'expert2',
     UserRef
   >;
   clientId: string;
-  caseA: string; // lawyer1 + expert1, representation 25%, contract 30000, оплачено 10000
-  caseB: string; // lawyer2 + expert2, claim 10%, contract 120000, без оплат
-  caseS: string; // lawyer1 + expert1, document, stage=new_request (тест воронки)
+  // Привязка участников к подразделениям (для матрицы видимости Этапа 2):
+  //   lawyer1 → Київ, expert1 → Дніпро, lawyer2 → Дніпро, expert2 → Львів.
+  caseA: string; // lawyer1(Київ) + expert1(Дніпро), representation 25%, оплачено 10000 → видят Київ і Дніпро
+  caseB: string; // lawyer2(Дніпро) + expert2(Львів), claim 10%, без оплат → видят Дніпро і Львів
+  caseS: string; // lawyer1(Київ) + expert1(Дніпро), document, new_request → видят Київ і Дніпро
 };
 
 type Role = 'admin' | 'lawyer' | 'expert';
+
+type UserOpts = {
+  department?: string | null; // имя подразделения из миграции 20260610100000 (null — вне структуры)
+  scope?: 'department' | 'all';
+};
 
 export async function createWorld(): Promise<World> {
   const admin = adminClient();
   const runId = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
   const prefix = `IT-${runId}-`;
 
-  async function mkUser(slug: string, role: Role): Promise<UserRef> {
+  // Подразделения сидятся миграцией 20260610100000 — берём их id по имени.
+  const { data: depRows, error: depErr } = await admin
+    .from('departments')
+    .select('id, name');
+  if (depErr) throw new Error(`load departments: ${depErr.message}`);
+  const departments = new Map<string, string>((depRows ?? []).map((d) => [d.name, d.id]));
+  const depId = (name: string): string => {
+    const id = departments.get(name);
+    if (!id) throw new Error(`Подразделение «${name}» не найдено — миграции применены?`);
+    return id;
+  };
+
+  async function mkUser(slug: string, role: Role, opts: UserOpts = {}): Promise<UserRef> {
     const email = `it-${runId}-${slug}@yur.test`;
     const { data, error } = await admin.auth.admin.createUser({
       email,
@@ -62,21 +92,36 @@ export async function createWorld(): Promise<World> {
     });
     if (error || !data.user) throw new Error(`createUser ${email}: ${error?.message}`);
     const id = data.user.id;
-    const { error: uErr } = await admin
-      .from('users')
-      .upsert(
-        { id, full_name: `IT ${slug} ${runId}`, email, role, is_active: true },
-        { onConflict: 'id' },
-      );
+    // service_role → RLS и guard_user_visibility_fields в обход (auth.uid() IS NULL),
+    // поэтому department_id/visibility_scope проставляются напрямую (как в seed.ts).
+    const { error: uErr } = await admin.from('users').upsert(
+      {
+        id,
+        full_name: `IT ${slug} ${runId}`,
+        email,
+        role,
+        is_active: true,
+        department_id: opts.department ? depId(opts.department) : null,
+        visibility_scope: opts.scope ?? 'department',
+      },
+      { onConflict: 'id' },
+    );
     if (uErr) throw new Error(`upsert user ${email}: ${uErr.message}`);
     return { id, email };
   }
 
+  // staffAdmin — без подразделения: переходное правило «NULL = видит всё».
   const staffAdmin = await mkUser('admin', 'admin');
-  const lawyer1 = await mkUser('lawyer1', 'lawyer');
-  const lawyer2 = await mkUser('lawyer2', 'lawyer');
-  const expert1 = await mkUser('expert1', 'expert');
-  const expert2 = await mkUser('expert2', 'expert');
+  // Скоупленные руководители подразделений (scope='department' по умолчанию).
+  const kyivAdmin = await mkUser('kyivadmin', 'admin', { department: 'Київський' });
+  const dniproAdmin = await mkUser('dniproadmin', 'admin', { department: 'Дніпровський' });
+  const lvivAdmin = await mkUser('lvivadmin', 'admin', { department: 'Львівський' });
+  // Admin в Києві, но видит всю компанию (scope='all' перекрывает подразделение).
+  const allAdmin = await mkUser('alladmin', 'admin', { department: 'Київський', scope: 'all' });
+  const lawyer1 = await mkUser('lawyer1', 'lawyer', { department: 'Київський' });
+  const lawyer2 = await mkUser('lawyer2', 'lawyer', { department: 'Дніпровський' });
+  const expert1 = await mkUser('expert1', 'expert', { department: 'Дніпровський' });
+  const expert2 = await mkUser('expert2', 'expert', { department: 'Львівський' });
 
   const { data: client, error: cErr } = await admin
     .from('clients')
@@ -137,7 +182,17 @@ export async function createWorld(): Promise<World> {
     runId,
     prefix,
     admin,
-    users: { staffAdmin, lawyer1, lawyer2, expert1, expert2 },
+    users: {
+      staffAdmin,
+      kyivAdmin,
+      dniproAdmin,
+      lvivAdmin,
+      allAdmin,
+      lawyer1,
+      lawyer2,
+      expert1,
+      expert2,
+    },
     clientId: client.id,
     caseA,
     caseB,
