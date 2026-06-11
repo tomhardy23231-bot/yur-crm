@@ -10,6 +10,7 @@ import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import type { I18n } from '@/lib/i18n/core';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { UUID_RE } from '@/lib/validation';
 import {
   CLIENT_KINDS,
   CLIENT_SOURCES,
@@ -55,8 +56,6 @@ function isClientSource(value: string): value is ClientSource {
 
 // Базовая валидация e-mail без RFC-крайностей — пользовательских e-mail тут немного.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ИНН/ЕДРПОУ — только цифры. В Украине ИПН физлица = 10 цифр, ЕДРПОУ компании =
 // 8 цифр; допускаем диапазон 8–12, чтобы не упираться в юрисдикционные нюансы.

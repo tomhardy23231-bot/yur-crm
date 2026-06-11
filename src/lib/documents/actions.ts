@@ -10,6 +10,7 @@ import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { DOC_TYPES, type DocType } from '@/lib/types/db';
+import { UUID_RE } from '@/lib/validation';
 
 export type UploadDocumentFields = 'case_id' | 'doc_type' | 'file';
 
@@ -19,8 +20,6 @@ export type UploadDocumentState = {
   fieldErrors?: Partial<Record<UploadDocumentFields, string>>;
 };
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 25 MB — компромисс между «договор-сканом на 50 страниц» и блок-стороной памяти
 // для arrayBuffer() в Server Action.

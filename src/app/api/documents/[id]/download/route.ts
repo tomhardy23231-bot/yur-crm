@@ -5,9 +5,7 @@ import {
   createSignedDownloadUrl,
   getDocument,
 } from '@/lib/documents/queries';
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_RE } from '@/lib/validation';
 
 // GET /api/documents/<doc_id>/download
 // Авторизованный SELECT по RLS → если виден, делаем signed URL (TTL 10 мин)

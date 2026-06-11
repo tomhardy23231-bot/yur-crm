@@ -60,11 +60,13 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# Отключаем встроенный seed.sql — мы используем TS-скрипт scripts/seed.ts
-# (создаёт пользователей через supabase.auth.admin API, в чистом SQL это сделать аккуратно нельзя).
-# Запускается отдельно через `npm run db:seed` после `npx supabase db reset`.
-enabled = false
-sql_paths = []
+# Локальный seed.sql содержит ТОЛЬКО восстановление DML-грантов (грабля Supabase CLI
+# 2.106.0: db reset не бутстрапит гранты public → permission denied). Пользователей и
+# кассу по-прежнему создаёт TS-скрипт scripts/seed.ts (`npm run db:seed`) — через
+# supabase.auth.admin API, в чистом SQL это сделать аккуратно нельзя. seed.sql на прод
+# (`db push`) НЕ выполняется — там гранты ставит платформа.
+enabled = true
+sql_paths = ["./seed.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.

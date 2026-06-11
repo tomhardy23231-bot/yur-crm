@@ -7,13 +7,11 @@ import { logActivity } from '@/lib/activity-log/log';
 import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { UUID_RE } from '@/lib/validation';
 
 // Управление структурой компании — только owner (RLS departments_write_owner
 // дублирует на стороне БД; здесь — ранний понятный отказ + журнал).
 // Все операции идут под сессией пользователя (RLS работает); service_role НЕ нужен.
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ============================================================================
 // Создание подразделения (useActionState-форма).

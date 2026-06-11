@@ -29,6 +29,1401 @@
 
 ---
 
+## Сессия 2026-06-12 (21) — v3 Сессия 12: Качество и финал (validation, вычистка, CI, e2e, коммиты) ✅ — ЦИКЛ v3 ЗАВЕРШЁН
+
+_Двенадцатая, финальная сессия цикла v3 (docs/PLAN-V3.md). Консолидация валидации,
+вычистка мёртвого кода, CI, e2e-каркас, постоянный фикс грантов и сборка цикла в
+тематические коммиты. **Единственная сессия цикла, где разрешены git-коммиты.**_
+
+### Что сделано (по задачам плана 12.1–12.8)
+- **12.1 Модуль `src/lib/validation.ts`** (изоморфный, без 'server-only'/node-API):
+  собраны разъехавшиеся дубли — `UUID_RE`+`isUuid`, `parseAmount`(>0)+`parseNonNegAmount`(≥0)+
+  `MAX_AMOUNT` (самый строгий из 4 копий), `isValidDate`, `todayIso` (реэкспорт `kyivToday`
+  сессии 4 — единый источник «киевской сегодня»). Заменены локальные объявления в **27
+  файлах**: `const UUID_RE` (22 файла → импорт), `parseAmount`/`MAX_AMOUNT`/`isValidDate`
+  (acts/cash/payments/absences), клиентский `parseAmountClient`→`parseAmount` (payment-form),
+  6 локальных `todayISO`/`todayIso`→импорт (cases/actions + 5 форм). `cash`: `parsePositiveAmount`
+  →`parseAmount`. tsc/lint/unit зелёные после замены.
+- **12.2 Мёртвый код:** удалён компонент леджера `case-ledger-block.tsx`; из
+  `payroll/actions.ts` — `markLedgerPaidAction`/`revertLedgerPaidAction` (+хелпер
+  `revalidateLedger`, тип `LedgerLogRow`); из `payroll/queries.ts` — 4 экспорта без
+  потребителей (`listLedger`, `listLedgerByCase`, `listPayrollPayoutBySpecialist`,
+  `listPayrollBySpecialist`) + `LedgerRaw`/`normalizeLedger` + 5 неиспользуемых type-импортов;
+  из `db.ts` — 6 label-карт (`ROLE_LABEL`, `CAPABILITY_LABELS`, `CAPABILITY_HINTS`,
+  `CLIENT_KIND_LABEL`, `BILLING_TYPE_LABEL`, `ACCRUAL_MODE_LABEL`) — у каждого grep'ом 0
+  использований. Миграция `v3_freeze_ledger`: `drop trigger cases_sync_ledger` + функция
+  `private.cases_sync_ledger_trigger()`, `comment on table payroll_ledger` (FROZEN; данные
+  и таблица сохранены).
+- **12.3 CLAUDE.md §5/§7/§8:** в §5 дописаны таблицы `payroll_transactions`,
+  `payout_allocations`, `case_comments`, `user_notify_channels`, `payment_plan_items` +
+  поля `cases.outcome/lost_reason/updated_at`; `payroll_ledger` помечен ЗАМОРОЖЕННЫМ. §7-2 —
+  исключение «не заключили» (close_case_lost); §7-9 — смена этапа логируется во всех путях.
+  §8 — блок активного цикла v3 помечен завершённым (сессии 1–12).
+- **12.4 CI** `.github/workflows/ci.yml`: job `checks` (tsc/lint/unit) + job `integration`
+  (supabase start → test:integration с env из `supabase status -o env`, имена сверены с
+  `tests/helpers/fixtures.ts`: NEXT_PUBLIC_SUPABASE_URL/ANON_KEY + SUPABASE_SERVICE_ROLE_KEY;
+  без них набор self-skip'ается).
+- **12.5 E2E** `tests/e2e/core-flow.spec.ts` (по образцу auth.spec.ts): вход → клиент → дело
+  10000 → платёж 4000 → проверка «Оплачено/Долг». **Помечен `describe.skip`** (план §12.5
+  разрешает): требует полного локального стека + живой сверки селекторов формы дела
+  (Radix-`<Select>` для client/lawyer/expert/category — не нативный select) и uk-локали
+  денежных подписей; каркас готов, включить — снять .skip и сверить TODO-селекторы.
+- **12.6 Финальная проверка:** `db reset` (все миграции, вкл. `v3_freeze_ledger`, применились
+  чисто) → `db:seed` чисто (7 аккаунтов + касса + домен); `tsc` 0, `lint` 0, **unit 127/127**,
+  **integration 112/112**, **`npm run build` успешен** (все маршруты ƒ dynamic). Дифф без
+  мусора (нет .next/node_modules/.env).
+- **12.7 Коммиты:** цикл собран в 12 тематических коммитов (см. ниже).
+
+### Постоянный фикс грабли грантов (вынесен в s12 — см. reset_grants memory)
+Грабля Supabase CLI 2.106.0: локальный `db reset` НЕ бутстрапит DML-гранты public →
+seed/integration падали «permission denied». Раньше — разовый psql после каждого reset.
+**Постоянное решение:** `supabase/seed.sql` (только гранты + переприменение колоночной
+приватности users) + `config.toml [db.seed] enabled=true, sql_paths=["./seed.sql"]`. seed.sql
+на прод (`db push`) НЕ выполняется (там гранты ставит платформа). После — `db:seed` и
+integration зелёные без ручного psql.
+
+### Отклонения от плана
+- **+`supabase/seed.sql` и правка `config.toml`** — не были в буквальном тексте 12.x, но
+  постоянный фикс грантов прямо earmarked на Сессию 12 (reset_grants memory + PROGRESS s2
+  «Найдено попутно») и блокировал DoD «db reset+seed чисто». В скоупе «вычистки» s12.
+- **build потребовал сети** (next/font/google тянет IBM Plex Sans/JetBrains Mono с Google
+  Fonts) — в песочнице без сети падал; пройден с доступом к сети.
+- **e2e `describe.skip`** (а не активный) — план это допускает, инфра намеренно не поднималась.
+- **db reset** дважды упирался в нездоровый `supabase_storage_yur-crm` (Docker-грабля Windows)
+  — лечилось `supabase start`; миграции/гранты/seed при этом применялись.
+
+### Файлы (Сессия 12)
+**Создано (5):** `src/lib/validation.ts`, `supabase/seed.sql`,
+`supabase/migrations/20260611212426_v3_freeze_ledger.sql`, `.github/workflows/ci.yml`,
+`tests/e2e/core-flow.spec.ts`.
+**Удалено (1):** `src/components/payroll/case-ledger-block.tsx`.
+**Изменено — валидация (27):** `src/lib/{acts,cash,payments,absences,comments,users,departments,
+documents,tasks,cases,clients}/actions.ts`, `src/lib/activity-log/format.ts`,
+`src/lib/payroll/actions.ts`, `src/app/(app)/reports/payroll/page.tsx`,
+`src/app/(app)/cases/page.tsx`, `src/app/(app)/cases/board/page.tsx`,
+`src/app/api/calendar/[token]/route.ts`,
+`src/app/api/documents/[id]/{preview,oo-config,oo-callback,content,download}/route.ts`,
+`src/components/payments/payment-form.tsx`, `src/components/cash/cash-entry-form.tsx`,
+`src/components/cash/cash-accounts-manager.tsx`, `src/components/payroll/payroll-actions.tsx`,
+`src/components/cases/case-form.tsx`.
+**Изменено — вычистка (3):** `src/lib/payroll/queries.ts`, `src/lib/types/db.ts`
+(+ `payroll/actions.ts` выше).
+**Изменено — конфиг/доки (4):** `supabase/config.toml`, `CLAUDE.md`, `docs/PLAN-V3.md`
+(статус-таблица), `docs/PROGRESS.md` (эта запись).
+
+### Коммиты цикла (12.7)
+Собраны по спискам файлов PROGRESS (файл → коммит ПЕРВОЙ его сессии), в порядке s1→s12:
+fix(db) s1 · feat(audit) s2 · fix(cash) s3 · perf(dashboard) s4 · feat(ux) s5 · feat(ux) s6 ·
+feat(crm) s7 · feat(notify) s8 · feat(billing) s9 · feat(design) s10 · feat(design) s11 ·
+chore(quality) s12. Точные сообщения — в PLAN-V3 §12.7.
+
+### НЕ запушено (12.8)
+Цикл собран в коммиты ЛОКАЛЬНО на master. `git push origin master` и прод-`supabase db push`
+— **ТОЛЬКО после явного «ок»** пользователя (напомнить: свежий дамп прода перед push;
+Vercel env TELEGRAM_BOT_TOKEN/WEBHOOK_SECRET/CRON_SECRET/NEXT_PUBLIC_TELEGRAM_BOT_NAME +
+setWebhook; асимметричные JWT-ключи в Supabase для getClaims).
+
+---
+
+## Сессия 2026-06-11 (20) — v3 Сессия 11: Дизайн-полировка (тосты, хоткеи, пресеты, «Мой день», консистентность) ✅
+
+_Одиннадцатая сессия цикла v3 (docs/PLAN-V3.md). Продукт получил «дорогую» обратную
+связь и навигацию: тосты на каждое действие, глобальные горячие клавиши со шпаргалкой,
+быстрые пресеты фильтров, блок «Мой день», единый EmptyState, быстрые действия в шапке
+карточки дела, информативные канбан-карточки и проход консистентности. Без миграций.
+**Код НЕ коммитился** (правило цикла: коммиты — в Сессии 12)._
+
+### Что сделано (по задачам плана 11.1–11.9)
+- **11.1 Toast-система** (`ui/toast.tsx`, без зависимостей): `ToastProvider` (в
+  `(app)/layout.tsx`, внутри LocaleProvider) + `useToast()` → success/error; портал
+  desktop справа-снизу / mobile по центру над bottom-nav (`--bottom-nav-h`+safe-area);
+  `z-[110]` (выше модалок); карточка bg-surface+рамка+`rounded-card`+shadow-lg, иконки
+  CheckCircle2/AlertCircle 16px; максимум 3, auto-dismiss 4 с с паузой при hover;
+  `animate-toast-in` (150ms, в prefers-reduced-motion гасится); aria-live="polite",
+  success=role:status / error=role:alert. Для redirect-форм — `flashToast()`/
+  `clearFlashToast()` через sessionStorage (TTL 15 с; провайдер читает на смене
+  pathname). **Применено:** payment-form («Платёж сохранён», и в модалке шапки),
+  act-create-form, act-confirm-form, task-form (создана/сохранено), absence-create-form,
+  cash-backfill-banner («Создано записей кассы: N» + error-ветка), client-form и
+  case-form («Сохранено» flash-ом — их actions редиректят; ошибка валидации снимает
+  flash). Инлайн success-баннеры этих форм убраны (один фидбек на действие; в модалке/
+  при ревалидации их всё равно не видно). `alert()` в src не было (grep пуст).
+- **11.2 Горячие клавиши** (`app/hotkeys-provider.tsx`, смонтирован в layout):
+  `/`→палитра, `N`→/cases/new (гейт `caps.create_cases`), `T`→/tasks?new=1,
+  `?`→модал-шпаргалка (Modal, kbd-стиль палитры); сравнение по `e.code` —
+  работает на укр/рус раскладках; игнор в полях ввода/contenteditable/Ctrl-Meta-Alt
+  и при фокусе в открытом `role="dialog"`. Футер палитры упоминает «?»; в /help —
+  секция «Горячие клавиши» (icon Keyboard, перед FAQ, N — по праву create_cases).
+- **11.3 Быстрые пресеты** (`cases/quick-filters.tsx`, чипы над рядом фильтров,
+  только активная вкладка): «С долгом» `?debt=true`; «Закрытые за месяц»
+  `?archived=1&closed_from=<1-е число>&closed_to=<сегодня>` (киевский месяц,
+  `currentMonth()`/`kyivToday()`); «Зависшие» `?sort=stage_changed_at&dir=asc`.
+  Активность: параметры пресета ⊆ searchParams; клик по активному → /cases. Чип
+  rounded-chip h-8, активный = стиль вкладок; мобайл — no-scrollbar overflow-x.
+- **11.4 EmptyState** (`ui/empty-state.tsx`: icon? 28 subtle · title 14 medium ·
+  hint 13 muted · action?; без своей рамки — оборачивает родитель). Заменены:
+  списки дел/клиентов/задач (оба состояния «пусто»/«не найдено» сохранены,
+  локальные дубли удалены), секции карточки дела (задачи/документы/акты/комментарии),
+  касса (нет счетов — c иконкой Wallet, пустой месяц, пустой Total), отчёт ЗП,
+  «Приближающиеся сроки». Тексты не менялись.
+- **11.5 Карточка дела:** кнопки «+ Платёж / + Задача / + Акт» в ряду заголовка
+  (`cases/case-quick-actions.tsx`; гейты = canEdit/canEdit/canCreateActs — как у форм
+  секций). **Вариант:** «+ Платёж» — ВТОРОЙ экземпляр модалки с PaymentForm прямо в
+  шапке (свой триггер; без addOptimistic — ревалидация обновляет всё); «+ Задача»/
+  «+ Акт» — scrollIntoView (smooth, авто при reduced-motion) + программное раскрытие
+  `<details id="task-create-details"/"act-create-details">` + фокус в первое поле.
+  MoneyStat: подпись 11px muted / сумма 18px medium tabular (была 10/14); под
+  плитками — PaymentProgress на всю ширину блока.
+- **11.6 Канбан-карточка:** клиент 13px muted truncate; amber-точка застоя при
+  `stageDays ≥ STALE_STAGE_DAYS` + title «N дней на этапе» (plural; БЕЗ анимации);
+  hover карточки — только бордер (`hover:border-border-strong`, тень-hover убрана);
+  долг красным/аватар/urgent уже были. В `listCasesForBoard` добавлен
+  `stage_changed_at` (select+тип+маппинг).
+- **11.7 «Мой день»** (`dashboard/my-day-block.tsx`, над KPI, все роли): открытые
+  задачи текущего пользователя с due в сегодняшнем киевском дне (включая утренние
+  просроченные); строка «HH:MM (Киев; 00:00 → «—») · TaskKindBadge · название ·
+  ссылка на дело»; пустой — не рендерится. Данные: `listUpcomingTasks` получил
+  опц. `todayForUserId` → третий лёгкий запрос в том же Promise.all (+ хелперы
+  `kyivOffset()`/`kyivTodayStartIso()`); страница зовёт listUpcomingTasks ОДИН раз
+  и передаёт срезы в «Мой день» и «Приближающиеся сроки» (блок переведён на
+  data-проп — свой запрос убран).
+- **11.8 Полировочный проход:** заголовки секций → единые **16px semibold**
+  (15→16 в 18 местах: дашборд-блоки ×8, calendar, profile ×4, settings ×3,
+  absences-block, inline-client-create); вертикальный ритм main → gap-5
+  (cases/[id] 4→5, payroll/[userId] 6→5, requisites 4→5; списки gap-3 — осознанно
+  плотнее: тулбар связан со списком; /help gap-7 — лендинг-стиль, оставлен);
+  px-хак mt-[3px]→mt-0.5 (clients/[id]); focus-visible — глобальный baseline
+  в globals покрывает все интерактивы (ClickableCard — осознанный паттерн «фокус
+  на внутреннем Link»). **AA-хвосты s10 закрыты:** пилюля этапа (триггер и
+  read-only) — теперь подложка `*-bg` + текст `*-fg` + точка ярким тоном (был
+  белый на ярком: awaiting 2.80 ✗); done/future-пункты меню этапа — текст
+  `STAGE_FG_DARK` (был яркий на подложке 2.4–4.2 ✗); Badge prio-low/high —
+  `text-success-text`/`text-error-text` (был 3.00 ✗; prio-mid = warning уже AA).
+- **11.9 DESIGN.md:** §6 дополнен разделами Toast / EmptyState / Горячие клавиши /
+  Быстрые фильтры (по факту), Decisions Log — запись v3 s11.
+
+### Визуальная сверка (dev :3000 + chrome-devtools MCP, 1440px)
+Дашборд, /cases (чипы пресетов: URL и активность верны; «Зависшие» сортирует без
+ошибок), карточка дела (кнопки шапки, MoneyStat-иерархия, прогресс, AA-пилюля этапа),
+доска, шпаргалка «?». Флоу «+ Платёж» из шапки: модалка → сумма 1000 → платёж создан,
+суммы/прогресс/вознаграждение/журнал обновились, модалка закрылась; «+ Задача»
+скроллит и раскрывает форму с фокусом. Мобильная ширина не прогонялась.
+
+### Отклонения от плана
+- **11.3 «Закрытые за месяц»:** план предлагал `?stage=closed`+date-фильтр, но
+  closed_from/to парсятся ТОЛЬКО на вкладке «Архив» (cases/page.tsx) — пресет
+  ведёт в архив за текущий киевский месяц (`?archived=1&closed_from&closed_to`).
+  Закрытые-но-неархивированные в него не попадают (в воркфлоу закрытые дела
+  отправляют в архив).
+- **11.3 «Зависшие»:** в `CASES_SORTABLE_COLUMNS` не было `stage_changed_at` —
+  добавлена колонка в whitelist (это разрешение сортировки, не новый фильтр;
+  RPC `search_case_ids` неизвестный sort штатно деградирует к opened_at —
+  проверено по миграции 20260610130000, при поиске с q не падает).
+- **11.3 «Срочные»:** пропущен — фильтра priority у листинга нет (план разрешал).
+- **11.1:** инлайн success-баннеры заменённых форм удалены (двойной фидбек).
+- **11.5:** прогресс-бар шапки — существующий PaymentProgress (трек 7px, в плане
+  «6px» — не плодим вариант компонента ради 1px).
+- **11.7:** «без нового тяжёлого запроса» реализовано строже — один вызов
+  listUpcomingTasks на весь дашборд (UpcomingDeadlinesBlock теперь принимает data).
+- **11.8:** иконки заголовков секций фактически 16px ВЕЗДЕ единообразно (план
+  ориентировал 18–20) — разнобоя нет, не трогал.
+
+### Проверки (DoD)
+- `npx tsc --noEmit` — 0; `npm run lint` — 0; `npm test` — **127/127**.
+- Миграций нет → db reset/integration не требуются (RLS не тронута).
+
+### Файлы
+**Создано (6):**
+- `src/components/ui/toast.tsx` (ToastProvider/useToast/flashToast)
+- `src/components/ui/empty-state.tsx`
+- `src/components/app/hotkeys-provider.tsx` (хоткеи + шпаргалка «?»)
+- `src/components/cases/quick-filters.tsx` (пресеты /cases)
+- `src/components/cases/case-quick-actions.tsx` (+Платёж/+Задача/+Акт в шапке)
+- `src/components/dashboard/my-day-block.tsx`
+
+**Изменено — приложение (30):**
+- `src/app/globals.css` (toast-in + reduced-motion)
+- `src/app/(app)/layout.tsx` (ToastProvider, HotkeysProvider)
+- `src/app/(app)/page.tsx` (MyDayBlock; один listUpcomingTasks на дашборд)
+- `src/app/(app)/cases/page.tsx` (CasesQuickFilters; общий EmptyState)
+- `src/app/(app)/cases/[id]/page.tsx` (quick actions; MoneyStat 11/18 + прогресс; gap-5)
+- `src/app/(app)/clients/page.tsx`, `(app)/tasks/page.tsx` (общий EmptyState, локальные удалены)
+- `src/app/(app)/clients/[id]/page.tsx` (mt-0.5)
+- `src/app/(app)/help/page.tsx` (секция «Горячие клавиши»)
+- `src/app/(app)/calendar/page.tsx`, `(app)/profile/page.tsx`,
+  `(app)/settings/page.tsx`, `(app)/settings/departments/page.tsx`,
+  `(app)/settings/users/page.tsx` (h2 16px)
+- `src/app/(app)/reports/payroll/page.tsx` (EmptyState),
+  `(app)/reports/payroll/[userId]/page.tsx` (gap-5),
+  `(app)/settings/requisites/page.tsx` (gap-5)
+- `src/components/app/command-palette.tsx` (футер «?»)
+- `src/components/payments/payment-form.tsx`, `acts/act-create-form.tsx`,
+  `acts/act-confirm-form.tsx`, `tasks/task-form.tsx`,
+  `absences/absence-create-form.tsx`, `cash/cash-backfill-banner.tsx`,
+  `clients/client-form.tsx`, `cases/case-form.tsx` (тосты/flash)
+- `src/components/tasks/case-tasks-block.tsx`, `documents/case-documents-block.tsx`,
+  `acts/case-acts-block.tsx` (EmptyState; details id для быстрых действий ×2),
+  `comments/comment-list.tsx`, `cash/cash-report.tsx` (EmptyState ×3 + Wallet)
+- `src/components/tasks/upcoming-deadlines-block.tsx` (EmptyState; data-проп)
+- `src/components/cases/board-card.tsx` (11.6), `cases/case-stage-dropdown.tsx`
+  (AA: пилюля/пункты меню; StageDot color), `ui/badge.tsx` (prio-текст)
+- `src/components/dashboard/{category-revenue,conversion-block,debt-aging-block,overdue-payments-block,personal-earnings,recent-cases,sources-block,stage-funnel}.tsx`
+  (h2 16px), `absences/absences-block.tsx`, `cases/inline-client-create.tsx` (h2 16px)
+- `src/lib/cases/queries.ts` (sortable +stage_changed_at; board select+тип)
+- `src/lib/tasks/queries.ts` (kyivOffset/kyivTodayStartIso; today-срез listUpcomingTasks)
+
+**Словари (12):** `ru+uk: common` (saved), `cash` (backfill.done/failed),
+`tasks` (form.createdToast), `ui` (hotkeys.*), `commandPalette` (footerHotkeys),
+`cases` (quickFilters.*), `caseCard` (quickActions.*), `dashboard` (myDay.*),
+`help` (sections.hotkeys) — ru и uk попарно.
+
+**Документация:** `DESIGN.md` (§6 Toast/EmptyState/Хоткеи/Быстрые фильтры +
+Decisions Log), `docs/PLAN-V3.md` (статус), `docs/PROGRESS.md` (эта запись).
+
+### Найдено попутно (не чинил — вне скоупа)
+- DevTools issue на карточке дела: «A form field element should have an id or name
+  attribute (count: 4)» — какие-то поля без id/name (вероятно, инпуты дат/комментария);
+  на работу не влияет, кандидат на s12-вычистку.
+- В ходе визуальной проверки в dev-базе создан платёж 1 000 ₴ по делу CRM-2026-002
+  (сид-данные; при следующем db reset исчезнет).
+- flashToast-компромисс: если action упал фатально (без возврата ошибки форме),
+  отложенный «Сохранено» может мигнуть на следующей навигации в пределах TTL 15 с.
+
+### Открытые хвосты для Сессии 12
+- Dev-сервер оставлен запущенным на :3000 (фон) — при необходимости убить процесс node.
+- Включить новые файлы s11 в коммит 11 (`feat(design): toasts, hotkeys, filter
+  presets, my-day, polish pass (v3 s11)`) по списку выше.
+
+---
+
+## Сессия 2026-06-11 (19) — v3 Сессия 10: Дизайн-база (контраст AA, токены, DESIGN.md) ✅
+
+_Десятая сессия цикла v3 (docs/PLAN-V3.md). Дизайн-система приведена к WCAG AA и к
+правде: тёмные fg-тона для всех залитых чипов, текстовые тона денег, единый токен
+оверлея, компонентные алиасы радиусов, печатный отчёт без teal, DESIGN.md переписан
+по факту кода. **Код НЕ коммитился** (правило цикла v3: коммиты — в Сессии 12)._
+
+### Что сделано (по задачам плана 10.1–10.9)
+- **10.1 Контраст: fg-токены бейджей.** `globals.css`: тройки тонов этапов
+  (`--stage-*-fg`: new #3F4A5C · consultation #5B21B6 · in-progress #1E40AF ·
+  awaiting #9A3412 · closed #166534) и категорий (`--cat-*-fg`: document #0E7490 ·
+  claim #9D174D · representation #86198F) + маппинг в `@theme`. `stage-badge.tsx` /
+  `category-badge.tsx`: текст залитого чипа — `*-fg` (подложка прежняя; точка через
+  `bg-current` тоже потемнела — сознательно, контрастнее). `badge.tsx`: тона
+  success/error/info → `--success-text #166534` / `--error-text #991B1B` /
+  `--info-text #1E40AF` (warning #C2410C уже AA 4.52 — не тронут).
+- **10.2 Контраст: остальное.** `card-table.tsx`: CardHead/CardSortHead
+  `text-text-subtle`→`text-text-muted` (subtle на --bg 2.95 ✗, muted 5.58 ✓).
+  Money-текст → `text-success-text`: `cash-report.tsx` (7 мест: итоги месяца ×2,
+  колонка прихода, моб-карточка дня, JournalRow), MoneyStat tone=success
+  (`cases/[id]/page.tsx`), `absences-block.tsx` статус «сейчас» (заливки/бейджи
+  success не тронуты; text-error на белом 4.83 ✓ остался). `case-stage-dropdown.tsx`:
+  активный пункт меню — stage-bg фон + `--stage-*-fg` текст (был белый на тоне,
+  awaiting 2.40 ✗); бейдж «вы здесь» `text-white/75`→`opacity-75`. `avatar.tsx`:
+  палитра вынесена в токены `--avatar-1..6`; `#F97316`→`#C2410C` (2.80→5.18),
+  `#14B8A6`→`#0F766E` (2.49→5.47), остальные ≥3.0 подтверждены.
+- **10.3 Токен оверлея.** `--overlay: rgba(8,10,15,0.8)` (+@theme). Заменены 5 мест
+  на `bg-overlay`: modal.tsx, payroll-actions.tsx (был /70), mobile-more-sheet.tsx
+  (был #0B1020/55 — унифицирован темнее), release-modal.tsx, welcome-modal.tsx;
+  onboarding-provider.tsx:291 — hex оставлен (driver.js) + комментарий `= --overlay`.
+- **10.4 Радиусы.** Значения --r-sm/md/lg/xl НЕ менялись. Добавлены алиасы
+  `--r-card 6 / --r-control 9 / --r-chip 7 / --r-modal 20` (+@theme →
+  rounded-card/control/chip/modal) + deprecated-комментарий у исторической шкалы.
+  Заменены точные совпадения: rounded-[7px]→chip (stage-badge, category-badge,
+  kpi-card дельта, бейдж «Дело» в cases/[id]), rounded-[20px]→modal (modal.tsx,
+  payroll-actions.tsx), rounded-[6px]→card (пункты меню select.tsx, combobox.tsx).
+- **10.5 Печатный отчёт и кнопка тура.** `report-document.tsx` DOC: accent
+  `#0D9488`→`#2563EB`, accentDark `#0a6b62`→`#1E40AF` (тянет employee-report и
+  summary-report; ink/paper/green/amber не тронуты). `.driver-popover-next-btn`:
+  градиент убран → сплошной `var(--primary)`. Переименованы токены:
+  `--grad-brass`→`--grad-brand` (8 файлов-потребителей), `--brass-bright`→
+  `--primary-bright` (только globals, потребителей класса не было); попутно удалён
+  мёртвый `--brass-glow` (0 использований); CardHero (не используется): проп
+  gradient "brass"→"brand".
+- **10.6 Sticky-шапки и Table.** `card-table.tsx`: шапка CardListShell —
+  `sticky top-0 z-10 bg-bg` (+pt-1 pb-2.5 -mb-2 — фон перекрывает gap при
+  прилипании). `table.tsx`: border-collapse→`border-separate border-spacing-0`;
+  границы перенесены с thead/tr на th/td (при separate на tr они не рисуются),
+  последний ряд гасится через TableBody `[&>tr:last-child>td]:border-b-0`;
+  потребители своих границ на ячейках не имеют (проверено grep).
+- **10.7 DESIGN.md** переписан с нуля по факту кода (v1.0): фактические токены
+  таблицами (поверхности/бренд/семантика+text/этапы+fg/категории+fg/sidebar/
+  аватары/overlay), типографика Plex Sans + Mono(kbd, 400/600), компонентные
+  радиус-алиасы, правила движения (без infinite в списках, hover строк без
+  translate-y — решения пользователя сохранены), компоненты по факту, AA-раздел,
+  запреты, Decisions Log (старая правда + записи 2026-06-03/04/07 + v3 s10).
+  TEAL/латунь/Golos/Manrope/индиго — удалены.
+- **10.8 CLAUDE.md §11** сжат до 20 строк по факту (источник DESIGN.md ревизии
+  2026-06-12, один синий акцент, токены, AA, запреты); блоки TEAL/data-theme/
+  латунь/Manrope удалены.
+- **10.9 JetBrains Mono** — веса 400/600 (срезаны 500/700); сопутствующе
+  `.yk-tour-progress` font-weight 700→600 (иначе faux-bold после среза).
+
+### Контраст-проверки (contrast.js, все целевые пары)
+- Этапы fg/bg: 7.96 / 7.72 / 7.01 / 6.27 / 6.49; категории: 4.65 / 6.71 / 6.85 ✓
+- Badge: error 6.80, info 7.01, success 6.49; warning (не менялся) 4.52 ✓
+- success-text: 7.13 на белом, 6.30 на sunken, 4.61 на --bg ✓; error на белом 4.83 ✓
+- Шапки списков: muted на --bg 5.58 ✓ (было subtle 2.95 ✗)
+- Аватары (порог 3.0): 5.17 / 4.23 / 3.53 / 5.18 / 5.47 / 4.76 ✓
+- Было (фиксация аудита): stage-awaiting 2.40, success-залитый 3.30 на белом,
+  avatar amber 2.80 / teal 2.49.
+
+### Отклонения от плана
+- **10.6 sticky:** план предполагал `top-14` (высота топбара) — фактически скролл
+  живёт в контент-зоне app-shell ПОД топбаром (`(app)/layout.tsx`,
+  data-tour="page-content"), поэтому правильный якорь — `top-0`. Конфликтующий
+  overflow-контейнер, о котором предупреждал план, — сам CardListShell
+  (overflow-x-auto: предок-scroll-container глушит sticky). Его overflow убран;
+  горизонтальную прокрутку узких экранов даёт контент-зона (overflow-y-auto ⇒
+  x тоже auto по спеке). Побочный эффект: на ширинах < minWidth списка по X
+  скроллится вся страница, а не только блок списка — осознанный компромисс,
+  иначе sticky не работает нигде.
+- **10.4:** rounded-[20px] на 72px-иконке welcome-modal:207 НЕ заменён на
+  rounded-modal (значение совпадает, но семантика «модалка» на иконке ложная) —
+  оставлен литералом.
+- **10.2:** в залитых StageBadge/CategoryBadge/Badge точка `bg-current` потемнела
+  вместе с текстом (план оговаривал только текст) — оставлено: контраст точки
+  выше, яркий тон сохраняется в quiet-вариантах и пилюлях.
+- Попутные микро-правки в скоупе: удалён мёртвый `--brass-glow`;
+  `.yk-tour-progress` 700→600 (следствие 10.9); CardHero gradient prop
+  "brass"→"brand" (потребителей нет).
+
+### Не заменённые rounded-[Npx] (значение не совпало с алиасами)
+- 10px: login:45, help:214/279/301 · 12px: sidebar:36, sidebar-nav:109/131 ·
+  8px: cases/[id]:394/513/610, status-filter-strip:34, avatar:58 (square) ·
+  3px: category-revenue:59 · 24px: release-modal:57, welcome-modal:192 ·
+  20px-иконка: welcome-modal:207 (см. отклонения). Кандидаты на номенклатуру —
+  Сессия 11 (если потребуется).
+
+### Проверки (DoD)
+- `npx tsc --noEmit` — 0; `npm run lint` — 0; `npm test` — **127/127**.
+- Миграций нет → db reset/integration не требуются (RLS не тронута).
+- Dev-сервер не запускался (по плану «не обязательно») — визуальная сверка
+  списков/карточки/кассы остаётся на Сессию 11 (она дизайн-полировка с dev).
+
+### Файлы
+**Изменено — токены/база (3):**
+- `src/app/globals.css` (fg-токены этапов/категорий, *-text тона, --overlay,
+  --avatar-1..6, радиус-алиасы + deprecated-комментарий, grad-brand/
+  primary-bright, driver next-btn без градиента, yk-tour-progress 600)
+- `src/app/layout.tsx` (JetBrains Mono 400/600)
+- `src/components/ui/table.tsx` (border-separate + границы на ячейках)
+
+**Изменено — компоненты (15):**
+- `src/components/ui/stage-badge.tsx`, `ui/category-badge.tsx` (fg-текст + rounded-chip)
+- `src/components/ui/badge.tsx` (*-text тона)
+- `src/components/ui/card-table.tsx` (muted-шапки + sticky, без своего overflow)
+- `src/components/ui/avatar.tsx` (токены --avatar-N)
+- `src/components/ui/modal.tsx` (bg-overlay, rounded-modal)
+- `src/components/ui/select.tsx`, `ui/combobox.tsx` (rounded-card)
+- `src/components/ui/card.tsx` (CardHero brand)
+- `src/components/cases/case-stage-dropdown.tsx` (активный пункт bg+fg)
+- `src/components/cases/payment-progress.tsx` (grad-brand)
+- `src/components/cash/cash-report.tsx` (success-text ×7)
+- `src/components/absences/absences-block.tsx` (success-text)
+- `src/components/payroll/payroll-actions.tsx` (bg-overlay, rounded-modal)
+- `src/components/payroll/report/report-document.tsx` (accent на бренд-синий)
+
+**Изменено — прочее (9):**
+- `src/components/app/sidebar.tsx`, `src/app/login/page.tsx` (grad-brand ×3)
+- `src/components/app/mobile-more-sheet.tsx`, `src/components/releases/release-modal.tsx`,
+  `src/components/onboarding/welcome-modal.tsx` (bg-overlay; grad-brand hero ×2)
+- `src/components/onboarding/onboarding-provider.tsx` (комментарий = --overlay)
+- `src/components/dashboard/kpi-card.tsx` (rounded-chip)
+- `src/app/(app)/cases/[id]/page.tsx` (MoneyStat success-text; бейдж «Дело»
+  rounded-chip + grad-brand)
+- `src/app/(app)/help/page.tsx` (grad-brand hero)
+
+**Документация:**
+- `DESIGN.md` (переписан целиком, v1.0)
+- `CLAUDE.md` (§11 сжат по факту)
+- `docs/PLAN-V3.md` (статус-таблица: Сессия 10 ✅)
+- `docs/PROGRESS.md` (эта запись)
+
+### Найдено попутно (не чинил — вне скоупа)
+- **Триггер-пилюля этапа** (case-stage-dropdown, обычный и read-only вид) — белый
+  текст на ярком тоне этапа: awaiting #F97316 2.80 ✗, consultation #8B5CF6 4.23 ✗
+  (текст 12px bold — порог 4.5). Та же схема у «done»-пунктов меню (яркий тон на
+  подложке). Кандидат на Сессию 11.
+- **Prio-бейджи** (Badge tone=prio-low/mid/high) — те же яркие тона на подложках:
+  prio-low #16A34A на #DCFCE7 = 3.00 ✗; план 10.1 ограничил скоуп
+  error/info/success. Кандидат на Сессию 11 (ввести prio-*-fg или переиспользовать
+  success-text/warning/error-text).
+- KPI-плитка `money: text-success bg-success-bg` (kpi-card.tsx DELTA/TONE_MAP) —
+  значения KPI крупные (порог 3.0 — проходит), дельта-чипы 12px — на грани; не
+  тронуто (вне перечня 10.2).
+
+### Открытые хвосты для Сессии 11
+- Сессия 11 — «Дизайн-полировка: тосты, хоткеи, пресеты, „Мой день“,
+  консистентность» (см. PLAN-V3.md). При запуске dev глазами глянуть: списки
+  (sticky-шапка + поведение X-скролла на узком окне), карточку дела (чипы fg,
+  MoneyStat), кассу (зелёные суммы), таблицы отчётов (границы после
+  border-separate), модалки (тон оверлея), печатный отчёт ЗП (синий акцент).
+
+---
+
+## Сессия 2026-06-11 (18) — v3 Сессия 9: Продукт (график платежей, просрочки, aging дебиторки) ✅
+
+_Девятая сессия цикла v3 (docs/PLAN-V3.md). Контроль рассрочки больше не «на памяти
+юриста»: плановые доплаты с датами, авто-статус «просрочено», разрез дебиторки по
+давности на дашборде + Telegram-секция просрочек юристу. **Код НЕ коммитился**
+(правило цикла v3: коммиты — в Сессии 12)._
+
+### Что сделано (по задачам плана 9.1–9.5)
+- **9.1 Миграции (БД).** `20260611101800_v3_payment_plan.sql` — таблица
+  `payment_plan_items` (case_id→cases cascade, due_date, amount numeric(14,2)>0, note≤300,
+  created_by→users restrict) + индекс (case_id, due_date) + RLS: SELECT `can_see_case`,
+  INSERT `can_write_case` И `created_by=active_uid()`, DELETE `can_write_case`, UPDATE НЕТ
+  (правка=удалить+создать). `20260611101900_v3_activity_payment_plan.sql` — allowlist
+  **+`payment_plan_updated`** (грабля №1: полный список скопирован из 20260611101400, +1
+  действие, entity_type case-scope).
+- **9.2 Чистая логика + юниты.** `lib/payments/plan.ts` — `planWithStatuses(items, paidTotal,
+  todayIso)`: сортировка по (due_date, created_at), накопительное покрытие из paid_total,
+  статус paid/pending/overdue (частичное покрытие = НЕ оплачено, coveredAmount для прогресса).
+  `tests/unit/payment-plan.test.ts` (8). `lib/dashboard/aging.ts` — `computeAging(rows,
+  todayIso)`: бакеты <30/30-60/60-90/90+ от coalesce(last_paid_at, opened_at) до сегодня
+  (date-only, без TZ-сдвигов). `tests/unit/aging.test.ts` (7).
+- **9.3 Блок «График платежей» на карточке дела.** `payments/queries.ts` — `listPlanItems`;
+  `payments/actions.ts` — `createPlanItemAction` (useActionState, валидация суммы/даты
+  существующими парсерами, logActivity `payment_plan_updated` с case_id ИЗ БД) +
+  `deletePlanItemAction` (bare, снапшот для лога до удаления, CSO #2 case_id из БД).
+  Компоненты: `payment-plan-block.tsx` (server: таблица Дата·Сумма·Статус·Примечание +
+  прогресс «Покрыто X из Y», overflow-x-auto), `plan-add-form.tsx` (client),
+  `plan-row-controls.tsx` (удаление через ConfirmDialog). Секция вшита на карточку (id=plan,
+  Ряд B перед актами); `case-action-bar` — пункт `plan` в SECTION_IDS и меню (DOM-порядок:
+  overview→comments→plan→acts→documents→tasks→history). Гейт формы — `canWrite` (=canEdit,
+  как у задач). Журнал: ветка action-кода `payment_plan_updated` (ru/uk, default-формат).
+- **9.4 Дашборд: просрочки + aging.** `20260611102000_v3_debt_rpc.sql` — 2 RPC **SECURITY
+  INVOKER**: `overdue_plan_items(p_today)` (позиции с due<today по незакрытым делам +
+  накопленный plan_before ВКЛЮЧАЯ позицию = cumAfter) и `debt_aging()` (незакрытые дела с
+  debt>0 + last_paid_at/opened_at). `dashboard/queries.ts` — `getOverduePayments` (shortfall
+  = clamp(plan_before − paid_total, 0, amount); топ-5) + `getDebtAging`. Блоки
+  `overdue-payments-block.tsx` / `debt-aging-block.tsx`, в `StaffDashboard` (в Promise.all,
+  ряд из 2 карточек). **9.4.4** cron `api/cron/reminders`: секция «Просроченные доплаты по
+  вашим делам» — `overdue_plan_items` под admin (RLS обойдена) → группировка по lawyer_id
+  дела → `buildOverduePaymentsDigest` (новый builder в digest.ts), дописывается в дайджест
+  юриста. Словари `dashboard.overdue`/`dashboard.aging` (ru/uk).
+- **9.5 Тесты.** `tests/integration/v3-payment-plan.test.ts` (5): юрист создаёт позицию
+  своего дела (ок) / чужого (отказ RLS) / подделка created_by (отказ); `overdue_plan_items`
+  под invoker — каждый юрист видит просрочку ТОЛЬКО своих дел.
+
+### Отклонения от плана
+- **plan_before — ВКЛЮЧАЮЩИЙ (cumAfter).** Миграция оставлена как в плане 9.4.1
+  (`x.created_at <= i.created_at` → сумма включает саму позицию). План 9.4.2 в тексте писал
+  условие просрочки «paid_total < plan_before + amount» (предполагает ИСКЛЮЧАЮЩИЙ plan_before)
+  — это рассогласование в самом плане. Выбран самосогласованный вариант: shortfall =
+  clamp(plan_before − paid_total, 0, amount); просрочена ⟺ shortfall>0 ⟺ paid_total<plan_before.
+  Согласовано с `planWithStatuses` (cumAfter-семантика). Поправлено в TS (queries + cron).
+- **`planWithStatuses` — created_at опционален.** Тип входа из плана — `{id, due_date, amount}`,
+  но алгоритм требует tie-break по created_at. Расширил вход `created_at?: string` (суперсет:
+  без него — стабильная сортировка по входу). Блок передаёт фактический created_at.
+- **`buildOverduePaymentsDigest`** не значился явно в 9.4.4 — добавлен в digest.ts как чистый
+  builder (консистентно с `buildDigest`), чтобы не инлайнить форматирование в роут.
+
+### Проверки (DoD)
+- `npx tsc --noEmit` — 0; `npm run lint` — 0; `npm test` — **127/127** (было 112, +15:
+  8 payment-plan + 7 aging).
+- `npx supabase db reset` — все миграции применились чисто (включая 3 новые 101800/101900/
+  102000); `npm run db:seed` — ок **после разового grant-фикса** (db reset снова уронил
+  public-гранты, грабля CLI 2.106.0 — НЕ код; reference-память; постоянное решение — Сессия 12).
+- `npm run test:integration` — **112/112** (было 107, +5 payment-plan). Прогон на чистом
+  reset БЕЗ seed (cash.test конфликтует с сидовыми кассами — известная гоча); grant-фикс
+  применён через `docker exec -i` (флаг -i обязателен).
+
+### Файлы
+**Создано — миграции (3):**
+- `supabase/migrations/20260611101800_v3_payment_plan.sql`
+- `supabase/migrations/20260611101900_v3_activity_payment_plan.sql`
+- `supabase/migrations/20260611102000_v3_debt_rpc.sql`
+
+**Создано — код (7):**
+- `src/lib/payments/plan.ts`
+- `src/lib/dashboard/aging.ts`
+- `src/components/payments/payment-plan-block.tsx`
+- `src/components/payments/plan-add-form.tsx`
+- `src/components/payments/plan-row-controls.tsx`
+- `src/components/dashboard/overdue-payments-block.tsx`
+- `src/components/dashboard/debt-aging-block.tsx`
+
+**Создано — тесты (3):**
+- `tests/unit/payment-plan.test.ts`
+- `tests/unit/aging.test.ts`
+- `tests/integration/v3-payment-plan.test.ts`
+
+**Изменено:**
+- `src/lib/payments/queries.ts` (listPlanItems + PlanItem)
+- `src/lib/payments/actions.ts` (create/deletePlanItemAction)
+- `src/lib/dashboard/queries.ts` (getOverduePayments/getDebtAging + import aging/kyivToday)
+- `src/lib/notifications/digest.ts` (buildOverduePaymentsDigest + OverdueDigestItem)
+- `src/app/api/cron/reminders/route.ts` (секция просрочек юриста)
+- `src/app/(app)/cases/[id]/page.tsx` (секция plan)
+- `src/app/(app)/page.tsx` (overdue/aging блоки в StaffDashboard)
+- `src/components/cases/case-action-bar.tsx` (пункт plan)
+- `src/lib/i18n/messages/ru/payments.ts` + `uk/payments.ts` (plan)
+- `src/lib/i18n/messages/ru/activity.ts` + `uk/activity.ts` (payment_plan_updated)
+- `src/lib/i18n/messages/ru/dashboard.ts` + `uk/dashboard.ts` (overdue/aging)
+- `docs/PLAN-V3.md` (статус-таблица: Сессия 9 ✅)
+- `docs/PROGRESS.md` (эта запись)
+
+### Найдено попутно (не чинил — вне скоупа)
+- Грабля грантов после `db reset` (CLI 2.106.0) повторяется каждую сессию с миграцией —
+  плановое постоянное решение в Сессии 12 (вынести гранты в seed.sql/grants-миграцию).
+
+### Открытые хвосты для Сессии 10
+- Сессия 10 — «Дизайн-база: контраст AA, токены, переписать DESIGN.md» (см. PLAN-V3.md,
+  первая ⬜). Новые блоки этой сессии (график платежей, overdue/aging) — кандидаты на
+  проверку контраста (статус-бейджи, красный текст недоплаты на surface).
+
+---
+
+## Сессия 2026-06-11 (17) — v3 Сессия 8: Продукт (Telegram-напоминания + ICS-календарь) ✅
+
+_Восьмая сессия цикла v3 (docs/PLAN-V3.md). Напоминания о задачах/заседаниях теперь
+выходят за пределы приложения: ежедневный Telegram-дайджест (cron) и подписка-календарь
+(ICS-фид). **Код НЕ коммитился** (правило цикла v3: коммиты — в Сессии 12)._
+
+### Что сделано (по задачам плана 8.1–8.5)
+- **8.1 Миграция `v3_notify_channels`.** Таблица `public.user_notify_channels`
+  (`user_id` PK→users cascade, `telegram_chat_id`, `telegram_link_code` unique,
+  `calendar_token` uuid default gen_random_uuid(), `updated_at`) + RLS + 4 self-политики
+  (select/insert/update/delete по `private.active_uid()`). Вебхук/cron/фид работают через
+  service_role (политики им не нужны). **Доп. к плану:** RPC
+  `public.notify_reissue_calendar_token()` (SECURITY INVOKER, `on conflict do update set
+  calendar_token = gen_random_uuid()`) — создаёт/перевыпускает токен фида со
+  случайностью В БД (требование 8.5 «random в БД, не в JS»); grant execute → authenticated.
+- **8.2 Чистая логика + юниты.** `lib/notifications/digest.ts` — `buildDigest(tasks, lang)`:
+  группировка по КИЕВСКИМ датам (просрочено/сегодня/завтра), формат `«HH:mm — Вид: Дело —
+  Заголовок»`, локализация ru/uk и эмодзи внутри (машинный текст канала, не UI-словарь),
+  пустой → ''. `lib/calendar/ics.ts` — `buildIcs(events)`: VCALENDAR с CRLF, экранирование
+  `\ , ; \n`, `UID:<id>@yurcase`, `DTSTART/DTSTAMP` в UTC basic. `lib/notifications/telegram.ts`
+  — тонкий fetch к Bot API (без библиотек; нет токена → no-op). Юниты `digest.test.ts` (5),
+  `ics.test.ts` (4).
+- **8.3 Route handlers.** `api/telegram/webhook` (POST): проверка
+  `x-telegram-bot-api-secret-token`, `/start <код>` → привязка chat_id + гашение кода +
+  ответ «Готово ✅», всегда 200. `api/cron/reminders` (GET): Bearer `CRON_SECRET`,
+  dry-run без `TELEGRAM_BOT_TOKEN` → `{ok:false, reason:'no token'}`; service_role собирает
+  открытые задачи привязанных юзеров (1 запрос на всех), `buildDigest` на языке юзера,
+  sendMessage. `api/calendar/[token]` (GET): токен из `<uuid>.ics`, поиск по `calendar_token`,
+  задачи assignee −7д…+60д → `text/calendar`. **Доп. к плану:** `proxy.ts` — машинные роуты
+  (`telegram/webhook|cron/reminders|calendar/*`) исключены из auth-прокси (иначе редирект на
+  /login), по образцу `OO_MACHINE_PATH`; необходимо для работы роутов.
+- **8.4 vercel.json + env.** `vercel.json` — `crons: [{path:'/api/cron/reminders',
+  schedule:'0 6 * * *'}]` (06:00 UTC ≈ 09:00 Киева), слит с существующими regions.
+  `.env.example` — `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
+  `NEXT_PUBLIC_TELEGRAM_BOT_NAME`, `CRON_SECRET` с комментариями.
+- **8.5 Профиль «Уведомления и календарь».** `lib/notifications/queries.ts`
+  (`getNotifyChannel`, RLS self) + `actions.ts` (`linkTelegramAction` — upsert одноразового
+  кода; `unlinkTelegramAction`; `reissueCalendarTokenAction` — RPC). Client-карточка
+  `components/account/notifications-card.tsx`: Telegram (привязать/код+инструкция «@bot
+  /start код»/отвязать/бейдж «Привязан») + Календарь (URL фида + копировать + создать/
+  перевыпустить). Origin пишется в input императивно через ref (lint-правило
+  `react-hooks/set-state-in-effect` запрещает setState в эффекте). Блок вшит в `/profile`,
+  `botName` из `NEXT_PUBLIC_TELEGRAM_BOT_NAME`. Словари `account.notifications` (ru эталон + uk).
+
+### Отклонения от плана
+- **RPC перевыпуска токена** не значился в 8.1 явно, но требуется 8.5 («random в БД»):
+  добавлен в ту же миграцию (SECURITY INVOKER, чтобы работали self-RLS политики).
+- **proxy.ts** не упомянут в плане, но без исключения новых машинных роутов из auth-прокси
+  они редиректят на /login (как OO-роуты). Добавлено `NOTIFY_MACHINE_PATH`.
+- **Порядок проверок в cron-роуте:** сначала `CRON_SECRET` (иначе 401), затем токен бота
+  (иначе dry-run). Без `CRON_SECRET` локально роут отдаёт 401 (fail-closed) — это корректно.
+
+### Проверки (DoD)
+- `npx tsc --noEmit` — 0 ошибок; `npm run lint` — 0; `npm test` — **112/112** (было 103, +9
+  digest/ics).
+- `npx supabase db reset` — все миграции применились чисто (включая
+  `20260611101700_v3_notify_channels`); `npm run db:seed` — ок **после разового grant-фикса**
+  (db reset снова уронил public-гранты, грабля окружения CLI 2.106.0 — НЕ код; см.
+  reference-память; постоянное решение — Сессия 12). Структурно проверено в psql: 5 колонок,
+  4 политики, RPC `notify_reissue_calendar_token` → uuid/invoker/executable-by-authenticated.
+- Integration по плану НЕ требуется (self-RLS таблица тривиальна). Роуты руками не
+  проверялись — **нет токена бота; проверка на проде после деплоя и настройки бота**
+  (setWebhook с secret_token, env-переменные, Vercel Cron).
+
+### Файлы
+**Создано (миграция):**
+- `supabase/migrations/20260611101700_v3_notify_channels.sql`
+
+**Создано (код):**
+- `src/lib/notifications/digest.ts`
+- `src/lib/calendar/ics.ts`
+- `src/lib/notifications/telegram.ts`
+- `src/lib/notifications/queries.ts`
+- `src/lib/notifications/actions.ts`
+- `src/app/api/telegram/webhook/route.ts`
+- `src/app/api/cron/reminders/route.ts`
+- `src/app/api/calendar/[token]/route.ts`
+- `src/components/account/notifications-card.tsx`
+
+**Создано (тесты):**
+- `tests/unit/digest.test.ts`
+- `tests/unit/ics.test.ts`
+
+**Изменено:**
+- `src/proxy.ts` (исключение машинных роутов из auth-прокси)
+- `vercel.json` (crons)
+- `.env.example` (4 переменные Telegram/cron)
+- `src/app/(app)/profile/page.tsx` (блок «Уведомления и календарь»)
+- `src/lib/i18n/messages/ru/account.ts` (`notifications`)
+- `src/lib/i18n/messages/uk/account.ts` (`notifications`)
+- `docs/PLAN-V3.md` (статус-таблица: Сессия 8 ✅)
+- `docs/PROGRESS.md` (эта запись)
+
+### Найдено попутно (не чинил — вне скоупа)
+- Грабля грантов после `db reset` (CLI 2.106.0) повторяется каждую сессию с миграцией —
+  плановое постоянное решение в Сессии 12 (вынести гранты в seed.sql/grants-миграцию).
+
+### Открытые хвосты для Сессии 9
+- Сессия 9 — «График платежей, просрочки, aging дебиторки» (см. PLAN-V3.md, первая ⬜).
+- Перед проверкой Telegram/ICS на проде: задать `TELEGRAM_BOT_TOKEN`,
+  `TELEGRAM_WEBHOOK_SECRET`, `NEXT_PUBLIC_TELEGRAM_BOT_NAME`, `CRON_SECRET`; вызвать
+  setWebhook бота с `secret_token`.
+
+---
+
+## Сессия 2026-06-11 (16) — v3 Сессия 7: Продукт (исход «не заключили», конверсия, источники, конфликт-чек) ✅
+
+_Седьмая сессия цикла v3 (docs/PLAN-V3.md). Закрыты продуктовые находки аудита: воронка
+не имела исхода «потеряли» (конверсия/окупаемость источников неисчислимы); конфликт интересов
+не проверялся; clients.source собирался и нигде не агрегировался. **Код НЕ коммитился**
+(правило цикла v3: коммиты — в Сессии 12)._
+
+### Что сделано (по задачам плана 7.1–7.4)
+- **7.1 Исход «не заключили» (БД).** Миграция `v3_case_outcome`: `cases.outcome ('lost'|NULL)` +
+  `lost_reason (≤500)` + CHECK `cases_lost_requires_closed` (NOT VALID); RPC
+  `public.close_case_lost(case_id, reason)` (SECURITY DEFINER, право = staff ИЛИ юрист дела +
+  видимость; только с этапов new_request|consultation; stage→closed, closed_at=киев-дата,
+  outcome=lost, лог `case_lost`); пересоздан триггер `private.cases_validate_stage_forward` —
+  в НАЧАЛО добавлена lost-ветка (`new.stage='closed' and new.outcome='lost' → return new`),
+  тело скопировано целиком из 20260530180000. Миграция `v3_activity_case_lost` — allowlist
+  +`case_lost` (полный список из 20260611100600 + новое действие, гоча 23514).
+- **7.2 UI закрытия как lost.** `closeCaseLostAction` (cases/actions.ts, маппинг ошибок RPC →
+  человеческие тексты). Клиентский `mark-lost-button.tsx`: кнопка «Не заключили» (серо-красная)
+  → ConfirmDialog с textarea причины → RPC → router.refresh. На карточке дела: кнопка рядом с
+  этап-дропдауном (этапы new_request|consultation, staff/юрист дела), серый бейдж «Не заключили»
+  + причина в шапке для lost-дел. Серый бейдж в списке дел (десктоп card-table + моб
+  case-list-mobile). Ветка `case_lost` в activity-log/format.ts. ConfirmDialog получил
+  опциональный `children` (для textarea).
+- **7.3 Дашборд: конверсия и источники.** `computeConversion(rows)` в compute.ts (created/reached/lost;
+  lost не считается «дошедшим», хотя stage=closed) + `DashboardCaseRow.outcome`. Блок
+  `conversion-block.tsx` под воронкой (staff). Миграция `v3_dashboard_sources` — RPC
+  `dashboard_sources(from,to)` SECURITY INVOKER (источник/клиентов/дел/оплачено за месяц);
+  `getDashboardSources` + `sources-block.tsx` (таблица на staff-дашборде).
+- **7.4 Конфликт-чек lite.** Миграция `v3_conflict_check` — RPC `conflict_check(name,inn,phone)`
+  SECURITY DEFINER (по всей базе, только kind/label, limit 20 на union): 1) дубль клиента
+  (ИНН/телефон/имя), 2) имя среди оппонентов дел, 3) имя среди клиентов («Уже клиент»).
+  Route `POST /api/conflict-check` (requireUser, дедуп по label). Хук `useConflictCheck` +
+  `ConflictWarning` (conflict-warning.tsx). Интеграция: client-form (blur ФИО/название/ИНН/тел,
+  только создание), case-form (blur «Оппонент», только создание). НЕ блокирует сабмит.
+
+### Отклонения от плана
+- **log_activity:** план писал `private.log_activity` — фактическое имя `public.log_activity`
+  (план требовал «сверь сигнатуру и подстрой»). Подстроено.
+- **closed_at — тип `date`** (не timestamptz): close_case_lost ставит
+  `(now() at time zone 'Europe/Kyiv')::date` (киевская дата, как kyivToday()), а не `now()`.
+- **ConfirmDialog +children** — план подразумевал «ConfirmDialog с textarea»; добавлен опциональный
+  проп (переиспользуемо).
+- **Конверсия** считается по всем загруженным делам дашборда (после Сессии 4 — один fetch),
+  не по отдельному периоду opened_at (план допускал «из уже загружаемых дел»).
+- **ConflictWarning в case-form** — под полем «Оппонент» (рядом с источником), в client-form — над
+  кнопкой сабмита (по плану).
+- Серый lost-бейдж добавлен и в десктоп-список, и в моб-список (план: «в списке дел»).
+
+### Список файлов
+**Создано — миграции (4):** `supabase/migrations/20260611101300_v3_case_outcome.sql`,
+`20260611101400_v3_activity_case_lost.sql`, `20260611101500_v3_dashboard_sources.sql`,
+`20260611101600_v3_conflict_check.sql`.
+**Создано — код (5):** `src/components/cases/mark-lost-button.tsx`,
+`src/components/cases/conflict-warning.tsx`, `src/components/dashboard/conversion-block.tsx`,
+`src/components/dashboard/sources-block.tsx`, `src/app/api/conflict-check/route.ts`.
+**Создано — тесты (1):** `tests/integration/v3-outcome-conflict.test.ts`.
+**Изменено — код (13):** `src/lib/types/db.ts`, `src/lib/cases/queries.ts`,
+`src/lib/cases/actions.ts`, `src/lib/dashboard/compute.ts`, `src/lib/dashboard/queries.ts`,
+`src/lib/activity-log/format.ts`, `src/components/ui/confirm-dialog.tsx`,
+`src/components/clients/client-form.tsx`, `src/components/cases/case-form.tsx`,
+`src/app/(app)/page.tsx`, `src/app/(app)/cases/[id]/page.tsx`, `src/app/(app)/cases/page.tsx`,
+`src/components/cases/case-list-mobile.tsx`.
+**Изменено — i18n (8):** `messages/{ru,uk}/cases.ts`, `messages/{ru,uk}/activity.ts`,
+`messages/{ru,uk}/dashboard.ts`, `messages/{ru,uk}/clients.ts`.
+**Изменено — тесты (1):** `tests/unit/dashboard.test.ts` (computeConversion + outcome в mkCase).
+
+### Тесты / DoD
+- `npx tsc --noEmit` — 0 ошибок; `npm run lint` — 0; `npm test` — 103/103 (3 новых computeConversion).
+- `npx supabase db reset` — чисто (все 4 миграции применились без ошибок allowlist).
+- `npm run db:seed` — ок. `npm run test:integration` — **107/107** (4 новых: close_case_lost ок/
+  запрет с in_progress/запрет эксперту, conflict_check по ИНН и оппоненту).
+
+### Найдено попутно (НЕ чинил — чужая зона)
+- **cash.test.ts (Этап 7) конфликтует с `npm run db:seed`.** Сидовые кассовые счёта (seed.ts
+  создаёт 3) ломают 2 кейса автоприхода: `cash_resolve_account('bank')` выбирает сидовый
+  банковский счёт вместо тестового. Integration рассчитан на чистый `db reset` БЕЗ seed (fixtures
+  самодостаточны; Сессия 3 гоняла «чистый reset»). После удаления сидовых касс — 107/107 зелёное.
+  Кандидат на изоляцию тестов от seed → Сессия 12.
+- **db reset роняет DML-гранты** public для anon/authenticated/service_role (известная грабля,
+  reference_yur_supabase_reset_grants). Разово восстановил в psql: service_role — все таблицы;
+  anon/authenticated — все КРОМЕ users; на users отдельно `INSERT/UPDATE/DELETE` для authenticated
+  (БЕЗ полного SELECT — column-level приватность salary из 20260610140000 сохранена). Постоянное
+  решение → Сессия 12.
+
+### Открытые хвосты
+- Нет (все задачи 7.1–7.4 выполнены). Жёсткий блок закрытия дела без full+paid акта по-прежнему
+  НЕ включён (отдельное решение, PLAN-V3 «Открытые вопросы» №4 — не Сессия 7).
+
+---
+
+## Сессия 2026-06-11 (15) — v3 Сессия 6: UX (задача, колокольчик, loading, мобайл, доска) ✅
+
+_Шестая сессия цикла v3 (docs/PLAN-V3.md). Закрыты UX-находки аудита: задачу можно было
+создать только из карточки дела; колокольчик топбара показывал точку при ЛЮБОЙ открытой
+задаче (не «горящие»); generic-маршруты без loading.tsx; отчёты ЗП/кассы нечитабельны на
+мобильных; на доске не было фильтров категории/подразделения. **Миграций нет** (чистый
+UI/TS + i18n) → db reset/integration по DoD не требовались. **Код НЕ коммитился**
+(правило цикла v3: коммиты — в Сессии 12)._
+
+### Что сделано (по задачам плана 6.1–6.6)
+- **6.1 Глобальное создание задачи.** Новый `ui/combobox.tsx` — универсальный комбобокс
+  на cmdk (кнопка-триггер в стиле Select + панель с поиском и клиентской фильтрацией;
+  ESC закрывает панель с `preventDefault` — гард модалки из modal.tsx срабатывает;
+  hidden input → FormData; role=combobox + aria-controls). `TaskForm`: новые пропсы
+  `cases` (режим без lockedCaseId — обязательный комбобокс «Дело»), `defaultDueAt`,
+  реализован ранее «мёртвый» проп `onSuccess` (effect по `state.ok`, ref-обёртка).
+  Новый `tasks/new-task-button.tsx`: кнопка + Modal + TaskForm; открытие по `?new=1`
+  БЕЗ эффекта (`effectiveOpen = open || isNewParam`, закрытие снимает параметр через
+  `router.replace`). Запрос `listCasesForSelect()` в cases/queries.ts (id+number_title,
+  активные, opened_at desc, limit 300). Кнопка «Новая задача» на /tasks (primary, ряд
+  тулбара) + «Задача» в панели выбранного дня календаря (`defaultDueAt = день + 09:00`);
+  справочники обеих страниц — в общий Promise.all. Командная палитра: действие «Создать
+  задачу» → `/tasks?new=1` (без гейта — задачи ставят все роли, §7-6).
+- **6.2 Честный колокольчик.** `tasks/queries.countUserTasksDue(userId)` — два
+  head-count по открытым задачам пользователя: просроченные (`due_at < now`) и
+  сегодняшние по Киеву (`now ≤ due_at < конец киевского дня`; граница — `kyivToday()` +
+  Intl `longOffset`, ±1ч только в сам день перевода часов). layout.tsx грузит батчем с
+  `countOpenTasksAssignedTo` (тот остался для счётчика «Задачи» в сайдбаре/bottom-nav).
+  Topbar: пропсы `tasksOverdue`/`tasksToday`; точка красная (есть просрочка) /
+  брендовая (только сегодняшние) / нет; `aria-label`+`title` = «Просрочено: N,
+  сегодня: M» (ключ `topbar.notificationsDue`, ru+uk).
+- **6.3 loading.tsx.** Новые: `(app)/loading.tsx` (generic: KPI-плитки + 2 секции —
+  накрывает дашборд, /clients/[id], /settings/*, /profile, /help,
+  /reports/payroll/[userId], /reports/summary), `cases/[id]/loading.tsx` (шапка дела +
+  инфо-сетка + 3 секции), `reports/payroll/loading.tsx` (шапка + ставки + таблица),
+  `reports/cash/loading.tsx` (вкладки + таблица дней). `ListingSkeleton` переведён с
+  единой таблицы на «карточки-строки» (шапка-подписи вне карточек + rounded-карточки
+  gap-2 — зеркало CardListShell); существующие /cases и /clients loading совпали с
+  фактическим макетом, /tasks /calendar /board — кастомные, не тронуты.
+  `TableRowSkeleton` остался для табличных отчётов (используется новыми loading).
+- **6.4 Мобильные отчёты.** Новый `payroll/payroll-list-mobile.tsx` (md:hidden,
+  по образцу case-list-mobile): карточка сотрудника = аватар+имя, подразделение
+  (дочитка users.department_id→departments.name одним запросом — в RPC-сводке его нет;
+  колонка в безопасном гранте), начислено(+премии)/выплачено/остаток, оклад при
+  salary_mode≠percent; тап → карточка сотрудника. Таблица обёрнута `hidden md:block`.
+  Касса (`cash-report.tsx`): мобильный стек `DayCardMobile` — details-карточка дня
+  «дата · приход · расход · сальдо», тап разворачивает операции дня (JournalRow,
+  удаление ручных доступно из разворота) + компактные итоги месяца; десктоп-таблица
+  `hidden md:block`; секция «Операции за месяц» на мобильных скрыта (дублировала бы
+  развороты). Сводная вкладка «Свод» осталась таблицей (скролл) — план мобильное
+  представление просил только для разворота по дням.
+- **6.5 Паритет фильтров доски.** `CasesFilterSelect`: новый проп `basePath`
+  (default `/cases`) — **попутно починен баг зоны**: смена фильтра НА ДОСКЕ уводила на
+  список (router.replace хардкодил /cases). Доска: + фильтры «Категория» и
+  «Подразделение» (гейт canSeeAllCases, как на списке), справочники и дела одним
+  Promise.all. `listCasesForBoard`: + `category`, `departmentId` (резолв членов
+  подразделения + `.or(lawyer_id.in…,responsible_id.in…)` — приём listCases).
+  `boardHref` (список) и `listHref` (доска) симметричны: q+type+category+responsible+
+  department; поиск q доска не применяет — при q в URL тонкая подпись
+  `cases.board.searchNotApplied` (ru+uk).
+- **6.6 Комбобокс клиентов в фильтре /cases — пропущен** (опциональный пункт плана;
+  Combobox из 6.1 готов как база, но обвязка «фильтр→URL» — отдельная работа).
+
+### Отклонения от плана
+- `listCasesForSelect` исключает архивные дела (`archived_at IS NULL`) — задача на
+  архивном деле бессмысленна; план не уточнял.
+- «Обычная» точка колокольчика = `bg-primary` (брендовая) — план цвет не задавал.
+- Подразделение в мобильной карточке ЗП — дочиткой на компоненте (RPC
+  `payroll_employee_summary` подразделение не возвращает; миграции в сессии запрещены).
+- Ключ `topbar.notificationsAriaCount` стал неиспользуемым — оставлен (паттерн
+  сессии 5: не дёргать typeof-зеркало uk ради удаления).
+
+### Список файлов
+**Создано (7):** `src/components/ui/combobox.tsx`,
+`src/components/tasks/new-task-button.tsx`,
+`src/components/payroll/payroll-list-mobile.tsx`, `src/app/(app)/loading.tsx`,
+`src/app/(app)/cases/[id]/loading.tsx`, `src/app/(app)/reports/payroll/loading.tsx`,
+`src/app/(app)/reports/cash/loading.tsx`.
+**Изменено — код (14):** `src/lib/cases/queries.ts`, `src/lib/tasks/queries.ts`,
+`src/components/tasks/task-form.tsx`, `src/components/app/command-palette.tsx`,
+`src/components/app/topbar.tsx`, `src/app/(app)/layout.tsx`,
+`src/app/(app)/tasks/page.tsx`, `src/app/(app)/calendar/page.tsx`,
+`src/components/ui/skeleton.tsx`, `src/components/cash/cash-report.tsx`,
+`src/app/(app)/reports/payroll/page.tsx`, `src/components/cases/cases-filter-select.tsx`,
+`src/app/(app)/cases/board/page.tsx`, `src/app/(app)/cases/page.tsx`.
+**Изменено — i18n (10):** `messages/{ru,uk}/tasks.ts`, `messages/{ru,uk}/calendar.ts`,
+`messages/{ru,uk}/commandPalette.ts`, `messages/{ru,uk}/topbar.ts`,
+`messages/{ru,uk}/cases.ts`.
+
+### Маршруты с loading.tsx (после сессии)
+Специализированные: `/cases`, `/clients`, `/tasks`, `/calendar`, `/cases/board`
+(существовали), `/cases/[id]`, `/reports/payroll`, `/reports/cash` (новые).
+Generic `(app)/loading.tsx` накрывает остальное: `/`, `/clients/[id]`, `/settings/*`,
+`/profile`, `/help`, `/reports/payroll/[userId]`, `/reports/summary`, формы new/edit.
+
+### Найдено попутно (не чинил — вне скоупа)
+- `listCasesForBoard` не исключает архивные дела — архивное (stage=closed) дело
+  видно в колонке «Завершено» доски, хотя списки архив отделяют. Кандидат в сессию 12.
+- `TaskForm` в режиме edit (проп `task`) не отправляет `case_id` → `validate()`
+  вернул бы «Выберите дело»; вызывающих с `task` нет (edit-страницы задач не
+  существует) — поведение не менял.
+
+### Открытые хвосты
+- Нет. DoD выполнен: tsc 0, lint 0 (после правки ARIA-роли комбобокса), unit 100/100.
+  Миграций/RLS нет → db reset и integration не запускались. 6.6 — пропущен по праву
+  опционального пункта.
+
+---
+
+## Сессия 2026-06-11 (14) — v3 Сессия 5: отказоустойчивость UI ✅
+
+_Пятая сессия цикла v3 (docs/PLAN-V3.md). Закрыты находки аудита: ни одного error.tsx
+при 59 throw-точках (любой сбой = английский системный экран); деструктив через голый
+`window.confirm`; секция «Акты» выпала из навигации карточки дела; фильтр клиентов не
+знал ФОП; «Касса» в топбаре показывала заголовок-фолбэк «ЮрКейс»; мёртвый пункт
+«Документы» в сайдбаре; три action'а молча глотали ошибки. **Миграций нет** (чистый
+UI/i18n + 3 server-actions) → db reset/integration по DoD не требовались. **Код НЕ
+коммитился** (правило цикла v3: коммиты — в Сессии 12)._
+
+### Что сделано (по задачам плана 5.1–5.8)
+- **5.1 Error-границы.** `src/app/global-error.tsx` — изолированная граница для падения
+  САМОГО корневого layout: рендерит собственные `<html><body>`, инлайн-стили + двуязычный
+  статичный текст (globals.css/токены/i18n там недоступны). `src/app/(app)/error.tsx` —
+  граница рабочей зоны (сайдбар/топбар остаются), локаль читается из cookie `locale`
+  напрямую (провайдер мог не смонтироваться), fallback uk; `console.error` в `useEffect`;
+  кнопки «Попробовать снова» (`reset()`) и «На главную». `src/app/not-found.tsx` —
+  корневой 404 (server, `getT`). Ключи `errors.{boundaryTitle,boundaryText,boundaryRetry,
+  boundaryHome,notFoundTitle,notFoundText}` (ru+uk).
+- **5.2 ConfirmDialog.** Новый `src/components/ui/confirm-dialog.tsx` на базе `ui/modal.tsx`
+  (Esc/фокус-трап/возврат фокуса наследуются; кнопка отмены первой = безопасный фокус).
+  Заменены ВСЕ **8** `window.confirm`: `delete-case-form`, `archive-case-form`,
+  `acts/act-row-controls` (DeleteActButton), `payroll/payroll-actions`
+  (DeleteTransactionButton), `clients/delete-client-form`, `absences/delete-absence-button`,
+  `cash/cash-backfill-banner` (закрыт TODO из Сессии 3), `cases/case-stage-dropdown`
+  (закрытие без акта). Паттерн форм-сабмитов: кнопка `type="button"` → открыть диалог →
+  `formRef.requestSubmit()` после подтверждения. Тексты — `common.confirmTitle` (новый
+  ключ ru+uk) + переиспользованы СТАРЫЕ локализованные строки confirm как описание.
+- **5.3 Навигация карточки.** `case-action-bar.tsx`: `acts` добавлен в `SECTION_IDS` и
+  массив секций; порядок выстроен РОВНО по DOM `cases/[id]/page.tsx`: overview → comments
+  → acts → documents → tasks → history. Подпись — `t.acts.block.heading`.
+- **5.4 ФОП в фильтре клиентов.** `clients/page.tsx`: `isClientKind` и `KIND_OPTIONS`
+  генерируются из `CLIENT_KINDS` (`db.ts`), а не хардкодом individual|company → появился
+  третий тип «ФОП» (+ «Все»). Подписи — `t.enums.clientKind[k]`.
+- **5.5 Заголовки топбара.** `topbar.tsx` `titleForPath`: ветки `/reports/cash`→касса,
+  `/settings/departments`→подразделения, `/settings/requisites`→реквизиты, поставлены ВЫШЕ
+  общих префиксов `/reports`,`/settings`. Ключи `topbar.{cash,departments,requisites}` (ru+uk).
+- **5.6 Мёртвый пункт «Документы».** `sidebar-nav.tsx`: пункт `enabled:false` удалён целиком
+  (+ импорт `FileText`, + `'documents'` из union `NavId`). Тур онбординга НЕ затронут:
+  его шаг `#documents` указывает на СЕКЦИЮ карточки дела (она осталась), а не на этот
+  пункт навигации (у пункта не было `tourId`).
+- **5.7 Молчаливые отказы.** `acts/actions.ts`: `deleteActAction` и `setActCompletionAction`
+  на ошибке БД больше не делают тихий `console.error;return` — редиректят на карточку
+  `/cases/:id?error=act_delete_failed|act_update_failed` (зеркало `deleteCaseAction`).
+  `cases/actions.ts`: `setCaseArchived` на нештатной ошибке UPDATE → `?error=archive_failed`
+  (штатные отказы по-прежнему отсекаются ДО апдейта; успех остаётся без редиректа — на
+  списке). Карта `ERROR_MESSAGES` на `cases/[id]/page.tsx` дополнена 3 ключами
+  `caseCard.detail.error{ActDeleteFailed,ActUpdateFailed,ArchiveFailed}` (ru+uk).
+- **5.8 STALE_STAGE_DAYS.** Новый `src/lib/cases/constants.ts` (`= 14`); убраны 3 дубля:
+  `cases/page.tsx`, `case-list-mobile.tsx` (локальные const), `cases/[id]/page.tsx`
+  (голое число `>= 14`).
+
+### Отклонения от плана
+- `(app)/error.tsx` оставлен `<a href="/">` (как требовал план — жёсткий reload сбрасывает
+  повреждённое состояние границы), но правило `@next/next/no-html-link-for-pages` — error,
+  поэтому добавлен точечный `// eslint-disable-next-line` с обоснованием. `not-found.tsx`
+  (нет «сломанного» состояния) переведён на `<Link>` — совпадает с существующим
+  `cases/[id]/not-found.tsx` и не требует disable.
+- `global-error.tsx` использует инлайн-стили и хардкод hex (не токены) — намеренно: файл
+  заменяет корневой layout, globals.css/Tailwind-токены недоступны. Двуязычный статичный
+  текст (cookie/словари там тоже могут быть недоступны) — как и предписал план.
+- Добавлен ключ `errors.boundaryText` сверх списка плана (нужен для тела абзаца error-экрана).
+
+### Список файлов
+**Создано (5):** `src/components/ui/confirm-dialog.tsx`, `src/app/global-error.tsx`,
+`src/app/(app)/error.tsx`, `src/app/not-found.tsx`, `src/lib/cases/constants.ts`.
+**Изменено — i18n (8):** `messages/{ru,uk}/errors.ts`, `messages/{ru,uk}/common.ts`,
+`messages/{ru,uk}/topbar.ts`, `messages/{ru,uk}/caseCard.ts`.
+**Изменено — компоненты/страницы (12):** `components/cases/delete-case-form.tsx`,
+`components/cases/archive-case-form.tsx`, `components/cases/case-stage-dropdown.tsx`,
+`components/cases/case-action-bar.tsx`, `components/cases/case-list-mobile.tsx`,
+`components/acts/act-row-controls.tsx`, `components/clients/delete-client-form.tsx`,
+`components/absences/delete-absence-button.tsx`, `components/payroll/payroll-actions.tsx`,
+`components/cash/cash-backfill-banner.tsx`, `components/app/topbar.tsx`,
+`components/app/sidebar-nav.tsx`, `app/(app)/clients/page.tsx`,
+`app/(app)/cases/page.tsx`, `app/(app)/cases/[id]/page.tsx`.
+**Изменено — server actions (2):** `lib/acts/actions.ts`, `lib/cases/actions.ts`.
+
+### Найдено попутно (не чинил — вне скоупа)
+- `caseCard.actionBar.sectionFinance` и `nav.documents`/`documentsShort` в словарях теперь
+  не используются, но оставлены (удаление рискует контрактом uk `typeof`-зеркала; вреда нет).
+- Ветка `if (!enabled)` в `sidebar-nav.renderItem` стала мёртвой (нет `enabled:false`
+  пунктов) — оставлена под будущие «скоро»-разделы.
+
+### Открытые хвосты
+- Нет. DoD выполнен: tsc 0, lint 0, unit 100/100. Миграций/RLS нет → db reset и
+  integration по правилам DoD не запускались.
+
+---
+
+## Сессия 2026-06-11 (13) — v3 Сессия 4: дашборд и перф ✅
+
+_Четвёртая сессия цикла v3 (docs/PLAN-V3.md). Закрыты: дашборд дважды качал ВСЕ дела и
+ВСЕ платежи за всю историю (потолок PostgREST max_rows=1000 искажал цифры); последовательные
+await вместо параллельных; дефолтный месяц/closed_at считались по UTC хоста (на границе
+месяца уезжали); конкурентная правка дела = last-write-wins; RLS-предикат дел звал
+DEFINER-функцию на каждую строку; driver.js тянулся в основной бандл; «приближающиеся сроки»
+не отделяли просрочки; комбобокс клиентов без лимита. **Код НЕ коммитился** (правило цикла
+v3: коммиты — в Сессии 12). Незакоммиченный дифф в git status — норма._
+
+### Что сделано (по задачам плана 4.1–4.8)
+- **4.1 / `20260611101000_v3_dashboard_rpc.sql`** — 2 функции **SECURITY INVOKER** (RLS
+  вызывающего работает → видимость по роли): `dashboard_payment_months(p_from)` — выручка
+  помесячно (поток); `dashboard_stock_months(p_from, p_user_id, p_fixed)` — РОВНО 6 строк,
+  накопительные снимки на конец месяца (debt/salary/active_cases), точное зеркало прежней
+  TS-логики (override-ставки, зануление окладников через параметр `p_fixed`, роль зрителя
+  через `p_user_id` NULL=фонд). `getDashboardAnalytics` переписан на эти RPC — payments/cases
+  строками больше НЕ качает. `getDashboardCases` → `.limit(2000)` + `count:'exact'` + флаг
+  `truncated` (`count > rows.length`), баннер-предупреждение на дашборде.
+- **4.2** — водопады → Promise.all: `cases/page.tsx` (справочники фильтров + список +
+  счётчики одним батчем), `cases/[id]/page.tsx` (`caseHasDocOfType` в существующий Promise.all),
+  `page.tsx` PersonalDashboard (`getPayrollRates`+`getFixedSalaryUserIds` одним батчем).
+- **4.3 `src/lib/payroll/month.ts`** — `kyivToday()`/`kyivMonth()` (Intl Europe/Kyiv),
+  `currentMonth()` теперь по Киеву; `dashboard/queries.currentKyivMonth` → обёртка над
+  `kyivMonth`; `cases/actions.todayIso` → `kyivToday`. Юнит `tests/unit/kyiv-dates.test.ts`
+  (границы месяца на UTC-вечер/утро).
+- **4.4 / `..101100_v3_cases_updated_at.sql`** — колонка `cases.updated_at` + триггер
+  `cases_touch_updated_at` (бьёт на любой UPDATE). Форма edit шлёт hidden `base_updated_at`;
+  `updateCaseAction` обновляет с `.eq('updated_at', base).select('id')`, 0 строк → ошибка
+  `concurrentEdit` (i18n ru/uk). `Case.updated_at` в типе + `getCase` select/return.
+- **4.5 `src/lib/tasks/queries.ts`** — `listUpcomingTasks` → `{ overdue (топ-3 desc + count),
+  overdueCount, soon (72ч asc) }`; блок `upcoming-deadlines-block.tsx` — две подсекции
+  «Просроченные (N)» / «Ближайшие 72 часа» (i18n ru/uk).
+- **4.6 `src/components/onboarding/onboarding-provider.tsx`** — `driver.js` через
+  `await import()` в `startTour` (тип `Driver` — type-only import); CSS остаётся в globals.
+- **4.7 / `..101200_v3_cases_rls_initplan.sql`** — `private.case_dept_visible(lawyer,
+  responsible)` (только департаментная ветка) + политики `cases_select_visible`/
+  `cases_update_staff_or_assignee` раскрыты с `(select …)`-хоистингом скалярных веток
+  (can_see_all_cases/active_uid — initplan). **Семантика идентична `case_visible`** →
+  RLS-матрица (52 теста system.test) зелёная, отката НЕ потребовалось.
+- **4.8 `src/lib/cases/queries.ts`** — `listClientsForSelect` → `.limit(1000)`. Integration
+  `tests/integration/v3-dashboard-rpc.test.ts` (lawyer видит выручку только своих дел; второй
+  юрист без оплат → 0; stock_months 6 строк, salary>0/==0).
+
+### Файлы
+Созданы:
+- `supabase/migrations/20260611101000_v3_dashboard_rpc.sql`
+- `supabase/migrations/20260611101100_v3_cases_updated_at.sql`
+- `supabase/migrations/20260611101200_v3_cases_rls_initplan.sql`
+- `tests/unit/kyiv-dates.test.ts`
+- `tests/integration/v3-dashboard-rpc.test.ts`
+
+Изменены:
+- `src/lib/payroll/month.ts` (kyivToday/kyivMonth/currentMonth)
+- `src/lib/dashboard/queries.ts` (RPC-аналитика, getDashboardCases truncated, currentKyivMonth обёртка, убраны PayrollRate-импорт и Analytics*-типы)
+- `src/lib/cases/actions.ts` (todayIso→kyivToday + import; updateCaseAction optimistic lock)
+- `src/lib/cases/queries.ts` (getCase select/return updated_at; listClientsForSelect .limit(1000))
+- `src/lib/types/db.ts` (Case.updated_at)
+- `src/lib/tasks/queries.ts` (listUpcomingTasks → overdue/soon)
+- `src/components/tasks/upcoming-deadlines-block.tsx` (две подсекции)
+- `src/components/onboarding/onboarding-provider.tsx` (driver.js dynamic import)
+- `src/components/cases/case-form.tsx` (hidden base_updated_at)
+- `src/app/(app)/page.tsx` (cases destructure + truncated-баннер; StaffDashboard без rates; PersonalDashboard rates+fixed Promise.all + cases-тип)
+- `src/app/(app)/cases/page.tsx` (два батча → один Promise.all)
+- `src/app/(app)/cases/[id]/page.tsx` (caseHasDocOfType в Promise.all)
+- `src/lib/i18n/messages/ru/dashboard.ts` + `uk/dashboard.ts` (truncatedWarning)
+- `src/lib/i18n/messages/ru/tasks.ts` + `uk/tasks.ts` (overdueHeading/soonHeading)
+- `src/lib/i18n/messages/ru/cases.ts` + `uk/cases.ts` (concurrentEdit)
+- `docs/PLAN-V3.md` (статус-таблица: Сессия 4 → ✅)
+- `docs/PROGRESS.md` (эта запись)
+
+### Отклонения от плана
+- **4.1 — ВТОРАЯ RPC `dashboard_stock_months` сверх наброска плана.** План сметил один
+  `dashboard_payment_months` + «для всего за всё время — один sum». Но серии salary/debt —
+  НАКОПИТЕЛЬНЫЕ снимки на конец месяца с per-case override-ставками: одним числом не
+  выразить. Добавил вторую SQL-функцию (6 строк), сохраняющую ТОЧНУЮ прежнюю семантику. План
+  явно делегировал форму RPC («СМОТРИ что реально требует compute.ts», «подстрой под факт»).
+  Итог строго сильнее цели «один fetch дел»: аналитика payments/cases строками НЕ качает вовсе.
+- **4.1 — детектор truncated = `count > rows.length`, а не буквальный `count > 2000`.**
+  `max_rows=1000` (config.toml) режет `.limit(2000)` до 1000 → «>2000» пропустил бы обрезку.
+- **4.1/4.2 — `getDashboardAnalytics` потерял параметр `rates`** (серии считает SQL).
+  StaffDashboard больше не зовёт `getPayrollRates` (waterfall там исчез сам); PersonalDashboard
+  объединил rates+fixed в один Promise.all (rates нужны `computePersonalEarnings`).
+- **4.4 — touch-триггер бьёт `updated_at` на ЛЮБОЙ UPDATE** (включая системный recalc
+  paid_total/debt от платежа) → лок «грубый»: правка устаревшей формы конфликтует даже при
+  чисто-финансовом изменении. Это корректно (данные формы реально устарели) и согласовано с
+  планом.
+- **4.7 — `case_rate` в `dashboard_stock_months` — LEFT join `payroll_rates`** (не INNER):
+  дело без ставки категории не выпадает из долга/active (rate→0 через coalesce). Зеркалит TS,
+  где долг/активность от ставки НЕ зависят.
+
+### Найдено попутно
+- **`getRevenueThisMonth` (dashboard/queries.ts) — мёртвый экспорт** (не вызывается из src
+  ещё ДО Сессии 4). Не трогал (вне скоупа). Кандидат на вычистку — Сессия 12.
+- **Env-гранты снова слетели после `db reset`** (известная грабла CLI 2.106.0, см.
+  reset_grants memory) — применён разовый grant-фикс в psql (public DML + колоночная
+  приватность users). Постоянное решение — Сессия 12.
+
+### Открытые хвосты
+- Баннер `truncated` на дашборде показывается только при >1000 видимых дел (Phase 1
+  потолок); при реальном росте — серверная пагинация/курсор.
+- Optimistic lock — только в `updateCaseAction` (полная форма). Inline-смена этапа
+  (`updateCaseStageAction`) и архив — без lock (по плану: «нигде, кроме cases»).
+
+---
+
+## Сессия 2026-06-11 (12) — v3 Сессия 3: касса (SQL-сальдо, бэкфилл, потолок 1000) ✅
+
+_Третья сессия цикла v3 (docs/PLAN-V3.md). Закрыты дыры кассы: PostgREST max_rows=1000
+тихо резал выдачу (ascending-сортировка теряла СВЕЖИЕ операции); getCashReportData качал
+ВСЮ историю cash_entries; платежи, внесённые до создания счетов, навсегда выпадали из
+кассы (нет бэкфилла); счётчики этапов и доска без лимитов; сальдо игнорировало opening_date.
+**Код НЕ коммитился** (правило цикла v3: коммиты — в Сессии 12). Незакоммиченный дифф — норма._
+
+### Что сделано (по задачам плана 3.1–3.5)
+- **3.1+3.3 / `20260611100900_v3_cash_rpc.sql`** — три SECURITY DEFINER-функции (право
+  `can_manage_cash` проверяется ВНУТРИ через `private.can`, как в confirm_act_paid):
+  `cash_balances_before(p_before)` — перенос остатка по счетам строго ДО даты (исключая
+  операции раньше opening_date — они уже в opening_balance); `cash_backfill_payments()` —
+  заводит недостающие cash_entries для платежей без них (идемпотентно по payment_id);
+  `cash_unsynced_payments_count()` — число неотражённых платежей (баннер). Все три
+  granted to authenticated. `payments.paid_at` — тип `date` → без ::date-каста.
+- **3.2 `src/lib/cash/queries.ts`** — `getCashReportData` переписан: тянет ТОЛЬКО операции
+  выбранного месяца (`gte monthStart … lt nextMonth`, `.limit(5000)`, `count:'exact'` →
+  флаг `truncated`); перенос остатка на начало месяца — из RPC `cash_balances_before`
+  (без выкачки истории). Эффективный остаток = `opening_balance + openingBalances[id]`.
+  Добавлен `getUnsyncedPaymentsCount()` (не валит страницу: при ошибке/без права → 0).
+- **3.2 `src/lib/cash/saldo.ts`** — новая чистая `entriesFromOpening(entries, openingDate)`
+  (generic, фильтр `entry_date >= openingDate`); существующие функции НЕ тронуты (контракт
+  saldo.ts стабилен, юнит ОЛІМП зелёный без правок).
+- **3.2 `src/app/(app)/reports/cash/page.tsx`** — расчёт сальдо/Total на эффективном
+  остатке (openingFor) и операциях месяца от opening_date; журнал по-прежнему все операции
+  месяца; параллельный `getUnsyncedPaymentsCount`; проброс `truncated` в CashReport + баннер.
+- **3.2 `src/components/cash/cash-report.tsx`** — проп `truncated?` + жёлтое предупреждение
+  «показаны не все операции месяца».
+- **3.3 `src/lib/cash/actions.ts`** — `backfillCashAction()` (cap-зеркало + rpc
+  `cash_backfill_payments` + revalidate; возвращает `{ok, count}`).
+- **3.3 `src/components/cash/cash-backfill-banner.tsx`** — клиент-баннер «Не отражено N»
+  + кнопка «Синхронизировать» (window.confirm, TODO v3 s5 → ConfirmDialog); после успеха
+  revalidatePath обновляет count и баннер исчезает.
+- **3.4 `src/lib/cases/queries.ts`** — `countCasesByStage`: вместо выкачки строк — 5
+  параллельных `count:'exact', head:true` по этапам (все НЕ-этапные фильтры через фабрику
+  base()); `listCasesForBoard`: `.limit(600)` (клиентский cap 100/колонку остаётся).
+- **3.5 i18n** — `ru/uk cash.ts`: `report.truncatedWarning` + группа `backfill`
+  (notice/hint/sync/syncing/confirm). uk зеркалит typeof ru.
+- **3.5 тесты** — юнит `cash-saldo.test.ts`: 2 кейса на `entriesFromOpening` (отбрасывает
+  до opening_date; пустой при всех ранних). Integration `v3-cash-rpc.test.ts`: 3 кейса —
+  `cash_balances_before` (сумма только до даты, исключая до opening_date), бэкфилл
+  (создаёт строку + идемпотентен), право (lawyer без cap → бэкфилл падает, count 0, balances пусто).
+
+### Файлы
+Созданы:
+- `supabase/migrations/20260611100900_v3_cash_rpc.sql`
+- `src/components/cash/cash-backfill-banner.tsx`
+- `tests/integration/v3-cash-rpc.test.ts`
+
+Изменены:
+- `src/lib/cash/saldo.ts` (entriesFromOpening)
+- `src/lib/cash/queries.ts` (getCashReportData переписан + getUnsyncedPaymentsCount)
+- `src/lib/cash/actions.ts` (backfillCashAction)
+- `src/components/cash/cash-report.tsx` (truncated prop + warning)
+- `src/app/(app)/reports/cash/page.tsx` (эффективный остаток + баннер + truncated)
+- `src/lib/cases/queries.ts` (countCasesByStage → 5 head-count, listCasesForBoard → .limit(600))
+- `src/lib/i18n/messages/ru/cash.ts` (truncatedWarning + backfill)
+- `src/lib/i18n/messages/uk/cash.ts` (зеркало typeof ru)
+- `tests/unit/cash-saldo.test.ts` (2 кейса entriesFromOpening)
+- `docs/PLAN-V3.md` (статус-таблица: Сессия 3 → ✅)
+- `docs/PROGRESS.md` (эта запись)
+
+### Отклонения от плана
+- **Описание бэкфилл-строк = формат автоприхода**, а не статичная строка плана
+  «Бэкфилл платежа по делу». Бэкфилл закрывает именно пропущенные авто-приходы, поэтому
+  строки должны быть НЕОТЛИЧИМЫ от штатных (`note ?? 'Оплата по справі: <number_title>'`,
+  укр. локаль как в `cash_sync_on_payment`). План прямо помечал description как «подстрой
+  под факт». Длина ограничена `left(…,300)`.
+- **`cash_unsynced_payments_count` — простой анти-join** (как в плане): в проде сид даёт
+  дефолтный счёт, поэтому каждый платёж резолвится и count == объёму бэкфилла.
+- **Миграция создана прямой записью** с явным timestamp (100900), как в Сессиях 1–2.
+- **Идемпотентность бэкфилла (`второй вызов → 0`)** детерминирована за счёт
+  последовательного прогона integration (singleFork) — в БД живёт только наш world.
+
+### Найдено попутно
+- ⚠ **`tests/integration/cash.test.ts` (Этап 7) фрагилен к TS-сиду.** Если прогнать
+  `npm run db:seed` ДО `npm run test:integration`, дефолтный банковский счёт сида выигрывает
+  `cash_resolve_account` (`order by is_default desc`), и авто-приход теста уходит на счёт
+  сида → 2 кейса падают на сравнении `account_id`. На ЧИСТОМ `db reset` (без TS-сида) —
+  99/99 зелёные. Это НЕ баг прод-кода (в проде дефолтный счёт и должен выигрывать), а
+  порядок прогона: integration-набор самодостаточен (createWorld) и идёт на чистом reset.
+  **Для Сессии 12: НЕ запускать TS-сид перед integration** (или сделать cash.test.ts
+  устойчивым — но это вне скоупа Сессии 3).
+- **Env-гранты снова слетели после `db reset`** (CLI 2.106.0, известная грабля — см.
+  reset_grants memory). Применён разовый grant-фикс в psql (public DML + переприменение
+  колоночной приватности users). Постоянное решение — Сессия 12.
+
+### Открытые хвосты
+- Баннер бэкфилла на `window.confirm` (TODO в коде) → заменит ConfirmDialog в Сессии 5.
+- Постоянный фикс env-грантов (вынести в seed.sql/grants-миграцию) — Сессия 12.
+
+---
+
+## Сессия 2026-06-11 (11) — v3 Сессия 2: журнал и целостность ✅
+
+_Вторая сессия цикла v3 (docs/PLAN-V3.md). Закрыты дыры журнала (правка платежа /
+удаление акта / выплата ЗП не журналировались; штатная смена этапа из карточки не
+писалась в журнал — нарушение §7-9) и целостности (сумма аллокаций выплаты не
+сверялась; create_payout не проверял принадлежность дел; payroll_rates можно было
+удалить; нет CHECK на inn/closed_at; пересечения отпусков). **Код НЕ коммитился**
+(правило цикла v3: коммиты — в Сессии 12). Незакоммиченный дифф в git status — норма._
+
+### Что сделано (по задачам плана 2.1–2.7)
+- **2.1 / `20260611100600_v3_activity_actions.sql`** — allowlist (CHECK + тело
+  `log_activity`) скопирован ЦЕЛИКОМ из `20260610170000` (гоча 23514) и расширен тремя
+  действиями: `payment_updated` (задел под RLS-правки платежей), `act_deleted`,
+  `payroll_payout`. Все три — entity_type='case', case-scope гейт (`can_see_case`).
+- **2.2 `src/lib/cases/actions.ts`** — `updateCaseStageAction`: после успешного UPDATE
+  пишет `case_updated` с `{ diff: { stage: { from, to } } }` (формат как
+  advanceCaseStageAction). `updateCaseAction`: `stage` добавлен в `CASE_DIFF_FIELDS` /
+  `CaseDiffShape` / beforeShape / afterShape — смена этапа из полной формы теперь
+  попадает в журнал (исключение stage снято).
+- **2.3** — честные действия журнала: `createPayoutAction` (payroll/actions.ts) пишет
+  `payroll_payout` вместо `payment_created`; `deleteActAction` (acts/actions.ts) читает
+  акт из БД ДО удаления и пишет `act_deleted {number, amount}` (case_id из БД, только
+  если строка реально удалена); `updateCommentAction` (comments/actions.ts) берёт
+  `case_id` комментария из БД (паттерн CSO #2), а не из formData. `format.ts` + словари
+  `ru/uk/activity.ts` — 3 ветки формата + подписи/шаблоны.
+- **2.4 / `..100700_v3_payout_integrity.sql`** — uniq-индекс `payout_allocations_uniq`
+  (transaction_id, case_id, role_in_case); констрейнт-триггер `check_payout_allocations`
+  (DEFERRABLE INITIALLY DEFERRED на payout_allocations + on update of amount
+  payroll_transactions): **Σ аллокаций ≤ amount** (см. отклонения); `create_payout`
+  (тело из 20260601110000 ЦЕЛИКОМ) + проверка принадлежности каждого дела сотруднику в
+  указанной роли; `payroll_rates_write_owner` (FOR ALL) разбит на UPDATE+INSERT
+  (предикат `private.can('edit_payroll_rates')`), DELETE-политики нет → удаление ставок
+  запрещено RLS.
+- **2.5 / `..100800_v3_misc_checks_indexes.sql`** — CHECK `clients_inn_format`
+  (`^[0-9]{8,12}$`) и `cases_closed_after_opened` (оба NOT VALID); uniq-индекс
+  `cash_accounts_name_uniq` (lower(name)); триггер `absences_no_overlap` (23P01) на
+  INSERT; 11 индексов на «голые» FK (payments/documents/tasks/cases.archived_by/
+  cash_entries×2/case_acts×2/payroll_ledger/absences/payroll_transactions, все
+  if not exists).
+- **2.6 `src/lib/absences/actions.ts`** — маппинг 23P01/`overlap` →
+  `t.absences.overlapError` (ключ добавлен в ru/uk absences.ts).
+- **2.7 `tests/integration/v3-journal-integrity.test.ts`** — 5 кейсов: staff-смена
+  этапа оставляет запись в журнале; Σ аллокаций сверх суммы выплаты → ошибка;
+  create_payout на чужое дело → исключение; DELETE payroll_rates под owner → 0 строк;
+  пересечение отпусков → второй падает. Все 5 зелёные.
+
+### Файлы
+Созданы:
+- `supabase/migrations/20260611100600_v3_activity_actions.sql`
+- `supabase/migrations/20260611100700_v3_payout_integrity.sql`
+- `supabase/migrations/20260611100800_v3_misc_checks_indexes.sql`
+- `tests/integration/v3-journal-integrity.test.ts`
+
+Изменены:
+- `src/lib/cases/actions.ts` (stage в diff + лог в updateCaseStageAction)
+- `src/lib/payroll/actions.ts` (createPayoutAction → action payroll_payout)
+- `src/lib/acts/actions.ts` (deleteActAction → act_deleted, case_id из БД)
+- `src/lib/comments/actions.ts` (updateCommentAction → case_id комментария из БД)
+- `src/lib/activity-log/format.ts` (3 ветки: payment_updated/payroll_payout/act_deleted)
+- `src/lib/i18n/messages/ru/activity.ts` (3 action + 5 event ключей)
+- `src/lib/i18n/messages/uk/activity.ts` (зеркало typeof ru)
+- `src/lib/i18n/messages/ru/absences.ts` (overlapError)
+- `src/lib/i18n/messages/uk/absences.ts` (overlapError)
+- `tests/integration/absences.test.ts` (seedDel: непересекающиеся даты под новый триггер)
+- `docs/PLAN-V3.md` (статус-таблица: Сессия 2 → ✅)
+- `docs/PROGRESS.md` (эта запись)
+
+### Отклонения от плана
+- **2.4.2: инвариант выплаты `Σ аллокаций ≤ amount`, а не строгое `== amount`** —
+  СОГЛАСОВАНО с пользователем (вопрос в начале сессии). Причина: `createPayoutAction`
+  намеренно (с комментарием) включает в одну payout-транзакцию долю премии сверх
+  распределённого по делам (`amount = Σ аллокаций + bonusAmount`), поэтому жёсткое
+  `==` падало бы на реальном сценарии «дела + премия». Тест 2.7.2 (лишняя аллокация,
+  Σ>amount) всё равно падает — дыра «аллокации > выплаты» закрыта.
+- **payroll_rates_write_owner: взят ФАКТИЧЕСКИЙ предикат `private.can('edit_payroll_rates')`**
+  (последняя версия — permission_overrides:466), а не `is_owner` из буквы плана
+  (правило №2 шапки: копировать ПОСЛЕДНЮЮ версию).
+- **Миграции созданы прямой записью** с явными timestamp'ами (100600–100800), как в
+  Сессии 1 (CLI создаёт идентичный пустой .sql; порядок детерминирован).
+- **2.7 кейс #1** реализован как staff-откат этапа (триггер `cases_validate_stage_forward`
+  пишет `stage_corrected`) — DB-level проверка «журнал ловит смену этапа»; TS-путь
+  `updateCaseStageAction` из integration не вызывается (нет Next-рантайма).
+- **Поправлен `tests/integration/absences.test.ts` (seedDel)** — прямое следствие нового
+  триггера `absences_no_overlap`: helper трижды сеял lawyer1 на ОДНИ даты, а no-op-delete
+  тесты оставляют строку → пересечение. Дал каждому seedDel отдельный день.
+
+### Найдено попутно
+- ⚠ **ГРАБЛЯ ОКРУЖЕНИЯ (важно для будущих сессий с миграциями): Supabase CLI
+  авто-обновился до 2.106.0**, и `npx supabase db reset` оставил ВСЕ public-таблицы БЕЗ
+  DML-грантов (SELECT/INSERT/UPDATE/DELETE) для anon/authenticated/service_role (остались
+  только REFERENCES/TRIGGER/TRUNCATE) → ВСЕ integration падали на первом же запросе
+  («permission denied for table departments»). **Это НЕ код** (db reset и unit чисты;
+  падал даже тест Сессии 1, ранее зелёный). Восстановлено разово SQL'ем в контейнере:
+  `grant usage on schema public` + `grant all on all tables/sequences in schema public to
+  anon, authenticated, service_role` + переприменение колоночной приватности users
+  (`revoke select on users from anon, authenticated; grant select(<список>)`). **Гранты
+  ЭФЕМЕРНЫ — следующий `db reset` их сотрёт.** Кандидат на постоянную фиксацию
+  (supabase/seed.sql или отдельная grants-миграция) — вынести в Сессию 12.
+- **Двойной лог при staff-откате этапа из ПОЛНОЙ формы**: теперь пишутся и
+  `stage_corrected` (триггер), и `case_updated{stage}` (diff updateCaseAction). Косметика,
+  не баг (оба факта верны); зато форвард-движения этапа из формы теперь логируются — это
+  и был смысл 2.2.
+
+### Открытые хвосты
+- Постоянное решение по env-грантам после db reset (см. «Найдено попутно») — Сессия 12.
+- `payment_updated` — только задел (allowlist + формат), из UI не вызывается (по плану,
+  «Что НЕ делать»: UI-правки платежей не добавляем).
+
+---
+
+## Сессия 2026-06-11 (10) — v3 Сессия 1: БД-безопасность (гард фин-полей, гонки, скоуп DEFINER) ✅
+
+_Первая сессия цикла v3 (docs/PLAN-V3.md). Закрыта дыра самоповышения ЗП через
+`cases.category`, гонка `recalc_case_totals`, неизменяемость act-платежа, пересчёт
+completion при смене суммы, скоуп подтверждения акта по подразделению, удаление
+документов по видимости дела. **Код НЕ коммитился** (правило цикла v3: коммиты —
+в Сессии 12). Незакоммиченный дифф в `git status` — норма._
+
+### Что сделано (по задачам плана 1.1–1.10)
+- **1.1 / `20260611100000_v3_cases_guard_financial_fields.sql`** — триггер
+  `private.cases_guard_financial_fields` (BEFORE UPDATE OF category, contract_sum,
+  lawyer_id, responsible_id, client_id): не-staff (юрист/Експерт) их не меняет
+  (`is_staff()` → пропуск; иначе `IS DISTINCT FROM` → 42501). Аудит HIGH#1.
+- **1.2 / `..100100_v3_recalc_totals_lock.sql`** — пересоздан
+  `private.recalc_case_totals` (тело из core_tables, grep подтвердил — позже не
+  менялась) + ОДНА строка `perform 1 from public.cases where id = p_case_id for update;`
+  после null-гарда → сериализация параллельных пересчётов (lost-update race).
+- **1.3 / `..100200_v3_act_payment_immutable.sql`** — триггер
+  `private.payments_guard_act_payment` (BEFORE UPDATE): платёж с `act_id` неизменяем
+  по amount/paid_at/case_id/act_id (method/note — можно). Откат акта только удалением.
+- **1.4 / `..100300_v3_contract_sum_recompute_acts.sql`** — триггер
+  `private.cases_recompute_acts_on_sum` (AFTER UPDATE OF contract_sum) → зовёт
+  `private.recompute_case_act_completions(id)` (completion актов больше не устаревает).
+- **1.5 / `..100400_v3_act_rpc_scope.sql`** — пересозданы `public.confirm_act_paid`
+  и `public.set_act_completion` (тела из case_acts ЦЕЛИКОМ): (а) ранний
+  `for update` строки дела — анти-дедлок/сериализация с recalc; (б) к проверке прав
+  добавлена `private.case_visible(lawyer, responsible)` — admin чужого подразделения
+  больше не подтвердит/не переопределит акт невидимого дела. Добран `responsible_id`
+  в select обеих функций.
+- **1.6 / `..100500_v3_documents_delete_scope.sql`** — пересозданы DELETE-политики
+  `documents_delete_managers` (+`can_see_case(case_id)`) и storage
+  `case_documents_delete_staff` (+`split_part(name,'/',1)='cases'` и
+  `can_see_case(case_id_from_storage_path(name))` — тем же приёмом, что SELECT-политика).
+- **1.7 `src/lib/cases/actions.ts`** (`updateCaseAction`) — TS-зеркало: `isStaffUser`
+  по `STAFF_ROLES`; для не-staff сверка 5 фин-полей с `before` → `fieldErrors` при
+  отличии (БД-update не выполняется); при совпадении поля исключаются из payload
+  (не дёргаем триггер впустую).
+- **1.8 `src/components/cases/case-form.tsx` + `.../cases/[id]/edit/page.tsx`** —
+  проп `isStaff`; в режиме edit при `!isStaff` поля категория/сумма/клиент/юрист/
+  эксперт заблокированы (`disabled` у Select'ов — hidden-input всё равно шлёт
+  оригинал; `readOnly` у contract_sum — иначе `disabled` не сабмитит значение и
+  сервер счёл бы поле изменённым) + серый `LockedHint`; неблокирующее предупреждение
+  `text-warning`, когда юрист = эксперт (один человек получит обе ставки).
+- **1.9** — ключи `financialFieldStaffOnly`, `sameLawyerExpertWarning` в
+  `messages/ru/cases.ts` и `messages/uk/cases.ts`.
+- **1.10 `tests/integration/v3-financial-guard.test.ts`** — 6 кейсов: subject не-staff
+  ок; category не-staff → 42501; category owner → ок; UPDATE amount act-платежа → 42501;
+  смена contract_sum пересчитывает completion (partial→full); admin чужого
+  подразделения не подтверждает акт. Все 6 зелёные.
+
+### Файлы
+Созданы:
+- `supabase/migrations/20260611100000_v3_cases_guard_financial_fields.sql`
+- `supabase/migrations/20260611100100_v3_recalc_totals_lock.sql`
+- `supabase/migrations/20260611100200_v3_act_payment_immutable.sql`
+- `supabase/migrations/20260611100300_v3_contract_sum_recompute_acts.sql`
+- `supabase/migrations/20260611100400_v3_act_rpc_scope.sql`
+- `supabase/migrations/20260611100500_v3_documents_delete_scope.sql`
+- `tests/integration/v3-financial-guard.test.ts`
+
+Изменены:
+- `src/lib/cases/actions.ts` (updateCaseAction: isStaffUser + гард фин-полей + strip payload)
+- `src/components/cases/case-form.tsx` (проп isStaff, lockFinancial, disabled/readOnly, LockedHint, предупреждение совпадения ролей)
+- `src/app/(app)/cases/[id]/edit/page.tsx` (проброс isStaff)
+- `src/lib/i18n/messages/ru/cases.ts` (2 ключа)
+- `src/lib/i18n/messages/uk/cases.ts` (2 ключа)
+- `docs/PLAN-V3.md` (статус-таблица: Сессия 1 → ✅)
+- `docs/PROGRESS.md` (эта запись)
+
+### Отклонения от плана
+- **Миграции созданы прямой записью файла** с явными последовательными timestamp'ами
+  (`20260611100000`–`100500`) вместо `npx supabase migration new`. Результат идентичен
+  (CLI создаёт такой же пустой .sql); порядок применения детерминирован.
+- **contract_sum в форме — `readOnly`, а не `disabled`** (план говорил «disabled» про все
+  поля). Причина: нативный `disabled`-input НЕ сабмитит значение → сервер увидел бы
+  contract_sum как изменённый/пустой и ложно зарубил бы сейв не-staff. Select'ы при этом
+  оставлены `disabled` — их собственный hidden-input шлёт оригинал независимо от disabled.
+- **Предупреждение «юрист = эксперт» — токен `text-warning`** (#C2410C, AA на белом).
+  План сказал «жёлтый»; в проекте семантический жёлто-оранжевый — это `--warning`.
+- `LockedHint` показан под КАЖДЫМ заблокированным полем (как и просил план: «серый hint»).
+
+### Найдено попутно (НЕ чинил — вне скоупа Сессии 1)
+- **`tests/integration/cash.test.ts` (2 кейса автоприхода) хрупок к TS-сиду.** Если
+  прогнать integration на БД, где выполнен `npm run db:seed`, эти 2 кейса падают:
+  `private.cash_resolve_account` сортирует `order by is_default desc`, а сид создаёт
+  счёт «Рахунок» (kind=bank, **is_default=true**), который перекрывает банковский счёт,
+  созданный самим тестом → автоприход резолвится на засеянный счёт, тест ждёт свой.
+  На чистом `db reset` БЕЗ TS-сида (канонический самодостаточный прогон integration)
+  всё зелёное — 91/91. Кандидат на починку в **Сессии 3 (Касса)**: тест должен делать
+  свой счёт дефолтным и гасить прочие либо фильтровать свой namespace. Сессия 1 кассу
+  не трогала — это пре-существующая хрупкость теста, не регрессия.
+
+### Открытые хвосты
+- **Открытый вопрос пользователю №1** (PLAN-V3): если `lawyer_id = responsible_id` —
+  один человек получает один % или оба (lawyer%+expert%)? Реализовано мягкое
+  предупреждение в форме, расчёт НЕ менялся (как и предписано планом). Ждёт решения.
+
+### Проверки (DoD)
+- `npx tsc --noEmit` — 0 ошибок; `npm run lint` — 0; `npm test` (unit) — **93/93**.
+- `npx supabase db reset` — чисто (6 новых миграций применились без ошибок; NOTICE
+  `drop ... if exists` — норма первого применения); `npm run db:seed` — чисто
+  (7 аккаунтов + касса + домен).
+- `npm run test:integration` — **91/91** на чистом reset (вкл. новый
+  v3-financial-guard 6/6). При наличии TS-сида — см. «Найдено попутно».
+- Git: НЕ коммитил (правило цикла v3, коммиты — Сессия 12).
+
+### Следующая сессия
+Сессия 2 цикла v3 — «Журнал и целостность: allowlist, лог этапа, выплаты, чеки,
+индексы» (PLAN-V3.md, раздел «СЕССИЯ 2»). ⚠ Грабля allowlist activity_log: база —
+`20260610170000_activity_log_act_actions.sql` (скопировать список ЦЕЛИКОМ + добавить
+`payment_updated`/`act_deleted`/`payroll_payout`).
+
+---
+
+## Сессия 2026-06-11 (9) — Аудит системы + старт цикла v3 «Hardening & Product» 📋
+
+_Код НЕ менялся. Проведён мультиагентный аудит (8 параллельных аудиторов +
+адверсариальная верификация): 97 находок, 6 подтверждённых high — дыра
+самоповышения ЗП через `cases.category` (RLS пускает юриста/эксперта к полю),
+тихое усечение финансовых отчётов на max_rows=1000 (касса теряет свежие
+операции первой), ни одного error.tsx на 59 throw-точек, DESIGN.md полностью
+разошёлся с кодом, контраст AA (бейджи 2.1–4.2:1, шапки колонок 2.95:1),
+гонка `recalc_case_totals` теряет paid_total._
+
+### Что сделано
+- **`docs/PLAN-V3.md`** — детальный план доработки на **12 сессий** (протокол
+  «ПРОДОЛЖАЙ», статус-таблица, пошаговые инструкции с путями и SQL/TS-скелетами,
+  гочи, DoD). Сессия 10 — дизайн-база (AA-контраст, токены, переписать
+  DESIGN.md), сессия 11 — дизайн-полировка «круто и удобно» (тосты, хоткеи,
+  пресеты фильтров, «Мой день», EmptyState, полировка карточки дела/доски,
+  проход консистентности — требование пользователя). Главное правило цикла:
+  **НЕ коммитить/НЕ пушить до сессии 12** (коммиты собираются тематически
+  в финале по спискам файлов из PROGRESS).
+- `CLAUDE.md` §8 — активный цикл переключён на v3 (указатель «ПРОДОЛЖАЙ» →
+  PLAN-V3.md); v2 помечен завершённым/историческим.
+
+### Следующая сессия
+Сессия 1 цикла v3 — «БД-безопасность: гард финансовых полей, гонки, скоуп
+DEFINER-функций» (см. PLAN-V3.md, раздел «СЕССИЯ 1»). Открытые вопросы
+пользователю — в PLAN-V3.md (lawyer=responsible: один % или два; токен
+Telegram-бота к сессии 8).
+
+---
+
 ## Сессия 2026-06-11 (8) — v2 Этап 7: Касса и сальдо-отчёт ✅ (ЦИКЛ v2 ЗАВЕРШЁН)
 
 _Этап 7 из 7 — ПОСЛЕДНИЙ (docs/PLAN-V2.md). Касса по образцу ОЛІМП

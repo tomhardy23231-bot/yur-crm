@@ -3,6 +3,7 @@ import { ChevronRight, Coins, FileText, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Avatar } from '@/components/ui/avatar';
 import {
   Table,
@@ -20,21 +21,20 @@ import { listActiveDepartments } from '@/lib/departments/queries';
 import { canSeeAllCases } from '@/lib/types/db';
 import { MonthPicker } from '@/components/payroll/month-picker';
 import { PayrollDepartmentFilter } from '@/components/payroll/payroll-department-filter';
+import { PayrollListMobile } from '@/components/payroll/payroll-list-mobile';
 import {
   normalizeMonth,
   monthLabel,
   monthNamesFrom,
   monthParam as toMonthParam,
 } from '@/lib/payroll/month';
+import { UUID_RE } from '@/lib/validation';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function PayrollReportPage({
   searchParams,
@@ -157,18 +157,20 @@ export default async function PayrollReportPage({
 
       {/* Список сотрудников */}
       {rows.length === 0 ? (
-        <Card className="px-6 py-12 text-center">
-          <p className="mb-1 text-[14px] font-semibold text-text">
-            {t.payroll.report.emptyTitle}
-          </p>
-          <p className="text-[13px] text-text-muted">
-            {t.payroll.report.emptyHint}
-          </p>
+        <Card>
+          <EmptyState
+            title={t.payroll.report.emptyTitle}
+            hint={t.payroll.report.emptyHint}
+          />
         </Card>
       ) : (
+        <>
+        {/* Мобильное представление — карточки сотрудников вместо таблицы (6.4). */}
+        <PayrollListMobile rows={rows} />
+
         <div
           data-tour="payroll-list"
-          className="overflow-auto rounded-lg border border-border bg-surface shadow-sm"
+          className="hidden overflow-auto rounded-lg border border-border bg-surface shadow-sm md:block"
         >
           <Table>
             <TableHeader>
@@ -255,6 +257,7 @@ export default async function PayrollReportPage({
             </span>
           </div>
         </div>
+        </>
       )}
 
       {showFixed && (

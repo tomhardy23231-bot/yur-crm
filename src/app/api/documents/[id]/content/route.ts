@@ -2,9 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { verifyHs256 } from '@/lib/onlyoffice/jwt';
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_RE } from '@/lib/validation';
 
 // GET /api/documents/<id>/content?token=<jwt>
 // Эндпоинт, с которого OnlyOffice Document Server СКАЧИВАЕТ файл. Сессии

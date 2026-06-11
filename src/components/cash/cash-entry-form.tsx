@@ -11,13 +11,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { useI18n } from '@/lib/i18n/provider';
 import type { CashAccount } from '@/lib/types/db';
 import { createCashEntryAction, type CashEntryState } from '@/lib/cash/actions';
+import { todayIso } from '@/lib/validation';
 
 const INITIAL: CashEntryState = { ok: false };
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 // Ручная операция кассы (приход/расход), не привязанная к делу. accountId — счёт
 // активной вкладки (предвыбран); пользователь может сменить.
@@ -77,7 +73,7 @@ export function CashEntryForm({
         </Field>
 
         <Field label={t.cash.entry.date} htmlFor={fid('date')} error={state.fieldErrors?.entry_date} required>
-          <Input id={fid('date')} name="entry_date" type="date" required defaultValue={todayISO()} />
+          <Input id={fid('date')} name="entry_date" type="date" required defaultValue={todayIso()} />
         </Field>
       </div>
 

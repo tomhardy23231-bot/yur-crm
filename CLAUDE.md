@@ -207,8 +207,14 @@ category (обязат.: document|claim|representation — основа расч
 subject (опц., краткий предмет договора), stage (обязат., см. §6),
 priority (normal|urgent), tags (text[]),
 contract_sum, paid_total, debt, billing_types (text[]: prepaid|installments|fixed|success_fee),
-opponent, court_case_number, court, closed_at, created_at`
+opponent, court_case_number, court, closed_at, created_at,
+outcome (won|lost|NULL — исход дела, v3 Сессия 7), lost_reason (опц. текст «не заключили»),
+updated_at (timestamptz — optimistic locking, v3 Сессия 4)`
 — обязательные поля помечены; остальные опциональны (суд — только если дошло до суда и т.д.).
+— **outcome/lost_reason (v3 Сессия 7):** «не заключили» (`outcome='lost'`) ставит RPC
+`close_case_lost` с этапов new_request/consultation (см. §7-2); `won`/NULL — обычный ход.
+**updated_at (v3 Сессия 4):** версия строки — форма шлёт `base_updated_at`, при расхождении
+правка отклоняется («дело изменено другим пользователем»); touch-триггер `cases_touch_updated_at`.
 
 **documents**
 `id, case_id, file_name, storage_key, doc_type (contract|claim|power_of_attorney|correspondence|act|other), uploaded_by, uploaded_at`
@@ -287,10 +293,28 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 (`on_completion` при закрытии / `per_payment` по мере оплат — доработка P2.1). Синхрон
 триггером `cases_sync_ledger`. Отметку «выплачено»/откат делает только owner/admin.
 НЕ путать с `payments` (оплаты клиента). v2 Этап 4: леджер остаётся процентным и в
-текущем UI не отображается (компонент `CaseLedgerBlock`/`payroll_payout_by_specialist`
-не рендерятся; источник правды отчёта — `payroll_employee_summary`/`*_cases`). Оклад
-(`salary_mode=fixed/fixed_percent`) в леджер НЕ пишем; интеграция режимов в леджер
+текущем UI не отображается (источник правды отчёта — `payroll_employee_summary`/`*_cases`).
+Оклад (`salary_mode=fixed/fixed_percent`) в леджер НЕ пишем; интеграция режимов в леджер
 отложена (Phase 2, если леджер вернут в UI).
+— **v3 Сессия 12: ЗАМОРОЖЕН.** Триггер авто-синхронизации `cases_sync_ledger` снят
+(миграция `v3_freeze_ledger`); мёртвый компонент `CaseLedgerBlock`, экшены
+`mark/revertLedgerPaidAction` и query-функции `listLedger*`/`listPayroll*BySpecialist`
+удалены из кода. Таблица и исторические данные сохранены — судьбу решит Phase 2.
+
+**payroll_transactions** (ручные движения ЗП: выплаты и премии) — правка №1
+`id, user_id (→ users restrict), kind (payout|bonus), amount (numeric(14,2) >0),
+comment (опц.), occurred_on date (default current_date), created_by, created_at`
+— **ИСТОЧНИК ПРАВДЫ отчёта ЗП** (через `payroll_employee_summary`): payout — выплата
+сотруднику (с разбивкой по делам в `payout_allocations`), bonus — премия. Создаёт/удаляет
+только owner/admin (RLS + RPC `create_payout`/`create_bonus` дублируют проверку).
+
+**payout_allocations** (распределение выплаты по делам×роли) — правка №1
+`id, transaction_id (→ payroll_transactions cascade), case_id (→ cases restrict),
+role_in_case (lawyer|expert), amount (numeric(14,2) >0)`
+— строки выплаты payout по конкретным делам. **Σ аллокаций транзакции = её amount**
+(constraint-триггер `check_payout_allocations`, DEFERRABLE — v3 Сессия 2); uniq
+(transaction_id, case_id, role_in_case); `create_payout` проверяет принадлежность дела
+сотруднику по роли (v3 Сессия 2). RLS: staff — все, сотрудник — свои.
 
 **cash_accounts** (счета кассы) — v2 Этап 7
 `id, name, kind (card|bank|cash, default bank), opening_balance numeric(14,2) (default 0),
@@ -316,6 +340,28 @@ unique), created_by (→ users restrict), created_at`
 платёж); ручные (`payment_id IS NULL`) правит/удаляет cash-manager. Сальдо считается
 накопительно в TS (`lib/cash/saldo.ts`, юнит-тест по образцу ОЛІМП), отчёт — `/reports/cash`
 (вкладки счетов + Total, разворот по дням, итоги месяца).
+
+**case_comments** (комментарии к делу) — лента обсуждения
+`id, case_id (→ cases cascade), author_id (→ users restrict), body (text, 1–5000,
+not blank), created_at`
+— свободная переписка по делу. RLS наследует доступ дела (`can_see_case`); правит/удаляет
+автор. `updateCommentAction` берёт `case_id` из БД (CSO). Логируется в `activity_log`.
+
+**user_notify_channels** (каналы уведомлений сотрудника: Telegram + ICS) — v3 Сессия 8
+`user_id (PK → users cascade), telegram_chat_id (NULL = не привязан), telegram_link_code
+(uniq, одноразовый код привязки по /start), calendar_token (uuid — секрет ICS-фида),
+updated_at`
+— self-RLS (каждый видит/правит ТОЛЬКО свою строку). Telegram-дайджест шлёт cron
+(`/api/cron/reminders`), ICS-фид — `/api/calendar/[token]`; перевыпуск токена — RPC
+`notify_reissue_calendar_token`. Настройка — в `/profile`.
+
+**payment_plan_items** (график платежей по делу) — v3 Сессия 9
+`id, case_id (→ cases cascade), due_date date, amount (numeric(14,2) >0), note (опц.
+≤300), created_by (→ users restrict), created_at`
+— плановые доплаты по делу (план vs факт `paid_total`). RLS наследует дело; статусы
+(pending/overdue/paid) и aging дебиторки считаются в TS (`lib/payments/plan.ts`,
+`lib/dashboard/aging.ts`) + RPC `overdue_plan_items`/`debt_aging` (invoker). Просрочки —
+на staff-дашборде и в Telegram юриста.
 
 **activity_log** (история изменений)
 `id, entity_type, entity_id, user_id, action, changes (jsonb), created_at`
@@ -353,6 +399,9 @@ unique), created_by (→ users restrict), created_at`
 2. **Этапы — только вперёд.** Возврат на предыдущий этап в обычной работе запрещён
    (подтверждено клиентом). Исключение: ручное исправление ошибочно выставленного
    этапа — только staff (`owner`/`admin`/`office_manager`), с записью в `activity_log`.
+   Исключение 2 (v3 Сессия 7): закрытие как **«не заключили»** (`outcome='lost'`) с этапов
+   `new_request`/`consultation` — RPC `close_case_lost` (фиксирует `lost_reason`), дело
+   уходит в `closed` без акта; действие журнала `case_lost`.
 3. **Видимость дел:** юрист видит дела, где он `lawyer_id`; Експерт — где он
    `responsible_id`. Друг друга они не видят. owner видит всё; admin/office_manager —
    дела своего подразделения (по `department_id` юриста ИЛИ Експерта дела), либо всю
@@ -385,23 +434,35 @@ unique), created_by (→ users restrict), created_at`
    клиентом). **Акты как платёжные документы (v2 Этап 5):** «Рахунок-Акт» создаётся
    (issued) → подтверждается оплата (скан + сумма → автоплатёж по делу) → пересчёт
    `paid_total`/долга/ЗП. См. §5 `case_acts`/`org_requisites`.
-9. Все изменения по делам пишутся в `activity_log` (кто, что, когда).
+9. Все изменения по делам пишутся в `activity_log` (кто, что, когда). Смена этапа
+   логируется во ВСЕХ путях: степпер (`advanceCaseStageAction`), правка дела и ручной
+   откат staff (`updateCaseStageAction`/`updateCaseAction`, v3 Сессия 2), закрытие «lost».
 
 ---
 
 ## 8. Объём работ по фазам
 
-> **⚠ АКТИВНЫЙ ЦИКЛ — v2 «Подразделения» (с 2026-06-10, в работе).**
-> Источник правды — **`docs/PLAN-V2.md`**: спека, статус-таблица 7 этапов и протокол
-> сессий. Каждый этап = отдельная сессия; по команде пользователя **«ПРОДОЛЖАЙ»** —
-> читать PLAN-V2.md, найти первый незакрытый этап и выполнять только его.
-> Скоуп цикла: подразделения + настраиваемая owner'ом видимость (admin/office_manager
-> скоупятся по подразделению), ЗП-режимы (фикс / фикс+% / %), акты как платёжные
-> документы (создан → выдан → оплачен → автоплатёж → ЗП), отпуска, касса с
-> сальдо-отчётом. Разделы §4–§7 описывают систему ДО v2 — по мере закрытия этапов
-> они обновляются (это часть DoD каждого этапа).
+> **✅ ЦИКЛ v3 «Hardening & Product» ЗАВЕРШЁН (сессии 1–12, 2026-06-12).** Источник
+> правды цикла — **`docs/PLAN-V3.md`** (исторический): 12 сессий по итогам
+> мультиагентного аудита 2026-06-11. На прод НЕ выкачен (push и прод-миграции — по
+> явному «ок» пользователя; см. PLAN-V3 §12.8).
 >
-> **✅ ЦИКЛ v2 ЗАВЕРШЁН (этапы 1–7, 2026-06-11).** Все 7 этапов закрыты.
+> **Готово (сессии 1–12):** БД-гарды финансовых полей дела и гонок recalc/act-платежа,
+> скоуп DEFINER-функций и удаления документов (с1); полнота журнала (allowlist
+> `payment_updated`/`act_deleted`/`payroll_payout`/`case_lost`/`payment_plan_updated`,
+> лог смены этапа во всех путях), целостность выплат (Σ аллокаций, `create_payout`,
+> запрет DELETE rates), чеки/индексы (с2); касса на SQL-сальдо + бэкфилл + потолки
+> строк (с3); дашборд на агрегатах-RPC, Promise.all-водопады, Киев-TZ, optimistic
+> locking дела, RLS-initplan (с4); error-границы + `ConfirmDialog` + UX-фиксы (с5);
+> глобальная задача, колокольчик, loading, мобильные отчёты, паритет доски (с6);
+> исход «не заключили» + конверсия + источники + конфликт-чек (с7); Telegram/ICS-
+> напоминания (с8); график платежей + просрочки + aging дебиторки (с9); дизайн-база
+> AA + переписан DESIGN.md (с10); дизайн-полировка (тосты, хоткеи, пресеты фильтров,
+> «Мой день», консистентность) (с11); модуль `validation.ts`, заморозка мёртвого
+> леджера, CI, e2e, вычистка, коммиты (с12). См. `docs/PROGRESS.md` (записи цикла v3).
+>
+> **✅ ЦИКЛ v2 «Подразделения» ЗАВЕРШЁН (этапы 1–7, 2026-06-11).** Источник
+> правды цикла — `docs/PLAN-V2.md` (исторический). На прод НЕ выкачен.
 >
 > **Готово (этапы 1–7):** БД-фундамент подразделений + департаментная RLS-видимость
 > (§4–§5, §7), **UI** подразделений (`/settings/departments`, поля в `/settings/users`
@@ -486,68 +547,26 @@ This project's Baseline target is Baseline 2026.
 
 ## 11. Дизайн интерфейса
 
-> **Источник правды — `DESIGN.md` в корне проекта.** Любой UI-код (шрифт, цвет,
-> отступ, радиус, компонент) читает `DESIGN.md` ПРЕЖДЕ, чем выбрать значение.
-> Отклонения — только с явным согласованием. Ниже — короткие принципы; всё
-> остальное (токены, шкалы, правила, запреты) — в `DESIGN.md`.
->
-> **⚠ Ревизия 2026-05-29 — направление «ЮрКейс» (по эталону заказчика).**
-> Визуальная система ПЕРЕВЕДЕНА на: тёмный «ink»-сайдбар + светлая «paper»-зона,
-> шрифты **Golos Text + JetBrains Mono** (НЕ Manrope/Geist Mono), градиент на
-> CTA-кнопках и бренд-плашке. Пункты ниже про «индиго», «Manrope» и «нет градиентов
-> на кнопках» ОТМЕНЕНЫ этой ревизией — актуальные значения см. в `DESIGN.md` и `globals.css`.
->
-> **⚠ АКТИВНАЯ ТЕМА — «TEAL» (поздняя ревизия 2026-05-29).** Бренд переведён с латуни
-> на **изумруд/teal** (`#0D9488` teal · `#5EEAD4` мята · `#15302B` хвоя · `#F4F2EC` крем).
-> Сделано как **переключаемая тема**: латунь в `:root`, teal в `:root[data-theme="teal"]`,
-> активна атрибутом `data-theme="teal"` на `<html>`. **Откат к латуни — убрать этот
-> атрибут.** Любой новый UI-цвет читать из токенов (НЕ хардкодить hex), тогда он
-> автоматически следует активной теме. Подробности и AA-нюансы — в `DESIGN.md`.
+> **Источник правды — `DESIGN.md` в корне проекта (ревизия 2026-06-12, v3).**
+> Любой UI-код (шрифт, цвет, отступ, радиус, компонент) читает `DESIGN.md`
+> ПРЕЖДЕ, чем выбрать значение. Отклонения — только с явным согласованием.
 
-### Характер
-- **Архетип:** «ЮрКейс» — премиальная юридическая CRM. Тёмный ink-сайдбар + светлая
-  paper-зона, латунный акцент, мягкие тени/скругления, моноширинные цифры. Не
-  refined-minimal, не «1С-look».
-- **Тон:** строгий, но живой; цветные визуальные якоря (этап / категория / приоритет /
-  деньги-долг) как основной язык. Бренд — латунь (legal gold).
-- **Тёмная тема в Phase 1 НЕ делается.** Светлая рабочая зона; тёмный — только сайдбар.
-
-### Жёсткие запреты
-- НЕ Inter, Roboto, Arial, system-ui для основных ролей.
-- НЕ serif в display (Lora, Newsreader, Fraunces — мимо).
-- НЕ градиенты на кнопках или больших фонах. Градиенты — только в hero-шапках
-  карточек (контакт, лид, заявка).
-- НЕ дефолтный shadcn-look (slate-палитра, neutral).
-- НЕ «1С-look»: тёмная панель навигации, плотные модалки с табами сверху, серый dashboard.
-
-### Типографика
-- **Manrope** (UI/display, variable) + **Geist Mono** (numbers). Кириллица обязательна.
-- `font-variant-numeric: tabular-nums` глобально.
-
-### Цвет и токены
-- Все цвета через CSS-переменные / Tailwind 4 `@theme inline`. Никаких хардкодов.
-- Один primary (индиго `#4F46E5`) + семантика + 8 цветов этапов + 3 цвета приоритетов.
-
-### Плотность и макет (data-tool)
-- Comfortable density для карточек/форм, плотные таблицы (44px ряд, sticky headers).
-- Карточка дела — главный экран: секции (данные · документы · задачи · финансы · история).
-- Командная палитра (Cmd/Ctrl-K) и горячие клавиши — заложить с начала.
-
-### Движение
-- Primary-кнопка на hover — мягкий lift + indigo-shadow (NetHunt-style).
-- Сдержанно остальное. Скорость важнее эффектов.
-
-### Состояния
-- Empty-state, skeleton, error, confirmation — всегда продуманы.
-
-### Компоненты
-- Архитектура shadcn/ui (CVA + Radix + Tailwind), но имена токенов наши.
-  Компоненты пишутся сразу под наши токены, не копируются дефолтные.
-
-### Контроль качества
-- Перед версткой нового экрана → читать `DESIGN.md`.
-- После верстки → `/design-review` (полировка) + `/qa` (поведение в браузере).
-- Доступность (контраст AA, фокус, клавиатура) обязательна.
+- **Действующая система (редизайн 2026-06-03):** строгий светлый вид, ОДИН
+  синий акцент `#2563EB`, тёмный ink-сайдбар + светлая рабочая зона, белые
+  карточки на холодном сером paper-фоне. Темы TEAL/латунь УДАЛЕНЫ (история в git).
+- **Типографика:** IBM Plex Sans (UI + цифры, `tabular-nums` глобально);
+  JetBrains Mono — ТОЛЬКО `<kbd>`-подсказки (веса 400/600).
+- **Цвет — только токенами** из `globals.css` (`:root` → `@theme inline`),
+  никаких хардкодов hex. Залитые чипы — пара «подложка `*-bg` + тёмный текст
+  `*-fg`/`*-text`»; радиусы новых компонентов — алиасы
+  `--r-card/control/chip/modal` (историческая шкала sm/md/lg deprecated).
+- **Доступность AA обязательна:** текст ≥ 4.5:1 (проверять скриптом из
+  PLAN-V3 s10), фокус-кольца видимы, цвет — не единственный носитель смысла.
+- **Запреты прежние:** Inter/Roboto/system-ui и serif в display; градиенты на
+  кнопках/больших фонах (только бренд-якоря); «1С-look» и дефолтный
+  shadcn-slate; тёмная тема контента; infinite-анимации в списках и
+  hover-lift у строк (решение 2026-06-07).
+- Перед вёрсткой нового экрана — читать `DESIGN.md`; после — `/design-review` + `/qa`.
 
 ---
 

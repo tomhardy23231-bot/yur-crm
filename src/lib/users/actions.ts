@@ -8,6 +8,7 @@ import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { UUID_RE } from '@/lib/validation';
 import {
   canManageTargetUser,
   canGrantCapability,
@@ -46,8 +47,6 @@ function collectPermOverrides(
   return next;
 }
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Ступенчатые права (Задача 4 «плюшка владельца») — общий помощник canManageRole

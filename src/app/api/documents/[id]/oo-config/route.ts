@@ -5,9 +5,7 @@ import { getCase } from '@/lib/cases/queries';
 import { getDocument } from '@/lib/documents/queries';
 import { getLocale } from '@/lib/i18n/server';
 import { buildEditorConfig, onlyOfficeConfigured } from '@/lib/onlyoffice/config';
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_RE } from '@/lib/validation';
 
 // GET /api/documents/<id>/oo-config
 // Отдаёт подписанный конфиг редактора OnlyOffice. Доступ проверяется RLS:

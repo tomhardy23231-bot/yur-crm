@@ -9,6 +9,7 @@ import { diffChanges } from '@/lib/activity-log/diff';
 import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { UUID_RE } from '@/lib/validation';
 import type { Messages } from '@/lib/i18n/messages';
 import {
   TASK_KINDS,
@@ -32,8 +33,6 @@ export type TaskActionState = {
   values?: Partial<Record<TaskFormFields, string>>;
 };
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getString(formData: FormData, key: string): string {
   const value = formData.get(key);

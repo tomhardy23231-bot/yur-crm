@@ -17,13 +17,9 @@ import {
   updateCashAccountAction,
   type CashAccountState,
 } from '@/lib/cash/actions';
+import { todayIso } from '@/lib/validation';
 
 const INITIAL: CashAccountState = { ok: false };
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 // Управление счетами кассы (видно только обладателю can_manage_cash — страница
 // уже под requireCap). Список счетов + форма добавления + правка существующего.
@@ -191,7 +187,7 @@ function AccountForm({
             name="opening_date"
             type="date"
             required
-            defaultValue={account?.opening_date ?? todayISO()}
+            defaultValue={account?.opening_date ?? todayIso()}
           />
         </Field>
       </div>
