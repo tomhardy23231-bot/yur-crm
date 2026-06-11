@@ -49,6 +49,7 @@ export const activity = {
     case_created: 'создал(а) дело',
     case_updated: 'обновил(а) дело',
     case_deleted: 'удалил(а) дело',
+    case_lost: 'закрыл(а) дело без договора',
     stage_corrected: 'скорректировал(а) этап',
     client_created: 'создал(а) клиента',
     client_updated: 'обновил(а) клиента',
@@ -56,14 +57,18 @@ export const activity = {
     document_uploaded: 'загрузил(а) документ',
     document_deleted: 'удалил(а) документ',
     payment_created: 'добавил(а) платёж',
+    payment_updated: 'изменил(а) платёж',
     payment_deleted: 'удалил(а) платёж',
+    payment_plan_updated: 'изменил(а) график платежей',
     task_created: 'создал(а) задачу',
     task_updated: 'обновил(а) задачу',
     task_toggled: 'переключил(а) статус задачи',
     task_deleted: 'удалил(а) задачу',
     comment_edited: 'отредактировал(а) комментарий',
+    act_deleted: 'удалил(а) акт',
     payroll_paid: 'отметил(а) выплату зарплаты',
     payroll_reverted: 'откатил(а) выплату зарплаты',
+    payroll_payout: 'выплатил(а) зарплату',
     user_created: 'создал(а) пользователя',
     user_role_changed: 'изменил(а) роль пользователя',
     user_deactivated: 'деактивировал(а) пользователя',
@@ -76,6 +81,8 @@ export const activity = {
     caseChanged: 'изменил(а) {detail}',
     caseUpdated: 'обновил(а) дело',
     caseDeleted: 'удалил(а) дело',
+    caseLost: 'закрыл(а) дело без договора',
+    caseLostReason: 'закрыл(а) дело без договора: {reason}',
     stageReverted: 'откатил(а) этап: {from} → {to}',
 
     documentUploadedTyped: 'загрузил(а) документ «{name}» ({type})',
@@ -85,6 +92,8 @@ export const activity = {
     paymentAdded: 'добавил(а) {parts}',
     paymentChunk: 'платёж {amount}',
     paymentFrom: 'от {date}',
+    paymentUpdated: 'изменил(а) платёж',
+    paymentUpdatedAmount: 'изменил(а) платёж {amount}',
     paymentDeleted: 'удалил(а) платёж {amount}',
 
     // Винительный падеж типа задачи (TASK_KIND_LABEL — именительный).
@@ -105,6 +114,10 @@ export const activity = {
     payrollPaid: 'отметил(а) выплату зарплаты',
     payrollReverted: 'откатил(а) выплату зарплаты',
     payrollDetail: '{verb}: {tail}',
+    payrollPayout: 'провёл(ла) выплату зарплаты',
+    payrollPayoutDetail: 'выплата зарплаты: {tail}',
+
+    actDeleted: 'удалил(а) акт №{number} на {amount}',
 
     // Неизвестный/новый action-код.
     unknownAction: 'действие: {action}',

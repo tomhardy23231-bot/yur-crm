@@ -17,6 +17,7 @@ import {
 import { LOCALE_BCP47, type Locale } from '@/lib/i18n/config';
 import type { I18n } from '@/lib/i18n/core';
 import type { ActivityChanges, ActivityLogEntry } from './queries';
+import { UUID_RE } from '@/lib/validation';
 
 // Форматирование записей журнала в человекочитаемый текст активного языка.
 // Локализованные подписи приходят через объект переводчика (i18n: I18n) —
@@ -61,9 +62,6 @@ function asArray(v: unknown): string[] | null {
   if (!Array.isArray(v)) return null;
   return v.map((x) => String(x));
 }
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Поля-ссылки на пользователя (резолвятся через public.users).
 const USER_ID_FIELDS = new Set<string>([
@@ -243,6 +241,13 @@ export function formatActivity(
     }
     case 'case_deleted':
       return { actor, text: ev.caseDeleted };
+    case 'case_lost': {
+      const reason = asString(c.reason);
+      return {
+        actor,
+        text: reason ? fmt(ev.caseLostReason, { reason }) : ev.caseLost,
+      };
+    }
     case 'stage_corrected': {
       const from = asString(c.from);
       const to = asString(c.to);
@@ -278,6 +283,15 @@ export function formatActivity(
       if (paidAt) parts.push(fmt(ev.paymentFrom, { date: paidAt }));
       if (method) parts.push(`(${method})`);
       return { actor, text: fmt(ev.paymentAdded, { parts: parts.join(' ') }) };
+    }
+    case 'payment_updated': {
+      // Задел под журналирование правок платежей (из UI пока не вызывается).
+      const amount = asNumber(c.amount);
+      const amountStr = amount === null ? null : `${money(i18n.locale).format(amount)} ₴`;
+      return {
+        actor,
+        text: amountStr ? fmt(ev.paymentUpdatedAmount, { amount: amountStr }) : ev.paymentUpdated,
+      };
     }
     case 'payment_deleted': {
       const amount = asNumber(c.amount);
@@ -338,6 +352,23 @@ export function formatActivity(
       const verb =
         entry.action === 'payroll_paid' ? ev.payrollPaid : ev.payrollReverted;
       return { actor, text: tail ? fmt(ev.payrollDetail, { verb, tail }) : verb };
+    }
+    case 'payroll_payout': {
+      // Выплата зарплаты (createPayoutAction): кому и сколько.
+      const who = resolveId(c.user_id, dash, nameById);
+      const amount = asNumber(c.amount);
+      const amountStr = amount === null ? null : `${money(i18n.locale).format(amount)} ₴`;
+      const tail = [who, amountStr].filter(Boolean).join(' — ');
+      return { actor, text: tail ? fmt(ev.payrollPayoutDetail, { tail }) : ev.payrollPayout };
+    }
+
+    // ---------- acts (Рахунок-Акт) ----------
+    case 'act_deleted': {
+      const number = asNumber(c.number);
+      const amount = asNumber(c.amount);
+      const numStr = number === null ? dash : String(number);
+      const amountStr = amount === null ? dash : `${money(i18n.locale).format(amount)} ₴`;
+      return { actor, text: fmt(ev.actDeleted, { number: numStr, amount: amountStr }) };
     }
 
     // ---------- comments ----------

@@ -7,9 +7,7 @@ import { requireUser } from '@/lib/auth/require-role';
 import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_RE } from '@/lib/validation';
 
 const BODY_MAX = 5000;
 
@@ -107,9 +105,9 @@ export async function updateCommentAction(
   // отдаёт только видимые дела; чужой комментарий сюда не попадёт.
   const { data: before } = await supabase
     .from('case_comments')
-    .select('body')
+    .select('body, case_id')
     .eq('id', comment_id)
-    .maybeSingle<{ body: string }>();
+    .maybeSingle<{ body: string; case_id: string }>();
 
   if (!before) {
     return { ok: false, message: t.comments.errors.updateFailed };
@@ -142,7 +140,9 @@ export async function updateCommentAction(
   try {
     await supabase.rpc('log_activity', {
       p_entity_type: 'case',
-      p_entity_id: case_id,
+      // v3 s2: case_id берём из самой записи (БД), а не из formData — иначе правку
+      // можно было бы приписать к другому видимому делу (паттерн «CSO #2»).
+      p_entity_id: before.case_id,
       p_action: 'comment_edited',
       p_changes: { from: truncForLog(before.body), to: truncForLog(body) },
     });

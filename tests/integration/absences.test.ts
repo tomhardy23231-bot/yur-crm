@@ -232,12 +232,18 @@ suite('Юр CRM — отсутствия (RLS Этап 6)', () => {
   // ── Удаление (DELETE) ─────────────────────────────────────────────
   describe('удаление', () => {
     // Свежая засеянная запись lawyer1 (Київ) для проверки удаления.
+    // v3 s2: триггер absences_no_overlap запрещает пересечение периодов одного
+    // сотрудника, а no-op-delete тесты ниже оставляют свою строку в БД — поэтому
+    // каждому seedDel даём РАЗНЫЙ непересекающийся день (иначе вставка падала бы).
+    let delSeq = 0;
     const seedDel = async (note: string): Promise<void> => {
+      delSeq += 1;
+      const day = String(delSeq).padStart(2, '0');
       const { error } = await world.admin.from('absences').insert({
         user_id: world.users.lawyer1.id,
         kind: 'vacation',
-        starts_on: '2026-11-01',
-        ends_on: '2026-11-05',
+        starts_on: `2026-11-${day}`,
+        ends_on: `2026-11-${day}`,
         note,
         created_by: world.users.owner.id,
       });

@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
@@ -10,32 +11,14 @@ import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ACT_COMPLETIONS, MANAGER_ROLES, STAFF_ROLES, type ActCompletion } from '@/lib/types/db';
+import { UUID_RE, parseAmount, isValidDate } from '@/lib/validation';
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_AMOUNT = 1_000_000_000_000;
 const MAX_BYTES = 25 * 1024 * 1024;
 const FORBIDDEN_EXT = new Set([
   'exe', 'bat', 'cmd', 'com', 'msi', 'scr',
   'ps1', 'vbs', 'js', 'jse', 'wsf', 'wsh',
   'dll', 'sh', 'lnk',
 ]);
-
-function parseAmount(raw: string): number | null {
-  const normalized = raw.replace(',', '.').trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0 || n >= MAX_AMOUNT) return null;
-  return n;
-}
-
-function isValidDate(s: string): boolean {
-  if (!DATE_RE.test(s)) return false;
-  const d = new Date(s + 'T00:00:00Z');
-  if (Number.isNaN(d.getTime())) return false;
-  return d.toISOString().slice(0, 10) === s;
-}
 
 function slugifyFilename(name: string): string {
   return (
@@ -271,16 +254,41 @@ export async function deleteActAction(formData: FormData): Promise<void> {
   if (!act_id || !UUID_RE.test(act_id)) return;
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
+
+  // Читаем акт ДО удаления — для журнала. case_id берём из БД (не из formData),
+  // чтобы запись лога не приписали к чужому делу (паттерн «CSO #2»).
+  const { data: actRow } = await supabase
+    .from('case_acts')
+    .select('case_id, number, amount')
+    .eq('id', act_id)
+    .maybeSingle<{ case_id: string; number: number; amount: number }>();
+
+  const { data: deleted, error } = await supabase
     .from('case_acts')
     .delete()
     .eq('id', act_id)
-    .eq('status', 'issued');
+    .eq('status', 'issued')
+    .select('id')
+    .maybeSingle<{ id: string }>();
   if (error) {
+    // Не молчим: показываем ошибку на карточке дела (зеркало deleteCaseAction).
     console.error('deleteActAction failed:', error.message);
+    if (case_id && UUID_RE.test(case_id)) {
+      redirect(`/cases/${case_id}?error=act_delete_failed`);
+    }
     return;
   }
-  if (case_id && UUID_RE.test(case_id)) revalidatePath(`/cases/${case_id}`);
+
+  // Журналируем только если строка реально удалена (issued + RLS пропустила).
+  if (deleted && actRow) {
+    await logActivity({
+      entity_type: 'case',
+      entity_id: actRow.case_id,
+      action: 'act_deleted',
+      changes: { number: actRow.number, amount: actRow.amount },
+    });
+    revalidatePath(`/cases/${actRow.case_id}`);
+  }
 }
 
 // ============================================================================
@@ -300,7 +308,11 @@ export async function setActCompletionAction(formData: FormData): Promise<void> 
     p_completion: completion as ActCompletion,
   });
   if (error) {
+    // Не молчим: показываем ошибку на карточке дела (зеркало deleteCaseAction).
     console.error('setActCompletionAction failed:', error.message);
+    if (case_id && UUID_RE.test(case_id)) {
+      redirect(`/cases/${case_id}?error=act_update_failed`);
+    }
     return;
   }
   if (case_id && UUID_RE.test(case_id)) revalidatePath(`/cases/${case_id}`);

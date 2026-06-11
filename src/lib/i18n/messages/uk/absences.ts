@@ -53,6 +53,9 @@ export const absences = {
       'Вносити відсутності може сам співробітник, адміністратор його підрозділу або власник.',
     createFailed: 'Не вдалося додати відсутність. Спробуйте ще раз.',
   },
+
+  // Перетин періодів відсутності (тригер absences_no_overlap).
+  overlapError: 'Період перетинається з наявною відсутністю',
 };
 
 export type AbsencesMessages = typeof absences;

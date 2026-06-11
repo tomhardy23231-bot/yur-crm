@@ -8,17 +8,7 @@ import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ABSENCE_KINDS, type AbsenceKind } from '@/lib/types/db';
 import { canManageAbsencesOf } from './access';
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function isValidDate(s: string): boolean {
-  if (!DATE_RE.test(s)) return false;
-  const d = new Date(s + 'T00:00:00Z');
-  if (Number.isNaN(d.getTime())) return false;
-  return d.toISOString().slice(0, 10) === s;
-}
+import { UUID_RE, isValidDate } from '@/lib/validation';
 
 // ============================================================================
 // Создание отсутствия. RLS (absence_can_write): сам / owner / admin-подразделение.
@@ -104,6 +94,10 @@ export async function createAbsenceAction(
   });
 
   if (error) {
+    // v3 s2: пересечение периодов отсутствия — триггер absences_no_overlap (errcode 23P01).
+    if (error.code === '23P01' || (error.message ?? '').toLowerCase().includes('overlap')) {
+      return { ok: false, message: t.absences.overlapError };
+    }
     return {
       ok: false,
       message: dbErrorMessage('createAbsenceAction', error, t.absences.actions.createFailed, t.errors.db),
