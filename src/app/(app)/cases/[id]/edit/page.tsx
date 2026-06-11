@@ -73,6 +73,7 @@ export default async function EditCasePage({
           cancelHref={`/cases/${id}`}
           allowedStages={allowedStages}
           stageLockedHint={isArchived ? t.cases.archive.detailHint : undefined}
+          isStaff={isStaff}
           canEditRates={user.caps.edit_rate_overrides}
           canCreateClient={user.caps.create_clients}
         />

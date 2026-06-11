@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useRef, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
@@ -12,13 +12,19 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { clearFlashToast, flashToast } from '@/components/ui/toast';
 import {
   InlineClientCreate,
   type CreatedClient,
 } from '@/components/cases/inline-client-create';
+import {
+  ConflictWarning,
+  useConflictCheck,
+} from '@/components/cases/conflict-warning';
 import { useI18n } from '@/lib/i18n/provider';
 import type { CaseActionState, CaseFormFields } from '@/lib/cases/actions';
 import type { AssigneeOption, ClientOption } from '@/lib/cases/queries';
+import { todayIso } from '@/lib/validation';
 import {
   ACCRUAL_MODES,
   BILLING_TYPES,
@@ -68,6 +74,14 @@ interface CaseFormProps {
   stageLockedHint?: string;
   /** Можно ли создавать клиента «на месте» (Задача 5). Эксперту — нельзя. */
   canCreateClient?: boolean;
+  /**
+   * v3 s1: текущий пользователь — staff (owner/admin/office_manager)? В режиме
+   * РЕДАКТИРОВАНИЯ не-staff не меняет ЗП-определяющие поля (категория, сумма
+   * договора, клиент, юрист, эксперт) — они блокируются. По умолчанию true:
+   * создание и прочие вызовы формы поведения не меняют. Реальная защита — БД-триггер
+   * cases_guard_financial_fields; здесь — UX.
+   */
+  isStaff?: boolean;
 }
 
 export function CaseForm({
@@ -84,13 +98,24 @@ export function CaseForm({
   stageLockedHint,
   canEditRates = false,
   canCreateClient = false,
+  isStaff = true,
 }: CaseFormProps) {
   const { t } = useI18n();
   const stageOptions = allowedStages ?? CASE_STAGES;
+  // v3 s1: в режиме редактирования (есть caseRow) не-staff финансовые поля не правит.
+  const lockFinancial = Boolean(caseRow) && !isStaff;
+  // Успешный action делает redirect (карточка дела) — flash-тост «Сохранено»
+  // показывает провайдер уже на новой странице; ошибка валидации снимает flash.
   const [state, formAction] = useActionState<CaseActionState, FormData>(
-    action,
+    async (prev, formData) => {
+      flashToast('success', t.common.saved);
+      return action(prev, formData);
+    },
     INITIAL,
   );
+  useEffect(() => {
+    if (!state.ok && (state.message || state.fieldErrors)) clearFlashToast();
+  }, [state]);
   const formRef = useRef<HTMLFormElement>(null);
   useShakeInvalidFields(formRef, state);
 
@@ -169,9 +194,24 @@ export function CaseForm({
 
   const defaultOpenedAt = value('opened_at') || todayIso();
 
+  // v3 s1: следим за выбором юриста/эксперта, чтобы показать НЕблокирующее
+  // предупреждение о совпадении ролей (один человек получит обе ставки ЗП).
+  const [lawyerId, setLawyerId] = useState<string>(defaultLawyer);
+  const [responsibleId, setResponsibleId] = useState<string>(defaultResponsible);
+  const sameLawyerExpert = Boolean(lawyerId) && lawyerId === responsibleId;
+
+  // v3 s7: конфликт-чек по оппоненту — только при создании дела (не при правке).
+  const isCreate = !caseRow;
+  const conflict = useConflictCheck();
+
   return (
     <>
       <form ref={formRef} action={formAction} className="flex flex-col gap-6">
+      {/* v3 s4: optimistic locking — версия дела на момент открытия формы. Сервер
+          отклонит сохранение, если дело успели изменить параллельно. */}
+      {caseRow && (
+        <input type="hidden" name="base_updated_at" value={caseRow.updated_at} />
+      )}
       {/* Базовый блок */}
       <Section title={t.caseCard.form.sectionBasic}>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -222,6 +262,7 @@ export function CaseForm({
                   value={selectedClientId}
                   onChange={(e) => setSelectedClientId(e.currentTarget.value)}
                   required
+                  disabled={lockFinancial}
                   aria-invalid={err('client_id') ? 'true' : undefined}
                   className="flex-1"
                 >
@@ -234,7 +275,7 @@ export function CaseForm({
                     </option>
                   ))}
                 </Select>
-                {canCreateClient && (
+                {canCreateClient && !lockFinancial && (
                   <Button
                     type="button"
                     variant="secondary"
@@ -248,6 +289,7 @@ export function CaseForm({
                 )}
               </div>
             )}
+            <LockedHint show={lockFinancial} text={t.cases.financialFieldStaffOnly} />
           </Field>
 
           <Field
@@ -260,7 +302,9 @@ export function CaseForm({
               id="lawyer_id"
               name="lawyer_id"
               defaultValue={defaultLawyer}
+              onChange={(e) => setLawyerId(e.currentTarget.value)}
               required
+              disabled={lockFinancial}
               aria-invalid={err('lawyer_id') ? 'true' : undefined}
             >
               <option value="">{t.caseCard.form.selectPlaceholder}</option>
@@ -270,6 +314,7 @@ export function CaseForm({
                 </option>
               ))}
             </Select>
+            <LockedHint show={lockFinancial} text={t.cases.financialFieldStaffOnly} />
           </Field>
 
           <Field
@@ -282,7 +327,9 @@ export function CaseForm({
               id="responsible_id"
               name="responsible_id"
               defaultValue={defaultResponsible}
+              onChange={(e) => setResponsibleId(e.currentTarget.value)}
               required
+              disabled={lockFinancial}
               aria-invalid={err('responsible_id') ? 'true' : undefined}
             >
               <option value="">{t.caseCard.form.selectPlaceholder}</option>
@@ -292,6 +339,12 @@ export function CaseForm({
                 </option>
               ))}
             </Select>
+            <LockedHint show={lockFinancial} text={t.cases.financialFieldStaffOnly} />
+            {sameLawyerExpert && (
+              <p className="mt-1 text-[11.5px] text-warning">
+                {t.cases.sameLawyerExpertWarning}
+              </p>
+            )}
           </Field>
 
           <Field
@@ -343,6 +396,7 @@ export function CaseForm({
               name="category"
               defaultValue={value('category') || 'document'}
               required
+              disabled={lockFinancial}
               aria-invalid={err('category') ? 'true' : undefined}
             >
               {CASE_CATEGORIES.map((c) => (
@@ -351,6 +405,7 @@ export function CaseForm({
                 </option>
               ))}
             </Select>
+            <LockedHint show={lockFinancial} text={t.cases.financialFieldStaffOnly} />
           </Field>
 
           <Field
@@ -433,9 +488,11 @@ export function CaseForm({
               step="0.01"
               min="0"
               defaultValue={value('contract_sum') || '0'}
+              readOnly={lockFinancial}
               aria-invalid={err('contract_sum') ? 'true' : undefined}
-              className=""
+              className={lockFinancial ? 'opacity-60 cursor-not-allowed' : ''}
             />
+            <LockedHint show={lockFinancial} text={t.cases.financialFieldStaffOnly} />
           </Field>
 
           {canEditRates && (
@@ -551,7 +608,18 @@ export function CaseForm({
               name="opponent"
               defaultValue={value('opponent')}
               placeholder={t.caseCard.form.opponentPlaceholder}
+              onBlur={
+                isCreate
+                  ? (e) => conflict.check({ name: e.currentTarget.value })
+                  : undefined
+              }
             />
+            {isCreate && (
+              <ConflictWarning
+                matches={conflict.matches}
+                message={t.cases.conflictWarning}
+              />
+            )}
           </Field>
 
           <Field
@@ -674,6 +742,12 @@ function Field({
   );
 }
 
+// v3 s1: серая подсказка под заблокированным финансовым полем (не-staff в edit).
+function LockedHint({ show, text }: { show: boolean; text: string }) {
+  if (!show) return null;
+  return <p className="mt-1 text-[11px] text-text-subtle">{text}</p>;
+}
+
 function SubmitButton({ label }: { label: string }) {
   const { t } = useI18n();
   const { pending } = useFormStatus();
@@ -684,10 +758,3 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
-function todayIso(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}

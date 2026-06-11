@@ -9,6 +9,7 @@ import { diffChanges } from '@/lib/activity-log/diff';
 import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import type { Messages } from '@/lib/i18n/messages';
+import { UUID_RE, todayIso } from '@/lib/validation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   ACCRUAL_MODES,
@@ -84,8 +85,6 @@ function isBillingType(value: string): value is BillingType {
   return (BILLING_TYPES as readonly string[]).includes(value);
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 type Validated = {
   number_title: string;
   client_id: string;
@@ -109,15 +108,6 @@ type Validated = {
 
 function isAccrualMode(value: string): value is AccrualMode {
   return (ACCRUAL_MODES as readonly string[]).includes(value);
-}
-
-function todayIso(): string {
-  // local date в формате YYYY-MM-DD; БД хранит как date без TZ.
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 function validate(
@@ -377,6 +367,7 @@ const CASE_DIFF_FIELDS = [
   'case_type',
   'category',
   'subject',
+  'stage',
   'priority',
   'contract_sum',
   'billing_types',
@@ -398,6 +389,7 @@ type CaseDiffShape = {
   case_type: CaseType;
   category: CaseCategory;
   subject: string | null;
+  stage: CaseStage;
   priority: CasePriority;
   contract_sum: number;
   billing_types: BillingType[];
@@ -421,6 +413,9 @@ export async function updateCaseAction(
   if (!result.ok) return result.state;
 
   const canEditRates = user.caps.edit_rate_overrides;
+  // v3 s1: staff (owner/admin/office_manager) — единственные, кто меняет
+  // ЗП-определяющие поля дела (зеркало БД-триггера cases_guard_financial_fields).
+  const isStaffUser = STAFF_ROLES.includes(user.profile.role);
   const supabase = await createSupabaseServerClient();
 
   // Снапшот до правки — для diff'а в activity_log. RLS отрежет невидимое →
@@ -473,6 +468,33 @@ export async function updateCaseAction(
     };
   }
 
+  // v3 s1: не-staff (юрист/Експерт) не меняет ЗП-определяющие поля дела. UI их
+  // блокирует, но форс-POST или гонка прав ловятся здесь дружелюбной ошибкой ДО
+  // похода в БД (там тот же запрет — триггер cases_guard_financial_fields). Если
+  // значения совпали с before — поля не попадут в SET (ниже), триггер не дёргаем.
+  if (!isStaffUser && before) {
+    const ff: Partial<Record<CaseFormFields, string>> = {};
+    if (result.data.category !== before.category)
+      ff.category = t.cases.financialFieldStaffOnly;
+    if (result.data.contract_sum !== Number(before.contract_sum ?? 0))
+      ff.contract_sum = t.cases.financialFieldStaffOnly;
+    if (result.data.lawyer_id !== before.lawyer_id)
+      ff.lawyer_id = t.cases.financialFieldStaffOnly;
+    if (result.data.responsible_id !== before.responsible_id)
+      ff.responsible_id = t.cases.financialFieldStaffOnly;
+    if (result.data.client_id !== before.client_id)
+      ff.client_id = t.cases.financialFieldStaffOnly;
+    if (Object.keys(ff).length > 0) {
+      return {
+        ok: false,
+        values: result.values,
+        selectedBillingTypes: result.selectedBillingTypes,
+        fieldErrors: ff,
+        message: t.cases.financialFieldStaffOnly,
+      };
+    }
+  }
+
   // closed_at — историческая дата закрытия. Если дело уже было закрыто, любая
   // правка admin'ом не должна перезаписывать оригинальный closed_at на сегодня
   // (validate() ставит todayIso() безусловно при stage='closed'). Сохраняем
@@ -485,16 +507,34 @@ export async function updateCaseAction(
 
   // Override % мержим только для owner/admin; иначе колонки не трогаем (иначе
   // guard-триггер отклонил бы изменение от не-менеджера).
-  const updatePayload = canEditRates
+  const updatePayload: Partial<Validated> & Partial<RateOverrides> = canEditRates
     ? { ...basePayload, ...result.overrides }
-    : basePayload;
+    : { ...basePayload };
+
+  // v3 s1: не-staff не меняет финансовые поля — убираем их из SET (значения сверены
+  // с before выше; иначе BEFORE UPDATE OF впустую дёргает guard-триггер).
+  if (!isStaffUser) {
+    delete updatePayload.category;
+    delete updatePayload.contract_sum;
+    delete updatePayload.lawyer_id;
+    delete updatePayload.responsible_id;
+    delete updatePayload.client_id;
+  }
 
   // При смене этапа на/с 'closed' триггеров для closed_at нет — обновляем сами.
   // (CHECK constraint cases_closed_consistency требует синхронности.)
-  const { error } = await supabase
+  // v3 s4: optimistic locking — обновляем строку только если updated_at совпал с
+  // тем, что форма прочитала при открытии (.eq('updated_at', base)). Рассинхрон →
+  // 0 строк → ниже «дело изменено». Пустой base (нет hidden) → без проверки.
+  const baseUpdatedAt = getString(formData, 'base_updated_at');
+  let updateQuery = supabase
     .from('cases')
     .update(updatePayload)
     .eq('id', caseId);
+  if (baseUpdatedAt) {
+    updateQuery = updateQuery.eq('updated_at', baseUpdatedAt);
+  }
+  const { data: updatedRows, error } = await updateQuery.select('id');
 
   if (error) {
     // Триггер `cases_validate_stage_forward` бросает 'stage_backward_forbidden'
@@ -528,9 +568,21 @@ export async function updateCaseAction(
     };
   }
 
-  // Diff'им только реально пользовательские поля. stage пропускаем —
-  // у него собственный action 'stage_corrected' (триггер) и движение вперёд
-  // лог не интересует (UI и так показывает текущий этап).
+  // v3 s4: при заданном base ни одной обновлённой строки → дело изменено
+  // параллельно (updated_at уже другой). Просим обновить страницу — чужую правку
+  // не теряем. (RLS-невидимое/несуществующее дело тоже даст 0 — корректный отказ.)
+  if (baseUpdatedAt && (updatedRows == null || updatedRows.length === 0)) {
+    return {
+      ok: false,
+      values: result.values,
+      selectedBillingTypes: result.selectedBillingTypes,
+      message: t.cases.concurrentEdit,
+    };
+  }
+
+  // Diff'им пользовательские поля, включая stage (v3 s2: смена этапа из полной
+  // формы тоже попадает в журнал как case_updated; откат назад дополнительно
+  // пишет 'stage_corrected' триггером cases_validate_stage_forward).
   if (before) {
     const beforeShape: CaseDiffShape = {
       number_title: String(before.number_title ?? ''),
@@ -541,6 +593,7 @@ export async function updateCaseAction(
       case_type: before.case_type as CaseType,
       category: before.category as CaseCategory,
       subject: (before.subject as string | null) ?? null,
+      stage: before.stage as CaseStage,
       priority: before.priority as CasePriority,
       contract_sum: Number(before.contract_sum ?? 0),
       billing_types: (before.billing_types ?? []) as BillingType[],
@@ -563,6 +616,7 @@ export async function updateCaseAction(
       case_type: result.data.case_type,
       category: result.data.category,
       subject: result.data.subject,
+      stage: result.data.stage,
       priority: result.data.priority,
       contract_sum: result.data.contract_sum,
       billing_types: result.data.billing_types,
@@ -670,9 +724,64 @@ export async function updateCaseStageAction(
     };
   }
 
+  // v3 s2: смена этапа из шапки дела тоже пишется в журнал (§7-9). Формат —
+  // как в advanceCaseStageAction (case_updated с diff по stage).
+  await logActivity({
+    entity_type: 'case',
+    entity_id: caseId,
+    action: 'case_updated',
+    changes: { diff: { stage: { from: before.stage, to: stage } } },
+  });
+
   revalidatePath('/cases');
   revalidatePath(`/cases/${caseId}`);
   if (before.client_id) revalidatePath(`/clients/${before.client_id}`);
+  return { ok: true };
+}
+
+// ── Закрыть дело как «не заключили» (lost) — v3 Сессия 7 ──────────────────
+// Дело с этапа new_request|consultation закрывается без договора. Право (staff или
+// юрист дела + видимость) и журнал (case_lost) — внутри SECURITY DEFINER
+// public.close_case_lost. Здесь — UX-валидация и человеческие сообщения ошибок.
+export type CloseLostState = { ok: boolean; message?: string };
+
+export async function closeCaseLostAction(
+  caseId: string,
+  reason: string,
+): Promise<CloseLostState> {
+  await requireUser();
+  const { t } = await getT();
+
+  if (!UUID_RE.test(caseId))
+    return { ok: false, message: t.caseCard.actions.caseInvalid };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('close_case_lost', {
+    p_case_id: caseId,
+    p_reason: reason.trim().slice(0, 500),
+  });
+
+  if (error) {
+    // RPC бросает: 'lost outcome is only…' (этап уже после контракта),
+    // 'not allowed' (42501 — нет прав/не видит), иначе системный сбой.
+    const msg = error.message ?? '';
+    if (msg.includes('lost outcome is only'))
+      return { ok: false, message: t.cases.lost.errorOnlyBeforeContract };
+    if (msg.includes('not allowed') || error.code === '42501')
+      return { ok: false, message: t.cases.lost.errorNotAllowed };
+    return {
+      ok: false,
+      message: dbErrorMessage(
+        'closeCaseLostAction',
+        error,
+        t.cases.lost.errorFailed,
+        t.errors.db,
+      ),
+    };
+  }
+
+  revalidatePath('/cases');
+  revalidatePath(`/cases/${caseId}`);
   return { ok: true };
 }
 
@@ -785,9 +894,11 @@ async function setCaseArchived(
     .eq('id', caseId);
 
   if (error) {
-    // Триггер cases_guard_archive мог отвергнуть (не staff / не closed) — тихо.
-    revalidatePath('/cases');
-    return;
+    // Не молчим: ошибку показываем на карточке дела (зеркало deleteCaseAction).
+    // Штатные отказы (не staff / не closed) отсечены выше, до UPDATE, — сюда
+    // долетает только нештатный сбой.
+    console.error('setCaseArchived failed:', error.message);
+    redirect(`/cases/${caseId}?error=archive_failed`);
   }
 
   await logActivity({
