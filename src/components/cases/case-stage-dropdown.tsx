@@ -11,6 +11,7 @@ import {
   type CSSProperties,
 } from 'react';
 
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { updateCaseStageAction } from '@/lib/cases/actions';
 import { useI18n } from '@/lib/i18n/provider';
 import { CASE_STAGES, type CaseStage } from '@/lib/types/db';
@@ -30,6 +31,14 @@ const STAGE_BG: Record<CaseStage, string> = {
   in_progress: 'var(--stage-in-progress-bg)',
   awaiting_decision: 'var(--stage-awaiting-bg)',
   closed: 'var(--stage-closed-bg)',
+};
+// Тёмный текстовый тон на подложке *-bg (WCAG AA, как у залитых бейджей; v3 s10).
+const STAGE_FG_DARK: Record<CaseStage, string> = {
+  new_request: 'var(--stage-new-fg)',
+  consultation: 'var(--stage-consultation-fg)',
+  in_progress: 'var(--stage-in-progress-fg)',
+  awaiting_decision: 'var(--stage-awaiting-fg)',
+  closed: 'var(--stage-closed-fg)',
 };
 
 interface CaseStageDropdownProps {
@@ -59,6 +68,9 @@ export function CaseStageDropdown({
   const [optimisticStage, setOptimisticStage] = useOptimistic(stage);
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
+  // Этап «Завершено» без акта требует подтверждения (мягкий контроль) — держим
+  // выбранный этап здесь, пока открыт ConfirmDialog.
+  const [confirmStage, setConfirmStage] = useState<CaseStage | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -83,14 +95,7 @@ export function CaseStageDropdown({
     };
   }, [open]);
 
-  const handleSelect = (s: CaseStage) => {
-    setOpen(false);
-    if (s === optimisticStage || pending) return;
-    // Мягкий контроль: завершить без акта можно, но с подтверждением.
-    if (s === 'closed' && !hasAct) {
-      const okToClose = window.confirm(t.caseCard.stepper.confirmCloseWithoutAct);
-      if (!okToClose) return;
-    }
+  const applyStage = (s: CaseStage) => {
     startTransition(async () => {
       setOptimisticStage(s);
       const fd = new FormData();
@@ -99,20 +104,35 @@ export function CaseStageDropdown({
     });
   };
 
+  const handleSelect = (s: CaseStage) => {
+    setOpen(false);
+    if (s === optimisticStage || pending) return;
+    // Мягкий контроль: завершить без акта можно, но с подтверждением.
+    if (s === 'closed' && !hasAct) {
+      setConfirmStage(s);
+      return;
+    }
+    applyStage(s);
+  };
+
   const fg = STAGE_FG[optimisticStage];
   const live = optimisticStage !== 'closed';
+  // Пилюля — пара «подложка *-bg + тёмный *-fg» (v3 s11): белый на ярком тоне
+  // этапа не проходил AA (awaiting 2.80 при пороге 4.5). Точка — ярким тоном.
+  const pillStyle = {
+    background: STAGE_BG[optimisticStage],
+    color: STAGE_FG_DARK[optimisticStage],
+    boxShadow: `0 6px 16px -8px color-mix(in oklab, ${fg} 45%, transparent)`,
+  };
 
   // ── Read-only: статичная пилюля цвета этапа, без стрелки/меню. ──
   if (!canEdit) {
     return (
       <span
-        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold leading-none text-white shadow-sm"
-        style={{
-          background: fg,
-          boxShadow: `0 6px 16px -8px color-mix(in oklab, ${fg} 60%, transparent)`,
-        }}
+        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold leading-none shadow-sm"
+        style={pillStyle}
       >
-        <StageDot live={live} />
+        <StageDot live={live} color={fg} />
         {t.enums.caseStage[optimisticStage]}
       </span>
     );
@@ -129,20 +149,17 @@ export function CaseStageDropdown({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         title={t.caseCard.stepper.changeStage}
-        style={{
-          background: fg,
-          boxShadow: `0 6px 16px -8px color-mix(in oklab, ${fg} 60%, transparent)`,
-        }}
+        style={pillStyle}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5',
-          'text-[12px] font-bold leading-none text-white shadow-sm',
+          'text-[12px] font-bold leading-none shadow-sm',
           'transition-[transform,box-shadow,opacity] duration-200 ease-out',
           'hover:-translate-y-0.5 hover:shadow-md',
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current',
           pending && 'cursor-wait opacity-70',
         )}
       >
-        <StageDot live={live} />
+        <StageDot live={live} color={fg} />
         <span>{t.enums.caseStage[optimisticStage]}</span>
         <ChevronDown
           size={13}
@@ -177,16 +194,19 @@ export function CaseStageDropdown({
             const sBg = STAGE_BG[s];
 
             // Стиль мини-капсулы по состоянию (как в прежнем степпере).
+            // Текст ВЕЗДЕ тёмным fg-тоном (v3 s10/s11): яркий тон на подложке
+            // AA не проходил (awaiting 2.40, done-пункты 2.4–4.2). Яркий тон
+            // остаётся в точке текущего пункта.
             const style = {} as CSSProperties & Record<string, string>;
             if (state === 'current') {
-              style.background = sFg;
-              style.color = '#fff';
+              style.background = sBg;
+              style.color = STAGE_FG_DARK[s];
             } else if (state === 'done') {
               style.background = sBg;
-              style.color = sFg;
+              style.color = STAGE_FG_DARK[s];
             } else {
               style.background = 'var(--surface-sunken)';
-              style.color = selectable ? sFg : 'var(--text-subtle)';
+              style.color = selectable ? STAGE_FG_DARK[s] : 'var(--text-subtle)';
             }
 
             return (
@@ -219,7 +239,7 @@ export function CaseStageDropdown({
                     {state === 'done' ? (
                       <Check size={13} strokeWidth={2.75} />
                     ) : state === 'current' ? (
-                      <StageDot live={live} />
+                      <StageDot live={live} color={sFg} />
                     ) : (
                       <span className="text-[10px] font-bold tabular-nums">
                         {i + 1}
@@ -228,7 +248,7 @@ export function CaseStageDropdown({
                   </span>
                   <span className="flex-1 text-left">{t.enums.caseStage[s]}</span>
                   {state === 'current' && (
-                    <span className="text-[10px] font-bold uppercase tracking-[0.04em] text-white/75">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.04em] opacity-75">
                       {t.caseCard.stepper.youAreHere}
                     </span>
                   )}
@@ -238,19 +258,50 @@ export function CaseStageDropdown({
           })}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={confirmStage !== null}
+        title={t.common.confirmTitle}
+        description={t.caseCard.stepper.confirmCloseWithoutAct}
+        confirmLabel={t.common.confirm}
+        pending={pending}
+        onConfirm={() => {
+          const s = confirmStage;
+          setConfirmStage(null);
+          if (s) applyStage(s);
+        }}
+        onClose={() => setConfirmStage(null)}
+      />
     </div>
   );
 }
 
 // Пульсирующая точка для «живого» этапа (статичная — для закрытого).
-function StageDot({ live }: { live: boolean }) {
+// color — яркий тон этапа (текст пилюли теперь тёмный fg, точка остаётся
+// цветовым якорем; без color наследует currentColor, как раньше).
+function StageDot({ live, color }: { live: boolean; color?: string }) {
+  const style = color ? { background: color } : undefined;
   if (!live) {
-    return <span className="inline-flex h-2 w-2 rounded-full bg-current" />;
+    return (
+      <span
+        className={cn('inline-flex h-2 w-2 rounded-full', !color && 'bg-current')}
+        style={style}
+      />
+    );
   }
   return (
     <span className="relative flex h-2 w-2 items-center justify-center">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-70" />
-      <span className="relative inline-flex h-2 w-2 rounded-full bg-current" />
+      <span
+        className={cn(
+          'absolute inline-flex h-full w-full animate-ping rounded-full opacity-70',
+          !color && 'bg-current',
+        )}
+        style={style}
+      />
+      <span
+        className={cn('relative inline-flex h-2 w-2 rounded-full', !color && 'bg-current')}
+        style={style}
+      />
     </span>
   );
 }

@@ -27,9 +27,13 @@ function titleForPath(pathname: string, tb: Messages['topbar']): string {
 
   if (pathname.startsWith('/tasks')) return tb.titleTasks;
   if (pathname.startsWith('/calendar')) return tb.titleCalendar;
+  // Конкретные /reports/* и /settings/* — ВЫШЕ общих префиксов (порядок матчинга).
   if (pathname.startsWith('/reports/payroll')) return tb.titlePayroll;
+  if (pathname.startsWith('/reports/cash')) return tb.cash;
   if (pathname.startsWith('/settings/payroll')) return tb.titleRates;
   if (pathname.startsWith('/settings/users')) return tb.titleUsers;
+  if (pathname.startsWith('/settings/departments')) return tb.departments;
+  if (pathname.startsWith('/settings/requisites')) return tb.requisites;
   if (pathname.startsWith('/profile')) return tb.titleProfile;
   if (pathname.startsWith('/settings')) return tb.titleSettings;
   if (pathname.startsWith('/help')) return tb.titleHelp;
@@ -41,16 +45,31 @@ function titleForPath(pathname: string, tb: Messages['topbar']): string {
 export function Topbar({
   userName,
   roleLabel,
-  tasksOpen,
+  tasksOverdue,
+  tasksToday,
 }: {
   userName: string;
   roleLabel: string;
-  tasksOpen: number;
+  /** Просроченные открытые задачи пользователя (due_at < now). */
+  tasksOverdue: number;
+  /** Открытые задачи со сроком сегодня по Киеву. */
+  tasksToday: number;
 }) {
   const pathname = usePathname();
   const { open } = useCommandPalette();
   const { t, fmt } = useI18n();
   const title = titleForPath(pathname, t.topbar);
+
+  // Честный колокольчик (v3 Сессия 6): считаем только горящее (просрочено +
+  // сегодня), а не все открытые задачи. Красная точка — есть просрочка.
+  const dueTotal = tasksOverdue + tasksToday;
+  const dueLabel =
+    dueTotal > 0
+      ? fmt(t.topbar.notificationsDue, {
+          overdue: tasksOverdue,
+          today: tasksToday,
+        })
+      : t.topbar.notificationsAria;
 
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface/90 px-5 backdrop-blur-md sm:gap-4 sm:px-6">
@@ -97,19 +116,21 @@ export function Topbar({
         <HelpCircle size={17} strokeWidth={1.75} />
       </Link>
 
-      {/* Уведомления → задачи (точка, если есть открытые задачи на мне). */}
+      {/* Уведомления → задачи. Точка: красная — есть просроченные, брендовая —
+          только сегодняшние, нет горящего — без точки. */}
       <Link
         href="/tasks"
-        aria-label={
-          tasksOpen > 0
-            ? fmt(t.topbar.notificationsAriaCount, { count: tasksOpen })
-            : t.topbar.notificationsAria
-        }
+        aria-label={dueLabel}
+        title={dueLabel}
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text"
       >
         <Bell size={17} strokeWidth={1.75} />
-        {tasksOpen > 0 && (
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-error ring-2 ring-surface" />
+        {dueTotal > 0 && (
+          <span
+            className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-surface ${
+              tasksOverdue > 0 ? 'bg-error' : 'bg-primary'
+            }`}
+          />
         )}
       </Link>
 

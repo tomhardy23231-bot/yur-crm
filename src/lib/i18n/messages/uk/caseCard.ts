@@ -3,12 +3,21 @@ import type { CaseCardMessages } from '../ru/caseCard';
 // Картка справи: перегляд, форма (створення/редагування), степер етапів,
 // панель дій, видалення, inline-створення клієнта, server actions справ.
 export const caseCard: CaseCardMessages = {
+  quickActions: {
+    payment: 'Платіж',
+    task: 'Завдання',
+    act: 'Акт',
+  },
+
   // ── Екран перегляду картки справи (cases/[id]/page.tsx) ──────────────
   detail: {
     errorHasLinks:
       'Не можна видалити справу: до неї прив’язані документи або платежі. Спочатку перемістіть/видаліть пов’язані записи.',
     errorDeleteFailed: 'Не вдалося видалити справу. Спробуйте пізніше.',
     errorMissingId: 'Не передано ідентифікатор справи.',
+    errorActDeleteFailed: 'Не вдалося видалити акт. Спробуйте пізніше.',
+    errorActUpdateFailed: 'Не вдалося змінити позначку акта. Спробуйте пізніше.',
+    errorArchiveFailed: 'Не вдалося змінити статус архіву. Спробуйте пізніше.',
 
     brandBadge: 'Справа',
     withoutActBadge: 'без акта',

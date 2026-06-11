@@ -5,6 +5,7 @@ export const common: CommonMessages = {
   // Кнопки та дії
   save: 'Зберегти',
   saving: 'Збереження…',
+  saved: 'Збережено',
   cancel: 'Скасувати',
   delete: 'Видалити',
   deleting: 'Видалення…',
@@ -32,6 +33,7 @@ export const common: CommonMessages = {
   // Підтвердження та відповіді
   yes: 'Так',
   no: 'Ні',
+  confirmTitle: 'Підтвердьте дію',
 
   // Значення та заглушки
   none: 'Немає',

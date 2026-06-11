@@ -15,11 +15,16 @@ import { cn } from '@/lib/utils';
 // Остаётся видимой при прокрутке длинной карточки, поэтому действия не нужно
 // дублировать в шапке. Подсветка активной секции — scrollspy.
 
+// Порядок РОВНО как секции #id в cases/[id]/page.tsx (DOM-порядок), иначе
+// scrollspy подсветит не тот пункт: overview → comments → plan → acts →
+// documents → tasks → history.
 const SECTION_IDS = [
   'overview',
+  'comments',
+  'plan',
+  'acts',
   'documents',
   'tasks',
-  'comments',
   'history',
 ] as const;
 
@@ -45,9 +50,11 @@ export function CaseActionBar({
 
   const sections = [
     { id: 'overview', label: t.caseCard.actionBar.sectionOverview },
+    { id: 'comments', label: t.caseCard.actionBar.sectionComments },
+    { id: 'plan', label: t.payments.plan.navLabel },
+    { id: 'acts', label: t.acts.block.heading },
     { id: 'documents', label: t.caseCard.actionBar.sectionDocuments },
     { id: 'tasks', label: t.caseCard.actionBar.sectionTasks },
-    { id: 'comments', label: t.caseCard.actionBar.sectionComments },
     { id: 'history', label: t.caseCard.actionBar.sectionHistory },
   ] as const;
 

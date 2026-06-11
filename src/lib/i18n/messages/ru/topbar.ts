@@ -15,8 +15,11 @@ export const topbar = {
   titleTasks: 'Задачи',
   titleCalendar: 'Календарь',
   titlePayroll: 'Финансы и ЗП',
+  cash: 'Касса',
   titleRates: 'Ставки зарплаты',
   titleUsers: 'Пользователи',
+  departments: 'Подразделения',
+  requisites: 'Реквизиты',
   titleSettings: 'Настройки',
   titleProfile: 'Профиль',
   titleHelp: 'Справка',
@@ -27,6 +30,8 @@ export const topbar = {
   helpAria: 'Справка и обучающий тур',
   notificationsAria: 'Задачи',
   notificationsAriaCount: 'Задачи: {count} открытых',
+  // Честный колокольчик (v3 Сессия 6): aria-label/title с разбивкой.
+  notificationsDue: 'Просрочено: {overdue}, сегодня: {today}',
 };
 
 export type TopbarMessages = typeof topbar;

@@ -5,6 +5,7 @@ export const common = {
   // Кнопки и действия
   save: 'Сохранить',
   saving: 'Сохранение…',
+  saved: 'Сохранено',
   cancel: 'Отмена',
   delete: 'Удалить',
   deleting: 'Удаление…',
@@ -32,6 +33,7 @@ export const common = {
   // Подтверждения и ответы
   yes: 'Да',
   no: 'Нет',
+  confirmTitle: 'Подтвердите действие',
 
   // Значения и заглушки
   none: 'Нет',

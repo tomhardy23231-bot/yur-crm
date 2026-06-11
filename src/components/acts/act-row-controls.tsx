@@ -1,29 +1,43 @@
 'use client';
 
+import { useRef, useState } from 'react';
+
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Select } from '@/components/ui/select';
 import { useI18n } from '@/lib/i18n/provider';
 import { deleteActAction, setActCompletionAction } from '@/lib/acts/actions';
 import { ACT_COMPLETIONS, type ActCompletion } from '@/lib/types/db';
 
-// Удаление неоплаченного акта — с подтверждением (bare server action).
+// Удаление неоплаченного акта — с подтверждением (ConfirmDialog, Сессия 5).
 export function DeleteActButton({ caseId, actId }: { caseId: string; actId: string }) {
   const { t } = useI18n();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [open, setOpen] = useState(false);
   return (
-    <form
-      action={deleteActAction}
-      onSubmit={(e) => {
-        if (!window.confirm(t.acts.block.deleteConfirm)) e.preventDefault();
-      }}
-    >
+    <form ref={formRef} action={deleteActAction}>
       <input type="hidden" name="act_id" value={actId} />
       <input type="hidden" name="case_id" value={caseId} />
       <button
-        type="submit"
+        type="button"
+        onClick={() => setOpen(true)}
         className="text-[12px] font-medium text-error transition-colors hover:underline"
       >
         {t.acts.block.delete}
       </button>
+
+      <ConfirmDialog
+        open={open}
+        title={t.common.confirmTitle}
+        description={t.acts.block.deleteConfirm}
+        confirmLabel={t.acts.block.delete}
+        tone="danger"
+        onConfirm={() => {
+          setOpen(false);
+          formRef.current?.requestSubmit();
+        }}
+        onClose={() => setOpen(false)}
+      />
     </form>
   );
 }

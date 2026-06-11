@@ -15,8 +15,11 @@ export const topbar: TopbarMessages = {
   titleTasks: 'Завдання',
   titleCalendar: 'Календар',
   titlePayroll: 'Фінанси та ЗП',
+  cash: 'Каса',
   titleRates: 'Ставки зарплати',
   titleUsers: 'Користувачі',
+  departments: 'Підрозділи',
+  requisites: 'Реквізити',
   titleSettings: 'Налаштування',
   titleProfile: 'Профіль',
   titleHelp: 'Довідка',
@@ -27,4 +30,6 @@ export const topbar: TopbarMessages = {
   helpAria: 'Довідка та навчальний тур',
   notificationsAria: 'Завдання',
   notificationsAriaCount: 'Завдання: {count} відкритих',
+  // Чесний дзвіночок (v3 Сесія 6): aria-label/title з розбивкою.
+  notificationsDue: 'Прострочено: {overdue}, сьогодні: {today}',
 };

@@ -8,6 +8,15 @@ export const errors = {
   notFound: 'Не найдено',
   noAccess: 'Недостаточно прав для этого действия.',
 
+  // Error-границы и 404 (Сессия 5: global-error / (app)/error.tsx / not-found).
+  boundaryTitle: 'Что-то пошло не так',
+  boundaryText:
+    'Произошла ошибка при загрузке страницы. Можно попробовать снова или вернуться на главную.',
+  boundaryRetry: 'Попробовать снова',
+  boundaryHome: 'На главную',
+  notFoundTitle: 'Страница не найдена',
+  notFoundText: 'Возможно, ссылка устарела или страница была перемещена.',
+
   // Маппинг ошибок БД (передаётся в dbErrorMessage/toUserMessage как strings).
   db: {
     generic: 'Не удалось сохранить. Попробуйте ещё раз.',

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ExternalLink, Pencil, Plus, Users as UsersIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   CardListShell,
   CardHead,
@@ -23,9 +24,8 @@ import {
   type ClientsSortColumn,
   listClients,
 } from '@/lib/clients/queries';
-import { STAFF_ROLES, type ClientKind } from '@/lib/types/db';
+import { CLIENT_KINDS, STAFF_ROLES, type ClientKind } from '@/lib/types/db';
 import { getT } from '@/lib/i18n/server';
-import type { I18n } from '@/lib/i18n/core';
 
 // Колонки «карточек-строк» десктоп-списка клиентов (общие для шапки и строк):
 // клиент · тип · телефон · e-mail · дел · создан · действия.
@@ -33,7 +33,7 @@ const CLIENTS_COLS =
   'minmax(220px,2fr) 150px minmax(150px,1fr) minmax(180px,1.4fr) 110px 130px 96px';
 
 function isClientKind(value: string): value is ClientKind {
-  return value === 'individual' || value === 'company';
+  return (CLIENT_KINDS as readonly string[]).includes(value);
 }
 function isClientsSortColumn(value: string): value is ClientsSortColumn {
   return (CLIENTS_SORTABLE_COLUMNS as readonly string[]).includes(value);
@@ -80,8 +80,7 @@ export default async function ClientsPage({
 
   const KIND_OPTIONS: ReadonlyArray<{ value: ClientKind | 'all'; label: string }> = [
     { value: 'all', label: t.common.all },
-    { value: 'individual', label: t.enums.clientKind.individual },
-    { value: 'company', label: t.enums.clientKind.company },
+    ...CLIENT_KINDS.map((k) => ({ value: k, label: t.enums.clientKind[k] })),
   ];
 
   function pillHref(next: ClientKind | 'all'): string {
@@ -171,7 +170,29 @@ export default async function ClientsPage({
       </div>
 
       {items.length === 0 ? (
-        <EmptyState hasFilters={Boolean(q || kind)} t={t} />
+        <div className="rounded-lg border border-border bg-surface py-8 shadow-sm">
+          <EmptyState
+            icon={UsersIcon}
+            title={
+              q || kind
+                ? t.clients.list.emptyFilteredTitle
+                : t.clients.list.emptyTitle
+            }
+            hint={
+              q || kind ? t.clients.list.emptyFilteredHint : t.clients.list.emptyHint
+            }
+            action={
+              !(q || kind) ? (
+                <Button asChild>
+                  <Link href="/clients/new">
+                    <Plus size={16} strokeWidth={2} />
+                    {t.clients.list.addClient}
+                  </Link>
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
       ) : (
         <>
         {/* Мобильное представление — карточки вместо таблицы. */}
@@ -312,37 +333,3 @@ function PageLink({
   );
 }
 
-function EmptyState({
-  hasFilters,
-  t,
-}: {
-  hasFilters: boolean;
-  t: I18n['t'];
-}) {
-  return (
-    <div className="bg-surface rounded-lg border border-border shadow-sm py-16 px-6 flex flex-col items-center text-center">
-      <span
-        className="inline-flex w-12 h-12 items-center justify-center rounded-full text-primary bg-primary-subtle mb-4"
-        aria-hidden="true"
-      >
-        <UsersIcon size={20} strokeWidth={1.75} />
-      </span>
-      <h2 className="text-[18px] font-semibold text-text mb-1">
-        {hasFilters ? t.clients.list.emptyFilteredTitle : t.clients.list.emptyTitle}
-      </h2>
-      <p className="text-[13px] text-text-muted max-w-md mb-5">
-        {hasFilters
-          ? t.clients.list.emptyFilteredHint
-          : t.clients.list.emptyHint}
-      </p>
-      {!hasFilters && (
-        <Button asChild>
-          <Link href="/clients/new">
-            <Plus size={16} strokeWidth={2} />
-            {t.clients.list.addClient}
-          </Link>
-        </Button>
-      )}
-    </div>
-  );
-}

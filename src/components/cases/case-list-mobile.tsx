@@ -10,11 +10,9 @@ import { ArchiveCaseForm } from '@/components/cases/archive-case-form';
 import { getT } from '@/lib/i18n/server';
 import { daysSince, formatMoney } from '@/lib/utils';
 import { listCases } from '@/lib/cases/queries';
+import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
 
 type CaseListItem = Awaited<ReturnType<typeof listCases>>['items'][number];
-
-// Порог «застоя» дела на этапе — синхронно со списком (cases/page.tsx).
-const STALE_STAGE_DAYS = 14;
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
@@ -66,7 +64,14 @@ export async function CaseListMobile({
                       </p>
                     )}
                   </div>
-                  <StageBadge stage={c.stage} quiet className="mt-0.5 shrink-0" />
+                  <div className="mt-0.5 flex shrink-0 flex-col items-end gap-1">
+                    <StageBadge stage={c.stage} quiet />
+                    {c.outcome === 'lost' && (
+                      <Badge tone="neutral" title={t.cases.lost.badgeTitle}>
+                        {t.cases.lost.badge}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 {/* Бейджи: категория · приоритет · «без акта» · дни/закрыто */}

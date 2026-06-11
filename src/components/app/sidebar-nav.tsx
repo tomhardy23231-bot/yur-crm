@@ -9,7 +9,6 @@ import {
   CheckSquare,
   Calendar,
   Coins,
-  FileText,
   Wallet,
   Settings,
   HelpCircle,
@@ -32,7 +31,6 @@ type NavId =
   | 'tasks'
   | 'calendar'
   | 'payroll'
-  | 'documents'
   | 'finance'
   | 'settings'
   | 'help';
@@ -58,7 +56,6 @@ const WORK_ITEMS: ReadonlyArray<NavItem> = [
   { id: 'tasks',     href: '/tasks',     icon: CheckSquare,     enabled: true, counterKey: 'tasksOpen', tourId: 'nav-tasks' },
   { id: 'calendar',  href: '/calendar',  icon: Calendar,        enabled: true, tourId: 'nav-calendar' },
   { id: 'payroll',   href: '/reports/payroll', icon: Coins,     enabled: true, tourId: 'nav-payroll'  },
-  { id: 'documents', href: '/documents', icon: FileText,        enabled: false },
   // Касса — только обладателю права can_manage_cash (по дефолту owner). RLS дублирует.
   { id: 'finance',   href: '/reports/cash', icon: Wallet,       enabled: true, requiredCaps: ['can_manage_cash'], tourId: 'nav-cash' },
 ];

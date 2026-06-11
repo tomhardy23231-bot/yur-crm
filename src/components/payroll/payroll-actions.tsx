@@ -1,10 +1,11 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useState } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Coins, Gift, Trash2, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,6 +18,7 @@ import {
   type PayrollMutationState,
 } from '@/lib/payroll/actions';
 import { type RoleInCase } from '@/lib/types/db';
+import { todayIso } from '@/lib/validation';
 
 const PAYROLL_INITIAL: PayrollMutationState = { ok: false };
 
@@ -32,14 +34,6 @@ export type PayoutBucket = {
   role_in_case: RoleInCase;
   outstanding: number;
 };
-
-function todayISO(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 // ── Кнопки + переключение модалок ──────────────────────────────────────────
 export function PayrollActions({
@@ -96,18 +90,14 @@ export function DeleteTransactionButton({
   label: string;
 }) {
   const { t, fmt } = useI18n();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [open, setOpen] = useState(false);
   return (
-    <form
-      action={deletePayrollTransactionAction}
-      onSubmit={(e) => {
-        if (!window.confirm(fmt(t.payroll.actions.deleteConfirm, { label }))) {
-          e.preventDefault();
-        }
-      }}
-    >
+    <form ref={formRef} action={deletePayrollTransactionAction}>
       <input type="hidden" name="transaction_id" value={transactionId} />
       <Button
-        type="submit"
+        type="button"
+        onClick={() => setOpen(true)}
         variant="ghost"
         size="sm"
         aria-label={t.payroll.actions.deleteAria}
@@ -115,6 +105,19 @@ export function DeleteTransactionButton({
       >
         <Trash2 size={14} strokeWidth={1.75} />
       </Button>
+
+      <ConfirmDialog
+        open={open}
+        title={t.common.confirmTitle}
+        description={fmt(t.payroll.actions.deleteConfirm, { label })}
+        confirmLabel={t.common.delete}
+        tone="danger"
+        onConfirm={() => {
+          setOpen(false);
+          formRef.current?.requestSubmit();
+        }}
+        onClose={() => setOpen(false)}
+      />
     </form>
   );
 }
@@ -153,9 +156,9 @@ function ModalShell({
         type="button"
         aria-label={t.payroll.actions.closeAria}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-[#080A0F]/70 backdrop-blur-[3px]"
+        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[3px]"
       />
-      <div className="relative z-10 flex w-[min(560px,95vw)] max-h-[90vh] flex-col overflow-hidden rounded-[20px] border border-border bg-surface shadow-[var(--shadow-pop)]">
+      <div className="relative z-10 flex w-[min(560px,95vw)] max-h-[90vh] flex-col overflow-hidden rounded-modal border border-border bg-surface shadow-[var(--shadow-pop)]">
         <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
           <div>
             <h2 className="text-[17px] font-bold text-text">{title}</h2>
@@ -359,7 +362,7 @@ function PayoutModal({
                 id="payout-date"
                 name="occurred_on"
                 type="date"
-                defaultValue={todayISO()}
+                defaultValue={todayIso()}
                 required
                 className=""
               />
@@ -482,7 +485,7 @@ function BonusModal({
                 id="bonus-date"
                 name="occurred_on"
                 type="date"
-                defaultValue={todayISO()}
+                defaultValue={todayIso()}
                 className=""
               />
             </div>
