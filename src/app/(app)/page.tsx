@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Plus, Sparkles } from 'lucide-react';
+import { Plus, Sparkles, AlertTriangle } from 'lucide-react';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { Button } from '@/components/ui/button';
@@ -7,20 +7,32 @@ import { Card } from '@/components/ui/card';
 import { KpiCard, type KpiDelta } from '@/components/dashboard/kpi-card';
 import { StageFunnel } from '@/components/dashboard/stage-funnel';
 import { CategoryRevenue } from '@/components/dashboard/category-revenue';
+import { ConversionBlock } from '@/components/dashboard/conversion-block';
+import { SourcesBlock } from '@/components/dashboard/sources-block';
+import { OverduePaymentsBlock } from '@/components/dashboard/overdue-payments-block';
+import { DebtAgingBlock } from '@/components/dashboard/debt-aging-block';
 import { RecentCases } from '@/components/dashboard/recent-cases';
 import { PersonalEarnings } from '@/components/dashboard/personal-earnings';
+import { MyDayBlock } from '@/components/dashboard/my-day-block';
 import { UpcomingDeadlinesBlock } from '@/components/tasks/upcoming-deadlines-block';
 import {
+  computeConversion,
   computeDashboardStats,
   computeDelta,
   computePersonalEarnings,
   getDashboardAnalytics,
   getDashboardCases,
+  getDashboardSources,
+  getDebtAging,
   getFixedSalaryUserIds,
+  getOverduePayments,
+  type ConversionStats,
+  type DashboardCaseRow,
   type MetricSeries,
 } from '@/lib/dashboard/queries';
 import { getPayrollRates } from '@/lib/payroll/queries';
 import { listCases } from '@/lib/cases/queries';
+import { listUpcomingTasks } from '@/lib/tasks/queries';
 import { STAFF_ROLES, type Role } from '@/lib/types/db';
 import { formatMoney } from '@/lib/utils';
 import { getT } from '@/lib/i18n/server';
@@ -69,11 +81,16 @@ export default async function HomePage() {
   const staff = STAFF_ROLES.includes(profile.role);
 
   // База для всех ролей — RLS уже ограничивает видимость по роли.
-  const [cases, recentResult] = await Promise.all([
+  // upcoming грузим здесь один раз: срез today → «Мой день» (над KPI),
+  // просрочки/72ч → «Приближающиеся сроки» (внизу).
+  const [casesResult, recentResult, upcoming] = await Promise.all([
     getDashboardCases(),
     listCases({ page: 1 }),
+    listUpcomingTasks({ todayForUserId: profile.id }),
   ]);
+  const { cases, truncated } = casesResult;
   const stats = computeDashboardStats(cases);
+  const conversion = computeConversion(cases);
   const recent = recentResult.items.slice(0, 6);
 
   // U4: новичок без видимых дел получает онбординг вместо «нулевого» дашборда.
@@ -81,6 +98,15 @@ export default async function HomePage() {
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
+      {!isEmpty && truncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning-bg px-4 py-2.5 text-[12.5px] text-warning">
+          <AlertTriangle size={14} strokeWidth={1.75} className="shrink-0" />
+          {t.dashboard.truncatedWarning}
+        </div>
+      )}
+      {/* «Мой день» (v3 s11) — над KPI для всех ролей; пустой не рендерится. */}
+      {!isEmpty && <MyDayBlock tasks={upcoming.today} />}
+
       {isEmpty ? (
         <EmptyDashboard
           role={profile.role}
@@ -90,7 +116,14 @@ export default async function HomePage() {
           fmt={fmt}
         />
       ) : staff ? (
-        <StaffDashboard stats={stats} recent={recent} t={t} fmt={fmt} locale={locale} />
+        <StaffDashboard
+          stats={stats}
+          conversion={conversion}
+          recent={recent}
+          t={t}
+          fmt={fmt}
+          locale={locale}
+        />
       ) : (
         <PersonalDashboard
           cases={cases}
@@ -102,7 +135,7 @@ export default async function HomePage() {
         />
       )}
 
-      <UpcomingDeadlinesBlock />
+      <UpcomingDeadlinesBlock data={upcoming} />
     </main>
   );
 }
@@ -175,20 +208,30 @@ function EmptyDashboard({
 
 async function StaffDashboard({
   stats,
+  conversion,
   recent,
   t,
   fmt,
   locale,
 }: {
   stats: ReturnType<typeof computeDashboardStats>;
+  conversion: ConversionStats;
   recent: Awaited<ReturnType<typeof listCases>>['items'];
   t: I18n['t'];
   fmt: I18n['fmt'];
   locale: Locale;
 }) {
-  const rates = await getPayrollRates();
-  const fixedUserIds = await getFixedSalaryUserIds();
-  const a = await getDashboardAnalytics(rates, { fixedUserIds });
+  // v3 Сессия 4: staff-серии считает SQL (RPC), ставки (rates) тут больше не нужны —
+  // аналитике достаточно списка окладников (их % зануляется). v3 s7: источники —
+  // независимый запрос. v3 s9: просроченные доплаты + дебиторка по давности — те же
+  // RPC (SECURITY INVOKER), в один Promise.all.
+  const [fixedUserIds, sources, overdue, aging] = await Promise.all([
+    getFixedSalaryUserIds(),
+    getDashboardSources(),
+    getOverduePayments(),
+    getDebtAging(),
+  ]);
+  const a = await getDashboardAnalytics({ fixedUserIds });
   // Подпись месяца — в часовом поясе фирмы (как и границы окна выручки).
   const monthName = new Intl.DateTimeFormat(LOCALE_BCP47[locale], {
     month: 'long',
@@ -236,8 +279,22 @@ async function StaffDashboard({
       </section>
 
       <section className="grid grid-cols-1 gap-6 animate-fade-in-up lg:grid-cols-2">
-        <StageFunnel funnel={stats.funnel} />
+        <div className="flex flex-col gap-6">
+          <StageFunnel funnel={stats.funnel} />
+          <ConversionBlock stats={conversion} />
+        </div>
         <CategoryRevenue data={stats.revenueByCategory} />
+      </section>
+
+      {/* v3 s9: контроль доплат — просроченные позиции графика + дебиторка по
+          давности. Рядом, в один ряд на широких экранах. */}
+      <section className="grid grid-cols-1 gap-6 animate-fade-in-up lg:grid-cols-2">
+        <OverduePaymentsBlock rows={overdue} />
+        <DebtAgingBlock buckets={aging} />
+      </section>
+
+      <section className="animate-fade-in-up">
+        <SourcesBlock rows={sources} />
       </section>
 
       <section className="animate-fade-in-up">
@@ -259,19 +316,20 @@ async function PersonalDashboard({
   t,
   fmt,
 }: {
-  cases: Awaited<ReturnType<typeof getDashboardCases>>;
+  cases: DashboardCaseRow[];
   stats: ReturnType<typeof computeDashboardStats>;
   recent: Awaited<ReturnType<typeof listCases>>['items'];
   userId: string;
   t: I18n['t'];
   fmt: I18n['fmt'];
 }) {
-  const rates = await getPayrollRates();
-  const fixedUserIds = await getFixedSalaryUserIds();
-  const [a, earnings] = await Promise.all([
-    getDashboardAnalytics(rates, { userId, fixedUserIds }),
-    Promise.resolve(computePersonalEarnings(cases, rates, userId, fixedUserIds)),
+  // 4.2: справочники одним батчем — ставки (для личных начислений) + окладники.
+  const [rates, fixedUserIds] = await Promise.all([
+    getPayrollRates(),
+    getFixedSalaryUserIds(),
   ]);
+  const a = await getDashboardAnalytics({ userId, fixedUserIds });
+  const earnings = computePersonalEarnings(cases, rates, userId, fixedUserIds);
 
   return (
     <>

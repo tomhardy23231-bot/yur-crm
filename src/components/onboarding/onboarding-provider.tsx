@@ -11,7 +11,10 @@ import {
 } from 'react';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { driver, type Driver } from 'driver.js';
+import { type Driver } from 'driver.js';
+// driver.js грузим ДИНАМИЧЕСКИ (import() в startTour) — библиотека не нужна на
+// первом рендере, не тянем её JS в основной бандл приложения. Тип Driver —
+// импорт только типа (стирается при компиляции, в бандл не попадает).
 // Базовый CSS driver.js подключён в globals.css (через @import), чтобы наши
 // перекрытия темы шли после него по порядку каскада.
 
@@ -267,7 +270,7 @@ export function OnboardingProvider({
   // steps — кастомный сценарий (тур по фиче). Без него — общий онбординг.
   // Защита: при использовании как onClick-хендлера сюда прилетит событие — его
   // игнорируем (берём общий тур), кастомный сценарий принимаем только массивом.
-  const startTour = useCallback((steps?: TourStep[] | unknown) => {
+  const startTour = useCallback(async (steps?: TourStep[] | unknown) => {
     setWelcomeOpen(false);
     setReleaseOpen(false);
     markSeen();
@@ -281,9 +284,11 @@ export function OnboardingProvider({
     firstCaseHrefRef.current = null;
     firstEmployeeHrefRef.current = null;
 
+    // Подгружаем движок тура по требованию (не в основном бандле).
+    const { driver } = await import('driver.js');
     driverRef.current = driver({
       animate: true,
-      overlayColor: '#080A0F',
+      overlayColor: '#080A0F' /* = --overlay (driver.js принимает строку, не var) */,
       overlayOpacity: 0.82,
       smoothScroll: true,
       stagePadding: 8,

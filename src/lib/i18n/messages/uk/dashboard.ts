@@ -3,10 +3,18 @@ import type { DashboardMessages } from '../ru/dashboard';
 // Головна (дашборд): KPI-метрики, воронка, виручка за категоріями, останні
 // справи, особисті нарахування та онбординг порожнього стану.
 export const dashboard: DashboardMessages = {
+  myDay: {
+    heading: 'Мій день',
+    count: { one: '{n} завдання', few: '{n} завдання', many: '{n} завдань' },
+  },
+
   delta: {
     growth: 'зростання',
     decline: 'спад',
   },
+
+  truncatedWarning:
+    'Справ більше, ніж уміщується на дашборді — KPI за справами та воронка показані частково. Помісячні графіки повні.',
 
   empty: {
     greeting: 'Ласкаво просимо, {name}!',
@@ -36,6 +44,44 @@ export const dashboard: DashboardMessages = {
 
   funnel: {
     title: 'Воронка справ',
+  },
+
+  // v3 Сесія 7: конверсія воронки в договір (staff-блок під воронкою).
+  conversion: {
+    title: 'Конверсія в договір',
+    ratio: '{reached} із {created} справ',
+    lost: 'Втрачено (не уклали): {n}',
+  },
+
+  // v3 Сесія 7: джерела клієнтів за місяць (staff-блок).
+  sources: {
+    title: 'Джерела клієнтів за місяць',
+    empty: 'Цього місяця нових клієнтів немає.',
+    otherSource: 'Інше',
+    colSource: 'Джерело',
+    colClients: 'Клієнтів',
+    colCases: 'Справ',
+    colPaid: 'Сплачено',
+  },
+
+  // Прострочені доплати (v3 Сесія 9).
+  overdue: {
+    title: 'Прострочені доплати',
+    empty: 'Прострочених доплат немає.',
+    colCase: 'Справа',
+    colDue: 'Термін',
+    colShortfall: 'Недоплата',
+  },
+
+  // Дебіторка за давністю (v3 Сесія 9).
+  aging: {
+    title: 'Дебіторка за давністю',
+    empty: 'Боргів за відкритими справами немає.',
+    bucket0_30: 'до 30 днів',
+    bucket30_60: '30–60 днів',
+    bucket60_90: '60–90 днів',
+    bucket90_plus: '90+ днів',
+    casesCount: '{n} справ',
   },
 
   categoryRevenue: {

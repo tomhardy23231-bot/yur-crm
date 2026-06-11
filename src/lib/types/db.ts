@@ -23,14 +23,6 @@ export const ALL_ROLES: ReadonlyArray<Role> = [
   'expert',
 ];
 
-export const ROLE_LABEL: Record<Role, string> = {
-  owner: 'Владелец',
-  admin: 'Администратор',
-  office_manager: 'Офис-менеджер',
-  lawyer: 'Юрист',
-  expert: 'Эксперт',
-};
-
 // Staff — полный доступ к делам/клиентам/финансам (видят всё).
 export const STAFF_ROLES: ReadonlyArray<Role> = ['owner', 'admin', 'office_manager'];
 
@@ -147,38 +139,6 @@ export const OWNER_ONLY_CAPABILITIES: readonly Capability[] = [
   'edit_payroll_rates',
   'can_manage_cash',
 ];
-
-// Подписи прав для UI настроек (русский).
-export const CAPABILITY_LABELS: Record<Capability, string> = {
-  view_all_cases: 'Видеть все дела',
-  create_cases: 'Создавать дела',
-  delete_cases: 'Удалять дела',
-  create_clients: 'Создавать клиентов',
-  delete_clients: 'Удалять клиентов',
-  delete_documents: 'Удалять документы',
-  edit_payments: 'Изменять и удалять платежи',
-  view_all_payroll: 'Видеть зарплату всех',
-  edit_rate_overrides: 'Менять % зарплаты на деле',
-  manage_users: 'Управление пользователями',
-  edit_payroll_rates: 'Системные настройки (ставки)',
-  can_manage_cash: 'Управление кассой',
-};
-
-export const CAPABILITY_HINTS: Record<Capability, string> = {
-  view_all_cases:
-    'Доступ ко всем делам (и их клиентам, документам, задачам, платежам), а не только к своим.',
-  create_cases: 'Заводить новые дела.',
-  delete_cases: 'Удалять дела.',
-  create_clients: 'Заводить новых клиентов.',
-  delete_clients: 'Удалять клиентов.',
-  delete_documents: 'Удалять документы по делам.',
-  edit_payments: 'Изменять и удалять платежи клиентов.',
-  view_all_payroll: 'Видеть начисления и выплаты зарплаты всех сотрудников.',
-  edit_rate_overrides: 'Задавать индивидуальный % зарплаты на конкретном деле.',
-  manage_users: 'Создавать сотрудников и менять их роли и права.',
-  edit_payroll_rates: 'Менять базовые ставки зарплаты по категориям дел.',
-  can_manage_cash: 'Доступ к кассе: счета, операции (приход/расход) и сальдо-отчёт.',
-};
 
 // Дефолт права по роли. Зеркало private.cap_role_default.
 export function capRoleDefault(cap: Capability, role: Role): boolean {
@@ -341,12 +301,6 @@ export const CLIENT_KINDS: ReadonlyArray<ClientKind> = [
   'entrepreneur',
 ];
 
-export const CLIENT_KIND_LABEL: Record<ClientKind, string> = {
-  individual: 'Физлицо',
-  company: 'Компания',
-  entrepreneur: 'ФОП',
-};
-
 // Источник клиента (новая Концепция, раздел 7).
 export type ClientSource =
   | 'website'
@@ -422,6 +376,11 @@ export const CASE_STAGE_LABEL: Record<CaseStage, string> = {
   awaiting_decision: 'Ожидание решения',
   closed: 'Завершено',
 };
+
+// Исход закрытого дела (v3 Сессия 7). NULL = завершено штатно (договор был);
+// 'lost' = «не заключили» (закрыто с этапа new_request|consultation). Отдельного
+// значения этапа НЕТ — это ортогональный признак на закрытом деле.
+export type CaseOutcome = 'lost';
 
 // Этапы, на которые роль может перевести дело с текущего (Задача 8):
 //   staff — все 5 (могут скорректировать/перескочить/откатить — §7-2);
@@ -501,13 +460,6 @@ export const BILLING_TYPES: ReadonlyArray<BillingType> = [
   'success_fee',
 ];
 
-export const BILLING_TYPE_LABEL: Record<BillingType, string> = {
-  prepaid: 'Предоплата',
-  installments: 'График расчётов',
-  fixed: 'Фиксированная',
-  success_fee: 'Гонорар успеха',
-};
-
 // Когда зарплата фиксируется в леджере (P2.1).
 export type AccrualMode = 'on_completion' | 'per_payment';
 
@@ -515,11 +467,6 @@ export const ACCRUAL_MODES: ReadonlyArray<AccrualMode> = [
   'on_completion',
   'per_payment',
 ];
-
-export const ACCRUAL_MODE_LABEL: Record<AccrualMode, string> = {
-  on_completion: 'При завершении дела',
-  per_payment: 'По мере оплат',
-};
 
 // Используется в /clients/[id] для compact-таблицы дел клиента.
 export type CaseSummary = {
@@ -564,6 +511,10 @@ export type Case = {
   court_case_number: string | null;
   court: string | null;
   closed_at: string | null;
+  // v3 s7: исход закрытого дела (NULL = штатно/договор был; 'lost' = не заключили).
+  outcome: CaseOutcome | null;
+  // Причина «не заключили» (свободный текст ≤500), иначе NULL.
+  lost_reason: string | null;
   // true, если дело closed без документа doc_type='act' (Задача 4). Мягкая пометка.
   closed_without_act: boolean;
   // Момент входа в текущий этап — для «N дней на этапе» (U6).
@@ -573,6 +524,10 @@ export type Case = {
   archived_at: string | null;
   archived_by: string | null;
   created_at: string;
+  // Версия-по-времени для optimistic locking (v3 Сессия 4). Триггер
+  // cases_touch_updated_at бьёт её на каждый UPDATE; форма редактирования шлёт
+  // base_updated_at, updateCaseAction отклоняет правку при рассинхроне.
+  updated_at: string;
 };
 
 // Дело с join-ом клиента, юриста и Експерта — для списка и карточки.

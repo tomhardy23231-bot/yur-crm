@@ -26,6 +26,8 @@ export const tasks: TasksMessages = {
     emptyMineText:
       'Завдання, призначені вам, з’являться тут. Створюйте завдання прямо з картки справи.',
     emptyAllText: 'За вашими справами поки немає завдань.',
+    // Глобальне створення завдання (v3 Сесія 6): кнопка і заголовок модалки.
+    newTask: 'Нове завдання',
   },
 
   caseBlock: {
@@ -46,7 +48,13 @@ export const tasks: TasksMessages = {
 
   form: {
     title: 'Назва',
+    createdToast: 'Завдання створено',
     titlePlaceholder: 'Підготувати позов / Засідання / ...',
+    // Комбобокс «Справа» у глобальному режимі (без прив’язки до картки справи).
+    case: 'Справа',
+    caseSelect: '— оберіть справу —',
+    caseSearchPlaceholder: 'Пошук справи…',
+    caseEmpty: 'Справу не знайдено',
     kind: 'Тип',
     assignee: 'Виконавець',
     assigneeSelect: '— оберіть —',
@@ -74,6 +82,8 @@ export const tasks: TasksMessages = {
     subtitle: '· найближчі 3 дні',
     allTasks: 'Усі завдання →',
     empty: 'На найближчі 3 дні нічого не заплановано — день під контролем.',
+    overdueHeading: 'Прострочені',
+    soonHeading: 'Найближчі 72 години',
   },
 
   errors: {

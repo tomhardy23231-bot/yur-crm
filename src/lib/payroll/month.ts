@@ -16,12 +16,30 @@ export const MONTH_NAMES_RU = [
   'Декабрь',
 ] as const;
 
-// Текущий месяц как 'YYYY-MM-01'. Вызывается на сервере (рендер по умолчанию).
+// Сегодняшняя дата в часовом поясе фирмы (Europe/Kyiv) как 'YYYY-MM-DD',
+// независимо от TZ хоста (Vercel/Node работают в UTC). en-CA даёт формат ISO.
+// Единый источник «киевской даты» для всего приложения (дашборд, отчёты, дела).
+export function kyivToday(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Kyiv',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+// Текущий { year, month(1–12) } в часовом поясе фирмы (Europe/Kyiv).
+export function kyivMonth(): { year: number; month: number } {
+  const s = kyivToday(); // 'YYYY-MM-DD'
+  return { year: Number(s.slice(0, 4)), month: Number(s.slice(5, 7)) };
+}
+
+// Текущий месяц как 'YYYY-MM-01' в TZ фирмы (Europe/Kyiv). Вызывается на сервере
+// (рендер по умолчанию). Раньше считался по TZ хоста → в ночь на 1-е число месяц
+// «съезжал»; теперь привязан к Киеву (v3 Сессия 4).
 export function currentMonth(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}-01`;
+  const { year, month } = kyivMonth();
+  return `${year}-${String(month).padStart(2, '0')}-01`;
 }
 
 // Приводит вход ('YYYY-MM' или 'YYYY-MM-01') к 'YYYY-MM-01'.

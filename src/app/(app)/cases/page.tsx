@@ -4,9 +4,11 @@ import { Archive, Briefcase, ExternalLink, History, LayoutGrid, Pencil, Plus } f
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { StageBadge } from '@/components/ui/stage-badge';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { PaymentProgress } from '@/components/cases/payment-progress';
+import { UUID_RE } from '@/lib/validation';
 import {
   CardListShell,
   CardHead,
@@ -15,6 +17,7 @@ import {
 } from '@/components/ui/card-table';
 import { ClickableCard } from '@/components/ui/clickable-card';
 import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
+import { CasesQuickFilters } from '@/components/cases/quick-filters';
 import { CasesDateFilter } from '@/components/cases/cases-date-filter';
 import { ArchiveCaseForm } from '@/components/cases/archive-case-form';
 import { CasesSearch } from '@/components/cases/cases-search';
@@ -35,6 +38,7 @@ import {
   listExpertsForFilter,
   listLawyersForFilter,
 } from '@/lib/cases/queries';
+import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
 import { listActiveDepartments } from '@/lib/departments/queries';
 import {
   CASE_CATEGORIES,
@@ -52,9 +56,6 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   month: '2-digit',
   year: 'numeric',
 });
-
-// U6: порог «застоя» дела на этапе — дольше подсвечиваем предупреждающим цветом.
-const STALE_STAGE_DAYS = 14;
 
 // Колонки «карточек-строк» десктоп-списка (общие для шапки и строк):
 // номер/клиент·тип · этап · категория · приоритет · эксперт · открыто · сумма ·
@@ -75,9 +76,6 @@ function isCaseType(value: string): value is CaseType {
 function isCaseCategory(value: string): value is CaseCategory {
   return (CASE_CATEGORIES as readonly string[]).includes(value);
 }
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isCasesSortColumn(value: string): value is CasesSortColumn {
   return (CASES_SORTABLE_COLUMNS as readonly string[]).includes(value);
@@ -157,24 +155,33 @@ export default async function CasesPage({
   // Списки для staff-фильтров (юрист / эксперт / клиент). Юристам/Експертам они
   // не нужны: те и так видят только свои дела. Эксперты/юристы — только «реальные»
   // роли (без owner/admin) — U3.
-  const [experts, lawyers, clients, departments] = isStaff
-    ? await Promise.all([
-        listExpertsForFilter(),
-        listLawyersForFilter(),
-        listClientsForSelect(),
-        canSeeDepartments ? listActiveDepartments() : Promise.resolve([]),
-      ])
-    : [[], [], [], []];
+  // 4.2: справочники фильтров и список+счётчики дел независимы — запускаем одним
+  // батчем (раньше были два последовательных await). Для не-staff справочники пусты.
+  const emptyRefs: [
+    Awaited<ReturnType<typeof listExpertsForFilter>>,
+    Awaited<ReturnType<typeof listLawyersForFilter>>,
+    Awaited<ReturnType<typeof listClientsForSelect>>,
+    Awaited<ReturnType<typeof listActiveDepartments>>,
+  ] = [[], [], [], []];
 
-  const [result, stageCounts] = await Promise.all([
-    listCases({
-      q, stage, caseType, category, responsibleId, lawyerId, clientId, departmentId,
-      debtOnly, archived, closedFrom, closedTo, page, sort, dir,
-    }),
-    countCasesByStage({
-      caseType, category, responsibleId, lawyerId, clientId, departmentId, debtOnly,
-    }),
-  ]);
+  const [[experts, lawyers, clients, departments], result, stageCounts] =
+    await Promise.all([
+      isStaff
+        ? Promise.all([
+            listExpertsForFilter(),
+            listLawyersForFilter(),
+            listClientsForSelect(),
+            canSeeDepartments ? listActiveDepartments() : Promise.resolve([]),
+          ])
+        : Promise.resolve(emptyRefs),
+      listCases({
+        q, stage, caseType, category, responsibleId, lawyerId, clientId, departmentId,
+        debtOnly, archived, closedFrom, closedTo, page, sort, dir,
+      }),
+      countCasesByStage({
+        caseType, category, responsibleId, lawyerId, clientId, departmentId, debtOnly,
+      }),
+    ]);
   const { items, pageCount } = result;
   const totalByStage = CASE_STAGES.reduce((sum, s) => sum + stageCounts[s], 0);
 
@@ -258,11 +265,16 @@ export default async function CasesPage({
     return buildHref({ sort: nextSort, dir: nextDir, page: 1 });
   }
 
-  // Переход на канбан-доску с сохранением совместимых фильтров (тип, ответственный).
+  // Переход на канбан-доску с сохранением совместимых фильтров (6.5: тип,
+  // категория, ответственный, подразделение). Поиск q доска не применяет, но
+  // переносим, чтобы он не терялся при возврате на список (там покажет подпись).
   function boardHref(): string {
     const params = new URLSearchParams();
+    if (q) params.set('q', q);
     if (caseType) params.set('type', caseType);
+    if (category) params.set('category', category);
     if (responsibleId) params.set('responsible', responsibleId);
+    if (departmentId) params.set('department', departmentId);
     const s = params.toString();
     return s ? `/cases/board?${s}` : '/cases/board';
   }
@@ -339,6 +351,10 @@ export default async function CasesPage({
             })}
           </div>
         </div>
+
+        {/* Быстрые пресеты (v3 s11) — только на активной вкладке: «С долгом» и
+            «Зависшие» в архиве не работают, «Закрытые за месяц» сам ведёт в архив. */}
+        {!archived && <CasesQuickFilters sp={sp} />}
 
         {/* Ряд 2: фильтры — горизонтальная лента (свайп) на узких экранах,
             обычный перенос на ≥ sm. */}
@@ -474,33 +490,42 @@ export default async function CasesPage({
       )}
 
       {items.length === 0 ? (
-        <EmptyState
-          // Создавать дело предлагаем только на активной вкладке без фильтров.
-          hasFilters={hasFilters}
-          isStaff={isStaff && !archived}
-          archived={archived}
-          title={
-            archived
-              ? hasFilters
-                ? t.cases.empty.notFoundTitle
-                : t.cases.archive.emptyTitle
-              : hasFilters
-                ? t.cases.empty.notFoundTitle
-                : t.cases.empty.title
-          }
-          hint={
-            archived
-              ? hasFilters
-                ? t.cases.archive.emptyFilteredHint
-                : t.cases.archive.emptyHint
-              : hasFilters
-                ? t.cases.empty.notFoundHint
-                : isStaff
-                  ? t.cases.empty.staffHint
-                  : t.cases.empty.nonStaffHint
-          }
-          newCaseLabel={t.cases.toolbar.newCase}
-        />
+        <div className="rounded-lg border border-border bg-surface py-8 shadow-sm">
+          <EmptyState
+            icon={archived ? Archive : Briefcase}
+            title={
+              archived
+                ? hasFilters
+                  ? t.cases.empty.notFoundTitle
+                  : t.cases.archive.emptyTitle
+                : hasFilters
+                  ? t.cases.empty.notFoundTitle
+                  : t.cases.empty.title
+            }
+            hint={
+              archived
+                ? hasFilters
+                  ? t.cases.archive.emptyFilteredHint
+                  : t.cases.archive.emptyHint
+                : hasFilters
+                  ? t.cases.empty.notFoundHint
+                  : isStaff
+                    ? t.cases.empty.staffHint
+                    : t.cases.empty.nonStaffHint
+            }
+            // Создавать дело предлагаем только на активной вкладке без фильтров.
+            action={
+              !hasFilters && isStaff && !archived ? (
+                <Button asChild>
+                  <Link href="/cases/new">
+                    <Plus size={16} strokeWidth={2} />
+                    {t.cases.toolbar.newCase}
+                  </Link>
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
       ) : (
         <>
         {/* Мобильное представление — компактные карточки вместо таблицы. */}
@@ -571,6 +596,11 @@ export default async function CasesPage({
                 <div role="cell" className="min-w-0">
                   <span className="inline-flex flex-wrap items-center gap-1.5">
                     <StageBadge stage={c.stage} pulse={false} />
+                    {c.outcome === 'lost' && (
+                      <Badge tone="neutral" title={t.cases.lost.badgeTitle}>
+                        {t.cases.lost.badge}
+                      </Badge>
+                    )}
                     {c.closed_without_act && (
                       <Badge tone="warning" title={t.cases.row.withoutActTitle}>
                         {t.cases.row.withoutAct}
@@ -750,47 +780,6 @@ function PageLink({
     >
       {children}
     </Link>
-  );
-}
-
-function EmptyState({
-  hasFilters,
-  isStaff,
-  archived = false,
-  title,
-  hint,
-  newCaseLabel,
-}: {
-  hasFilters: boolean;
-  isStaff: boolean;
-  archived?: boolean;
-  title: string;
-  hint: string;
-  newCaseLabel: string;
-}) {
-  return (
-    <div className="bg-surface rounded-lg border border-border shadow-sm py-16 px-6 flex flex-col items-center text-center">
-      <span
-        className="inline-flex w-12 h-12 items-center justify-center rounded-full text-primary bg-primary-subtle mb-4"
-        aria-hidden="true"
-      >
-        {archived ? (
-          <Archive size={20} strokeWidth={1.75} />
-        ) : (
-          <Briefcase size={20} strokeWidth={1.75} />
-        )}
-      </span>
-      <h2 className="text-[18px] font-semibold text-text mb-1">{title}</h2>
-      <p className="text-[13px] text-text-muted max-w-md mb-5">{hint}</p>
-      {!hasFilters && isStaff && (
-        <Button asChild>
-          <Link href="/cases/new">
-            <Plus size={16} strokeWidth={2} />
-            {newCaseLabel}
-          </Link>
-        </Button>
-      )}
-    </div>
   );
 }
 

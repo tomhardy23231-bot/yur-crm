@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { kyivToday } from '@/lib/payroll/month';
 import type {
   Task,
   TaskKind,
@@ -139,42 +140,169 @@ export async function countOpenTasksAssignedTo(userId: string): Promise<number> 
 }
 
 // =====================================================================
+// countUserTasksDue — честный колокольчик топбара (v3 Сессия 6).
+// Два дешёвых head-count по открытым задачам пользователя:
+//   • overdue — просроченные (due_at < now);
+//   • today   — сегодняшние по Киеву (now ≤ due_at < конец киевского дня).
+// =====================================================================
+
+// Текущее смещение Киева ('+02:00'/'+03:00') из Intl longOffset: в сам день
+// перевода часов (DST в 03:00) границы уедут на ±1 час — для счётчиков и
+// блока «Мой день» несущественно.
+function kyivOffset(): string {
+  const tzName = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Kyiv',
+    timeZoneName: 'longOffset',
+  })
+    .formatToParts(new Date())
+    .find((p) => p.type === 'timeZoneName')?.value;
+  return /GMT([+-]\d{2}:\d{2})/.exec(tzName ?? '')?.[1] ?? '+02:00';
+}
+
+// Начало СЕГОДНЯШНЕГО дня Киева как UTC-instant (ISO) — для среза «Мой день».
+function kyivTodayStartIso(): string {
+  return new Date(`${kyivToday()}T00:00:00${kyivOffset()}`).toISOString();
+}
+
+// Конец СЕГОДНЯШНЕГО дня Киева как UTC-instant (ISO).
+function kyivTodayEndIso(): string {
+  // Полночь СЛЕДУЮЩЕГО киевского дня в киевском смещении = конец сегодняшнего.
+  const [y, m, d] = kyivToday().split('-').map(Number);
+  const next = new Date(Date.UTC(y!, m! - 1, d! + 1)).toISOString().slice(0, 10);
+  return new Date(`${next}T00:00:00${kyivOffset()}`).toISOString();
+}
+
+export type UserTasksDue = { overdue: number; today: number };
+
+export async function countUserTasksDue(userId: string): Promise<UserTasksDue> {
+  const supabase = await createSupabaseServerClient();
+  const nowIso = new Date().toISOString();
+  const dayEndIso = kyivTodayEndIso();
+
+  const [overdueRes, todayRes] = await Promise.all([
+    supabase
+      .from('tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('assignee_id', userId)
+      .eq('status', 'open')
+      .not('due_at', 'is', null)
+      .lt('due_at', nowIso),
+    supabase
+      .from('tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('assignee_id', userId)
+      .eq('status', 'open')
+      .gte('due_at', nowIso)
+      .lt('due_at', dayEndIso),
+  ]);
+
+  if (overdueRes.error) {
+    throw new Error(`countUserTasksDue overdue failed: ${overdueRes.error.message}`);
+  }
+  if (todayRes.error) {
+    throw new Error(`countUserTasksDue today failed: ${todayRes.error.message}`);
+  }
+  return { overdue: overdueRes.count ?? 0, today: todayRes.count ?? 0 };
+}
+
+// =====================================================================
 // listUpcomingTasks — приближающиеся сроки (Шаг 10, напоминания).
 // RLS отрежет невидимые: specialist видит только свои дела;
 // admin — все. Поэтому мы НЕ фильтруем по assignee — admin'у полезно видеть
 // приближающиеся дедлайны всей команды.
+//
+// v3 Сессия 4: разделяем на ДВЕ группы, чтобы просрочки не тонули среди
+// будущих дедлайнов:
+//   • overdue — просроченные (due_at < now): топ-N свежих (due_at desc) + общий
+//     счётчик (overdueCount), чтобы показать «Просроченные (N)»;
+//   • soon — ближайшие hoursAhead часов (now ≤ due_at < now+window), asc.
+// Возвращает только open-task с непустым due_at.
 // Параметры:
-//   - hoursAhead: окно (по умолчанию 72ч ≈ «ближайшие 3 дня»);
-//   - limit: сколько ближайших показать.
-// Возвращает только open-task с непустым due_at, отсортированные asc.
+//   - hoursAhead: окно будущего (по умолчанию 72ч ≈ «ближайшие 3 дня»);
+//   - limit: сколько ближайших (soon) показать;
+//   - overdueLimit: сколько просрочек показать (по умолчанию 3).
 // =====================================================================
+export type UpcomingTasks = {
+  overdue: TaskWithRefs[];
+  overdueCount: number;
+  soon: TaskWithRefs[];
+  /** «Мой день» (v3 s11): открытые задачи todayForUserId с due в сегодняшнем
+   *  киевском дне (включая уже просроченные сегодня). Пуст без параметра. */
+  today: TaskWithRefs[];
+};
+
 export async function listUpcomingTasks(params: {
   hoursAhead?: number;
   limit?: number;
-} = {}): Promise<TaskWithRefs[]> {
+  overdueLimit?: number;
+  /** Если задан — третьим лёгким запросом срез «сегодня» этого пользователя. */
+  todayForUserId?: string;
+} = {}): Promise<UpcomingTasks> {
   const hoursAhead = params.hoursAhead ?? 72;
   const limit = Math.max(1, params.limit ?? 10);
+  const overdueLimit = Math.max(1, params.overdueLimit ?? 3);
 
-  const now = new Date();
-  const horizon = new Date(now.getTime() + hoursAhead * 3600 * 1000);
+  const nowIso = new Date().toISOString();
+  const horizonIso = new Date(
+    Date.now() + hoursAhead * 3600 * 1000,
+  ).toISOString();
+
+  const select =
+    'id, case_id, title, description, kind, assignee_id, created_by, due_at, status, created_at, ' +
+    'assignee:assignee_id(id, full_name), case:case_id(id, number_title)';
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('tasks')
-    .select(
-      'id, case_id, title, description, kind, assignee_id, created_by, due_at, status, created_at, ' +
-        'assignee:assignee_id(id, full_name), case:case_id(id, number_title)',
-    )
-    .eq('status', 'open')
-    .not('due_at', 'is', null)
-    .lte('due_at', horizon.toISOString())
-    .order('due_at', { ascending: true })
-    .limit(limit);
 
-  if (error) {
-    throw new Error(`listUpcomingTasks failed: ${error.message}`);
+  const [overdueRes, soonRes, todayRes] = await Promise.all([
+    // Просроченные: самые свежие сверху (due_at desc) + точный общий счётчик.
+    supabase
+      .from('tasks')
+      .select(select, { count: 'exact' })
+      .eq('status', 'open')
+      .not('due_at', 'is', null)
+      .lt('due_at', nowIso)
+      .order('due_at', { ascending: false })
+      .limit(overdueLimit),
+    // Ближайшие: окно [now, now+hoursAhead), по возрастанию срока.
+    supabase
+      .from('tasks')
+      .select(select)
+      .eq('status', 'open')
+      .not('due_at', 'is', null)
+      .gte('due_at', nowIso)
+      .lt('due_at', horizonIso)
+      .order('due_at', { ascending: true })
+      .limit(limit),
+    // «Мой день»: сегодняшний киевский день целиком, только свои задачи.
+    params.todayForUserId
+      ? supabase
+          .from('tasks')
+          .select(select)
+          .eq('status', 'open')
+          .eq('assignee_id', params.todayForUserId)
+          .gte('due_at', kyivTodayStartIso())
+          .lt('due_at', kyivTodayEndIso())
+          .order('due_at', { ascending: true })
+          .limit(20)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (overdueRes.error) {
+    throw new Error(`listUpcomingTasks overdue failed: ${overdueRes.error.message}`);
   }
-  return normalizeTasks(data ?? []);
+  if (soonRes.error) {
+    throw new Error(`listUpcomingTasks soon failed: ${soonRes.error.message}`);
+  }
+  if (todayRes.error) {
+    throw new Error(`listUpcomingTasks today failed: ${todayRes.error.message}`);
+  }
+
+  return {
+    overdue: normalizeTasks(overdueRes.data ?? []),
+    overdueCount: overdueRes.count ?? 0,
+    soon: normalizeTasks(soonRes.data ?? []),
+    today: normalizeTasks(todayRes.data ?? []),
+  };
 }
 
 // =====================================================================

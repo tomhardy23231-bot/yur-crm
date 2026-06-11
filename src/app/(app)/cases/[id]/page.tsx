@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   Archive,
+  Ban,
   Briefcase,
   Building2,
   Check,
@@ -14,17 +15,22 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { CaseStageDropdown } from '@/components/cases/case-stage-dropdown';
+import { CaseQuickActions } from '@/components/cases/case-quick-actions';
+import { MarkLostButton } from '@/components/cases/mark-lost-button';
 import { CaseActionBar } from '@/components/cases/case-action-bar';
+import { PaymentProgress } from '@/components/cases/payment-progress';
 import { CaseInfoGrid } from '@/components/cases/case-info-grid';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { CaseActivityBlock } from '@/components/activity/case-activity-block';
 import { CaseCommentsBlock } from '@/components/comments/case-comments-block';
 import { CaseDocumentsBlock } from '@/components/documents/case-documents-block';
 import { CaseActsBlock } from '@/components/acts/case-acts-block';
+import { PaymentPlanBlock } from '@/components/payments/payment-plan-block';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { requireUser } from '@/lib/auth/require-role';
 import { cn, daysSince, formatMoney, formatPercent } from '@/lib/utils';
 import { getCase } from '@/lib/cases/queries';
+import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
 import { getCasePayroll, getCasePaidByRole } from '@/lib/payroll/queries';
 import { caseHasDocOfType } from '@/lib/documents/queries';
 import { getOrgRequisites, requisitesAreUsable } from '@/lib/org/queries';
@@ -67,6 +73,9 @@ export default async function CaseDetailPage({
     has_links: t.caseCard.detail.errorHasLinks,
     delete_failed: t.caseCard.detail.errorDeleteFailed,
     missing_id: t.caseCard.detail.errorMissingId,
+    act_delete_failed: t.caseCard.detail.errorActDeleteFailed,
+    act_update_failed: t.caseCard.detail.errorActUpdateFailed,
+    archive_failed: t.caseCard.detail.errorArchiveFailed,
   };
 
   // Этапы (откат/прыжок) — по роли staff (БД-триггер guard_stage_forward).
@@ -91,11 +100,13 @@ export default async function CaseDetailPage({
   const errorMessage = error ? ERROR_MESSAGES[error] : undefined;
 
   // Начисление зарплаты (live) + сколько уже выплачено по делу (по ролям) +
-  // реквизиты компании (для предупреждения «незаполнены» в блоке актов).
-  const [payroll, paidByRole, org] = await Promise.all([
+  // реквизиты компании (для предупреждения «незаполнены» в блоке актов) +
+  // есть ли акт приёма-передачи (4.2: добавлен в общий батч, не отдельным await).
+  const [payroll, paidByRole, org, hasAct] = await Promise.all([
     getCasePayroll(c.id),
     getCasePaidByRole(c.id),
     getOrgRequisites(),
+    caseHasDocOfType(c.id, 'act'),
   ]);
   const requisitesUsable = requisitesAreUsable(org);
 
@@ -115,18 +126,25 @@ export default async function CaseDetailPage({
         ? 'expert'
         : null;
 
-  // Есть ли акт приёма-передачи. Нужен и для мягкого предупреждения (дело уже
-  // закрыто без акта), и для подтверждения при попытке закрыть без акта (степпер).
-  const hasAct = await caseHasDocOfType(c.id, 'act');
+  // hasAct (см. батч выше) — для мягкого предупреждения «дело закрыто без акта»
+  // и для подтверждения при попытке закрыть без акта (степпер).
   const missingAct = c.stage === 'closed' && !hasAct;
 
   const isClosed = c.stage === 'closed';
+  // v3 s7: дело закрыто как «не заключили» (lost) — серый бейдж + причина в шапке.
+  const isLost = c.outcome === 'lost';
+  // Кнопку «Не заключили» показываем до контракта (new_request|consultation) тому,
+  // кто вправе её закрыть: staff или юрист дела (зеркало close_case_lost RPC).
+  const canMarkLost =
+    !isLost &&
+    (c.stage === 'new_request' || c.stage === 'consultation') &&
+    (isStaff || c.lawyer_id === user.profile.id);
   // Дело в архиве: этап менять нельзя (нужно сперва восстановить — иначе CHECK
   // cases_archived_requires_closed отвергнет откат). Архивируют только staff.
   const isArchived = c.archived_at != null;
   // U6: дни на текущем этапе (для незакрытых дел) + признак «застоя».
   const stageDays = isClosed ? null : daysSince(c.stage_changed_at);
-  const stageStale = stageDays !== null && stageDays >= 14;
+  const stageStale = stageDays !== null && stageDays >= STALE_STAGE_DAYS;
 
   // Участники «вознаграждения», с учётом видимости начислений по роли зрителя.
   const participants: Participant[] = [];
@@ -165,7 +183,7 @@ export default async function CaseDetailPage({
   const showReward = participants.length > 0;
 
   return (
-    <main className="flex flex-col gap-4 px-3 py-2 sm:px-4">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       {/* ── Закреплённая панель: «К списку», навигация по секциям, действия ── */}
       <CaseActionBar
         caseId={c.id}
@@ -199,9 +217,9 @@ export default async function CaseDetailPage({
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className="inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[12px] font-extrabold tracking-[0.01em] text-white shadow-sm"
+              className="inline-flex items-center gap-1.5 rounded-chip px-2.5 py-1 text-[12px] font-extrabold tracking-[0.01em] text-white shadow-sm"
               style={{
-                background: 'var(--grad-brass)',
+                background: 'var(--grad-brand)',
                 boxShadow: 'var(--shadow-brand-badge)',
               }}
             >
@@ -234,32 +252,35 @@ export default async function CaseDetailPage({
             )}
           </div>
 
-          {/* Деньги «одним взглядом»: договор · оплачено · долг/переплата.
-              На мобильных — три равные плитки во всю ширину; на ≥ sm — справа.
-              Детальная развёртка — в сетке «Финансы и суд» ниже. */}
-          <div className="flex w-full items-stretch gap-2 sm:w-auto sm:shrink-0">
-            <MoneyStat
-              label={t.caseCard.detail.rewardSum}
-              value={formatMoney(c.contract_sum)}
-            />
-            <MoneyStat
-              label={t.caseCard.detail.rewardPaid}
-              value={formatMoney(c.paid_total)}
-              tone="success"
-            />
-            {c.overpaid > 0 ? (
+          {/* Деньги «одним взглядом»: договор · оплачено · долг/переплата +
+              прогресс оплаты под суммами (v3 s11). На мобильных — плитки во
+              всю ширину; на ≥ sm — справа. Детальная развёртка — в сетке ниже. */}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0">
+            <div className="flex w-full items-stretch gap-2">
               <MoneyStat
-                label={t.caseCard.detail.rewardOverpaid}
-                value={`+${formatMoney(c.overpaid)}`}
-                tone="info"
+                label={t.caseCard.detail.rewardSum}
+                value={formatMoney(c.contract_sum)}
               />
-            ) : (
               <MoneyStat
-                label={t.caseCard.detail.rewardDebt}
-                value={formatMoney(c.debt)}
-                tone={c.debt > 0 ? 'error' : 'muted'}
+                label={t.caseCard.detail.rewardPaid}
+                value={formatMoney(c.paid_total)}
+                tone="success"
               />
-            )}
+              {c.overpaid > 0 ? (
+                <MoneyStat
+                  label={t.caseCard.detail.rewardOverpaid}
+                  value={`+${formatMoney(c.overpaid)}`}
+                  tone="info"
+                />
+              ) : (
+                <MoneyStat
+                  label={t.caseCard.detail.rewardDebt}
+                  value={formatMoney(c.debt)}
+                  tone={c.debt > 0 ? 'error' : 'muted'}
+                />
+              )}
+            </div>
+            <PaymentProgress paid={c.paid_total} total={c.contract_sum} />
           </div>
         </div>
 
@@ -277,13 +298,32 @@ export default async function CaseDetailPage({
             hasAct={hasAct}
             canEdit={canEdit && !isArchived}
           />
+          {isLost && (
+            <Badge tone="neutral" className="gap-1" title={t.cases.lost.badgeTitle}>
+              <Ban size={12} strokeWidth={2} />
+              {t.cases.lost.badge}
+            </Badge>
+          )}
+          {canMarkLost && !isArchived && <MarkLostButton caseId={c.id} />}
           {isArchived && (
             <Badge tone="neutral" className="gap-1">
               <Archive size={12} strokeWidth={2} />
               {t.cases.archive.badge}
             </Badge>
           )}
+          {/* Быстрые действия (v3 s11): гейтинг — как у форм секций. */}
+          <CaseQuickActions
+            caseId={c.id}
+            canAddPayment={canEdit}
+            canAddTask={canEdit}
+            canAddAct={canCreateActs}
+          />
         </div>
+        {isLost && c.lost_reason && (
+          <p className="mt-1.5 text-[12px] text-text-subtle">
+            {t.cases.lost.reasonPrefix} {c.lost_reason}
+          </p>
+        )}
         {isArchived && (
           <p className="mt-1.5 text-[12px] text-text-subtle">
             {t.cases.archive.detailHint}
@@ -506,9 +546,17 @@ export default async function CaseDetailPage({
         </aside>
       </div>
 
-      {/* ── Ряд B: акты, документы и задачи во всю ширину (раньше тут были
-           комментарии; поменяли местами с рабочей колонкой выше). ── */}
+      {/* ── Ряд B: график платежей, акты, документы и задачи во всю ширину. ── */}
       <div className="flex flex-col gap-5">
+        {/* График платежей (v3 Сессия 9) — рядом с финансами/актами */}
+        <section id="plan" className="scroll-mt-16">
+          <PaymentPlanBlock
+            caseId={c.id}
+            paidTotal={c.paid_total}
+            canWrite={canEdit}
+          />
+        </section>
+
         {/* Акты (Рахунок-Акт) — v2 Этап 5 */}
         <section id="acts" className="scroll-mt-16">
           <CaseActsBlock
@@ -562,7 +610,7 @@ function MoneyStat({
 }) {
   const valueClass =
     tone === 'success'
-      ? 'text-success'
+      ? 'text-success-text'
       : tone === 'error'
         ? 'text-error'
         : tone === 'info'
@@ -571,16 +619,12 @@ function MoneyStat({
             ? 'text-text-muted'
             : 'text-text';
   return (
-    <div className="flex flex-1 flex-col items-end rounded-[8px] bg-surface-sunken px-2.5 py-1.5 sm:min-w-[88px] sm:flex-none sm:px-3">
-      <span className="text-[10px] font-medium uppercase tracking-[0.03em] text-text-subtle">
+    // Иерархия v3 s11: подпись 11px muted сверху, сумма 18px medium tabular.
+    <div className="flex flex-1 flex-col items-end rounded-[8px] bg-surface-sunken px-2.5 py-1.5 sm:min-w-[96px] sm:flex-none sm:px-3">
+      <span className="text-[11px] font-medium uppercase tracking-[0.03em] text-text-muted">
         {label}
       </span>
-      <span
-        className={cn(
-          'text-[14px] font-bold tabular-nums',
-          valueClass,
-        )}
-      >
+      <span className={cn('text-[18px] font-medium leading-snug tabular-nums', valueClass)}>
         {value} ₴
       </span>
     </div>
