@@ -8,6 +8,7 @@ import {
   FileText,
   GitBranch,
   HelpCircle,
+  Keyboard,
   Search,
   ShieldCheck,
   Sparkles,
@@ -165,7 +166,7 @@ export default async function HelpPage() {
       {/* ── Hero ──────────────────────────────────────────────── */}
       <Card
         className="relative overflow-hidden border-0 px-6 py-7 sm:px-8"
-        style={{ backgroundImage: 'var(--grad-brass)' }}
+        style={{ backgroundImage: 'var(--grad-brand)' }}
       >
         <div className="relative z-10 flex flex-col gap-4">
           <div className="flex items-start gap-3">
@@ -381,6 +382,35 @@ export default async function HelpPage() {
             text={h.inside.tasksText}
           />
         </div>
+      </Section>
+
+      {/* ── Горячие клавиши (v3 Сессия 11) ─────────────────────── */}
+      <Section icon={Keyboard} title={h.sections.hotkeys}>
+        <Card className="p-5">
+          <div className="grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
+            {[
+              { keys: 'Ctrl K', label: t.ui.hotkeys.searchAction },
+              { keys: '/', label: t.ui.hotkeys.searchAction },
+              ...(user.caps.create_cases
+                ? [{ keys: 'N', label: t.ui.hotkeys.newCaseAction }]
+                : []),
+              { keys: 'T', label: t.ui.hotkeys.newTaskAction },
+              { keys: '?', label: t.ui.hotkeys.helpAction },
+              { keys: 'Esc', label: t.ui.hotkeys.closeAction },
+            ].map((row) => (
+              <div
+                key={row.keys + row.label}
+                className="flex items-center justify-between gap-4 border-b border-border pb-2.5 last:border-0 sm:[&:nth-last-child(2)]:border-0"
+              >
+                <span className="text-[13.5px] text-text">{row.label}</span>
+                <kbd className="shrink-0 rounded border border-border bg-surface-muted px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-text-subtle">
+                  {row.keys}
+                </kbd>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[12.5px] text-text-subtle">{t.ui.hotkeys.hint}</p>
+        </Card>
       </Section>
 
       {/* ── FAQ ───────────────────────────────────────────────── */}

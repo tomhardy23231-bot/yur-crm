@@ -29,8 +29,7 @@
   --primary-fg:     #FFFFFF;
   --primary-subtle: #DBE7FE;  /* светлый синий фон акцента/выделенной строки */
   --primary-border: #C9D6F4;
-  --brass-bright:   #5B8DEF;  /* устаревшее имя — теперь светлый синий */
-  --brass-glow:     rgba(37, 99, 235, 0.16);
+  --primary-bright: #5B8DEF;  /* светлый синий — декор (бывш. --brass-bright) */
 
   /* Бренд-плашка (логотип «Ю») и бейдж «Дело» — синий градиент, белый текст. */
   --brand-tile-fg:      #FFFFFF;
@@ -38,7 +37,7 @@
   --shadow-brand-badge: 0 2px 8px rgba(47, 95, 224, .32), inset 0 1px 0 rgba(255, 255, 255, .18);
 
   /* Градиенты — синий для бренд-плашки + hero-шапки. CTA-кнопки — СПЛОШНОЙ синий. */
-  --grad-brass:  linear-gradient(150deg, #3A72F7 0%, #2347C2 100%);
+  --grad-brand:  linear-gradient(150deg, #3A72F7 0%, #2347C2 100%);
   --grad-indigo: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
   --grad-rose:   linear-gradient(135deg, #EC4899 0%, #D946EF 100%);
   --grad-amber:  linear-gradient(135deg, #F97316 0%, #EA580C 100%);
@@ -73,6 +72,17 @@
   --absence:    #7C3AED;  /* violet — отпуска/отсутствия в календаре (v2 Этап 6) */
   --absence-bg: #EDE9FE;
 
+  /* Текстовые тона семантики (v3 s10, WCAG AA): тёмные варианты для ТЕКСТА —
+     зелёные суммы, текст залитых бейджей. Яркие тона выше — заливки/точки/иконки.
+     success-text 6.49:1 на success-bg, 7.13:1 на белом; error-text 6.80:1;
+     info-text 7.01:1 (см. PROGRESS сессии 10). */
+  --success-text: #166534;
+  --error-text:   #991B1B;
+  --info-text:    #1E40AF;
+
+  /* Подложка модальных окон/шторок — единый тон затемнения (v3 s10). */
+  --overlay: rgba(8, 10, 15, 0.8);
+
   /* Priority (в БД normal|urgent; mid оставлен на будущее) */
   --prio-low:     #16A34A;
   --prio-low-bg:  #DCFCE7;
@@ -81,17 +91,30 @@
   --prio-high:    #DC2626;
   --prio-high-bg: #FEE2E2;
 
-  /* Stage colors (5 этапов воронки) — яркая чистая шкала эталона */
-  --stage-new:             #64748B; --stage-new-bg:             #EEF2F7;
-  --stage-consultation:    #8B5CF6; --stage-consultation-bg:    #F1EBFE;
-  --stage-in-progress:     #2563EB; --stage-in-progress-bg:     #DBE7FE;
-  --stage-awaiting:        #F97316; --stage-awaiting-bg:        #FFEAD8;
-  --stage-closed:          #16A34A; --stage-closed-bg:          #DCFCE7;
+  /* Stage colors (5 этапов воронки) — яркая чистая шкала эталона.
+     Тройка на этап: тон (точка/заливка), -bg (подложка чипа), -fg (ТЕКСТ на
+     подложке — тёмный, WCAG AA ≥ 4.5 на своём -bg; v3 s10). */
+  --stage-new:             #64748B; --stage-new-bg:             #EEF2F7; --stage-new-fg:             #3F4A5C;
+  --stage-consultation:    #8B5CF6; --stage-consultation-bg:    #F1EBFE; --stage-consultation-fg:    #5B21B6;
+  --stage-in-progress:     #2563EB; --stage-in-progress-bg:     #DBE7FE; --stage-in-progress-fg:     #1E40AF;
+  --stage-awaiting:        #F97316; --stage-awaiting-bg:        #FFEAD8; --stage-awaiting-fg:        #9A3412;
+  --stage-closed:          #16A34A; --stage-closed-bg:          #DCFCE7; --stage-closed-fg:          #166534;
 
-  /* Категории дел (3) — несут % зарплаты (7/10/25). Яркая чистая семантика. */
-  --cat-document:       #06B6D4; --cat-document-bg:       #CFF6FC;  /* cyan — Документ */
-  --cat-claim:          #EC4899; --cat-claim-bg:          #FCE7F3;  /* pink — Иск */
-  --cat-representation: #D946EF; --cat-representation-bg: #FAE3FD;  /* magenta — Представительство */
+  /* Категории дел (3) — несут % зарплаты (7/10/25). Яркая чистая семантика.
+     -fg — текст на подложке (AA, как у этапов; v3 s10). */
+  --cat-document:       #06B6D4; --cat-document-bg:       #CFF6FC; --cat-document-fg:       #0E7490;  /* cyan — Документ */
+  --cat-claim:          #EC4899; --cat-claim-bg:          #FCE7F3; --cat-claim-fg:          #9D174D;  /* pink — Иск */
+  --cat-representation: #D946EF; --cat-representation-bg: #FAE3FD; --cat-representation-fg: #86198F;  /* magenta — Представительство */
+
+  /* Аватары — палитра инициалов по хэшу имени (v3 s10: вынесено из avatar.tsx;
+     белый текст на каждом ≥ 3.0:1 — инициалы крупные/декоративные и дублируются
+     текстом рядом). Бывшие светлые #F97316/#14B8A6 затемнены до AA-large. */
+  --avatar-1: #2563EB;  /* blue    5.17 */
+  --avatar-2: #8B5CF6;  /* violet  4.23 */
+  --avatar-3: #EC4899;  /* rose    3.53 */
+  --avatar-4: #C2410C;  /* amber   5.18 (был #F97316 — 2.80, fail) */
+  --avatar-5: #0F766E;  /* teal    5.47 (был #14B8A6 — 2.49, fail) */
+  --avatar-6: #64748B;  /* slate   4.76 */
 
   /* Brand integrations */
   --brand-gmail:    #EA4335;
@@ -99,12 +122,21 @@
   --brand-whatsapp: #25D366;
   --brand-viber:    #7360F2;
 
-  /* Радиусы — карточки ~11px, контролы 8–9px (эталон) */
+  /* Радиусы. ⚠ Шкала sm/md/lg ИСТОРИЧЕСКАЯ и инвертирована (sm 8 > lg 6) —
+     значения зафиксированы пользователем (вид менять нельзя), но для НОВЫХ
+     компонентов её НЕ использовать: бери компонентные алиасы ниже (v3 s10). */
   --r-sm:   8px;
   --r-md:   9px;
   --r-lg:   6px;
   --r-xl:  16px;
   --r-full: 9999px;
+
+  /* Компонентные алиасы радиусов — семантика вместо шкалы (v3 s10).
+     Значения = фактические в коде, вид не меняется. */
+  --r-card:    6px;   /* карточки, контейнеры списков (= историческое --r-lg) */
+  --r-control: 9px;   /* кнопки, инпуты, селекты (= историческое --r-md) */
+  --r-chip:    7px;   /* чипы этапов/категорий, мелкие бейджи */
+  --r-modal:  20px;   /* модальные окна */
 
   /* Тени — мягкие; глубину дают и границы, и лёгкая тень (чуть выраженнее) */
   --shadow-sm: 0 1px 2px rgba(20, 22, 30, 0.06), 0 2px 6px rgba(20, 22, 30, 0.05);
@@ -160,7 +192,7 @@
   --color-primary-fg:      var(--primary-fg);
   --color-primary-subtle:  var(--primary-subtle);
   --color-primary-border:  var(--primary-border);
-  --color-brass-bright:    var(--brass-bright);
+  --color-primary-bright:  var(--primary-bright);
 
   /* Semantic */
   --color-success:    var(--success);
@@ -173,6 +205,10 @@
   --color-info-bg:    var(--info-bg);
   --color-absence:    var(--absence);
   --color-absence-bg: var(--absence-bg);
+  --color-success-text: var(--success-text);
+  --color-error-text:   var(--error-text);
+  --color-info-text:    var(--info-text);
+  --color-overlay:      var(--overlay);
 
   /* Priority */
   --color-prio-low:     var(--prio-low);
@@ -185,14 +221,19 @@
   /* Stage */
   --color-stage-new:             var(--stage-new);
   --color-stage-new-bg:          var(--stage-new-bg);
+  --color-stage-new-fg:          var(--stage-new-fg);
   --color-stage-consultation:    var(--stage-consultation);
   --color-stage-consultation-bg: var(--stage-consultation-bg);
+  --color-stage-consultation-fg: var(--stage-consultation-fg);
   --color-stage-in-progress:     var(--stage-in-progress);
   --color-stage-in-progress-bg:  var(--stage-in-progress-bg);
+  --color-stage-in-progress-fg:  var(--stage-in-progress-fg);
   --color-stage-awaiting:        var(--stage-awaiting);
   --color-stage-awaiting-bg:     var(--stage-awaiting-bg);
+  --color-stage-awaiting-fg:     var(--stage-awaiting-fg);
   --color-stage-closed:          var(--stage-closed);
   --color-stage-closed-bg:       var(--stage-closed-bg);
+  --color-stage-closed-fg:       var(--stage-closed-fg);
 
   /* Brand */
   --color-brand-gmail:    var(--brand-gmail);
@@ -216,17 +257,32 @@
   /* Категории дел */
   --color-cat-document:       var(--cat-document);
   --color-cat-document-bg:    var(--cat-document-bg);
+  --color-cat-document-fg:    var(--cat-document-fg);
   --color-cat-claim:          var(--cat-claim);
   --color-cat-claim-bg:       var(--cat-claim-bg);
+  --color-cat-claim-fg:       var(--cat-claim-fg);
   --color-cat-representation:    var(--cat-representation);
   --color-cat-representation-bg: var(--cat-representation-bg);
+  --color-cat-representation-fg: var(--cat-representation-fg);
 
-  /* Радиусы */
+  /* Аватары */
+  --color-avatar-1: var(--avatar-1);
+  --color-avatar-2: var(--avatar-2);
+  --color-avatar-3: var(--avatar-3);
+  --color-avatar-4: var(--avatar-4);
+  --color-avatar-5: var(--avatar-5);
+  --color-avatar-6: var(--avatar-6);
+
+  /* Радиусы (sm/md/lg — историческая шкала, см. :root; новое — алиасы ниже) */
   --radius-sm:   var(--r-sm);
   --radius-md:   var(--r-md);
   --radius-lg:   var(--r-lg);
   --radius-xl:   var(--r-xl);
   --radius-full: var(--r-full);
+  --radius-card:    var(--r-card);
+  --radius-control: var(--r-control);
+  --radius-chip:    var(--r-chip);
+  --radius-modal:   var(--r-modal);
 
   /* Тени */
   --shadow-sm: var(--shadow-sm);
@@ -362,6 +418,13 @@ body {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Появление тоста (ui/toast.tsx): fade + лёгкий slide-up. */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-toast-in { animation: toast-in 150ms var(--ease-out) both; }
+
 .animate-fade-in-up {
   animation: fade-in-up var(--dur-medium) var(--ease-out) both;
 }
@@ -453,6 +516,7 @@ body {
   .animate-sheet-fade,
   .animate-sheet-up,
   .animate-bottomnav-in,
+  .animate-toast-in,
   .shake,
   .animate-field-error {
     animation: none;
@@ -538,7 +602,8 @@ body {
   display: inline-block;
   font-family: var(--font-mono), monospace;
   font-size: 11px;
-  font-weight: 700;
+  /* 600 — максимальный подключённый вес JetBrains Mono (v3 s10: 500/700 срезаны) */
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--primary);
@@ -583,10 +648,10 @@ body {
   color: var(--text);
 }
 
-/* «Далее» / «Завершить» — фирменная CTA с градиентом */
+/* «Далее» / «Завершить» — фирменная CTA. Сплошной primary: градиенты на
+   кнопках запрещены (DESIGN.md), v3 s10. */
 .driver-popover.yk-tour .driver-popover-next-btn {
-  background-color: var(--primary);
-  background-image: var(--grad-brass);
+  background: var(--primary);
   color: var(--primary-fg);
   border: 1px solid transparent;
 }

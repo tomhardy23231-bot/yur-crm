@@ -18,15 +18,16 @@ const SIZES: Record<NonNullable<AvatarProps["size"]>, string> = {
   xl: "w-12 h-12 text-base",
 };
 
-// Единый набор приглушённо-ярких цветов аватара по хэшу имени (бриф §6):
-// без золота/латуни. Совпадает со свотчами аватаров в эталон-вёрстке.
+// Единый набор цветов аватара по хэшу имени — токены --avatar-1..6 в
+// globals.css (v3 s10: палитра вынесена из компонента; светлые amber/teal
+// затемнены — белые инициалы на каждом ≥ 3.0:1).
 const AVATAR_COLORS = [
-  "#2563EB", // blue
-  "#8B5CF6", // violet
-  "#EC4899", // rose
-  "#F97316", // amber
-  "#14B8A6", // teal
-  "#64748B", // slate
+  "var(--avatar-1)", // blue
+  "var(--avatar-2)", // violet
+  "var(--avatar-3)", // rose
+  "var(--avatar-4)", // amber
+  "var(--avatar-5)", // teal
+  "var(--avatar-6)", // slate
 ] as const;
 
 function colorForName(name: string): string {

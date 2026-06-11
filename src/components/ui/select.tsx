@@ -192,7 +192,7 @@ export function Select({
                   value={toRadix(o.value)}
                   disabled={o.disabled}
                   className={cn(
-                    'relative flex cursor-pointer select-none items-center rounded-[6px]',
+                    'relative flex cursor-pointer select-none items-center rounded-card',
                     'py-1.5 pl-3 pr-8 text-[13.5px] text-text outline-none',
                     'data-[highlighted]:bg-primary-subtle data-[highlighted]:text-primary',
                     'data-[state=checked]:font-semibold',

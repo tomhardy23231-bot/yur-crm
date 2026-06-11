@@ -13,10 +13,12 @@ const ibmPlexSans = IBM_Plex_Sans({
   display: "swap",
 });
 
+// Веса 400/600 — фактически используемые (kbd-подсказки, чип прогресса тура);
+// 500/700 срезаны из бандла шрифтов (v3 s10).
 const jetBrainsMono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "600"],
   display: "swap",
 });
 

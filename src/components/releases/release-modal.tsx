@@ -50,7 +50,7 @@ export function ReleaseModal({
         type="button"
         aria-label={t.help.release.close}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-[#080A0F]/80 backdrop-blur-[4px] animate-[wm-fade_220ms_ease-out]"
+        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[4px] animate-[wm-fade_220ms_ease-out]"
       />
 
       {/* Карточка */}
@@ -58,7 +58,7 @@ export function ReleaseModal({
         {/* Hero — фирменный градиент */}
         <div
           className="relative flex flex-col gap-3 px-8 pb-7 pt-9 text-white"
-          style={{ backgroundImage: 'var(--grad-brass)' }}
+          style={{ backgroundImage: 'var(--grad-brand)' }}
         >
           <button
             type="button"

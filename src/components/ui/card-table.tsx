@@ -12,9 +12,14 @@ import { type SortDir } from '@/components/ui/sortable-header';
 // role=table/row/columnheader/cell; выравнивание шапки и строк — общий
 // grid-template-columns (передаётся через `cols`).
 //
-// Контейнер скроллится по горизонтали на узких экранах (< minWidth), внутренняя
-// сетка держит минимальную ширину, чтобы колонки не схлопывались. Сами строки —
-// клиентский <ClickableCard>; шапка, сорт-заголовки и иконки-действия — серверные.
+// Внутренняя сетка держит минимальную ширину (minWidth), чтобы колонки не
+// схлопывались; на узких экранах горизонтальный скролл даёт сама контент-зона
+// app-shell (page-content, overflow-y-auto → x тоже auto). Свой overflow-x-auto
+// здесь убран (v3 s10): предок с overflow — scroll container, внутри которого
+// position:sticky шапки не работал бы. Шапка липнет к верху контент-зоны
+// (топбар — выше неё, поэтому top-0); pb/-mb перекрывают gap-2 фоном при
+// прилипании. Сами строки — клиентский <ClickableCard>; шапка, сорт-заголовки
+// и иконки-действия — серверные.
 
 export function CardListShell({
   cols,
@@ -32,9 +37,13 @@ export function CardListShell({
   className?: string;
 }) {
   return (
-    <div className={cn('no-scrollbar hidden overflow-x-auto pb-1 md:block', className)}>
+    <div className={cn('hidden pb-1 md:block', className)}>
       <div role="table" aria-label={ariaLabel} style={{ minWidth }} className="flex flex-col gap-2">
-        <div role="row" style={{ gridTemplateColumns: cols }} className="grid items-center gap-3 px-4 pb-0.5">
+        <div
+          role="row"
+          style={{ gridTemplateColumns: cols }}
+          className="sticky top-0 z-10 -mb-2 grid items-center gap-3 bg-bg px-4 pb-2.5 pt-1"
+        >
           {header}
         </div>
         {children}
@@ -57,7 +66,8 @@ export function CardHead({
     <div
       role="columnheader"
       className={cn(
-        'text-[10px] font-bold uppercase tracking-[0.05em] text-text-subtle',
+        // text-muted, не subtle: шапка лежит на --bg, subtle там 2.95:1 (v3 s10)
+        'text-[10px] font-bold uppercase tracking-[0.05em] text-text-muted',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         className,
@@ -106,7 +116,7 @@ export async function CardSortHead({
           align === 'right' && 'flex-row-reverse',
           isActive
             ? 'text-text'
-            : 'text-text-subtle transition-colors duration-[80ms] hover:text-text',
+            : 'text-text-muted transition-colors duration-[80ms] hover:text-text',
         )}
         aria-label={fmt(t.ui.sort.label, {
           column: typeof children === 'string' ? children : column,

@@ -116,7 +116,7 @@ export function Modal({
         type="button"
         aria-label={closeLabel}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-[#080A0F]/80 backdrop-blur-[4px] animate-[wm-fade_220ms_ease-out]"
+        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[4px] animate-[wm-fade_220ms_ease-out]"
       />
 
       {/* Карточка */}
@@ -125,7 +125,7 @@ export function Modal({
         tabIndex={-1}
         className={cn(
           'relative z-10 flex w-[min(560px,95vw)] max-h-[90vh] flex-col overflow-hidden',
-          'rounded-[20px] border border-border bg-surface shadow-[var(--shadow-pop)]',
+          'rounded-modal border border-border bg-surface shadow-[var(--shadow-pop)]',
           'antialiased outline-none animate-[wm-pop_260ms_var(--ease-out)]',
           className,
         )}

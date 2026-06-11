@@ -53,7 +53,7 @@ export async function AbsencesBlock({
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   const POS_CLASS: Record<'current' | 'upcoming' | 'past', string> = {
-    current: 'text-success',
+    current: 'text-success-text',
     upcoming: 'text-text-muted',
     past: 'text-text-subtle',
   };
@@ -67,7 +67,7 @@ export async function AbsencesBlock({
     <section className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
         <CalendarOff size={17} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[15px] font-semibold text-text">{t.absences.block.heading}</h2>
+        <h2 className="text-[16px] font-semibold text-text">{t.absences.block.heading}</h2>
         {absences.length > 0 && (
           <span className="text-[12.5px] text-text-muted">
             · {plural(t.absences.block.count, absences.length)}

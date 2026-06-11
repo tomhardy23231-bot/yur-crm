@@ -13,12 +13,14 @@ export type Stage =
   | "closed";
 
 // Подписи этапов берутся из словаря (t.enums.caseStage).
+// Текст залитого чипа — тёмный *-fg (WCAG AA на своей подложке, v3 s10);
+// яркий тон этапа остаётся в точке (.quiet) и заливках.
 const STAGE_CLASS: Record<Stage, string> = {
-  new_request:       "text-stage-new bg-stage-new-bg",
-  consultation:      "text-stage-consultation bg-stage-consultation-bg",
-  in_progress:       "text-stage-in-progress bg-stage-in-progress-bg",
-  awaiting_decision: "text-stage-awaiting bg-stage-awaiting-bg",
-  closed:            "text-stage-closed bg-stage-closed-bg",
+  new_request:       "text-stage-new-fg bg-stage-new-bg",
+  consultation:      "text-stage-consultation-fg bg-stage-consultation-bg",
+  in_progress:       "text-stage-in-progress-fg bg-stage-in-progress-bg",
+  awaiting_decision: "text-stage-awaiting-fg bg-stage-awaiting-bg",
+  closed:            "text-stage-closed-fg bg-stage-closed-bg",
 };
 
 // Цвет точки этапа (для .quiet — точка несёт семантику при тёмном тексте).
@@ -70,7 +72,7 @@ export function StageBadge({ stage, label, quiet = false, pulse = true, classNam
     <span
       className={cn(
         "inline-flex items-center gap-1.5",
-        "px-2.5 py-1 rounded-[7px]",
+        "px-2.5 py-1 rounded-chip",
         "text-xs font-bold leading-none whitespace-nowrap",
         "ring-1 ring-inset ring-current/20",
         STAGE_CLASS[stage],

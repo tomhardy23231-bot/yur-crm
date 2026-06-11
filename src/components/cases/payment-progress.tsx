@@ -38,12 +38,12 @@ export function PaymentProgress({
         aria-valuemax={100}
         aria-label={t.caseCard.progress.ariaLabel}
       >
-        {/* Латунь при частичной оплате, зелёный «деньги» при 100% (эталон). */}
+        {/* Бренд-градиент при частичной оплате, зелёный «деньги» при 100% (эталон). */}
         <div
           className="h-full rounded-full transition-[width] duration-700 ease-out"
           style={{
             width: `${pct}%`,
-            background: full ? "var(--success)" : "var(--grad-brass)",
+            background: full ? "var(--success)" : "var(--grad-brand)",
           }}
         />
       </div>

@@ -97,7 +97,7 @@ export function MobileMoreSheet({
         type="button"
         aria-label={t.nav.moreSheetTitle}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-[#0B1020]/55 backdrop-blur-[3px] animate-sheet-fade"
+        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[3px] animate-sheet-fade"
       />
 
       {/* Лист */}

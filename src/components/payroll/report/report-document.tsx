@@ -5,6 +5,7 @@ import { Scale } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/provider';
 
 // Палитра серьёзного документа (без «леденцовых» заливок). Едина для всех блоков.
+// accent — бренд-синий системы (v3 s10: teal-акцент удалённой темы заменён).
 export const DOC = {
   ink: '#1b2a26',
   body: '#33403b',
@@ -12,8 +13,8 @@ export const DOC = {
   subtle: '#98a09b',
   hair: '#dcd9cf',
   hairStrong: '#b7beb9',
-  accent: '#0D9488',
-  accentDark: '#0a6b62',
+  accent: '#2563EB',
+  accentDark: '#1E40AF',
   green: '#15803d',
   amber: '#b45309',
   paper: '#faf9f5',

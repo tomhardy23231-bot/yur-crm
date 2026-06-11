@@ -35,7 +35,7 @@ export async function Sidebar({
           title={t.nav.brandTitle}
           className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-[12px] text-[19px] font-bold leading-none"
           style={{
-            background: 'var(--grad-brass)',
+            background: 'var(--grad-brand)',
             color: 'var(--brand-tile-fg)',
             boxShadow: 'var(--shadow-brand-tile)',
           }}

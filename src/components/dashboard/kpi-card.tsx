@@ -130,7 +130,7 @@ export function KpiCard({
         {delta && (
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-[7px] px-2 py-0.5 text-[12px] font-semibold",
+              "inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 text-[12px] font-semibold",
               DELTA_TONE[delta.tone],
             )}
           >

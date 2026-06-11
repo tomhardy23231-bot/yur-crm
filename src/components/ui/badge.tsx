@@ -12,13 +12,17 @@ const badgeVariants = cva(
   {
     variants: {
       tone: {
-        success:   "text-success   bg-success-bg",
-        warning:   "text-warning   bg-warning-bg",
-        error:     "text-error     bg-error-bg",
-        info:      "text-info      bg-info-bg",
-        "prio-low":  "text-prio-low  bg-prio-low-bg",
-        "prio-mid":  "text-prio-mid  bg-prio-mid-bg",
-        "prio-high": "text-prio-high bg-prio-high-bg",
+        // Текст залитых бейджей — тёмные *-text тона (WCAG AA на подложке,
+        // v3 s10): success 6.49, error 6.80, info 7.01. warning уже AA (4.52).
+        // prio-low/high (v3 s11): сами тона = success/error по значению, но на
+        // подложке 3.0/4.2 ✗ — текст тем же тёмным *-text (точка quiet яркая).
+        success:   "text-success-text bg-success-bg",
+        warning:   "text-warning      bg-warning-bg",
+        error:     "text-error-text   bg-error-bg",
+        info:      "text-info-text    bg-info-bg",
+        "prio-low":  "text-success-text bg-prio-low-bg",
+        "prio-mid":  "text-prio-mid     bg-prio-mid-bg",
+        "prio-high": "text-error-text   bg-prio-high-bg",
         neutral:   "text-text-muted bg-surface-muted",
       },
       // .quiet (бриф §3.4) — для плотных таблиц: цветная точка + тёмный текст,

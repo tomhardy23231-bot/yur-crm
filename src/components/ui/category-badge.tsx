@@ -9,10 +9,11 @@ import { useI18n } from "@/lib/i18n/provider";
 // Бейдж категории дела. Яркая чистая гамма (см. globals.css --cat-*). Опционально
 // показывает % зарплаты по категории. Вариант quiet — для плотных таблиц.
 
+// Текст залитого чипа — тёмный *-fg (WCAG AA на своей подложке, v3 s10).
 const CATEGORY_CLASS: Record<CaseCategory, string> = {
-  document: "text-cat-document bg-cat-document-bg",
-  claim: "text-cat-claim bg-cat-claim-bg",
-  representation: "text-cat-representation bg-cat-representation-bg",
+  document: "text-cat-document-fg bg-cat-document-bg",
+  claim: "text-cat-claim-fg bg-cat-claim-bg",
+  representation: "text-cat-representation-fg bg-cat-representation-bg",
 };
 
 // Цвет точки категории (для .quiet — точка несёт семантику при тёмном тексте).
@@ -66,7 +67,7 @@ export function CategoryBadge({
     <span
       className={cn(
         "inline-flex items-center gap-1.5",
-        "px-2.5 py-1 rounded-[7px]",
+        "px-2.5 py-1 rounded-chip",
         "text-xs font-bold leading-none whitespace-nowrap",
         "before:content-[''] before:w-[7px] before:h-[7px] before:rounded-full before:bg-current before:shrink-0",
         CATEGORY_CLASS[category],

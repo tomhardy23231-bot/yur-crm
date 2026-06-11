@@ -44,7 +44,7 @@ export default async function LoginPage({
               <span
                 className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] text-[18px] font-bold leading-none"
                 style={{
-                  background: 'var(--grad-brass)',
+                  background: 'var(--grad-brand)',
                   color: 'var(--brand-tile-fg)',
                   boxShadow: 'var(--shadow-brand-tile)',
                 }}
@@ -65,7 +65,7 @@ export default async function LoginPage({
               {login.headingPrefix}{' '}
               <span
                 className="bg-clip-text text-transparent"
-                style={{ backgroundImage: 'var(--grad-brass)' }}
+                style={{ backgroundImage: 'var(--grad-brand)' }}
               >
                 {login.headingAccent}
               </span>
