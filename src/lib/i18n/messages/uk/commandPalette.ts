@@ -17,6 +17,8 @@ export const commandPalette: CommandPaletteMessages = {
   createCaseHint: 'Нова справа і клієнт',
   createClient: 'Створити клієнта',
   createClientHint: 'Фізособа або компанія',
+  createTask: 'Створити завдання',
+  createTaskHint: 'Завдання, засідання або строк',
 
   navHome: 'Головна',
   navCases: 'Справи',
@@ -27,6 +29,7 @@ export const commandPalette: CommandPaletteMessages = {
   footerSelect: 'вибрати',
   footerNavigate: 'навігація',
   footerToggle: 'відкрити/закрити',
+  footerHotkeys: 'гарячі клавіші',
 
   triggerLabel: 'Пошук',
   triggerAria: 'Відкрити глобальний пошук',

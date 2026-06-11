@@ -9,6 +9,8 @@ interface CasesFilterSelectProps {
   name: string;
   value: string;
   ariaLabel: string;
+  /** Маршрут, на котором живёт фильтр (список/доска). По умолчанию /cases. */
+  basePath?: string;
   options: ReadonlyArray<{ value: string; label: string }>;
 }
 
@@ -18,6 +20,7 @@ export function CasesFilterSelect({
   name,
   value,
   ariaLabel,
+  basePath = '/cases',
   options,
 }: CasesFilterSelectProps) {
   const router = useRouter();
@@ -44,7 +47,7 @@ export function CasesFilterSelect({
           params.delete('page');
           startTransition(() => {
             const s = params.toString();
-            router.replace(s ? `/cases?${s}` : '/cases');
+            router.replace(s ? `${basePath}?${s}` : basePath);
           });
         }}
         className="!w-auto h-8 gap-1 pl-2.5 pr-2 text-[13px]"

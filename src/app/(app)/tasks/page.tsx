@@ -3,18 +3,24 @@ import { Calendar, CheckSquare } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { NewTaskButton } from '@/components/tasks/new-task-button';
 import { TaskRow } from '@/components/tasks/task-row';
 import { TasksFilterSelect } from '@/components/tasks/tasks-filter-select';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
-import { listTasksForUser, TASKS_PAGE_SIZE } from '@/lib/tasks/queries';
+import { listCasesForSelect } from '@/lib/cases/queries';
+import {
+  listAssignableUsers,
+  listTasksForUser,
+  TASKS_PAGE_SIZE,
+} from '@/lib/tasks/queries';
 import {
   STAFF_ROLES,
   TASK_STATUSES,
   type TaskStatus,
   type TaskWithRefs,
 } from '@/lib/types/db';
-import type { Messages } from '@/lib/i18n/messages';
 
 function isTaskStatus(v: string): v is TaskStatus {
   return (TASK_STATUSES as readonly string[]).includes(v);
@@ -43,12 +49,18 @@ export default async function TasksPage({
   // что = их же задачам. Поэтому не показываем переключатель.
   const showModeToggle = isStaff;
 
-  const { items, pageCount } = await listTasksForUser({
-    userId: user.profile.id,
-    status,
-    assigneeMode: mode,
-    page,
-  });
+  // 6.1: справочники модалки «Новая задача» (исполнители + видимые дела) —
+  // независимы от списка, грузим одним батчем.
+  const [{ items, pageCount }, assignees, casesForSelect] = await Promise.all([
+    listTasksForUser({
+      userId: user.profile.id,
+      status,
+      assigneeMode: mode,
+      page,
+    }),
+    listAssignableUsers(),
+    listCasesForSelect(),
+  ]);
 
   const groups = groupByDay(items);
 
@@ -108,16 +120,39 @@ export default async function TasksPage({
             {t.tasks.page.reset}
           </Link>
         )}
-        <Button asChild variant="secondary" size="sm" className="ml-auto">
-          <Link href="/calendar">
-            <Calendar size={14} strokeWidth={1.75} />
-            {t.tasks.page.calendar}
-          </Link>
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button asChild variant="secondary" size="sm">
+            <Link href="/calendar">
+              <Calendar size={14} strokeWidth={1.75} />
+              {t.tasks.page.calendar}
+            </Link>
+          </Button>
+          <NewTaskButton
+            assignees={assignees}
+            cases={casesForSelect}
+            currentUserId={user.profile.id}
+            label={t.tasks.page.newTask}
+            openOnNewParam
+          />
+        </div>
       </div>
 
       {items.length === 0 ? (
-        <EmptyState hasFilters={Boolean(status)} mode={mode} t={t} />
+        <div className="rounded-lg border border-border bg-surface py-8 shadow-sm">
+          <EmptyState
+            icon={CheckSquare}
+            title={
+              status ? t.tasks.page.emptyFilteredTitle : t.tasks.page.emptyTitle
+            }
+            hint={
+              status
+                ? t.tasks.page.emptyFilteredText
+                : mode === 'mine'
+                  ? t.tasks.page.emptyMineText
+                  : t.tasks.page.emptyAllText
+            }
+          />
+        </div>
       ) : (
         <div className="flex flex-col gap-6">
           {groups.map((g) => (
@@ -233,37 +268,6 @@ function PageLink({
     >
       {children}
     </Link>
-  );
-}
-
-function EmptyState({
-  hasFilters,
-  mode,
-  t,
-}: {
-  hasFilters: boolean;
-  mode: 'mine' | 'all';
-  t: Messages;
-}) {
-  return (
-    <div className="bg-surface rounded-lg border border-border shadow-sm py-16 px-6 flex flex-col items-center text-center">
-      <span
-        className="inline-flex w-12 h-12 items-center justify-center rounded-full text-primary bg-primary-subtle mb-4"
-        aria-hidden="true"
-      >
-        <CheckSquare size={20} strokeWidth={1.75} />
-      </span>
-      <h2 className="text-[18px] font-semibold text-text mb-1">
-        {hasFilters ? t.tasks.page.emptyFilteredTitle : t.tasks.page.emptyTitle}
-      </h2>
-      <p className="text-[13px] text-text-muted max-w-md">
-        {hasFilters
-          ? t.tasks.page.emptyFilteredText
-          : mode === 'mine'
-            ? t.tasks.page.emptyMineText
-            : t.tasks.page.emptyAllText}
-      </p>
-    </div>
   );
 }
 

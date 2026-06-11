@@ -3,12 +3,14 @@ import { CalendarDays, ChevronLeft, ChevronRight, List } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { NewTaskButton } from '@/components/tasks/new-task-button';
 import { TaskRow } from '@/components/tasks/task-row';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { LOCALE_BCP47 } from '@/lib/i18n/config';
 import type { CalendarMessages } from '@/lib/i18n/messages/ru/calendar';
-import { listTasksInRange } from '@/lib/tasks/queries';
+import { listCasesForSelect } from '@/lib/cases/queries';
+import { listAssignableUsers, listTasksInRange } from '@/lib/tasks/queries';
 import { listAbsencesInRange } from '@/lib/absences/queries';
 import { cn } from '@/lib/utils';
 import type { TaskKind, TaskWithRefs, AbsenceWithUser } from '@/lib/types/db';
@@ -28,7 +30,7 @@ export default async function CalendarPage({
 }: {
   searchParams: Promise<{ month?: string; day?: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const { t, plural, locale } = await getT();
   const sp = await searchParams;
 
@@ -51,10 +53,13 @@ export default async function CalendarPage({
   const gridEnd = addDays(gridStart, 42);
 
   // Последний день сетки (включительно) — для overlap-выборки отсутствий по диапазону.
+  // 6.1: справочники модалки «+ Задача» (исполнители + видимые дела) — тем же батчем.
   const gridLastKey = isoDayKey(addDays(gridStart, 41));
-  const [tasks, absences] = await Promise.all([
+  const [tasks, absences, assignees, casesForSelect] = await Promise.all([
     listTasksInRange({ from: gridStart.toISOString(), to: gridEnd.toISOString() }),
     listAbsencesInRange({ from: isoDayKey(gridStart), to: gridLastKey }),
+    listAssignableUsers(),
+    listCasesForSelect(),
   ]);
 
   // Группируем задачи по локальному дню (YYYY-MM-DD).
@@ -180,18 +185,29 @@ export default async function CalendarPage({
       {selectedDate && (
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold text-text capitalize">
+            <h2 className="text-[16px] font-semibold text-text capitalize">
               {dayFmt.format(selectedDate)}
               <span className="text-text-muted ml-2">
                 · {plural(t.calendar.taskCount, selectedDayTasks.length)}
               </span>
             </h2>
-            <Link
-              href={buildHref({ day: null })}
-              className="text-[12px] text-text-muted hover:text-text underline-offset-2 hover:underline"
-            >
-              {t.calendar.hide}
-            </Link>
+            <div className="flex items-center gap-3">
+              {/* 6.1: задача на выбранный день (срок предзаполнен, 09:00). */}
+              <NewTaskButton
+                assignees={assignees}
+                cases={casesForSelect}
+                currentUserId={user.profile.id}
+                label={t.calendar.addTask}
+                defaultDueAt={`${selectedDayKey}T09:00`}
+                variant="secondary"
+              />
+              <Link
+                href={buildHref({ day: null })}
+                className="text-[12px] text-text-muted hover:text-text underline-offset-2 hover:underline"
+              >
+                {t.calendar.hide}
+              </Link>
+            </div>
           </div>
           {selectedDayTasks.length === 0 && selectedDayAbsences.length === 0 ? (
             <Card className="py-10 px-6 text-center">

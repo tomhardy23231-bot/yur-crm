@@ -18,8 +18,8 @@ export function Skeleton({
   );
 }
 
-// Skeleton-ряд таблицы — N ячеек одинаковой ширины (через template). Используется
-// в loading.tsx для /cases, /clients, /tasks. cellHeight выровнен с TableCell (44px).
+// Skeleton-ряд таблицы — N ячеек одинаковой ширины (через template). Остался
+// для экранов с классической <Table> (отчёты). cellHeight = TableCell (44px).
 export function TableRowSkeleton({
   columns,
   className,
@@ -38,8 +38,9 @@ export function TableRowSkeleton({
   );
 }
 
-// Skeleton для табличного listing-экрана. Используется в loading.tsx —
-// показывает заголовок страницы + панель фильтров + табличный каркас.
+// Skeleton listing-экрана. v3 Сессия 6: списки переехали на «карточки-строки»
+// (CardListShell в card-table.tsx) — скелет повторяет тот же макет: подписи
+// колонок без фона + отдельные rounded-карточки с gap-2 на фоне страницы.
 export function ListingSkeleton({
   filterCount = 3,
   columns,
@@ -49,6 +50,7 @@ export function ListingSkeleton({
   columns: number;
   rows?: number;
 }) {
+  const grid = { gridTemplateColumns: `repeat(${columns}, 1fr)` };
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4" aria-busy="true">
       <div className="flex flex-wrap items-center gap-3">
@@ -59,23 +61,27 @@ export function ListingSkeleton({
         <Skeleton className="h-9 w-36 ml-auto" />
       </div>
 
-      <div className="bg-surface rounded-lg border border-border shadow-sm overflow-hidden">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-surface border-b border-border">
-            <tr>
-              {Array.from({ length: columns }).map((_, i) => (
-                <th key={i} className="h-10 px-4 text-left">
-                  <Skeleton className="h-3 w-16" />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: rows }).map((_, i) => (
-              <TableRowSkeleton key={i} columns={columns} />
+      <div className="flex flex-col gap-2">
+        {/* Подписи колонок (как шапка CardListShell — вне карточек). */}
+        <div
+          style={grid}
+          className="hidden items-center gap-3 px-4 pb-0.5 md:grid"
+        >
+          {Array.from({ length: columns }).map((_, i) => (
+            <Skeleton key={i} className="h-3 w-16 max-w-full" />
+          ))}
+        </div>
+        {Array.from({ length: rows }).map((_, i) => (
+          <div
+            key={i}
+            style={grid}
+            className="grid min-h-[64px] items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-sm"
+          >
+            {Array.from({ length: columns }).map((_, j) => (
+              <Skeleton key={j} className="h-3.5 w-[80%]" />
             ))}
-          </tbody>
-        </table>
+          </div>
+        ))}
       </div>
     </main>
   );

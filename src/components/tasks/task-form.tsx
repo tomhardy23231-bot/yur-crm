@@ -1,17 +1,20 @@
 'use client';
 
-import { useActionState, useRef } from 'react';
+import { useActionState, useEffect, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import type { TaskActionState, TaskFormFields } from '@/lib/tasks/actions';
 import type { AssigneeOption } from '@/lib/tasks/queries';
+import type { CaseSelectOption } from '@/lib/cases/queries';
 import { TASK_KINDS, type Task } from '@/lib/types/db';
 
 const INITIAL: TaskActionState = { ok: false };
@@ -27,8 +30,15 @@ interface TaskFormProps {
   assignees: AssigneeOption[];
   /** Если задан — case_id зафиксирован hidden input (inline-форма на карточке дела). */
   lockedCaseId?: string;
+  /**
+   * Глобальный режим (v3 Сессия 6): список видимых дел для обязательного
+   * комбобокса «Дело». Передаётся, когда lockedCaseId нет.
+   */
+  cases?: ReadonlyArray<CaseSelectOption>;
   /** Если задано — assignee_id по умолчанию (например, текущий юзер). */
   defaultAssigneeId?: string;
+  /** Предзаполненный срок (формат datetime-local) — например, день из календаря. */
+  defaultDueAt?: string;
   submitLabel: string;
   /** Компактная форма (для inline на карточке дела). */
   compact?: boolean;
@@ -40,15 +50,34 @@ export function TaskForm({
   task,
   assignees,
   lockedCaseId,
+  cases,
   defaultAssigneeId,
+  defaultDueAt,
   submitLabel,
   compact = false,
+  onSuccess,
 }: TaskFormProps) {
   const { t } = useI18n();
+  const toast = useToast();
   const [state, formAction] = useActionState<TaskActionState, FormData>(
     action,
     INITIAL,
   );
+
+  // Колбэк успеха (закрыть модалку и т.п.). Ref — чтобы effect не перезапускался
+  // от нестабильной ссылки на функцию из родителя.
+  const onSuccessRef = useRef(onSuccess);
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  });
+  // Текст тоста: создание/редактирование (task задан = режим edit).
+  const successMessage = task ? t.common.saved : t.tasks.form.createdToast;
+  useEffect(() => {
+    if (state.ok) {
+      toast.success(successMessage);
+      onSuccessRef.current?.();
+    }
+  }, [state.ok, toast, successMessage]);
 
   const roleHint = (role: string): string =>
     (t.tasks.form.roleHint as Record<string, string>)[role] ?? role;
@@ -74,6 +103,7 @@ export function TaskForm({
       }
     }
     if (field === 'assignee_id' && defaultAssigneeId) return defaultAssigneeId;
+    if (field === 'due_at' && defaultDueAt) return defaultDueAt;
     if (field === 'kind') return 'task';
     return '';
   }
@@ -99,6 +129,27 @@ export function TaskForm({
     >
       {lockedCaseId && (
         <input type="hidden" name="case_id" value={lockedCaseId} />
+      )}
+
+      {/* Глобальный режим: дело выбирается комбобоксом (обязательное поле). */}
+      {!lockedCaseId && !task && cases && (
+        <Field
+          label={t.tasks.form.case}
+          htmlFor="task-case"
+          error={err('case_id')}
+          required
+        >
+          <Combobox
+            id="task-case"
+            name="case_id"
+            options={cases.map((c) => ({ value: c.id, label: c.number_title }))}
+            defaultValue={value('case_id')}
+            placeholder={t.tasks.form.caseSelect}
+            searchPlaceholder={t.tasks.form.caseSearchPlaceholder}
+            emptyText={t.tasks.form.caseEmpty}
+            aria-invalid={err('case_id') ? 'true' : undefined}
+          />
+        </Field>
       )}
 
       <Field
@@ -190,10 +241,9 @@ export function TaskForm({
         </Field>
       )}
 
-      {/* В compact-режиме case_id уже передан hidden input; в полной — нужен Select.
-          Пока полная форма используется только из edit, где у нас есть task — case_id
-          приходит из task. */}
-      {!lockedCaseId && !task && (
+      {/* Режим edit: case_id берётся из task (поле не редактируется). Fallback
+          hidden — только для вызова без lockedCaseId/task/cases (сейчас таких нет). */}
+      {!lockedCaseId && !task && !cases && (
         <input type="hidden" name="case_id" value={caseIdValue} />
       )}
 

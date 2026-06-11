@@ -236,6 +236,15 @@ export function CommandPaletteProvider({
                 hint={t.commandPalette.createClientHint}
               />
             )}
+            {/* Задачи создают все роли (CLAUDE.md §7-6) — без гейта. ?new=1
+                откроет модалку «Новая задача» на /tasks. */}
+            <PaletteItem
+              value="action create task задача завдання новая нове"
+              onSelect={() => go('/tasks?new=1')}
+              icon={<CheckSquare size={15} strokeWidth={1.75} />}
+              label={t.commandPalette.createTask}
+              hint={t.commandPalette.createTaskHint}
+            />
             <PaletteItem
               value="nav home главная головна"
               onSelect={() => go('/')}
@@ -345,7 +354,10 @@ export function CommandPaletteProvider({
           <span>
             <kbd className="font-mono">↑↓</kbd> {t.commandPalette.footerNavigate}
           </span>
-          <span className="ml-auto">
+          <span className="ml-auto hidden sm:inline">
+            <kbd className="font-mono">?</kbd> {t.commandPalette.footerHotkeys}
+          </span>
+          <span className="ml-auto sm:ml-0">
             <kbd className="font-mono">Cmd/Ctrl+K</kbd> {t.commandPalette.footerToggle}
           </span>
         </div>

@@ -1,10 +1,15 @@
 import { CommandPaletteProvider } from '@/components/app/command-palette';
+import { HotkeysProvider } from '@/components/app/hotkeys-provider';
+import { ToastProvider } from '@/components/ui/toast';
 import { OnboardingProvider } from '@/components/onboarding/onboarding-provider';
 import { Sidebar } from '@/components/app/sidebar';
 import { BottomNav } from '@/components/app/bottom-nav';
 import { Topbar } from '@/components/app/topbar';
 import { requireUser } from '@/lib/auth/require-role';
-import { countOpenTasksAssignedTo } from '@/lib/tasks/queries';
+import {
+  countOpenTasksAssignedTo,
+  countUserTasksDue,
+} from '@/lib/tasks/queries';
 import { STAFF_ROLES } from '@/lib/types/db';
 import { getLocale, getMessages } from '@/lib/i18n/server';
 import { LocaleProvider } from '@/lib/i18n/provider';
@@ -21,7 +26,12 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  const tasksOpen = await countOpenTasksAssignedTo(user.profile.id);
+  // tasksOpen — счётчик «Задачи» в навигации; tasksDue — колокольчик топбара
+  // (просроченные + сегодняшние, v3 Сессия 6).
+  const [tasksOpen, tasksDue] = await Promise.all([
+    countOpenTasksAssignedTo(user.profile.id),
+    countUserTasksDue(user.profile.id),
+  ]);
 
   // Локаль и словарь активного языка — отдаём в клиентский провайдер (в бандл
   // уходит только активный язык). roleLabel переводим через словарь.
@@ -31,7 +41,9 @@ export default async function AppLayout({
 
   return (
     <LocaleProvider locale={locale} messages={messages}>
+      <ToastProvider>
       <CommandPaletteProvider caps={user.caps}>
+        <HotkeysProvider canCreateCase={user.caps.create_cases} />
         <OnboardingProvider
           ctx={{
             role: user.profile.role,
@@ -51,7 +63,8 @@ export default async function AppLayout({
               <Topbar
                 userName={user.profile.full_name}
                 roleLabel={roleLabel}
-                tasksOpen={tasksOpen}
+                tasksOverdue={tasksDue.overdue}
+                tasksToday={tasksDue.today}
               />
               <div
                 data-tour="page-content"
@@ -71,6 +84,7 @@ export default async function AppLayout({
           </div>
         </OnboardingProvider>
       </CommandPaletteProvider>
+      </ToastProvider>
     </LocaleProvider>
   );
 }

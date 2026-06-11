@@ -16,6 +16,8 @@ export const commandPalette = {
   createCaseHint: 'Новое дело и клиент',
   createClient: 'Создать клиента',
   createClientHint: 'Физлицо или компания',
+  createTask: 'Создать задачу',
+  createTaskHint: 'Задача, заседание или срок',
 
   navHome: 'Главная',
   navCases: 'Дела',
@@ -26,6 +28,7 @@ export const commandPalette = {
   footerSelect: 'выбрать',
   footerNavigate: 'навигация',
   footerToggle: 'открыть/закрыть',
+  footerHotkeys: 'горячие клавиши',
 
   triggerLabel: 'Поиск',
   triggerAria: 'Открыть глобальный поиск',
