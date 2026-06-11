@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  computeConversion,
   computePersonalEarnings,
   type DashboardCaseRow,
 } from '@/lib/dashboard/compute';
@@ -24,6 +25,7 @@ function mkCase(over: Partial<DashboardCaseRow> = {}): DashboardCaseRow {
     paid_total: 10000,
     debt: 20000,
     opened_at: '2026-05-01',
+    outcome: null,
     lawyer_id: 'U1',
     responsible_id: 'U2',
     lawyer_rate_override: null,
@@ -67,5 +69,35 @@ describe('computePersonalEarnings — режимы зарплаты', () => {
     const fixed = new Set(['U1']);
     const [r] = computePersonalEarnings([mkCase()], RATES, 'U2', fixed);
     expect(r?.earned).toBe(2500); // U2 не в наборе fixed → процент сохраняется
+  });
+});
+
+// Конверсия воронки (v3 Сессия 7): created = все; reached = дошедшие до
+// in_progress+ и НЕ lost; lost = outcome='lost' (их stage=closed, но не «дошедшие»).
+describe('computeConversion — конверсия воронки в договор', () => {
+  it('считает created / reached / lost по этапам и исходу', () => {
+    const rows = [
+      mkCase({ id: 'a', stage: 'new_request' }), // до контракта — не дошёл
+      mkCase({ id: 'b', stage: 'consultation' }), // до контракта — не дошёл
+      mkCase({ id: 'c', stage: 'in_progress' }), // дошёл (договор)
+      mkCase({ id: 'd', stage: 'closed' }), // дошёл (штатно завершён)
+      mkCase({ id: 'e', stage: 'closed', outcome: 'lost' }), // потерян
+    ];
+    const r = computeConversion(rows);
+    expect(r.created).toBe(5);
+    expect(r.reached).toBe(2); // c, d
+    expect(r.lost).toBe(1); // e
+  });
+
+  it('lost-дело не считается дошедшим, хотя stage=closed', () => {
+    const r = computeConversion([
+      mkCase({ stage: 'closed', outcome: 'lost' }),
+    ]);
+    expect(r.reached).toBe(0);
+    expect(r.lost).toBe(1);
+  });
+
+  it('пустой список → нули', () => {
+    expect(computeConversion([])).toEqual({ created: 0, reached: 0, lost: 0 });
   });
 });

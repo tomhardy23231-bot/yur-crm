@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useRef, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import Link from 'next/link';
 
@@ -10,6 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { clearFlashToast, flashToast } from '@/components/ui/toast';
+import {
+  ConflictWarning,
+  useConflictCheck,
+} from '@/components/cases/conflict-warning';
 import { useI18n } from '@/lib/i18n/provider';
 import type { ClientActionState, ClientFormFields } from '@/lib/clients/actions';
 import {
@@ -19,6 +24,16 @@ import {
   type Client,
   type ClientKind,
 } from '@/lib/types/db';
+
+// Поля, blur которых запускает конфликт-чек (v3 Сессия 7) — только в режиме создания.
+const CONFLICT_FIELDS = new Set([
+  'last_name',
+  'first_name',
+  'middle_name',
+  'name',
+  'inn',
+  'phone',
+]);
 
 const INITIAL: ClientActionState = { ok: false };
 
@@ -37,10 +52,19 @@ interface ClientFormProps {
 
 export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFormProps) {
   const { t } = useI18n();
+  // Успешный action делает redirect (карточка клиента), поэтому обычный тост
+  // не успел бы показаться: ставим flash перед сабмитом — провайдер покажет
+  // «Сохранено» уже на новой странице; при ошибке валидации flash снимаем.
   const [state, formAction] = useActionState<ClientActionState, FormData>(
-    action,
+    async (prev, formData) => {
+      flashToast('success', t.common.saved);
+      return action(prev, formData);
+    },
     INITIAL,
   );
+  useEffect(() => {
+    if (!state.ok && (state.message || state.fieldErrors)) clearFlashToast();
+  }, [state]);
   const formRef = useRef<HTMLFormElement>(null);
   useShakeInvalidFields(formRef, state);
 
@@ -80,8 +104,32 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
   );
   const hasFullName = clientKindHasFullName(kind);
 
+  // v3 s7: конфликт-чек/дедуп — только при создании клиента (не при правке).
+  const isCreate = !client;
+  const conflict = useConflictCheck();
+
+  function handleConflictBlur(e: React.FocusEvent<HTMLFormElement>) {
+    const fieldName = (e.target as HTMLElement).getAttribute('name') ?? '';
+    if (!CONFLICT_FIELDS.has(fieldName)) return;
+    const f = formRef.current;
+    if (!f) return;
+    const get = (n: string) =>
+      (f.elements.namedItem(n) as HTMLInputElement | null)?.value ?? '';
+    const name = clientKindHasFullName(kind)
+      ? [get('last_name'), get('first_name'), get('middle_name')]
+          .filter(Boolean)
+          .join(' ')
+      : get('name');
+    conflict.check({ name, inn: get('inn'), phone: get('phone') });
+  }
+
   return (
-    <form ref={formRef} action={formAction} className="flex flex-col gap-6">
+    <form
+      ref={formRef}
+      action={formAction}
+      className="flex flex-col gap-6"
+      onBlur={isCreate ? handleConflictBlur : undefined}
+    >
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <Field label={t.clients.form.kindLabel} htmlFor="client_kind" error={err('client_kind')} required>
           <Select
@@ -253,6 +301,13 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
           />
         </Field>
       </div>
+
+      {isCreate && (
+        <ConflictWarning
+          matches={conflict.matches}
+          message={t.clients.conflictWarning}
+        />
+      )}
 
       {state.message && !state.fieldErrors && (
         <p

@@ -5,6 +5,7 @@ import {
   CASE_CATEGORIES,
   CASE_STAGES,
   type CaseCategory,
+  type CaseOutcome,
   type CaseStage,
   type PayrollRate,
 } from '@/lib/types/db';
@@ -18,12 +19,43 @@ export type DashboardCaseRow = {
   paid_total: number;
   debt: number;
   opened_at: string;
+  // v3 s7: исход — для конверсии (lost не считается «дошедшим до договора»).
+  outcome: CaseOutcome | null;
   // Нужны для расчёта личных начислений (роль пользователя в деле + override %).
   lawyer_id: string;
   responsible_id: string;
   lawyer_rate_override: number | null;
   expert_rate_override: number | null;
 };
+
+// Этапы «до контракта»: дело ещё не в работе. Дойти до in_progress+ = заключить договор.
+const PRE_CONTRACT_STAGES: ReadonlyArray<CaseStage> = ['new_request', 'consultation'];
+
+// Конверсия воронки (v3 Сессия 7). created = все дела; reached = дошедшие до
+// in_progress+ (договор заключён) и НЕ lost; lost = outcome='lost' (отказ до
+// контракта; их stage=closed, но «дошедшими» они не считаются). Процент = reached/created.
+export type ConversionStats = {
+  created: number;
+  reached: number;
+  lost: number;
+};
+
+export function computeConversion(
+  rows: ReadonlyArray<DashboardCaseRow>,
+): ConversionStats {
+  let created = 0;
+  let reached = 0;
+  let lost = 0;
+  for (const r of rows) {
+    created += 1;
+    if (r.outcome === 'lost') {
+      lost += 1;
+      continue;
+    }
+    if (!PRE_CONTRACT_STAGES.includes(r.stage)) reached += 1;
+  }
+  return { created, reached, lost };
+}
 
 export type FunnelEntry = { stage: CaseStage; count: number };
 export type CategoryRevenueEntry = {
