@@ -7,6 +7,7 @@ import { logActivity } from '@/lib/activity-log/log';
 import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { UUID_RE, parseAmount, isValidDate } from '@/lib/validation';
 
 export type CreatePaymentFields =
   | 'case_id'
@@ -20,31 +21,6 @@ export type CreatePaymentState = {
   message?: string;
   fieldErrors?: Partial<Record<CreatePaymentFields, string>>;
 };
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-// numeric(14,2): 12 знаков до запятой, 2 после. До 999 999 999 999.99.
-const MAX_AMOUNT = 1_000_000_000_000;
-
-function parseAmount(raw: string): number | null {
-  // Клиентам привычна и точка, и запятая — нормализуем.
-  const normalized = raw.replace(',', '.').trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0 || n >= MAX_AMOUNT) return null;
-  return n;
-}
-
-function isValidDate(s: string): boolean {
-  if (!DATE_RE.test(s)) return false;
-  const d = new Date(s + 'T00:00:00Z');
-  if (Number.isNaN(d.getTime())) return false;
-  // Проверяем, что строка сериализуется обратно — отсекает 2026-02-31 и т.п.
-  return d.toISOString().slice(0, 10) === s;
-}
 
 export async function createPaymentAction(
   _prev: CreatePaymentState,
@@ -216,6 +192,140 @@ export async function deletePaymentAction(formData: FormData): Promise<void> {
   } else if (case_id && UUID_RE.test(case_id)) {
     // RLS не пустил к payBefore — лог не пишем (нечего логировать),
     // но UI пересобираем по user-supplied case_id для редиректа.
+    revalidatePath(`/cases/${case_id}`);
+  }
+}
+
+// ============================================================================
+// График платежей (v3 Сессия 9). Плановая доплата = дата + сумма (+ примечание).
+// RLS: INSERT/DELETE = private.can_write_case(case_id) (как задачи). UPDATE нет —
+// правка через удаление + создание.
+// ============================================================================
+export type CreatePlanItemFields = 'case_id' | 'due_date' | 'amount' | 'note';
+
+export type CreatePlanItemState = {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Partial<Record<CreatePlanItemFields, string>>;
+};
+
+export async function createPlanItemAction(
+  _prev: CreatePlanItemState,
+  formData: FormData,
+): Promise<CreatePlanItemState> {
+  const user = await requireUser();
+  const { t } = await getT();
+
+  const case_id = String(formData.get('case_id') ?? '').trim();
+  const due_date = String(formData.get('due_date') ?? '').trim();
+  const amount_raw = String(formData.get('amount') ?? '').trim();
+  const note_raw = String(formData.get('note') ?? '').trim();
+
+  const fieldErrors: CreatePlanItemState['fieldErrors'] = {};
+
+  if (!case_id) fieldErrors.case_id = t.payments.errors.caseRequired;
+  else if (!UUID_RE.test(case_id))
+    fieldErrors.case_id = t.payments.errors.caseInvalid;
+
+  if (!due_date) fieldErrors.due_date = t.payments.errors.dateRequired;
+  else if (!isValidDate(due_date))
+    fieldErrors.due_date = t.payments.errors.dateInvalid;
+
+  if (!amount_raw) fieldErrors.amount = t.payments.errors.amountRequired;
+  else if (parseAmount(amount_raw) === null)
+    fieldErrors.amount = t.payments.errors.amountInvalid;
+
+  if (note_raw.length > 300) fieldErrors.note = t.payments.errors.noteTooLong;
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { ok: false, fieldErrors, message: t.errors.checkForm };
+  }
+
+  const amount = parseAmount(amount_raw)!;
+  const note = note_raw === '' ? null : note_raw;
+
+  const supabase = await createSupabaseServerClient();
+
+  // RLS WITH CHECK: plan_insert_via_case = can_write_case(case_id) AND
+  // created_by = active_uid(). case_id возвращаем для лога (DB-truth).
+  const { data: inserted, error } = await supabase
+    .from('payment_plan_items')
+    .insert({
+      case_id,
+      due_date,
+      amount,
+      note,
+      created_by: user.profile.id,
+    })
+    .select('id, case_id')
+    .single();
+
+  if (error || !inserted) {
+    return {
+      ok: false,
+      message: dbErrorMessage(
+        'createPlanItemAction',
+        error,
+        t.payments.plan.saveFailed,
+        t.errors.db,
+      ),
+    };
+  }
+
+  await logActivity({
+    entity_type: 'case',
+    entity_id: inserted.case_id,
+    action: 'payment_plan_updated',
+    changes: { item_id: inserted.id, op: 'created', due_date, amount },
+  });
+
+  revalidatePath(`/cases/${inserted.case_id}`);
+  return { ok: true };
+}
+
+// Bare action: удаление позиции графика. RLS DELETE = can_write_case(case_id).
+export async function deletePlanItemAction(formData: FormData): Promise<void> {
+  await requireUser();
+  const item_id = String(formData.get('item_id') ?? '').trim();
+  const case_id = String(formData.get('case_id') ?? '').trim();
+
+  if (!item_id || !UUID_RE.test(item_id)) return;
+
+  const supabase = await createSupabaseServerClient();
+
+  // Снапшот для лога — после delete не достать. case_id берём из БД (CSO #2),
+  // не из user-controlled formData.
+  const { data: before } = await supabase
+    .from('payment_plan_items')
+    .select('case_id, due_date, amount')
+    .eq('id', item_id)
+    .maybeSingle<{ case_id: string; due_date: string; amount: number }>();
+
+  const { error } = await supabase
+    .from('payment_plan_items')
+    .delete()
+    .eq('id', item_id);
+
+  if (error) {
+    console.error('deletePlanItemAction failed:', error.message);
+    return;
+  }
+
+  if (before?.case_id && UUID_RE.test(before.case_id)) {
+    const trueCid = before.case_id;
+    await logActivity({
+      entity_type: 'case',
+      entity_id: trueCid,
+      action: 'payment_plan_updated',
+      changes: {
+        item_id,
+        op: 'deleted',
+        due_date: before.due_date,
+        amount: Number(before.amount),
+      },
+    });
+    revalidatePath(`/cases/${trueCid}`);
+  } else if (case_id && UUID_RE.test(case_id)) {
     revalidatePath(`/cases/${case_id}`);
   }
 }

@@ -48,6 +48,39 @@ export const payments = {
     deleteLabel: 'Удалить платёж',
   },
 
+  // График платежей (v3 Сессия 9): плановые доплаты по делу.
+  plan: {
+    heading: 'График платежей',
+    navLabel: 'График',
+    count: {
+      one: '{n} позиция',
+      few: '{n} позиции',
+      many: '{n} позиций',
+    },
+    addSummary: 'Добавить плановую доплату',
+    empty: 'Плановых доплат пока нет. Добавьте позиции — система отметит просроченные.',
+    emptyReadonly: 'Плановых доплат по этому делу нет.',
+    covered: 'Покрыто {covered} из {total} ₴',
+    coveredPartial: 'покрыто {covered} ₴',
+    colDate: 'Дата',
+    colAmount: 'Сумма',
+    colStatus: 'Статус',
+    colNote: 'Примечание',
+    statusPaid: 'Оплачено',
+    statusPending: 'Ожидает',
+    statusOverdue: 'Просрочено',
+    dueDateLabel: 'Дата доплаты',
+    amountLabel: 'Сумма, ₴',
+    noteLabel: 'Примечание',
+    notePlaceholder: 'Опционально',
+    submit: 'Добавить',
+    submitting: 'Сохранение…',
+    success: 'Позиция добавлена.',
+    saveFailed: 'Не удалось сохранить позицию.',
+    delete: 'Удалить',
+    deleteConfirm: 'Удалить эту позицию графика? Действие необратимо.',
+  },
+
   // Серверный экшен createPaymentAction — валидация и ошибки
   errors: {
     caseRequired: 'Не указано дело',
