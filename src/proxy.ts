@@ -18,6 +18,12 @@ const PUBLIC_PATHS = new Set(['/login', '/forbidden']);
 const OO_MACHINE_PATH =
   /^\/api\/documents\/[0-9a-f-]{36}\/(content|oo-callback)$/i;
 
+// v3 Сессия 8: машина-к-машине роуты уведомлений/календаря. У внешних клиентов
+// (Telegram, Vercel Cron, календарное приложение) нет нашей сессии — они
+// авторизуются своим секретом/токеном ВНУТРИ роута. Не редиректим на /login.
+const NOTIFY_MACHINE_PATH =
+  /^\/api\/(telegram\/webhook|cron\/reminders|calendar\/[^/]+)$/i;
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const path = request.nextUrl.pathname;
 
@@ -29,7 +35,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // Логину сессия не нужна (страница сама зовёт getCurrentUser), поэтому
   // просто пропускаем — тело POST остаётся целым, login работает даже со
   // старой кукой (успешный вход перезапишет её свежей).
-  if (PUBLIC_PATHS.has(path) || OO_MACHINE_PATH.test(path)) {
+  if (
+    PUBLIC_PATHS.has(path) ||
+    OO_MACHINE_PATH.test(path) ||
+    NOTIFY_MACHINE_PATH.test(path)
+  ) {
     return NextResponse.next();
   }
 
