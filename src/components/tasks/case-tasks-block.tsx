@@ -1,6 +1,7 @@
 import { CheckSquare, Plus } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { getT } from '@/lib/i18n/server';
 import { createTaskAction } from '@/lib/tasks/actions';
 import { listAssignableUsers, listTasksByCase } from '@/lib/tasks/queries';
@@ -46,7 +47,8 @@ export async function CaseTasksBlock({
       </div>
 
       {canWrite && (
-        <details className="group border-b border-border">
+        // id — для кнопки «+ Задача» в шапке карточки (раскрытие формы, v3 s11).
+        <details id="task-create-details" className="group border-b border-border">
           <summary className="cursor-pointer list-none px-5 py-3 inline-flex items-center gap-2 text-[13px] font-medium text-primary hover:bg-primary-subtle/50 transition-colors w-full">
             <Plus
               size={14}
@@ -69,7 +71,13 @@ export async function CaseTasksBlock({
       )}
 
       {open.length === 0 && done.length === 0 ? (
-        <EmptyState canWrite={canWrite} t={t} />
+        <EmptyState
+          title={
+            canWrite
+              ? t.tasks.caseBlock.emptyWritable
+              : t.tasks.caseBlock.emptyReadonly
+          }
+        />
       ) : (
         <>
           {open.length > 0 && (
@@ -114,14 +122,3 @@ function DoneSection({
   );
 }
 
-function EmptyState({ canWrite, t }: { canWrite: boolean; t: Messages }) {
-  return (
-    <div className="py-10 px-6 flex flex-col items-center text-center">
-      <p className="text-[13px] text-text-muted max-w-md">
-        {canWrite
-          ? t.tasks.caseBlock.emptyWritable
-          : t.tasks.caseBlock.emptyReadonly}
-      </p>
-    </div>
-  );
-}

@@ -33,7 +33,7 @@ export function PersonalEarnings({
     <Card>
       <div className="flex items-center gap-2 border-b border-border px-5 py-4">
         <Wallet size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[15px] font-semibold text-text">{t.dashboard.earnings.title}</h2>
+        <h2 className="text-[16px] font-semibold text-text">{t.dashboard.earnings.title}</h2>
         <span className="text-[12px] text-text-muted">
           {t.dashboard.earnings.subtitle}
         </span>

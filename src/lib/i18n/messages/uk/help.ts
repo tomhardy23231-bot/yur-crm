@@ -24,6 +24,7 @@ export const help: HelpMessages = {
     payroll: 'Зарплата: відсоток від оплат',
     getStarted: 'З чого почати',
     insideCase: 'Усередині справи',
+    hotkeys: 'Гарячі клавіші',
     faq: 'Часті запитання',
   },
 

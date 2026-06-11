@@ -5,7 +5,8 @@ import { Avatar } from '@/components/ui/avatar';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { advanceCaseStageAction } from '@/lib/cases/actions';
-import { cn } from '@/lib/utils';
+import { cn, daysSince } from '@/lib/utils';
+import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
 import { type CaseStage } from '@/lib/types/db';
 import { getT } from '@/lib/i18n/server';
 import type { BoardCaseItem } from '@/lib/cases/queries';
@@ -18,6 +19,8 @@ const MONEY_FMT = new Intl.NumberFormat('ru-RU', {
 
 // Карточка дела на канбан-доске.
 // canAdvance — может ли текущий пользователь двигать дело вперёд (RLS + не closed).
+// v3 s11 — паритет со строкой списка: клиент 13px, индикатор застоя (amber-точка,
+// БЕЗ анимации — запрет infinite в списках), hover без теней (только бордер).
 export async function BoardCard({
   c,
   canAdvance,
@@ -27,16 +30,18 @@ export async function BoardCard({
   canAdvance: boolean;
   nextStageLabel: string | null;
 }) {
-  const { t, fmt } = await getT();
+  const { t, fmt, plural } = await getT();
   const isUrgent = c.priority === 'urgent';
   const isClosed: boolean = (c.stage as CaseStage) === 'closed';
+  // Индикатор застоя — как в списке (U6): дни на текущем этапе ≥ порога.
+  const stageDays = isClosed ? null : daysSince(c.stage_changed_at);
+  const isStale = stageDays !== null && stageDays >= STALE_STAGE_DAYS;
 
   return (
     <article
       className={cn(
-        'group relative bg-surface rounded-md border shadow-sm transition-shadow',
-        'hover:shadow-md',
-        isUrgent ? 'border-prio-high/40' : 'border-border',
+        'group relative bg-surface rounded-md border shadow-sm transition-colors',
+        isUrgent ? 'border-prio-high/40' : 'border-border hover:border-border-strong',
       )}
     >
       <Link
@@ -44,14 +49,25 @@ export async function BoardCard({
         className="block px-3 pt-3 pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-md"
       >
         <div className="flex items-start justify-between gap-2 mb-1.5">
-          <span className="font-semibold text-[13.5px] text-text group-hover:text-primary transition-colors truncate">
-            {c.number_title}
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            {isStale && (
+              <span
+                aria-hidden="true"
+                className="h-[7px] w-[7px] shrink-0 rounded-full bg-warning"
+              />
+            )}
+            <span
+              className="truncate font-semibold text-[13.5px] text-text group-hover:text-primary transition-colors"
+              title={isStale ? plural(t.cases.row.stageDaysTitle, stageDays ?? 0) : undefined}
+            >
+              {c.number_title}
+            </span>
           </span>
           {isUrgent && <PriorityBadge priority={c.priority} />}
         </div>
 
         {c.client && (
-          <p className="text-[12.5px] text-text-muted truncate mb-2">
+          <p className="text-[13px] text-text-muted truncate mb-2">
             {c.client.name}
           </p>
         )}

@@ -3,6 +3,7 @@
 import { useOptimistic } from 'react';
 
 import { Avatar } from '@/components/ui/avatar';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useI18n } from '@/lib/i18n/provider';
 import type { CaseCommentWithAuthor } from '@/lib/types/db';
 
@@ -66,13 +67,13 @@ export function CommentList({
       )}
 
       {optimistic.length === 0 ? (
-        <div className="flex flex-col items-center px-6 py-10 text-center">
-          <p className="max-w-md text-[13px] text-text-muted">
-            {canWrite
+        <EmptyState
+          title={
+            canWrite
               ? t.comments.block.emptyCanWrite
-              : t.comments.block.emptyReadonly}
-          </p>
-        </div>
+              : t.comments.block.emptyReadonly
+          }
+        />
       ) : (
         <div>
           {optimistic.map((c) =>

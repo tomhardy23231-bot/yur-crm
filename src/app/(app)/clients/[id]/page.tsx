@@ -175,7 +175,7 @@ export default async function ClientDetailPage({
           <Section title={t.clients.detail.sectionAddress}>
             {client.address ? (
               <span className="inline-flex items-start gap-2 text-[13.5px] text-text">
-                <MapPin size={14} strokeWidth={1.75} className="text-text-muted mt-[3px] shrink-0" />
+                <MapPin size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-muted" />
                 {client.address}
               </span>
             ) : (

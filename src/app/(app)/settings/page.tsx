@@ -148,7 +148,7 @@ export default async function SettingsPage() {
 
       {/* Сводный список прав (P3.1) */}
       <section className="flex flex-col gap-3">
-        <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
+        <h2 className="inline-flex items-center gap-2 text-[16px] font-semibold text-text">
           <ShieldCheck size={16} strokeWidth={1.75} className="text-text-muted" />
           {t.settings.capsHeading}
         </h2>

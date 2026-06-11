@@ -15,7 +15,7 @@ export default async function RequisitesSettingsPage() {
   const requisites = await getOrgRequisites();
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-2 sm:px-4">
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-3 py-2 sm:px-4">
       <Link
         href="/settings"
         className="inline-flex items-center gap-1 text-[13px] text-text-muted transition-colors hover:text-text"

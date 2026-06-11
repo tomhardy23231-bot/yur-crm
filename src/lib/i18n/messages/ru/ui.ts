@@ -8,6 +8,17 @@ export const ui = {
     descending: 'по убыванию',
     none: 'нет сортировки',
   },
+
+  // Горячие клавиши (v3 Сессия 11): шпаргалка «?» + блок в /help.
+  hotkeys: {
+    title: 'Горячие клавиши',
+    searchAction: 'Поиск и команды',
+    newCaseAction: 'Новое дело',
+    newTaskAction: 'Новая задача',
+    helpAction: 'Эта шпаргалка',
+    closeAction: 'Закрыть окно или меню',
+    hint: 'Работают на любом экране, когда фокус не в поле ввода.',
+  },
 };
 
 export type UiMessages = typeof ui;

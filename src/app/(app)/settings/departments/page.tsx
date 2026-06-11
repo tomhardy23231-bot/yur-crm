@@ -74,7 +74,7 @@ export default async function DepartmentsSettingsPage() {
 
       {/* Создание подразделения */}
       <section className="flex flex-col gap-3">
-        <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
+        <h2 className="inline-flex items-center gap-2 text-[16px] font-semibold text-text">
           <Building2 size={16} strokeWidth={1.75} className="text-text-muted" />
           {t.departments.heading}
         </h2>

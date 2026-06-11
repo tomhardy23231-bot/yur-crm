@@ -79,7 +79,7 @@ export function InlineClientCreate({
     >
       <div className="w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
+          <h2 className="inline-flex items-center gap-2 text-[16px] font-semibold text-text">
             <UserPlus size={16} strokeWidth={1.75} className="text-primary" />
             {t.caseCard.inlineClient.title}
           </h2>

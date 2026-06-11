@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   createAbsenceAction,
@@ -20,6 +21,7 @@ const INITIAL: CreateAbsenceState = { ok: false };
 
 export function AbsenceCreateForm({ userId }: { userId: string }) {
   const { t } = useI18n();
+  const toast = useToast();
   const [state, formAction] = useActionState<CreateAbsenceState, FormData>(
     createAbsenceAction,
     INITIAL,
@@ -27,8 +29,11 @@ export function AbsenceCreateForm({ userId }: { userId: string }) {
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
-  }, [state.ok]);
+    if (state.ok) {
+      formRef.current?.reset();
+      toast.success(t.absences.create.success);
+    }
+  }, [state.ok, toast, t.absences.create.success]);
 
   useShakeInvalidFields(formRef, state);
 
@@ -82,12 +87,6 @@ export function AbsenceCreateForm({ userId }: { userId: string }) {
           {state.message}
         </p>
       )}
-      {state.ok && (
-        <p role="status" className="rounded-md border border-success/15 bg-success-bg px-3 py-2 text-sm text-success">
-          {t.absences.create.success}
-        </p>
-      )}
-
       <div>
         <SubmitButton />
       </div>

@@ -1,6 +1,7 @@
 import { FileText, Plus } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { getT } from '@/lib/i18n/server';
 import { listDocumentsByCase } from '@/lib/documents/queries';
 import { onlyOfficeConfigured } from '@/lib/onlyoffice/config';
@@ -58,7 +59,7 @@ export async function CaseDocumentsBlock({
 
       {docs.length === 0 ? (
         <EmptyState
-          message={
+          title={
             canWrite
               ? t.documents.block.emptyCanWrite
               : t.documents.block.emptyReadonly
@@ -80,13 +81,5 @@ export async function CaseDocumentsBlock({
         </div>
       )}
     </Card>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="py-10 px-6 flex flex-col items-center text-center">
-      <p className="text-[13px] text-text-muted max-w-md">{message}</p>
-    </div>
   );
 }

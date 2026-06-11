@@ -60,7 +60,7 @@ export default async function UsersSettingsPage() {
 
       {/* Создание пользователя */}
       <section className="flex flex-col gap-3">
-        <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold text-text">
+        <h2 className="inline-flex items-center gap-2 text-[16px] font-semibold text-text">
           <Users size={16} strokeWidth={1.75} className="text-text-muted" />
           {t.users.heading}
         </h2>

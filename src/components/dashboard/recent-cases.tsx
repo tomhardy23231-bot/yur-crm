@@ -68,7 +68,7 @@ export function RecentCases({
     <Card>
       <div className="flex items-center gap-2 border-b border-border px-5 py-4">
         <Briefcase size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[15px] font-semibold text-text">{t.dashboard.recentCases.title}</h2>
+        <h2 className="text-[16px] font-semibold text-text">{t.dashboard.recentCases.title}</h2>
         <Link
           href="/cases"
           className="ml-auto text-[12px] font-semibold text-primary hover:text-primary-hover"

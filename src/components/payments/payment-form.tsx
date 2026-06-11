@@ -7,12 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   createPaymentAction,
   type CreatePaymentFields,
   type CreatePaymentState,
 } from '@/lib/payments/actions';
+import { parseAmount, todayIso } from '@/lib/validation';
 
 import type { OptimisticPaymentInput } from './payments-list';
 
@@ -26,27 +28,12 @@ interface Props {
   addOptimistic?: (input: OptimisticPaymentInput) => void;
 }
 
-function todayISO(): string {
-  // Локальная дата пользователя (для <input type="date" defaultValue>).
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// Задача 9c: клиентская валидация суммы — зеркалит серверную parseAmount.
-// Допускаем точку и запятую, до 2 знаков, строго > 0 и в пределах numeric(14,2).
-function parseAmountClient(raw: string): number | null {
-  const normalized = raw.replace(',', '.').trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0 || n >= 1_000_000_000_000) return null;
-  return n;
-}
+// Дата по умолчанию и клиентская валидация суммы — общий @/lib/validation
+// (parseAmount зеркалит серверную проверку, todayIso — киевская «сегодня»).
 
 export function PaymentForm({ caseId, onSuccess, addOptimistic }: Props) {
   const { t } = useI18n();
+  const toast = useToast();
   // Уникальный префикс id полей — форма может быть на странице в нескольких
   // экземплярах (модалка в шапке + блок «Финансы»); без этого id дублируются.
   const uid = useId();
@@ -58,7 +45,7 @@ export function PaymentForm({ caseId, onSuccess, addOptimistic }: Props) {
       // правилом, что и клиентская валидация; addOptimistic зовём только если
       // сумма валидна (submitWithIdempotencyKey уже отсеял невалидную до сюда).
       if (addOptimistic) {
-        const amount = parseAmountClient(String(formData.get('amount') ?? ''));
+        const amount = parseAmount(String(formData.get('amount') ?? ''));
         const paidAt = String(formData.get('paid_at') ?? '').trim();
         // Дату валидируем хотя бы на непустоту (клиент строго валидирует только
         // сумму) — иначе «призрак» мигнул бы при пустой/битой дате до отката.
@@ -93,16 +80,19 @@ export function PaymentForm({ caseId, onSuccess, addOptimistic }: Props) {
       // (amountError сюда не сбрасываем: успешный submit возможен только когда
       // сумма уже валидна, т.е. amountError и так undefined — см. submit-хендлер.)
       idemKeyRef.current = null;
+      // Тост вместо инлайн-баннера: в модалке шапки форма закрывается раньше,
+      // чем баннер успели бы увидеть. toast стабилен (useMemo в провайдере).
+      toast.success(t.payments.form.saved);
       onSuccess?.();
     }
-  }, [state.ok, onSuccess]);
+  }, [state.ok, onSuccess, toast, t.payments.form.saved]);
 
   useShakeInvalidFields(formRef, state);
 
   function submitWithIdempotencyKey(formData: FormData) {
     // Клиентская валидация суммы: не пускаем «мусор» и неположительные значения.
     const amountRaw = String(formData.get('amount') ?? '');
-    if (parseAmountClient(amountRaw) === null) {
+    if (parseAmount(amountRaw) === null) {
       setAmountError(t.payments.form.amountInvalid);
       return;
     }
@@ -167,7 +157,7 @@ export function PaymentForm({ caseId, onSuccess, addOptimistic }: Props) {
             id={fid('paid-at')}
             name="paid_at"
             type="date"
-            defaultValue={todayISO()}
+            defaultValue={todayIso()}
             required
             aria-invalid={err('paid_at') ? 'true' : undefined}
             className=""
@@ -211,15 +201,6 @@ export function PaymentForm({ caseId, onSuccess, addOptimistic }: Props) {
           className="text-sm text-error bg-error-bg border border-error/15 rounded-md px-3 py-2"
         >
           {state.message}
-        </p>
-      )}
-
-      {state.ok && (
-        <p
-          role="status"
-          className="text-sm text-success bg-success-bg border border-success/15 rounded-md px-3 py-2"
-        >
-          {t.payments.form.saved}
         </p>
       )}
 

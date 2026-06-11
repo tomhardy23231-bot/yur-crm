@@ -28,7 +28,7 @@ export function StageFunnel({ funnel }: { funnel: ReadonlyArray<FunnelEntry> }) 
     <Card className="p-5">
       <div className="mb-3 flex items-center gap-2">
         <Filter size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[15px] font-semibold text-text">{t.dashboard.funnel.title}</h2>
+        <h2 className="text-[16px] font-semibold text-text">{t.dashboard.funnel.title}</h2>
         <span className="ml-auto text-[12px] tabular-nums text-text-muted">
           {total}
         </span>

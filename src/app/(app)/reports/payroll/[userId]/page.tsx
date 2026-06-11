@@ -188,7 +188,7 @@ export default async function PayrollEmployeePage({
   const payouts = monthTx.filter((t) => t.kind === 'payout');
 
   return (
-    <main className="flex flex-col gap-6 px-3 py-2 sm:px-4">
+    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <Link
         href="/reports/payroll"
         className="inline-flex w-fit items-center gap-1.5 text-[13px] text-text-muted transition-colors hover:text-text"

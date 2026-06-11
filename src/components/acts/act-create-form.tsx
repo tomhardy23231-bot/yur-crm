@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   createActAction,
@@ -18,6 +19,7 @@ const INITIAL: CreateActState = { ok: false };
 
 export function ActCreateForm({ caseId }: { caseId: string }) {
   const { t } = useI18n();
+  const toast = useToast();
   const [state, formAction] = useActionState<CreateActState, FormData>(
     createActAction,
     INITIAL,
@@ -25,8 +27,11 @@ export function ActCreateForm({ caseId }: { caseId: string }) {
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
-  }, [state.ok]);
+    if (state.ok) {
+      formRef.current?.reset();
+      toast.success(t.acts.create.success);
+    }
+  }, [state.ok, toast, t.acts.create.success]);
 
   useShakeInvalidFields(formRef, state);
 
@@ -81,12 +86,6 @@ export function ActCreateForm({ caseId }: { caseId: string }) {
           {state.message}
         </p>
       )}
-      {state.ok && (
-        <p role="status" className="rounded-md border border-success/15 bg-success-bg px-3 py-2 text-sm text-success">
-          {t.acts.create.success}
-        </p>
-      )}
-
       <div>
         <SubmitButton />
       </div>

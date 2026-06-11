@@ -2,6 +2,7 @@ import { FileSpreadsheet, Plus, Download, TriangleAlert } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { getT } from '@/lib/i18n/server';
 import { formatMoney } from '@/lib/utils';
 import { listActsByCase } from '@/lib/acts/queries';
@@ -65,7 +66,8 @@ export async function CaseActsBlock({
       )}
 
       {canCreate && (
-        <details className="group border-b border-border">
+        // id — для кнопки «+ Акт» в шапке карточки (раскрытие формы, v3 s11).
+        <details id="act-create-details" className="group border-b border-border">
           <summary className="inline-flex w-full cursor-pointer list-none items-center gap-2 px-5 py-3 text-[13px] font-medium text-primary transition-colors hover:bg-primary-subtle/50">
             <Plus size={14} strokeWidth={2} className="transition-transform group-open:rotate-45" />
             {t.acts.block.createSummary}
@@ -77,11 +79,9 @@ export async function CaseActsBlock({
       )}
 
       {acts.length === 0 ? (
-        <div className="px-6 py-10 text-center">
-          <p className="mx-auto max-w-md text-[13px] text-text-muted">
-            {canCreate ? t.acts.block.empty : t.acts.block.emptyReadonly}
-          </p>
-        </div>
+        <EmptyState
+          title={canCreate ? t.acts.block.empty : t.acts.block.emptyReadonly}
+        />
       ) : (
         <div className="divide-y divide-border">
           {acts.map((a) => {

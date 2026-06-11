@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
+import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   confirmActPaidAction,
@@ -26,6 +27,7 @@ export function ActConfirmForm({
   defaultAmount: number;
 }) {
   const { t } = useI18n();
+  const toast = useToast();
   const [state, formAction] = useActionState<ConfirmActState, FormData>(
     confirmActPaidAction,
     INITIAL,
@@ -33,8 +35,13 @@ export function ActConfirmForm({
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
-  }, [state.ok]);
+    if (state.ok) {
+      formRef.current?.reset();
+      // После подтверждения акт уходит из issued-списка (ревалидация) — инлайн
+      // баннер исчез бы вместе с формой, тост переживает перерисовку.
+      toast.success(t.acts.confirm.success);
+    }
+  }, [state.ok, toast, t.acts.confirm.success]);
 
   useShakeInvalidFields(formRef, state);
 
@@ -87,12 +94,6 @@ export function ActConfirmForm({
           {state.message}
         </p>
       )}
-      {state.ok && (
-        <p role="status" className="rounded-md border border-success/15 bg-success-bg px-3 py-2 text-sm text-success">
-          {t.acts.confirm.success}
-        </p>
-      )}
-
       <div>
         <SubmitButton />
       </div>

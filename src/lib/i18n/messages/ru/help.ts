@@ -27,6 +27,7 @@ export const help = {
     payroll: 'Зарплата: процент от оплат',
     getStarted: 'С чего начать',
     insideCase: 'Внутри дела',
+    hotkeys: 'Горячие клавиши',
     faq: 'Частые вопросы',
   },
 
