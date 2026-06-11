@@ -18,6 +18,18 @@ export function round2(n: number): number {
 // Сырьё одной операции для агрегации (нужны лишь дата/направление/сумма).
 export type CashRawEntry = Pick<CashEntryWithCase, 'entry_date' | 'direction' | 'amount'>;
 
+// Операции раньше даты начального остатка счёта в баланс НЕ входят (их влияние уже
+// «зашито» в opening_balance / в перенос cash_balances_before). Возвращает только
+// операции с entry_date >= openingDate; остальные показываются в журнале с пометкой,
+// но на сальдо не влияют (см. app/(app)/reports/cash/page). Generic — работает и над
+// CashEntryWithCase, и над CashRawEntry.
+export function entriesFromOpening<T extends { entry_date: string }>(
+  entries: ReadonlyArray<T>,
+  openingDate: string,
+): T[] {
+  return entries.filter((e) => e.entry_date >= openingDate);
+}
+
 // Свёртка по дню: суммы прихода и расхода за дату.
 export type CashDayInput = {
   date: string; // YYYY-MM-DD

@@ -2,17 +2,19 @@ import { Wallet } from 'lucide-react';
 
 import { requireCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
-import { getCashReportData } from '@/lib/cash/queries';
+import { getCashReportData, getUnsyncedPaymentsCount } from '@/lib/cash/queries';
 import {
   buildAccountSaldo,
   buildTotalRows,
   balanceAsOf,
   monthTotals,
-  type CashRawEntry,
+  entriesFromOpening,
 } from '@/lib/cash/saldo';
+import type { CashEntryWithCase } from '@/lib/types/db';
 import { normalizeMonth, monthLabel, monthNamesFrom } from '@/lib/payroll/month';
 import { MonthPicker } from '@/components/payroll/month-picker';
 import { CashAccountsManager } from '@/components/cash/cash-accounts-manager';
+import { CashBackfillBanner } from '@/components/cash/cash-backfill-banner';
 import { CashReport, type CashAccountView } from '@/components/cash/cash-report';
 
 // Последний день месяца 'YYYY-MM-01' → 'YYYY-MM-DD' (UTC, без таймзонного сдвига).
@@ -38,10 +40,11 @@ export default async function CashReportPage({
   const monthStart = month;
   const monthEnd = lastDayOfMonth(month);
 
-  const { accounts, entries } = await getCashReportData(month);
+  const [{ accounts, entries, openingBalances, truncated }, unsyncedCount] =
+    await Promise.all([getCashReportData(month), getUnsyncedPaymentsCount()]);
 
-  // Группируем операции по счёту (нужны до конца месяца — для переноса остатка).
-  const byAccount = new Map<string, CashRawEntry[]>();
+  // Группируем операции МЕСЯЦА по счёту (журнал + расчёт сальдо).
+  const byAccount = new Map<string, CashEntryWithCase[]>();
   for (const e of entries) {
     const list = byAccount.get(e.account_id) ?? [];
     list.push(e);
@@ -50,15 +53,22 @@ export default async function CashReportPage({
 
   const range = { monthStart, monthEnd };
 
+  // Эффективный остаток на начало месяца = начальный остаток счёта + перенос из прошлых
+  // периодов (cash_balances_before, SQL). Операции раньше opening_date в баланс не входят
+  // (их влияние уже в opening_balance), но остаются в журнале с пометкой hasBeforeOpening.
+  const openingFor = (id: string, base: number) => base + (openingBalances[id] ?? 0);
+
   const views: CashAccountView[] = accounts.map((acc) => {
-    const accEntries = byAccount.get(acc.id) ?? [];
-    const { rows } = buildAccountSaldo(acc.opening_balance, accEntries, range);
+    const accAll = byAccount.get(acc.id) ?? [];
+    const accForBalance = entriesFromOpening(accAll, acc.opening_date);
+    const opening = openingFor(acc.id, acc.opening_balance);
+    const { rows } = buildAccountSaldo(opening, accForBalance, range);
     return {
       accountId: acc.id,
       rows,
       totals: monthTotals(rows),
-      closingNow: balanceAsOf(acc.opening_balance, accEntries, monthEnd),
-      hasBeforeOpening: accEntries.some((e) => e.entry_date < acc.opening_date),
+      closingNow: balanceAsOf(opening, accForBalance, monthEnd),
+      hasBeforeOpening: accAll.some((e) => e.entry_date < acc.opening_date),
     };
   });
 
@@ -66,8 +76,8 @@ export default async function CashReportPage({
   const totalRows = buildTotalRows(
     accounts.map((a) => ({
       id: a.id,
-      openingBalance: a.opening_balance,
-      entries: byAccount.get(a.id) ?? [],
+      openingBalance: openingFor(a.id, a.opening_balance),
+      entries: entriesFromOpening(byAccount.get(a.id) ?? [], a.opening_date),
     })),
     range,
   );
@@ -96,6 +106,8 @@ export default async function CashReportPage({
         <MonthPicker month={month} />
       </div>
 
+      <CashBackfillBanner count={unsyncedCount} />
+
       <CashAccountsManager accounts={accounts} />
 
       <CashReport
@@ -103,6 +115,7 @@ export default async function CashReportPage({
         views={views}
         totalRows={totalRows}
         journals={journals}
+        truncated={truncated}
       />
     </main>
   );

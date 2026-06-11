@@ -91,37 +91,75 @@ export async function listCashAccounts(
   return (data ?? []).map((r) => normalizeAccount(r as RawAccount));
 }
 
+// Потолок выборки операций месяца. Защита от молчаливого усечения PostgREST
+// (max_rows=1000): тянем явно с count:'exact' и сравниваем — при превышении UI
+// покажет предупреждение «показаны не все операции месяца».
+const MONTH_ENTRY_LIMIT = 5000;
+
 export type CashReportData = {
   accounts: CashAccount[];
-  // Все операции по entry_date <= конца месяца (для корректного переноса остатка),
-  // с краткой ссылкой на дело у авто-приходов. Сальдо/итоги считаются в TS.
+  // Операции ТОЛЬКО выбранного месяца (свежие не теряются под потолком PostgREST).
+  // Перенос из прошлых периодов считается SQL'ем (openingBalances), а не выкачкой истории.
   entries: CashEntryWithCase[];
+  // Перенос остатка на начало месяца по счёту (accountId → net до monthStart, начиная с
+  // opening_date). Эффективный остаток на начало = account.opening_balance + это число.
+  openingBalances: Record<string, number>;
+  // true, если операций за месяц больше лимита выборки (показать предупреждение в UI).
+  truncated: boolean;
 };
 
 // Данные сальдо-отчёта за месяц. month — 'YYYY-MM-01' (см. lib/payroll/month).
-// Тянем операции до конца месяца включительно: предыдущие нужны для остатка на
-// начало, текущие — для разворота по дням и журнала. RLS скоупит по can_manage_cash.
+// Тянем ТОЛЬКО операции выбранного месяца (свежие не теряются под потолком 1000), а
+// перенос остатка на начало месяца считаем SQL-функцией cash_balances_before (без
+// выкачки всей истории). RLS/право скоупит по can_manage_cash.
 export async function getCashReportData(month: string): Promise<CashReportData> {
   const supabase = await createSupabaseServerClient();
+  const monthStart = month; // 'YYYY-MM-01'
   // Верхняя граница — первый день следующего месяца (строго меньше).
   const upperExclusive = nextMonth(month);
 
-  const [accounts, entriesRes] = await Promise.all([
+  const [accounts, balancesRes, entriesRes] = await Promise.all([
     listCashAccounts(),
+    supabase.rpc('cash_balances_before', { p_before: monthStart }),
     supabase
       .from('cash_entries')
-      .select(`${ENTRY_SELECT}, case:case_id(id, number_title)`)
+      .select(`${ENTRY_SELECT}, case:case_id(id, number_title)`, { count: 'exact' })
+      .gte('entry_date', monthStart)
       .lt('entry_date', upperExclusive)
       .order('entry_date', { ascending: true })
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true })
+      .limit(MONTH_ENTRY_LIMIT),
   ]);
 
+  if (balancesRes.error) {
+    throw new Error(`getCashReportData balances failed: ${balancesRes.error.message}`);
+  }
   if (entriesRes.error) {
     throw new Error(`getCashReportData failed: ${entriesRes.error.message}`);
   }
 
-  return {
-    accounts,
-    entries: (entriesRes.data ?? []).map((r) => normalizeEntry(r as RawEntry)),
-  };
+  const openingBalances: Record<string, number> = {};
+  for (const r of (balancesRes.data ?? []) as Array<{
+    account_id: string;
+    balance: number | string;
+  }>) {
+    openingBalances[r.account_id] = Number(r.balance);
+  }
+
+  const rows = (entriesRes.data ?? []).map((r) => normalizeEntry(r as RawEntry));
+  const truncated = (entriesRes.count ?? rows.length) > rows.length;
+
+  return { accounts, entries: rows, openingBalances, truncated };
+}
+
+// Сколько платежей ещё не отражены в кассе (для баннера «Синхронизировать»). Не валит
+// страницу: при ошибке/без права RPC вернёт 0 (право проверяется внутри функции).
+export async function getUnsyncedPaymentsCount(): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('cash_unsynced_payments_count');
+  if (error) {
+    console.error('getUnsyncedPaymentsCount failed:', error.message);
+    return 0;
+  }
+  return Number(data ?? 0);
 }

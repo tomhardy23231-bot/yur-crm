@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Trash2, AlertTriangle, Link2 } from 'lucide-react';
+import { Trash2, AlertTriangle, Link2, Wallet } from 'lucide-react';
 
 import {
   Table,
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn, formatMoney } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n/provider';
 import type { CashAccount, CashEntryWithCase } from '@/lib/types/db';
@@ -40,20 +41,25 @@ export function CashReport({
   views,
   totalRows,
   journals,
+  truncated = false,
 }: {
   accounts: CashAccount[];
   views: CashAccountView[];
   totalRows: CashTotalRow[];
   journals: Record<string, CashEntryWithCase[]>;
+  truncated?: boolean;
 }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<string>(accounts[0]?.id ?? TOTAL_TAB);
 
   if (accounts.length === 0) {
     return (
-      <Card className="px-6 py-12 text-center">
-        <p className="mb-1 text-[14px] font-semibold text-text">{t.cash.report.noAccounts}</p>
-        <p className="text-[13px] text-text-muted">{t.cash.report.noAccountsHint}</p>
+      <Card>
+        <EmptyState
+          icon={Wallet}
+          title={t.cash.report.noAccounts}
+          hint={t.cash.report.noAccountsHint}
+        />
       </Card>
     );
   }
@@ -62,6 +68,13 @@ export function CashReport({
 
   return (
     <div className="flex flex-col gap-4">
+      {truncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning-bg px-4 py-2.5 text-[12.5px] text-warning">
+          <AlertTriangle size={14} strokeWidth={1.75} className="shrink-0" />
+          {t.cash.report.truncatedWarning}
+        </div>
+      )}
+
       {/* Вкладки: по счёту + сводная. */}
       <div
         role="tablist"
@@ -165,11 +178,40 @@ function AccountPanel({
 
       {/* Разворот по дням */}
       {view.rows.length === 0 ? (
-        <Card className="px-6 py-8 text-center">
-          <p className="text-[13px] text-text-muted">{t.cash.report.emptyMonth}</p>
+        <Card>
+          <EmptyState title={t.cash.report.emptyMonth} />
         </Card>
       ) : (
-        <div className="overflow-auto rounded-lg border border-border bg-surface shadow-sm">
+        <>
+        {/* Мобильное представление (6.4): карточка дня с тап-разворотом операций. */}
+        <div className="flex flex-col gap-2 md:hidden">
+          {view.rows.map((r: CashDayRow) => (
+            <DayCardMobile
+              key={r.date}
+              row={r}
+              entries={journal.filter((e) => e.entry_date === r.date)}
+            />
+          ))}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-surface px-3.5 py-2.5 tabular-nums text-[12.5px] shadow-sm">
+            <span className="text-text-muted">
+              {t.cash.report.monthInflow}{' '}
+              <span className="font-bold text-success-text">+{money(view.totals.inflow)}</span>
+            </span>
+            <span className="text-text-muted">
+              {t.cash.report.monthOutflow}{' '}
+              <span className="font-bold text-error">−{money(view.totals.outflow)}</span>
+            </span>
+            <span className="text-text-muted">
+              {t.cash.report.monthNet}{' '}
+              <span className={cn('font-bold', view.totals.net >= 0 ? 'text-success-text' : 'text-error')}>
+                {view.totals.net >= 0 ? '+' : '−'}
+                {money(Math.abs(view.totals.net))}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <div className="hidden overflow-auto rounded-lg border border-border bg-surface shadow-sm md:block">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-surface">
@@ -187,7 +229,7 @@ function AccountPanel({
                   <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text-muted">
                     {money(r.opening)}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-success">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-success-text">
                     {r.inflow > 0 ? `+${money(r.inflow)}` : '—'}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-error">
@@ -203,7 +245,7 @@ function AccountPanel({
           <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-1.5 border-t border-border bg-surface-muted/50 px-4 py-3 tabular-nums text-[13px]">
             <span className="text-text-muted">
               {t.cash.report.monthInflow}{' '}
-              <span className="font-bold text-success">+{money(view.totals.inflow)}</span>
+              <span className="font-bold text-success-text">+{money(view.totals.inflow)}</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthOutflow}{' '}
@@ -211,17 +253,19 @@ function AccountPanel({
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthNet}{' '}
-              <span className={cn('font-bold', view.totals.net >= 0 ? 'text-success' : 'text-error')}>
+              <span className={cn('font-bold', view.totals.net >= 0 ? 'text-success-text' : 'text-error')}>
                 {view.totals.net >= 0 ? '+' : '−'}
                 {money(Math.abs(view.totals.net))}
               </span>
             </span>
           </div>
         </div>
+        </>
       )}
 
-      {/* Журнал операций месяца */}
-      <div className="flex flex-col gap-2">
+      {/* Журнал операций месяца. На мобильных скрыт — операции доступны из
+          разворота дня (DayCardMobile), дублировать список незачем. */}
+      <div className="hidden flex-col gap-2 md:flex">
         <h3 className="text-[13px] font-semibold text-text">{t.cash.report.journalHeading}</h3>
         {journal.length === 0 ? (
           <p className="text-[13px] text-text-muted">{t.cash.report.journalEmpty}</p>
@@ -245,11 +289,57 @@ function AccountPanel({
   );
 }
 
+// Мобильная карточка дня (6.4): «дата · приход · расход · сальдо», тап
+// разворачивает операции этого дня (details/summary, без JS-состояния).
+function DayCardMobile({
+  row,
+  entries,
+}: {
+  row: CashDayRow;
+  entries: CashEntryWithCase[];
+}) {
+  const { t } = useI18n();
+
+  return (
+    <details className="group overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+      <summary className="cursor-pointer list-none p-3.5 transition-colors active:bg-surface-muted">
+        <span className="flex items-center justify-between gap-3">
+          <span className="text-[13.5px] font-bold tabular-nums text-text">
+            {row.date}
+          </span>
+          <span className="text-[12px] tabular-nums text-text-muted">
+            {t.cash.report.colClosing}:{' '}
+            <span className="font-bold text-text">{money(row.closing)}</span>
+          </span>
+        </span>
+        <span className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 tabular-nums text-[12.5px]">
+          <span className="text-success-text">
+            {row.inflow > 0 ? `+${money(row.inflow)}` : '—'}
+          </span>
+          <span className="text-error">
+            {row.outflow > 0 ? `−${money(row.outflow)}` : '—'}
+          </span>
+          <span className="ml-auto text-text-subtle">
+            {t.cash.report.colOpening}: {money(row.opening)}
+          </span>
+        </span>
+      </summary>
+      {entries.length > 0 && (
+        <div className="flex flex-col divide-y divide-border border-t border-border">
+          {entries.map((e) => (
+            <JournalRow key={e.id} entry={e} />
+          ))}
+        </div>
+      )}
+    </details>
+  );
+}
+
 function JournalRow({ entry }: { entry: CashEntryWithCase }) {
   const { t } = useI18n();
   const isAuto = entry.payment_id !== null;
   const sign = entry.direction === 'in' ? '+' : '−';
-  const cls = entry.direction === 'in' ? 'text-success' : 'text-error';
+  const cls = entry.direction === 'in' ? 'text-success-text' : 'text-error';
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
@@ -304,8 +394,8 @@ function TotalTable({
 
   if (rows.length === 0) {
     return (
-      <Card className="px-6 py-8 text-center">
-        <p className="text-[13px] text-text-muted">{t.cash.report.emptyTotal}</p>
+      <Card>
+        <EmptyState title={t.cash.report.emptyTotal} />
       </Card>
     );
   }

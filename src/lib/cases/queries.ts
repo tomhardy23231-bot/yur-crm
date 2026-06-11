@@ -6,6 +6,7 @@ import type {
   BillingType,
   Case,
   CaseCategory,
+  CaseOutcome,
   CasePriority,
   CaseStage,
   CaseType,
@@ -66,6 +67,8 @@ export type CaseListItem = {
   closed_without_act: boolean;
   // Дата закрытия дела (NULL пока не закрыто) — колонка/фильтр на вкладке «Архив».
   closed_at: string | null;
+  // v3 s7: исход — для серого бейджа «не заключили» в колонке этапа списка.
+  outcome: CaseOutcome | null;
   // Время отправки в архив (NULL — активно). Признак вкладки «Архив».
   archived_at: string | null;
   client: { id: string; name: string } | null;
@@ -74,11 +77,15 @@ export type CaseListItem = {
 };
 
 // Whitelisted sortable columns (защита от инжекта неизвестного имени в .order()).
+// stage_changed_at — для пресета «Зависшие» (v3 s11): шапки-колонки для него нет,
+// сортировка задаётся ссылкой пресета; RPC search_case_ids неизвестный sort
+// деградирует к opened_at (см. миграцию 20260610130000) — при поиске с q не падаем.
 export const CASES_SORTABLE_COLUMNS = [
   'number_title',
   'opened_at',
   'contract_sum',
   'debt',
+  'stage_changed_at',
 ] as const;
 export type CasesSortColumn = (typeof CASES_SORTABLE_COLUMNS)[number];
 export type SortDir = 'asc' | 'desc';
@@ -161,6 +168,7 @@ export async function listCases(
     stage_changed_at: string;
     closed_without_act: boolean;
     closed_at: string | null;
+    outcome: CaseOutcome | null;
     archived_at: string | null;
     client:
       | ReadonlyArray<{ id: string; name: string }>
@@ -177,7 +185,7 @@ export async function listCases(
   };
 
   const SELECT =
-    'id, number_title, stage, case_type, category, priority, opened_at, contract_sum, debt, overpaid, stage_changed_at, closed_without_act, closed_at, archived_at, ' +
+    'id, number_title, stage, case_type, category, priority, opened_at, contract_sum, debt, overpaid, stage_changed_at, closed_without_act, closed_at, outcome, archived_at, ' +
     'client:client_id(id, name), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)';
 
   if (q) {
@@ -317,25 +325,35 @@ export async function countCasesByStage(
     }
   }
 
-  let query = supabase.from('cases').select('stage').is('archived_at', null);
-  if (params.caseType) query = query.eq('case_type', params.caseType);
-  if (params.category) query = query.eq('category', params.category);
-  if (params.responsibleId) query = query.eq('responsible_id', params.responsibleId);
-  if (params.lawyerId) query = query.eq('lawyer_id', params.lawyerId);
-  if (params.clientId) query = query.eq('client_id', params.clientId);
-  if (params.debtOnly) query = query.gt('debt', 0);
-  if (deptMemberIds) query = query.or(departmentOrFilter(deptMemberIds));
+  // Один head-count на этап (count:'exact') вместо выкачки всех строк — иначе потолок
+  // PostgREST max_rows=1000 тихо занижал бы счётчики на больших объёмах. Все НЕ-этапные
+  // фильтры применяются к каждому запросу через фабрику base().
+  const base = () => {
+    let q = supabase
+      .from('cases')
+      .select('id', { count: 'exact', head: true })
+      .is('archived_at', null);
+    if (params.caseType) q = q.eq('case_type', params.caseType);
+    if (params.category) q = q.eq('category', params.category);
+    if (params.responsibleId) q = q.eq('responsible_id', params.responsibleId);
+    if (params.lawyerId) q = q.eq('lawyer_id', params.lawyerId);
+    if (params.clientId) q = q.eq('client_id', params.clientId);
+    if (params.debtOnly) q = q.gt('debt', 0);
+    if (deptMemberIds) q = q.or(departmentOrFilter(deptMemberIds));
+    return q;
+  };
 
-  const { data, error } = await query;
-  if (error) throw new Error(`countCasesByStage failed: ${error.message}`);
+  const results = await Promise.all(CASE_STAGES.map((s) => base().eq('stage', s)));
 
   const counts = Object.fromEntries(CASE_STAGES.map((s) => [s, 0])) as Record<
     CaseStage,
     number
   >;
-  for (const r of (data ?? []) as Array<{ stage: CaseStage }>) {
-    counts[r.stage] = (counts[r.stage] ?? 0) + 1;
-  }
+  CASE_STAGES.forEach((s, i) => {
+    const { count, error } = results[i]!;
+    if (error) throw new Error(`countCasesByStage failed: ${error.message}`);
+    counts[s] = count ?? 0;
+  });
   return counts;
 }
 
@@ -354,6 +372,7 @@ function normalizeRow(r: {
   stage_changed_at: string;
   closed_without_act: boolean;
   closed_at: string | null;
+  outcome: CaseOutcome | null;
   archived_at: string | null;
   client:
     | ReadonlyArray<{ id: string; name: string }>
@@ -387,6 +406,7 @@ function normalizeRow(r: {
     stage_changed_at: r.stage_changed_at,
     closed_without_act: Boolean(r.closed_without_act),
     closed_at: r.closed_at,
+    outcome: r.outcome,
     archived_at: r.archived_at,
     client,
     lawyer,
@@ -400,7 +420,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     .from('cases')
     .select(
       'id, number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, priority, tags, ' +
-        'contract_sum, paid_total, debt, overpaid, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, closed_without_act, stage_changed_at, archived_at, archived_by, created_at, ' +
+        'contract_sum, paid_total, debt, overpaid, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, outcome, lost_reason, closed_without_act, stage_changed_at, archived_at, archived_by, created_at, updated_at, ' +
         'client:client_id(id, name, client_kind, phone, email, source), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
     )
     .eq('id', id)
@@ -488,11 +508,14 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     court_case_number: r.court_case_number,
     court: r.court,
     closed_at: r.closed_at,
+    outcome: r.outcome,
+    lost_reason: r.lost_reason,
     closed_without_act: Boolean(r.closed_without_act),
     stage_changed_at: r.stage_changed_at,
     archived_at: r.archived_at,
     archived_by: r.archived_by,
     created_at: r.created_at,
+    updated_at: r.updated_at,
     client,
     lawyer,
     responsible,
@@ -511,6 +534,8 @@ export type BoardCaseItem = {
   case_type: CaseType;
   category: CaseCategory;
   opened_at: string;
+  /** Когда дело попало на текущий этап — индикатор застоя на доске (v3 s11). */
+  stage_changed_at: string;
   contract_sum: number;
   debt: number;
   client: { id: string; name: string } | null;
@@ -524,25 +549,40 @@ export const BOARD_COLUMN_CAP = 100;
 
 // Все RLS-видимые дела для доски. Сортировка по приоритету (urgent сверху),
 // затем по opened_at desc. Группировка — на клиенте.
+// v3 Сессия 6 (паритет фильтров со списком): + категория и подразделение.
 export async function listCasesForBoard(params: {
   responsibleId?: string;
   caseType?: CaseType;
+  category?: CaseCategory;
+  departmentId?: string;
 } = {}): Promise<BoardCaseItem[]> {
   const supabase = await createSupabaseServerClient();
+
+  // Фильтр подразделения — как в listCases: резолвим членов; пусто → дел нет.
+  let deptMemberIds: string[] | null = null;
+  if (params.departmentId) {
+    deptMemberIds = await resolveDepartmentMemberIds(supabase, params.departmentId);
+    if (deptMemberIds === null) return [];
+  }
 
   let query = supabase
     .from('cases')
     .select(
-      'id, number_title, stage, priority, case_type, category, opened_at, contract_sum, debt, ' +
+      'id, number_title, stage, priority, case_type, category, opened_at, stage_changed_at, contract_sum, debt, ' +
         'client:client_id(id, name), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
     )
     // urgent сверху (priority='urgent' < 'normal' в алфавите → ascending=true)
     .order('priority', { ascending: true })
     .order('opened_at', { ascending: false })
-    .order('id', { ascending: false });
+    .order('id', { ascending: false })
+    // Явный потолок против молчаливого усечения PostgREST (max_rows=1000). Клиентский
+    // cap BOARD_COLUMN_CAP=100/колонку остаётся; 600 с запасом покрывает 5 колонок.
+    .limit(600);
 
+  if (deptMemberIds) query = query.or(departmentOrFilter(deptMemberIds));
   if (params.responsibleId) query = query.eq('responsible_id', params.responsibleId);
   if (params.caseType) query = query.eq('case_type', params.caseType);
+  if (params.category) query = query.eq('category', params.category);
 
   const { data, error } = await query;
   if (error) {
@@ -557,6 +597,7 @@ export async function listCasesForBoard(params: {
     case_type: CaseType;
     category: CaseCategory;
     opened_at: string;
+    stage_changed_at: string;
     contract_sum: number | string;
     debt: number | string;
     client:
@@ -588,6 +629,7 @@ export async function listCasesForBoard(params: {
       case_type: r.case_type,
       category: r.category,
       opened_at: r.opened_at,
+      stage_changed_at: r.stage_changed_at,
       contract_sum: Number(r.contract_sum),
       debt: Number(r.debt),
       client,
@@ -645,17 +687,43 @@ export type ClientOption = {
   client_kind: ClientKind;
 };
 
-// Все видимые клиенты (без пагинации) — для нативного Select в форме создания.
-// RLS уже отфильтрует невидимых для текущего пользователя.
+// Все видимые клиенты — для нативного Select в форме создания/фильтра.
+// RLS уже отфильтрует невидимых для текущего пользователя. v3 Сессия 4: явный
+// .limit(1000) — защита от ТИХОГО усечения потолком PostgREST (max_rows=1000) и
+// маркер «Phase 1»: при росте базы здесь нужен асинхронный комбобокс (сессия 6).
 export async function listClientsForSelect(): Promise<ClientOption[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('clients')
     .select('id, name, client_kind')
-    .order('name', { ascending: true });
+    .order('name', { ascending: true })
+    .limit(1000);
 
   if (error) {
     throw new Error(`listClientsForSelect failed: ${error.message}`);
   }
   return (data ?? []) as ClientOption[];
+}
+
+export type CaseSelectOption = {
+  id: string;
+  number_title: string;
+};
+
+// Видимые дела для комбобокса «Дело» (глобальное создание задачи, v3 Сессия 6).
+// RLS режет по роли (юрист/эксперт видят только свои). Свежие сверху; клиентской
+// фильтрации по 300 делам достаточно — серверный поиск тут не нужен.
+export async function listCasesForSelect(): Promise<CaseSelectOption[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('cases')
+    .select('id, number_title')
+    .is('archived_at', null)
+    .order('opened_at', { ascending: false })
+    .limit(300);
+
+  if (error) {
+    throw new Error(`listCasesForSelect failed: ${error.message}`);
+  }
+  return (data ?? []) as CaseSelectOption[];
 }

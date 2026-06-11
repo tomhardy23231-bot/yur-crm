@@ -5,6 +5,7 @@ import {
   balanceAsOf,
   monthTotals,
   buildTotalRows,
+  entriesFromOpening,
   round2,
   type CashRawEntry,
 } from '@/lib/cash/saldo';
@@ -170,5 +171,24 @@ describe('monthTotals и фильтр по месяцу', () => {
     });
     expect(june.rows).toEqual([]); // строк нет, но …
     expect(june.closingBalance).toBe(33266.1); // … накопленный остаток верен
+  });
+});
+
+describe('entriesFromOpening — операции до opening_date не влияют на баланс', () => {
+  it('отбрасывает операции раньше даты начального остатка', () => {
+    const es: CashRawEntry[] = [
+      inEntry('2026-04-30', 100), // до opening_date — должна выпасть
+      inEntry('2026-05-01', 50), // ровно в дату начала — входит
+      inEntry('2026-05-02', 70),
+    ];
+    const kept = entriesFromOpening(es, '2026-05-01');
+    expect(kept.map((e) => e.entry_date)).toEqual(['2026-05-01', '2026-05-02']);
+    // Баланс по отфильтрованным = 120 (без учёта 100 до даты начального остатка).
+    expect(buildAccountSaldo(0, kept).closingBalance).toBe(120);
+  });
+
+  it('пустой результат, если все операции раньше opening_date', () => {
+    const es: CashRawEntry[] = [inEntry('2026-04-01', 10), outEntry('2026-04-15', 5)];
+    expect(entriesFromOpening(es, '2026-05-01')).toEqual([]);
   });
 });

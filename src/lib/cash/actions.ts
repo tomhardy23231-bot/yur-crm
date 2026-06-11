@@ -7,38 +7,10 @@ import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CASH_ACCOUNT_KINDS, type CashAccountKind } from '@/lib/types/db';
+import { UUID_RE, parseAmount, parseNonNegAmount, isValidDate } from '@/lib/validation';
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-// numeric(14,2): до 999 999 999 999.99.
-const MAX_AMOUNT = 1_000_000_000_000;
-
-function isValidDate(s: string): boolean {
-  if (!DATE_RE.test(s)) return false;
-  const d = new Date(s + 'T00:00:00Z');
-  if (Number.isNaN(d.getTime())) return false;
-  return d.toISOString().slice(0, 10) === s;
-}
-
-// Сумма > 0 (для операций). Точка/запятая, до 2 знаков.
-function parsePositiveAmount(raw: string): number | null {
-  const normalized = raw.replace(',', '.').trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0 || n >= MAX_AMOUNT) return null;
-  return n;
-}
-
-// Начальный остаток счёта: >= 0 (можно 0).
-function parseNonNegAmount(raw: string): number | null {
-  const normalized = raw.replace(',', '.').trim();
-  if (normalized === '') return 0;
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n < 0 || n >= MAX_AMOUNT) return null;
-  return n;
-}
+// Валидаторы суммы/даты/UUID — в @/lib/validation: parseAmount (> 0) для операций,
+// parseNonNegAmount (>= 0) для начального остатка счёта.
 
 // Если выставляем новый дефолтный счёт — снимаем флаг с прежнего (partial-unique
 // индекс cash_accounts_one_default допускает лишь один is_default на компанию).
@@ -198,7 +170,7 @@ export async function createCashEntryAction(
   if (!account_id || !UUID_RE.test(account_id)) fieldErrors.account_id = t.cash.actions.accountInvalid;
   if (direction !== 'in' && direction !== 'out') fieldErrors.direction = t.cash.actions.directionInvalid;
   if (!amount_raw) fieldErrors.amount = t.cash.actions.amountRequired;
-  else if (parsePositiveAmount(amount_raw) === null) fieldErrors.amount = t.cash.actions.amountInvalid;
+  else if (parseAmount(amount_raw) === null) fieldErrors.amount = t.cash.actions.amountInvalid;
   if (!entry_date) fieldErrors.entry_date = t.cash.actions.dateRequired;
   else if (!isValidDate(entry_date)) fieldErrors.entry_date = t.cash.actions.dateInvalid;
   if (!description) fieldErrors.description = t.cash.actions.descriptionRequired;
@@ -213,7 +185,7 @@ export async function createCashEntryAction(
     account_id,
     entry_date,
     direction: direction as 'in' | 'out',
-    amount: parsePositiveAmount(amount_raw)!,
+    amount: parseAmount(amount_raw)!,
     description,
     created_by: user.profile.id,
     // payment_id остаётся NULL — это ручная операция (RLS требует payment_id IS NULL).
@@ -246,4 +218,31 @@ export async function deleteCashEntryAction(formData: FormData): Promise<void> {
     return;
   }
   revalidatePath('/reports/cash');
+}
+
+// ============================================================================
+// Бэкфилл кассы: завести недостающие операции по платежам, у которых нет строки
+// кассы (внесены до настройки счетов). Право — can_manage_cash. Возвращает число
+// созданных операций. RPC идемпотентна (повторный вызов → 0).
+// ============================================================================
+export type CashBackfillResult = { ok: boolean; count?: number; message?: string };
+
+export async function backfillCashAction(): Promise<CashBackfillResult> {
+  const user = await requireUser();
+  const { t } = await getT();
+  if (!user.caps.can_manage_cash) {
+    return { ok: false, message: t.cash.actions.noPermission };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('cash_backfill_payments');
+  if (error) {
+    return {
+      ok: false,
+      message: dbErrorMessage('backfillCashAction', error, t.cash.actions.saveFailed, t.errors.db),
+    };
+  }
+
+  revalidatePath('/reports/cash');
+  return { ok: true, count: Number(data ?? 0) };
 }
