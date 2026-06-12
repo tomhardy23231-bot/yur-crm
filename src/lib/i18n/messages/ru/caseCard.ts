@@ -9,6 +9,24 @@ export const caseCard = {
     act: 'Акт',
   },
 
+  // ── Блок «Что дальше» — приоритетные действия по делу (редизайн Волна 1) ──
+  whatsNext: {
+    heading: 'Что дальше',
+    allClear: 'Под контролем — срочных действий нет',
+    overdueTasks: {
+      one: 'Просрочена {n} задача',
+      few: 'Просрочено {n} задачи',
+      many: 'Просрочено {n} задач',
+    },
+    nextLabel: 'Ближайшее',
+    dueToday: 'сегодня',
+    planOverdue: 'Просрочена доплата {amount} ₴ от {date}',
+    planNext: 'Ожидается доплата {amount} ₴ до {date}',
+    debtNoPlan: 'Долг {amount} ₴ — график платежей не задан',
+    addPlan: 'Добавить график',
+    missingAct: 'Нет подписанного акта приёма-передачи',
+  },
+
   // ── Экран просмотра карточки дела (cases/[id]/page.tsx) ──────────────
   detail: {
     // Ошибки удаления/перехода (?error=… в адресе)
@@ -115,6 +133,7 @@ export const caseCard = {
     sectionComments: 'Комментарии',
     sectionFinance: 'Финансы',
     sectionHistory: 'История',
+    tabsAria: 'Разделы дела',
   },
 
   // ── Удаление дела (delete-case-form.tsx) ─────────────────────────────

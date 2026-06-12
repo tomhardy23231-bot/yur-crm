@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getOrgRequisites } from '@/lib/org/queries';
@@ -54,7 +55,7 @@ function normalizeAct(r: RawAct): CaseAct {
 }
 
 // Акты дела (новые сверху), с краткой ссылкой на подтверждающий скан.
-export async function listActsByCase(caseId: string): Promise<CaseActWithScan[]> {
+export const listActsByCase = cache(async (caseId: string): Promise<CaseActWithScan[]> => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('case_acts')
@@ -74,7 +75,7 @@ export async function listActsByCase(caseId: string): Promise<CaseActWithScan[]>
     const scan = Array.isArray(r.scan) ? (r.scan[0] ?? null) : r.scan;
     return { ...normalizeAct(r), scan };
   });
-}
+});
 
 export type ActPrintData = {
   act: CaseAct;

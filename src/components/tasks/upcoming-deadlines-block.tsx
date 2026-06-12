@@ -64,7 +64,7 @@ export async function UpcomingDeadlinesBlock({ data }: { data: UpcomingTasks }) 
           {soon.length > 0 && (
             <section>
               <div className="px-5 py-2.5 border-b border-border">
-                <h3 className="text-[12px] font-semibold uppercase tracking-[0.04em] text-text-muted">
+                <h3 className="text-[12px] font-semibold text-text-muted">
                   {t.tasks.upcoming.soonHeading}
                 </h3>
               </div>

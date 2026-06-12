@@ -16,21 +16,26 @@ import { useI18n } from '@/lib/i18n/provider';
 // Гейтинг кнопок — тот же, что у форм соответствующих секций (пропсы со страницы).
 // ============================================================================
 
-// Плавный скролл к секции с раскрытием её details-формы. Smooth уважает
-// prefers-reduced-motion (поведение auto). Фокус — после прокрутки.
-function scrollToSectionForm(sectionId: string, detailsId: string) {
-  const section = document.getElementById(sectionId);
-  if (!section) return;
-  const details = document.getElementById(detailsId) as HTMLDetailsElement | null;
-  if (details) details.open = true;
+// Переключаем вкладку раздела (CaseTabs слушает 'casecard:tab'), затем — после
+// рендера активной панели — раскрываем её inline-форму (details) и ставим фокус.
+// tabKey совпадает с id раздела ('tasks' / 'acts'). Smooth уважает
+// prefers-reduced-motion.
+function scrollToSectionForm(tabKey: string, detailsId: string) {
+  window.dispatchEvent(new CustomEvent('casecard:tab', { detail: { key: tabKey } }));
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  section.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
-  // Фокус в первое поле раскрытой формы — после кадра, чтобы details успел раскрыться.
-  requestAnimationFrame(() => {
-    details
-      ?.querySelector<HTMLElement>('input, select, textarea')
-      ?.focus({ preventScroll: true });
-  });
+  // Двойной rAF — дать React отрисовать только что активированную панель.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const details = document.getElementById(detailsId) as HTMLDetailsElement | null;
+      if (details) details.open = true;
+      details?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+      requestAnimationFrame(() =>
+        details
+          ?.querySelector<HTMLElement>('input, select, textarea')
+          ?.focus({ preventScroll: true }),
+      );
+    }),
+  );
 }
 
 export function CaseQuickActions({

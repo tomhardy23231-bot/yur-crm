@@ -226,7 +226,7 @@ export default async function CalendarPage({
               )}
               {selectedDayAbsences.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <h3 className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
+                  <h3 className="text-[12px] text-text-muted">
                     {t.absences.calendar.dayHeading}
                   </h3>
                   <Card className="divide-y divide-border overflow-hidden">

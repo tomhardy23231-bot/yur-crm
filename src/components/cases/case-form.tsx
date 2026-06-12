@@ -497,7 +497,7 @@ export function CaseForm({
 
           {canEditRates && (
             <div className="sm:col-span-2 lg:col-span-3 flex flex-col gap-2 rounded-md border border-border bg-surface-muted/40 p-4">
-              <p className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
+              <p className="text-[12px] text-text-muted">
                 {t.caseCard.form.rateOverrideTitle}
               </p>
               <p className="text-[12px] text-text-subtle">
@@ -727,7 +727,7 @@ function Field({
     <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
       <Label
         htmlFor={htmlFor}
-        className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+        className="text-[12px] text-text-muted"
       >
         {label}
         {required && <span className="text-error ml-0.5">*</span>}

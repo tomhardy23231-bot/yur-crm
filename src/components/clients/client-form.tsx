@@ -345,7 +345,7 @@ function Field({
 }) {
   return (
     <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
-      <Label htmlFor={htmlFor} className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
+      <Label htmlFor={htmlFor} className="text-[12px] text-text-muted">
         {label}
         {required && <span className="text-error ml-0.5">*</span>}
       </Label>

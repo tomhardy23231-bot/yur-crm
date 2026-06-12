@@ -16,10 +16,11 @@ import { Card } from '@/components/ui/card';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { CaseStageDropdown } from '@/components/cases/case-stage-dropdown';
 import { CaseQuickActions } from '@/components/cases/case-quick-actions';
-import { MarkLostButton } from '@/components/cases/mark-lost-button';
 import { CaseActionBar } from '@/components/cases/case-action-bar';
 import { PaymentProgress } from '@/components/cases/payment-progress';
 import { CaseInfoGrid } from '@/components/cases/case-info-grid';
+import { CaseNextActions } from '@/components/cases/case-next-actions';
+import { CaseTabs } from '@/components/cases/case-tabs';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { CaseActivityBlock } from '@/components/activity/case-activity-block';
 import { CaseCommentsBlock } from '@/components/comments/case-comments-block';
@@ -32,7 +33,10 @@ import { cn, daysSince, formatMoney, formatPercent } from '@/lib/utils';
 import { getCase } from '@/lib/cases/queries';
 import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
 import { getCasePayroll, getCasePaidByRole } from '@/lib/payroll/queries';
-import { caseHasDocOfType } from '@/lib/documents/queries';
+import { caseHasDocOfType, listDocumentsByCase } from '@/lib/documents/queries';
+import { listPlanItems } from '@/lib/payments/queries';
+import { listActsByCase } from '@/lib/acts/queries';
+import { listTasksByCase } from '@/lib/tasks/queries';
 import { getOrgRequisites, requisitesAreUsable } from '@/lib/org/queries';
 import { getT } from '@/lib/i18n/server';
 import { allowedStagesFor, MANAGER_ROLES, STAFF_ROLES } from '@/lib/types/db';
@@ -102,13 +106,24 @@ export default async function CaseDetailPage({
   // Начисление зарплаты (live) + сколько уже выплачено по делу (по ролям) +
   // реквизиты компании (для предупреждения «незаполнены» в блоке актов) +
   // есть ли акт приёма-передачи (4.2: добавлен в общий батч, не отдельным await).
-  const [payroll, paidByRole, org, hasAct] = await Promise.all([
-    getCasePayroll(c.id),
-    getCasePaidByRole(c.id),
-    getOrgRequisites(),
-    caseHasDocOfType(c.id, 'act'),
-  ]);
+  const [payroll, paidByRole, org, hasAct, planList, actsList, docsList, tasksList] =
+    await Promise.all([
+      getCasePayroll(c.id),
+      getCasePaidByRole(c.id),
+      getOrgRequisites(),
+      caseHasDocOfType(c.id, 'act'),
+      // Счётчики для бейджей вкладок (редизайн Волна 1): блоки разделов фетчат
+      // те же данные сами — здесь берём .length параллельно для корешков.
+      listPlanItems(c.id),
+      listActsByCase(c.id),
+      listDocumentsByCase(c.id),
+      listTasksByCase(c.id),
+    ]);
   const requisitesUsable = requisitesAreUsable(org);
+  const planCount = planList.length;
+  const actsCount = actsList.length;
+  const docsCount = docsList.length;
+  const tasksOpenCount = tasksList.filter((tk) => tk.status === 'open').length;
 
   // Акты (v2 Этап 5): выписывает Експерт своего дела + staff; подтверждает оплату
   // юрист дела + owner/admin (зеркало RLS / confirm_act_paid).
@@ -190,6 +205,7 @@ export default async function CaseDetailPage({
         canEdit={canEdit}
         canDelete={canDelete}
         canArchive={isStaff && (isArchived || isClosed)}
+        canMarkLost={canMarkLost && !isArchived}
         archived={isArchived}
         caseTitle={c.number_title}
       />
@@ -304,7 +320,6 @@ export default async function CaseDetailPage({
               {t.cases.lost.badge}
             </Badge>
           )}
-          {canMarkLost && !isArchived && <MarkLostButton caseId={c.id} />}
           {isArchived && (
             <Badge tone="neutral" className="gap-1">
               <Archive size={12} strokeWidth={2} />
@@ -374,6 +389,17 @@ export default async function CaseDetailPage({
         </div>
       </Card>
 
+      {/* ── «Що далі»: приоритетные действия по делу (редизайн Волна 1). ── */}
+      {!isClosed && (
+        <CaseNextActions
+          caseId={c.id}
+          paidTotal={c.paid_total}
+          debt={c.debt}
+          hasAct={hasAct}
+          stage={c.stage}
+        />
+      )}
+
       {/* ── Ряд A: комментарии · sticky-сайдбар «Вознаграждение команды».
            items-start, чтобы сайдбар мог прилипать. Без начислений — одна
            колонка во всю ширину. ── */}
@@ -402,42 +428,8 @@ export default async function CaseDetailPage({
                 {t.caseCard.detail.rewardTitle}
               </CardLabel>
 
-              {/* Деньги одной строкой (компактнее трёх плиток + прогресса). */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] bg-surface-sunken px-3 py-2 text-[12px] tabular-nums">
-                <span className="text-text-muted">
-                  {t.caseCard.detail.rewardSum}{' '}
-                  <span className="font-bold text-text">
-                    {formatMoney(c.contract_sum)} ₴
-                  </span>
-                </span>
-                <span className="text-text-subtle">·</span>
-                <span className="text-text-muted">
-                  {t.caseCard.detail.rewardPaid}{' '}
-                  <span className="font-bold text-success">
-                    {formatMoney(c.paid_total)} ₴
-                  </span>
-                </span>
-                <span className="text-text-subtle">·</span>
-                <span className="text-text-muted">
-                  {c.overpaid > 0
-                    ? t.caseCard.detail.rewardOverpaid
-                    : t.caseCard.detail.rewardDebt}{' '}
-                  <span
-                    className={cn(
-                      'font-bold',
-                      c.overpaid > 0
-                        ? 'text-info'
-                        : c.debt > 0
-                          ? 'text-error'
-                          : 'text-text-muted',
-                    )}
-                  >
-                    {c.overpaid > 0
-                      ? `+${formatMoney(c.overpaid)} ₴`
-                      : `${formatMoney(c.debt)} ₴`}
-                  </span>
-                </span>
-              </div>
+              {/* Деньги дела (сумма/оплачено/долг) тут НЕ дублируем — они в
+                  тройке плиток шапки + прогресс оплаты (редизайн Волна 1). */}
 
               {hasOverride && (
                 <p className="mt-2 text-[11px] font-medium text-primary">
@@ -546,53 +538,72 @@ export default async function CaseDetailPage({
         </aside>
       </div>
 
-      {/* ── Ряд B: график платежей, акты, документы и задачи во всю ширину. ── */}
-      <div className="flex flex-col gap-5">
-        {/* График платежей (v3 Сессия 9) — рядом с финансами/актами */}
-        <section id="plan" className="scroll-mt-16">
-          <PaymentPlanBlock
-            caseId={c.id}
-            paidTotal={c.paid_total}
-            canWrite={canEdit}
-          />
-        </section>
-
-        {/* Акты (Рахунок-Акт) — v2 Этап 5 */}
-        <section id="acts" className="scroll-mt-16">
-          <CaseActsBlock
-            caseId={c.id}
-            canCreate={canCreateActs}
-            canConfirm={canConfirmActs}
-            isManager={isManager}
-            isStaff={isStaff}
-            currentUserId={user.profile.id}
-            requisitesUsable={requisitesUsable}
-          />
-        </section>
-
-        {/* Документы (Шаг 8) */}
-        <section id="documents" className="scroll-mt-16">
-          <CaseDocumentsBlock
-            caseId={c.id}
-            canWrite={canEdit}
-            canDelete={canDeleteDoc}
-          />
-        </section>
-
-        {/* Задачи и заседания (Шаг 7) */}
-        <section id="tasks" className="scroll-mt-16">
-          <CaseTasksBlock
-            caseId={c.id}
-            canWrite={canEdit}
-            currentUserId={user.profile.id}
-          />
-        </section>
-      </div>
-
-      {/* ── Ряд C: история — во всю ширину рабочего лотка (в пределах max-width). ── */}
-      <section id="history" className="scroll-mt-16">
-        <CaseActivityBlock caseId={c.id} />
-      </section>
+      {/* ── Разделы дела: настоящие вкладки (редизайн Волна 1). Пустые разделы
+           больше не занимают экран; счётчик на корешке (> 0) — где есть работа.
+           tabKey = id раздела ('tasks'/'acts'/…) для быстрых действий и якорей. ── */}
+      <CaseTabs
+        ariaLabel={t.caseCard.actionBar.tabsAria}
+        defaultTab="tasks"
+        tabs={[
+          {
+            key: 'tasks',
+            label: t.caseCard.actionBar.sectionTasks,
+            count: tasksOpenCount,
+            panel: (
+              <CaseTasksBlock
+                caseId={c.id}
+                canWrite={canEdit}
+                currentUserId={user.profile.id}
+              />
+            ),
+          },
+          {
+            key: 'plan',
+            label: t.payments.plan.navLabel,
+            count: planCount,
+            panel: (
+              <PaymentPlanBlock
+                caseId={c.id}
+                paidTotal={c.paid_total}
+                canWrite={canEdit}
+              />
+            ),
+          },
+          {
+            key: 'acts',
+            label: t.acts.block.heading,
+            count: actsCount,
+            panel: (
+              <CaseActsBlock
+                caseId={c.id}
+                canCreate={canCreateActs}
+                canConfirm={canConfirmActs}
+                isManager={isManager}
+                isStaff={isStaff}
+                currentUserId={user.profile.id}
+                requisitesUsable={requisitesUsable}
+              />
+            ),
+          },
+          {
+            key: 'documents',
+            label: t.caseCard.actionBar.sectionDocuments,
+            count: docsCount,
+            panel: (
+              <CaseDocumentsBlock
+                caseId={c.id}
+                canWrite={canEdit}
+                canDelete={canDeleteDoc}
+              />
+            ),
+          },
+          {
+            key: 'history',
+            label: t.caseCard.actionBar.sectionHistory,
+            panel: <CaseActivityBlock caseId={c.id} />,
+          },
+        ]}
+      />
     </main>
   );
 }
@@ -642,7 +653,7 @@ function CardLabel({
   return (
     <h2
       className={cn(
-        'text-[13px] font-extrabold uppercase tracking-[0.04em] text-text-muted',
+        'text-[13px] font-extrabold text-text-muted',
         className,
       )}
     >

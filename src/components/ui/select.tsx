@@ -147,12 +147,13 @@ export function Select({
           aria-required={required || undefined}
           className={cn(
             'group inline-flex h-10 w-full items-center justify-between gap-2',
-            'rounded-md border border-transparent bg-surface-muted',
+            // Редизайн 2026-06-12 (Волна 0): белый триггер + видимая граница (см. input.tsx).
+            'rounded-control border border-border bg-surface',
             'pl-3 pr-3 text-base font-sans md:text-sm text-text',
-            'transition-[border-color,background-color,box-shadow] duration-[180ms] ease-out',
-            'hover:bg-surface hover:border-border',
-            'focus:outline-none focus:bg-surface focus:border-primary focus:ring-[3px] focus:ring-primary-subtle',
-            'data-[state=open]:bg-surface data-[state=open]:border-primary',
+            'transition-[border-color,box-shadow] duration-[180ms] ease-out',
+            'hover:border-border-strong',
+            'focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary-subtle',
+            'data-[state=open]:border-primary',
             'disabled:opacity-50 disabled:cursor-not-allowed',
             'aria-invalid:border-error aria-invalid:focus:ring-error/15',
             'cursor-pointer',

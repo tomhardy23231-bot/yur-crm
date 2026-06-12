@@ -33,7 +33,8 @@ export async function CaseTasksBlock({
   const done = tasks.filter((task) => task.status === 'done');
 
   return (
-    <Card>
+    // id="tasks" — якорь для гайд-тура (case-tasks); это вкладка по умолчанию.
+    <Card id="tasks" className="scroll-mt-20">
       <div className="flex items-center gap-2 px-5 py-3 border-b border-border">
         <CheckSquare size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[16px] font-semibold text-text">

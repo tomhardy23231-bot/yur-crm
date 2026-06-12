@@ -111,41 +111,41 @@ export default async function ClientDetailPage({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 p-6 sm:grid-cols-2">
+        {/* Реквизиты: показываем ТОЛЬКО заполненные поля — пустых «—» больше нет
+            (редизайн Волна 3). Карточка сжимается к содержимому, дела всплывают выше. */}
+        <div className="grid grid-cols-1 gap-x-6 gap-y-5 p-6 sm:grid-cols-2">
           <Section title={t.clients.detail.sectionKind}>
             <ClientKindBadge kind={client.client_kind} />
           </Section>
 
-          {clientKindHasFullName(client.client_kind) && (
+          {clientKindHasFullName(client.client_kind) && client.birth_date && (
             <Section title={t.clients.detail.sectionBirthDate}>
-              {client.birth_date ? (
-                <span className="text-[13.5px] text-text">
-                  {DATE_FMT.format(new Date(client.birth_date))}
-                </span>
-              ) : (
-                <Empty label={t.common.dash} />
-              )}
+              <span className="text-[13.5px] text-text">
+                {DATE_FMT.format(new Date(client.birth_date))}
+              </span>
             </Section>
           )}
 
-          <Section title={clientKindHasFullName(client.client_kind) ? t.clients.detail.sectionInn : t.clients.detail.sectionInnEdrpou}>
-            {client.inn ? (
+          {client.inn && (
+            <Section
+              title={
+                clientKindHasFullName(client.client_kind)
+                  ? t.clients.detail.sectionInn
+                  : t.clients.detail.sectionInnEdrpou
+              }
+            >
               <span className="text-[13.5px] text-text">{client.inn}</span>
-            ) : (
-              <Empty label={t.common.dash} />
-            )}
-          </Section>
+            </Section>
+          )}
 
-          <Section title={t.clients.detail.sectionContractNumber}>
-            {client.contract_number ? (
+          {client.contract_number && (
+            <Section title={t.clients.detail.sectionContractNumber}>
               <span className="text-[13.5px] text-text">{client.contract_number}</span>
-            ) : (
-              <Empty label={t.common.dash} />
-            )}
-          </Section>
+            </Section>
+          )}
 
-          <Section title={t.clients.detail.sectionPhone}>
-            {client.phone ? (
+          {client.phone && (
+            <Section title={t.clients.detail.sectionPhone}>
               <a
                 href={`tel:${client.phone}`}
                 className="inline-flex items-center gap-2 text-[13.5px] text-text hover:text-primary transition-colors"
@@ -153,13 +153,11 @@ export default async function ClientDetailPage({
                 <Phone size={14} strokeWidth={1.75} className="text-text-muted" />
                 {client.phone}
               </a>
-            ) : (
-              <Empty label={t.common.dash} />
-            )}
-          </Section>
+            </Section>
+          )}
 
-          <Section title={t.clients.detail.sectionEmail}>
-            {client.email ? (
+          {client.email && (
+            <Section title={t.clients.detail.sectionEmail}>
               <a
                 href={`mailto:${client.email}`}
                 className="inline-flex items-center gap-2 text-[13.5px] text-text hover:text-primary transition-colors"
@@ -167,31 +165,25 @@ export default async function ClientDetailPage({
                 <Mail size={14} strokeWidth={1.75} className="text-text-muted" />
                 {client.email}
               </a>
-            ) : (
-              <Empty label={t.common.dash} />
-            )}
-          </Section>
+            </Section>
+          )}
 
-          <Section title={t.clients.detail.sectionAddress}>
-            {client.address ? (
+          {client.address && (
+            <Section title={t.clients.detail.sectionAddress}>
               <span className="inline-flex items-start gap-2 text-[13.5px] text-text">
                 <MapPin size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-muted" />
                 {client.address}
               </span>
-            ) : (
-              <Empty label={t.common.dash} />
-            )}
-          </Section>
+            </Section>
+          )}
 
-          <Section title={t.clients.detail.sectionSource}>
-            {client.source ? (
+          {client.source && (
+            <Section title={t.clients.detail.sectionSource}>
               <span className="text-[13.5px] text-text">
                 {t.enums.clientSource[client.source]}
               </span>
-            ) : (
-              <Empty label={t.common.dash} />
-            )}
-          </Section>
+            </Section>
+          )}
         </div>
 
         {client.notes && (
@@ -299,9 +291,7 @@ function Section({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
-        {title}
-      </h3>
+      <h3 className="text-[12px] font-medium text-text-muted">{title}</h3>
       <div>{children}</div>
     </div>
   );

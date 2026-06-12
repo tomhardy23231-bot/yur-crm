@@ -1,4 +1,3 @@
-import { Wallet } from 'lucide-react';
 
 import { requireCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
@@ -94,11 +93,9 @@ export default async function CashReportPage({
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="inline-flex items-center gap-2 text-[20px] font-bold text-text">
-            <Wallet size={20} strokeWidth={1.75} className="text-text-muted" />
-            {t.cash.report.heading}
-          </h1>
-          <p className="mt-0.5 text-[13px] text-text-muted">
+          {/* Заголовок — в топбаре (единый источник); здесь только описание
+              периода. Редизайн Волна 2: убран дубль h1. */}
+          <p className="text-[13px] text-text-muted">
             {t.cash.report.subtitle} ·{' '}
             <span className="font-medium text-text">{monthLabel(month, monthNames)}</span>
           </p>

@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { PaymentRow, PaymentWithCreator } from '@/lib/types/db';
@@ -18,7 +19,7 @@ export interface PlanItem {
   created_at: string;
 }
 
-export async function listPlanItems(caseId: string): Promise<PlanItem[]> {
+export const listPlanItems = cache(async (caseId: string): Promise<PlanItem[]> => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('payment_plan_items')
@@ -51,7 +52,7 @@ export async function listPlanItems(caseId: string): Promise<PlanItem[]> {
     created_by: r.created_by,
     created_at: r.created_at,
   }));
-}
+});
 
 // =====================================================================
 // listPaymentsByCase — список платежей на карточке дела.

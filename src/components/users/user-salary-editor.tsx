@@ -77,7 +77,7 @@ export function UserSalaryEditor({
           <div className="mb-3 flex flex-col gap-1.5">
             <Label
               htmlFor={`salary-mode-${userId}`}
-              className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+              className="text-[12px] text-text-muted"
             >
               {t.users.salary.modeLabel}
             </Label>
@@ -104,7 +104,7 @@ export function UserSalaryEditor({
             <div className="mb-1 flex flex-col gap-1.5">
               <Label
                 htmlFor={`salary-fixed-${userId}`}
-                className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+                className="text-[12px] text-text-muted"
               >
                 {t.users.salary.fixedLabel}
               </Label>

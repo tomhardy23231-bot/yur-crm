@@ -270,7 +270,7 @@ export default async function HelpPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.85fr_1.15fr]">
           {/* Ставки по категориям */}
           <Card className="flex flex-col gap-3 p-5">
-            <h3 className="text-[13px] font-extrabold uppercase tracking-[0.04em] text-text-muted">
+            <h3 className="text-[13px] font-extrabold text-text-muted">
               {h.payroll.ratesTitle}
             </h3>
             <div className="flex flex-col gap-2">
@@ -296,7 +296,7 @@ export default async function HelpPage() {
 
           {/* «Скриншото-подобный» пример расчёта */}
           <Card className="flex flex-col gap-3 p-5">
-            <h3 className="text-[13px] font-extrabold uppercase tracking-[0.04em] text-text-muted">
+            <h3 className="text-[13px] font-extrabold text-text-muted">
               {h.payroll.exampleTitle}
             </h3>
             <div className="rounded-[10px] border border-border bg-surface-muted/60 p-4">

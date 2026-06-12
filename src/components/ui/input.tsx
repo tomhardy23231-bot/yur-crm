@@ -12,12 +12,14 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
           "flex h-10 w-full",
           // 16px на мобильных — чтобы iOS Safari не зумил при фокусе; 14px на ≥ md.
           "px-3 py-2 text-base font-sans md:text-sm",
-          "bg-surface-muted text-text",
-          "border border-transparent rounded-md",
+          // Редизайн 2026-06-12 (Волна 0): белое поле + видимая граница вместо
+          // серой заливки без бордера («1С-look»). Фокус — синяя граница + кольцо.
+          "bg-surface text-text",
+          "border border-border rounded-control",
           "placeholder:text-text-subtle",
-          "transition-[border-color,background-color,box-shadow] duration-[180ms] ease-out",
-          "hover:bg-surface hover:border-border",
-          "focus:outline-none focus:bg-surface focus:border-primary focus:ring-[3px] focus:ring-primary-subtle",
+          "transition-[border-color,box-shadow] duration-[180ms] ease-out",
+          "hover:border-border-strong",
+          "focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary-subtle",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           "aria-invalid:border-error aria-invalid:focus:ring-error/15",
           className,

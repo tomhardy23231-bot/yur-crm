@@ -9,6 +9,24 @@ export const caseCard: CaseCardMessages = {
     act: 'Акт',
   },
 
+  // ── Блок «Що далі» — пріоритетні дії по справі (редизайн Хвиля 1) ──
+  whatsNext: {
+    heading: 'Що далі',
+    allClear: 'Під контролем — термінових дій немає',
+    overdueTasks: {
+      one: 'Прострочено {n} завдання',
+      few: 'Прострочено {n} завдання',
+      many: 'Прострочено {n} завдань',
+    },
+    nextLabel: 'Найближче',
+    dueToday: 'сьогодні',
+    planOverdue: 'Прострочена доплата {amount} ₴ від {date}',
+    planNext: 'Очікується доплата {amount} ₴ до {date}',
+    debtNoPlan: 'Борг {amount} ₴ — графік платежів не заданий',
+    addPlan: 'Додати графік',
+    missingAct: 'Немає підписаного акта приймання-передачі',
+  },
+
   // ── Екран перегляду картки справи (cases/[id]/page.tsx) ──────────────
   detail: {
     errorHasLinks:
@@ -101,6 +119,7 @@ export const caseCard: CaseCardMessages = {
     sectionComments: 'Коментарі',
     sectionFinance: 'Фінанси',
     sectionHistory: 'Історія',
+    tabsAria: 'Розділи справи',
   },
 
   // ── Видалення справи (delete-case-form.tsx) ──────────────────────────

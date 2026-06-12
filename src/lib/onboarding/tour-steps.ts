@@ -175,32 +175,16 @@ function allSteps(t: TourMessages): ReadonlyArray<TourStep> {
       align: 'center',
       optional: true,
     },
-    {
-      id: 'case-documents',
-      route: FIRST_CASE_ROUTE,
-      element: '#documents',
-      title: t.caseDocumentsTitle,
-      body: t.caseDocumentsBody,
-      side: 'top',
-      align: 'center',
-      optional: true,
-    },
+    // Редизайн Волна 1: разделы дела стали вкладками (CaseTabs). Шаги
+    // case-documents (#documents) и case-finance (#finance) убраны — их якоря
+    // живут в скрытых/свёрнутых вкладках; финансы переехали в #overview.
+    // Остаётся case-tasks: вкладка «Завдання» открыта по умолчанию (#tasks).
     {
       id: 'case-tasks',
       route: FIRST_CASE_ROUTE,
       element: '#tasks',
       title: t.caseTasksTitle,
       body: t.caseTasksBody,
-      side: 'top',
-      align: 'center',
-      optional: true,
-    },
-    {
-      id: 'case-finance',
-      route: FIRST_CASE_ROUTE,
-      element: '#finance',
-      title: t.caseFinanceTitle,
-      body: t.caseFinanceBody,
       side: 'top',
       align: 'center',
       optional: true,

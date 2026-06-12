@@ -26,6 +26,7 @@ export const cases: CasesMessages = {
     allClients: 'Усі клієнти',
     departmentAria: 'Підрозділ',
     allDepartments: 'Усі підрозділи',
+    more: 'Фільтри',
   },
 
   quickFilters: {

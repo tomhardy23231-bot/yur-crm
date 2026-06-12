@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type {
@@ -11,9 +12,9 @@ import type {
 // listDocumentsByCase — список документов на карточке дела.
 // Сортировка: uploaded_at desc.
 // =====================================================================
-export async function listDocumentsByCase(
+export const listDocumentsByCase = cache(async (
   caseId: string,
-): Promise<DocumentWithUploader[]> {
+): Promise<DocumentWithUploader[]> => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('documents')
@@ -28,7 +29,7 @@ export async function listDocumentsByCase(
     throw new Error(`listDocumentsByCase failed: ${error.message}`);
   }
   return normalizeDocuments(data ?? []);
-}
+});
 
 // =====================================================================
 // caseHasDocOfType — есть ли у дела документ заданного типа.

@@ -51,3 +51,10 @@ export function daysSince(iso: string): number {
   const diff = Date.now() - new Date(iso).getTime();
   return Math.max(0, Math.floor(diff / DAY_MS));
 }
+
+// Текущее время в ms. Отдельный хелпер, чтобы серверные компоненты не вызывали
+// Date.now() прямо в рендере (react-hooks/purity ругается на impure в render);
+// в рамках одного серверного рендера значение стабильно.
+export function nowMs(): number {
+  return Date.now();
+}

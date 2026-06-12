@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/card-table';
 import { ClickableCard } from '@/components/ui/clickable-card';
 import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
+import { CasesMoreFilters } from '@/components/cases/cases-more-filters';
 import { CasesQuickFilters } from '@/components/cases/quick-filters';
 import { CasesDateFilter } from '@/components/cases/cases-date-filter';
 import { ArchiveCaseForm } from '@/components/cases/archive-case-form';
@@ -192,6 +193,12 @@ export default async function CasesPage({
       departmentId || closedFrom || closedTo,
   );
 
+  // Сколько второстепенных фильтров (люди/подразделение) активно — бейдж на
+  // кнопке-поповере «Фильтры» (редизайн Волна 2).
+  const moreActiveCount = [responsibleId, lawyerId, clientId, departmentId].filter(
+    Boolean,
+  ).length;
+
   function buildHref(
     overrides: Partial<{
       q: string;
@@ -358,7 +365,10 @@ export default async function CasesPage({
 
         {/* Ряд 2: фильтры — горизонтальная лента (свайп) на узких экранах,
             обычный перенос на ≥ sm. */}
-        <div className="no-scrollbar -mx-3 flex items-center gap-2 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Основные фильтры — лента (свайп) на узких экранах. «Фильтры»-поповер
+              вынесен НАРУЖУ ленты: overflow-x-auto иначе клипал бы выпадашку. */}
+          <div className="no-scrollbar -mx-3 flex items-center gap-2 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
           {/* Активная вкладка — фильтр этапа (воронка) со счётчиками.
               Вкладка «Архив» — фильтр по дате закрытия дела (этапы там не нужны). */}
           {archived ? (
@@ -405,61 +415,51 @@ export default async function CasesPage({
             ]}
           />
 
-          {isStaff && (
-            <CasesFilterSelect
-              name="responsible"
-              value={responsibleId ?? ''}
-              ariaLabel={t.cases.filters.expertAria}
-              options={[
-                { value: '', label: t.cases.filters.allExperts },
-                ...experts.map((s) => ({
-                  value: s.id,
-                  label: s.full_name,
-                })),
-              ]}
-            />
-          )}
+          </div>
 
+          {/* Второстепенные фильтры (люди/подразделение) — в поповере «Фильтры»,
+              чтобы основной ряд не был перегружен (редизайн Волна 2). */}
           {isStaff && (
-            <CasesFilterSelect
-              name="lawyer"
-              value={lawyerId ?? ''}
-              ariaLabel={t.cases.filters.lawyerAria}
-              options={[
-                { value: '', label: t.cases.filters.allLawyers },
-                ...lawyers.map((s) => ({
-                  value: s.id,
-                  label: s.full_name,
-                })),
-              ]}
-            />
-          )}
-
-          {isStaff && (
-            <CasesFilterSelect
-              name="client"
-              value={clientId ?? ''}
-              ariaLabel={t.cases.filters.clientAria}
-              options={[
-                { value: '', label: t.cases.filters.allClients },
-                ...clients.map((c) => ({
-                  value: c.id,
-                  label: c.name,
-                })),
-              ]}
-            />
-          )}
-
-          {canSeeDepartments && (
-            <CasesFilterSelect
-              name="department"
-              value={departmentId ?? ''}
-              ariaLabel={t.cases.filters.departmentAria}
-              options={[
-                { value: '', label: t.cases.filters.allDepartments },
-                ...departments.map((d) => ({ value: d.id, label: d.name })),
-              ]}
-            />
+            <CasesMoreFilters label={t.cases.filters.more} activeCount={moreActiveCount}>
+              <CasesFilterSelect
+                name="responsible"
+                value={responsibleId ?? ''}
+                ariaLabel={t.cases.filters.expertAria}
+                options={[
+                  { value: '', label: t.cases.filters.allExperts },
+                  ...experts.map((s) => ({ value: s.id, label: s.full_name })),
+                ]}
+              />
+              <CasesFilterSelect
+                name="lawyer"
+                value={lawyerId ?? ''}
+                ariaLabel={t.cases.filters.lawyerAria}
+                options={[
+                  { value: '', label: t.cases.filters.allLawyers },
+                  ...lawyers.map((s) => ({ value: s.id, label: s.full_name })),
+                ]}
+              />
+              <CasesFilterSelect
+                name="client"
+                value={clientId ?? ''}
+                ariaLabel={t.cases.filters.clientAria}
+                options={[
+                  { value: '', label: t.cases.filters.allClients },
+                  ...clients.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+              {canSeeDepartments && (
+                <CasesFilterSelect
+                  name="department"
+                  value={departmentId ?? ''}
+                  ariaLabel={t.cases.filters.departmentAria}
+                  options={[
+                    { value: '', label: t.cases.filters.allDepartments },
+                    ...departments.map((d) => ({ value: d.id, label: d.name })),
+                  ]}
+                />
+              )}
+            </CasesMoreFilters>
           )}
 
           {(hasFilters || debtOnly) && (

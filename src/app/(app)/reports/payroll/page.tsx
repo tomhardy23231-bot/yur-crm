@@ -83,8 +83,9 @@ export default async function PayrollReportPage({
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[20px] font-bold text-text">{t.payroll.report.heading}</h1>
-          <p className="mt-0.5 text-[13px] text-text-muted">
+          {/* Заголовок страницы — в топбаре (единый источник); здесь только
+              описание периода. Редизайн Волна 2: убран дубль h1. */}
+          <p className="text-[13px] text-text-muted">
             {subtitleBefore}
             <span className="font-medium text-text">{monthLabel(month, monthNames)}</span>
             {subtitleAfter}

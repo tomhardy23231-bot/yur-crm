@@ -586,7 +586,7 @@ function SummaryCell({
         : 'text-text';
   return (
     <div className="flex flex-col justify-center gap-1 px-5 py-4">
-      <span className="text-[11px] uppercase tracking-[0.04em] text-text-muted">
+      <span className="text-[11px] text-text-muted">
         {label}
       </span>
       <span className={cn('text-[18px] font-bold tabular-nums', color)}>

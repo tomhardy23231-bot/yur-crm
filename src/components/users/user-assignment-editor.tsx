@@ -83,7 +83,7 @@ export function UserAssignmentEditor({
             <div className="mb-3 flex flex-col gap-1.5">
               <Label
                 htmlFor={`assign-dept-${userId}`}
-                className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+                className="text-[12px] text-text-muted"
               >
                 {t.departments.assign.departmentLabel}
               </Label>
@@ -107,7 +107,7 @@ export function UserAssignmentEditor({
             <div className="mb-3 flex flex-col gap-1.5">
               <Label
                 htmlFor={`assign-scope-${userId}`}
-                className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+                className="text-[12px] text-text-muted"
               >
                 {t.departments.assign.scopeLabel}
               </Label>
@@ -133,7 +133,7 @@ export function UserAssignmentEditor({
           <div className="mb-1 flex flex-col gap-1.5">
             <Label
               htmlFor={`assign-pos-${userId}`}
-              className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+              className="text-[12px] text-text-muted"
             >
               {t.departments.assign.positionLabel}
             </Label>

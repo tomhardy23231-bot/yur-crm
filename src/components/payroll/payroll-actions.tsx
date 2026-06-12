@@ -262,7 +262,7 @@ function PayoutModal({
               {buckets.length > 0 && (
                 <>
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-[12px] uppercase tracking-[0.04em] text-text-muted">
+                    <span className="text-[12px] text-text-muted">
                       {t.payroll.actions.casesToPay}
                     </span>
                     <button
@@ -316,7 +316,7 @@ function PayoutModal({
 
               {hasBonus && (
                 <>
-                  <div className="mb-2 mt-4 text-[12px] uppercase tracking-[0.04em] text-text-muted">
+                  <div className="mb-2 mt-4 text-[12px] text-text-muted">
                     {t.payroll.actions.bonusesHeading}
                   </div>
                   <label
@@ -354,7 +354,7 @@ function PayoutModal({
             <div className="flex flex-col gap-1.5">
               <Label
                 htmlFor="payout-date"
-                className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+                className="text-[12px] text-text-muted"
               >
                 {t.payroll.actions.payoutDate}
               </Label>
@@ -372,7 +372,7 @@ function PayoutModal({
           <div className="mt-3 flex flex-col gap-1.5">
             <Label
               htmlFor="payout-comment"
-              className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+              className="text-[12px] text-text-muted"
             >
               {t.payroll.actions.comment}
             </Label>
@@ -453,7 +453,7 @@ function BonusModal({
             <div className="flex flex-col gap-1.5">
               <Label
                 htmlFor="bonus-amount"
-                className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+                className="text-[12px] text-text-muted"
               >
                 {t.payroll.actions.amount}<span className="ml-0.5 text-error">*</span>
               </Label>
@@ -477,7 +477,7 @@ function BonusModal({
             <div className="flex flex-col gap-1.5">
               <Label
                 htmlFor="bonus-date"
-                className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+                className="text-[12px] text-text-muted"
               >
                 {t.payroll.actions.date}
               </Label>
@@ -494,7 +494,7 @@ function BonusModal({
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor="bonus-comment"
-              className="text-[12px] uppercase tracking-[0.04em] text-text-muted"
+              className="text-[12px] text-text-muted"
             >
               {t.payroll.actions.comment}
             </Label>

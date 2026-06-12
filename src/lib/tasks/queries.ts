@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { kyivToday } from '@/lib/payroll/month';
@@ -15,7 +16,7 @@ export const TASKS_PAGE_SIZE = 30;
 // listTasksByCase — список задач на карточке дела.
 // Сортировка: open впереди, потом по due_at asc (nulls last).
 // =====================================================================
-export async function listTasksByCase(caseId: string): Promise<TaskWithRefs[]> {
+export const listTasksByCase = cache(async (caseId: string): Promise<TaskWithRefs[]> => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('tasks')
@@ -33,7 +34,7 @@ export async function listTasksByCase(caseId: string): Promise<TaskWithRefs[]> {
     throw new Error(`listTasksByCase failed: ${error.message}`);
   }
   return normalizeTasks(data ?? []);
-}
+});
 
 // =====================================================================
 // listTasksForUser — общая страница /tasks.

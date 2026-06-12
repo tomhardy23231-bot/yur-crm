@@ -142,7 +142,7 @@ function Column({
 }) {
   return (
     <div className="min-w-0">
-      <h3 className="mb-2.5 text-[11px] font-extrabold uppercase tracking-[0.05em] text-text-muted">
+      <h3 className="mb-2.5 text-[12px] font-semibold text-text-muted">
         {title}
       </h3>
       {children}
