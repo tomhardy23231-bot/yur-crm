@@ -133,6 +133,9 @@ function CredentialsModal({
         </p>
       ) : (
         <div className="flex flex-col gap-5">
+          {creds?.password && (
+            <CredentialsCard email={email} password={creds.password} />
+          )}
           <LoginSection
             userId={userId}
             email={email}
@@ -159,6 +162,62 @@ function CredentialsModal({
         </div>
       )}
     </Modal>
+  );
+}
+
+// ── Готовый блок доступов (логин + пароль + ссылка) с копированием ───────────
+// Владелец нажимает «Скопировать всё» и отправляет сотруднику одним сообщением.
+function CredentialsCard({
+  email,
+  password,
+}: {
+  email: string;
+  password: string;
+}) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [copied, setCopied] = useState(false);
+  const c = t.users.credentials.card;
+  const loginUrl =
+    (typeof window !== 'undefined' ? window.location.origin : '') + '/login';
+  const block = `${c.title}\n${c.loginLabel} ${email}\n${c.passwordLabel} ${password}\n${c.loginUrlLabel} ${loginUrl}`;
+
+  async function copyAll() {
+    try {
+      await navigator.clipboard.writeText(block);
+      setCopied(true);
+      toast.success(c.copiedToast);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.error(t.users.credentials.copyFailed);
+    }
+  }
+
+  return (
+    <div className="rounded-control border border-primary/20 bg-primary/[0.04] p-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-primary">
+          <KeyRound size={14} strokeWidth={1.75} />
+          {c.title}
+        </span>
+        <Button type="button" size="sm" variant="secondary" onClick={copyAll}>
+          {copied ? (
+            <Check size={14} strokeWidth={2} className="text-success" />
+          ) : (
+            <Copy size={14} strokeWidth={1.75} />
+          )}
+          {copied ? t.common.copied : c.copyAll}
+        </Button>
+      </div>
+      <dl className="mt-3 grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1.5 text-[13px]">
+        <dt className="text-text-muted">{c.loginLabel}</dt>
+        <dd className="truncate font-mono text-text">{email}</dd>
+        <dt className="text-text-muted">{c.passwordLabel}</dt>
+        <dd className="truncate font-mono text-text">{password}</dd>
+        <dt className="text-text-muted">{c.loginUrlLabel}</dt>
+        <dd className="truncate font-mono text-text">{loginUrl}</dd>
+      </dl>
+    </div>
   );
 }
 

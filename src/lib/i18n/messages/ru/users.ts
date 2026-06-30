@@ -112,6 +112,16 @@ export const users = {
     passwordIssued: 'Новый пароль выдан. Передайте его сотруднику.',
     copyFailed: 'Не удалось скопировать.',
 
+    // Готовый блок «логин + пароль + ссылка на вход» с кнопкой «Скопировать всё».
+    card: {
+      title: 'Доступ в систему',
+      loginLabel: 'Логин:',
+      passwordLabel: 'Пароль:',
+      loginUrlLabel: 'Вход:',
+      copyAll: 'Скопировать всё',
+      copiedToast: 'Доступы скопированы',
+    },
+
     inviteSection: 'Доступ по email',
     invite: 'Отправить ссылку на вход',
     inviting: 'Отправка…',

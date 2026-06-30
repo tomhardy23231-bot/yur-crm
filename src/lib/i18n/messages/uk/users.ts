@@ -101,6 +101,15 @@ export const users: UsersMessages = {
     passwordIssued: 'Новий пароль видано. Передайте його співробітнику.',
     copyFailed: 'Не вдалося скопіювати.',
 
+    card: {
+      title: 'Доступ до системи',
+      loginLabel: 'Логін:',
+      passwordLabel: 'Пароль:',
+      loginUrlLabel: 'Вхід:',
+      copyAll: 'Скопіювати все',
+      copiedToast: 'Доступи скопійовано',
+    },
+
     inviteSection: 'Доступ через email',
     invite: 'Надіслати посилання для входу',
     inviting: 'Надсилання…',
