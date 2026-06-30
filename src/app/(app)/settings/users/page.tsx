@@ -26,6 +26,7 @@ import {
 import { UserPermsEditor } from '@/components/users/user-perms-editor';
 import { UserAssignmentEditor } from '@/components/users/user-assignment-editor';
 import { UserSalaryEditor } from '@/components/users/user-salary-editor';
+import { UserCredentialsButton } from '@/components/users/user-credentials-modal';
 
 // Управление пользователями, ролями и персональными правами. Доступ — обладатель
 // права manage_users (по умолчанию owner/admin). Ступенчатые права: не-owner
@@ -104,15 +105,23 @@ export default async function UsersSettingsPage() {
               return (
                 <TableRow key={u.id} className={u.is_active ? undefined : 'opacity-60'}>
                   <TableCell>
-                    <span className="inline-flex items-center gap-2.5">
-                      <Avatar name={u.full_name} size="sm" />
-                      <span className="flex flex-col">
-                        <span className="text-[13px] text-text">{u.full_name}</span>
-                        <span className="text-[12px] text-text-muted">
-                          {u.email}
+                    {actorIsOwner && !isSelf ? (
+                      <UserCredentialsButton
+                        userId={u.id}
+                        fullName={u.full_name}
+                        email={u.email ?? ''}
+                      />
+                    ) : (
+                      <span className="inline-flex items-center gap-2.5">
+                        <Avatar name={u.full_name} size="sm" />
+                        <span className="flex flex-col">
+                          <span className="text-[13px] text-text">{u.full_name}</span>
+                          <span className="text-[12px] text-text-muted">
+                            {u.email}
+                          </span>
                         </span>
                       </span>
-                    </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <UserRoleControl

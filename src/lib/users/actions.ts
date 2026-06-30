@@ -207,6 +207,17 @@ export async function createUserAction(
     });
   }
 
+  // Зеркало пароля для модалки «Доступ» (владелец видит выданный пароль позже).
+  // Только когда создаёт owner: set_user_login_secret — owner-gated DEFINER.
+  if (actor.profile.role === 'owner') {
+    const sb = await createSupabaseServerClient();
+    const { error: secErr } = await sb.rpc('set_user_login_secret', {
+      p_user_id: newId,
+      p_password: password,
+    });
+    if (secErr) console.error('[createUserAction.mirror]', secErr.message);
+  }
+
   revalidatePath('/settings/users');
   return {
     ok: true,
