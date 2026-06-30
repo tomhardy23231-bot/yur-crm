@@ -8,6 +8,7 @@ import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { generateTempPassword } from '@/lib/users/temp-password';
 import { UUID_RE } from '@/lib/validation';
 import {
   canManageTargetUser,
@@ -54,10 +55,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // создание auth-пользователя идёт через service_role в обход RLS, поэтому на том
 // пути проверка прав — только здесь.
 
-// Разовый временный пароль для нового сотрудника (меняет при первом входе).
-function generateTempPassword(): string {
-  return `Yur-${crypto.randomUUID()}`;
-}
+// Разовый временный пароль — общий генератор (lib/users/temp-password).
 
 // ============================================================================
 // Создание пользователя (useActionState-форма).

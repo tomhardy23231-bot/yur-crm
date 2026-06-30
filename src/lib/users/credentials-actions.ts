@@ -8,6 +8,7 @@ import { logActivity } from '@/lib/activity-log/log';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { generateTempPassword } from '@/lib/users/temp-password';
 import { UUID_RE } from '@/lib/validation';
 import type { Role } from '@/lib/types/db';
 
@@ -22,12 +23,6 @@ import type { Role } from '@/lib/types/db';
 // ============================================================================
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Читаемый разовый пароль (префикс + 12 hex от crypto). Достаточно стойкий,
-// при этом владельцу удобно продиктовать/скопировать.
-function genPassword(): string {
-  return `Yur-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
-}
 
 // owner-гейт. requireUser редиректит неавторизованного; не-owner — мягкий отказ.
 async function ownerOrError<T extends { ok: false; error: string }>(
@@ -143,7 +138,7 @@ export async function reissueUserPasswordAction(
     .maybeSingle<{ id: string }>();
   if (!u) return { ok: false, error: t.users.errors.userNotFound };
 
-  const password = genPassword();
+  const password = generateTempPassword();
   const admin = createSupabaseAdminClient();
   const { error: authErr } = await admin.auth.admin.updateUserById(userId, {
     password,
@@ -182,7 +177,7 @@ export async function setUserPasswordAction(
     return { ok: false, error: t.users.errors.userNotFound };
   }
   const pw = password ?? '';
-  if (pw.length < 8) return { ok: false, error: t.users.errors.passwordTooShort };
+  if (pw.length < 6) return { ok: false, error: t.users.errors.passwordTooShort };
   if (pw.length > 72) return { ok: false, error: t.users.errors.passwordTooLong };
 
   const admin = createSupabaseAdminClient();
