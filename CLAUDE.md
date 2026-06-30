@@ -363,6 +363,19 @@ updated_at`
 `lib/dashboard/aging.ts`) + RPC `overdue_plan_items`/`debt_aging` (invoker). Просрочки —
 на staff-дашборде и в Telegram юриста.
 
+**user_login_secrets** / **app_crypto_key** (схема `private`) — управление доступами (2026-06-30)
+`private.user_login_secrets(user_id PK → users cascade, secret bytea, updated_at, updated_by)`,
+`private.app_crypto_key(id bool PK, key text — single-row, генерится при миграции)`
+— ЗЕРКАЛО последнего пароля, выданного владельцем через панель `/settings/users`
+(зашифровано pgcrypto симметричным ключом из `app_crypto_key`). **НЕ источник истины
+входа** (им остаётся `auth.users`) — только для показа владельцу в модалке; может
+разойтись, если сотрудник сменил пароль сам. Схема `private` НЕ доступна PostgREST;
+читает ТОЛЬКО owner через `public.get_user_login_secret` (owner-gated DEFINER), пишет
+`public.set_user_login_secret`. Удаление сотрудника — `public.user_delete_blockers`
+(owner-gated: чистые учётки удаляются, с историей RESTRICT — запрет, в UI → деактивация).
+Временные пароли — 6 читаемых символов (`lib/users/temp-password.ts`). Зеркало модели
+приватности зарплат. Миграция `20260630120000`.
+
 **activity_log** (история изменений)
 `id, entity_type, entity_id, user_id, action, changes (jsonb), created_at`
 
@@ -444,8 +457,9 @@ updated_at`
 
 > **✅ ЦИКЛ v3 «Hardening & Product» ЗАВЕРШЁН (сессии 1–12, 2026-06-12).** Источник
 > правды цикла — **`docs/PLAN-V3.md`** (исторический): 12 сессий по итогам
-> мультиагентного аудита 2026-06-11. На прод НЕ выкачен (push и прод-миграции — по
-> явному «ок» пользователя; см. PLAN-V3 §12.8).
+> мультиагентного аудита 2026-06-11. **Выкачен на прод 2026-06-30** (Supabase
+> `fmzevqyquljecmsiqsoj` + Vercel `yur-crm.vercel.app`); прод-миграции — по явному
+> «ок» пользователя (см. PLAN-V3 §12.8).
 >
 > **Готово (сессии 1–12):** БД-гарды финансовых полей дела и гонок recalc/act-платежа,
 > скоуп DEFINER-функций и удаления документов (с1); полнота журнала (allowlist
@@ -462,7 +476,7 @@ updated_at`
 > леджера, CI, e2e, вычистка, коммиты (с12). См. `docs/PROGRESS.md` (записи цикла v3).
 >
 > **✅ ЦИКЛ v2 «Подразделения» ЗАВЕРШЁН (этапы 1–7, 2026-06-11).** Источник
-> правды цикла — `docs/PLAN-V2.md` (исторический). На прод НЕ выкачен.
+> правды цикла — `docs/PLAN-V2.md` (исторический). **Выкачен на прод 2026-06-30.**
 >
 > **Готово (этапы 1–7):** БД-фундамент подразделений + департаментная RLS-видимость
 > (§4–§5, §7), **UI** подразделений (`/settings/departments`, поля в `/settings/users`
@@ -485,6 +499,22 @@ updated_at`
 > (`lib/cash/saldo.ts`, юнит-тест по образцу ОЛІМП), отчёт `/reports/cash`
 > (вкладки счетов + Total, разворот по дням, итоги месяца) + пункт «Касса» в
 > навигации (cap-gated). См. §4–§5, §7-8.
+
+> **✅ Управление доступами сотрудников (2026-06-30, НА ПРОДЕ).** Owner-only модалка
+> в `/settings/users` (клик по сотруднику): показать логин + выдать/сменить пароль,
+> изменить логин (email), отправить приглашение на email (встроенная почта Supabase,
+> шаблон recovery кастомизирован — укр., бренд «ЮрКейс»), умное удаление
+> (`public.user_delete_blockers`: чистые учётки сносятся, с историей — блок →
+> деактивация). Копи-блок «логин+пароль+ссылка» в модалке. Пароль виден ТОЛЬКО
+> владельцу — зеркало `private.user_login_secrets` (pgcrypto, ключ
+> `private.app_crypto_key`; читает owner через `public.get_user_login_secret`, пишет
+> `public.set_user_login_secret`). Временные пароли — 6 читаемых символов
+> (`lib/users/temp-password.ts`). Журнал: +`user_password_reset`/`user_email_changed`/
+> `user_invited`/`user_deleted`. Маршрут `/auth/confirm` — обработка ссылки из письма.
+> Миграция `20260630120000`. **Деплой-флоу:** push в master → Vercel автодеплой;
+> прод-БД — Supabase `fmzevqyquljecmsiqsoj` (free tier, БЕЗ автобэкапов → дамп данных
+> перед любой прод-правкой ОБЯЗАТЕЛЕН, лежит в `/backups/`; миграции — `supabase db
+> push` ИЛИ Management API `/database/query` с PAT). См. §4, §5.
 
 **Phase 1 — MVP (готово):**
 - Auth + роли + RLS (модель доступа из §4);

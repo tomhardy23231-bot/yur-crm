@@ -29,6 +29,56 @@
 
 ---
 
+## Сессия 2026-06-30 (22) — Управление доступами сотрудников + ПЕРВЫЙ ДЕПЛОЙ НА ПРОД ✅
+
+_Фича по запросу пользователя: владелец не имел способа выдать сотруднику логин/пароль.
+Построена owner-only панель управления доступами, кастомизировано письмо-приглашение,
+и **впервые всё выкачено на боевой Supabase + Vercel**. В конце — очистка прод-данных
+от тестовых по запросу пользователя._
+
+### Что сделано
+- **Модалка «Доступ сотрудника»** (`/settings/users`, клик по строке, только owner):
+  показать логин, **выдать/задать пароль** (виден владельцу), изменить логин (email),
+  отправить приглашение на email, **умное удаление** (чистые учётки — насовсем, с
+  историей — блок с подсказкой → деактивация), **копи-блок «логин+пароль+ссылка»**.
+  Файлы: `src/components/users/user-credentials-modal.tsx`,
+  `src/lib/users/credentials-actions.ts`, `src/lib/users/temp-password.ts`,
+  `src/app/auth/confirm/route.ts`.
+- **Миграция `20260630120000_user_credentials_management.sql`:** `private.user_login_secrets`
+  (зашифрованное зеркало пароля, pgcrypto), `private.app_crypto_key` (ключ), owner-gated
+  DEFINER `get/set_user_login_secret` + `user_delete_blockers`; +4 действия журнала
+  (`user_password_reset`/`user_email_changed`/`user_invited`/`user_deleted`). Приватность —
+  зеркало модели зарплат (схема `private`, читает только owner).
+- **Письмо-приглашение:** шаблон Supabase recovery кастомизирован (укр., бренд «ЮрКейс»,
+  логин + кнопка «Увійти»). Применён через Management API (config/auth).
+- **Временные пароли — 6 читаемых символов** (было: UUID). Общий генератор
+  `lib/users/temp-password.ts`; owner-set минимум снижен 8→6 (потолок Supabase).
+- Security-ревью пройдено (исправлен гейт `user_delete_blockers` на owner-only). tsc/lint/build — чисто.
+
+### ⚠️ ПРОД (важно для будущих сессий)
+- **Прод ЖИВОЙ:** Supabase ref `fmzevqyquljecmsiqsoj` (eu-west-1, **FREE — без автобэкапов**),
+  Vercel `https://yur-crm.vercel.app`. Owner проекта/входа: tomhardy23231@gmail.com (Supabase) /
+  app-владелец `owner@yur.local`. Заметка CLAUDE.md «на прод НЕ выкачен» была устаревшей — ИСПРАВЛЕНА.
+- **Деплой-флоу:** код — push в `master` → Vercel автодеплой. Прод-миграции — `supabase db push`
+  (нужен DB-пароль) ИЛИ Management API `POST /v1/projects/<ref>/database/query` с PAT (`sbp_…`,
+  без DB-пароля) + запись версии в `supabase_migrations.schema_migrations`. Хелперы — были в
+  scratchpad (`mgmt-query.mjs`/`backup.mjs`).
+- **Бэкапы:** free tier → перед КАЖДОЙ прод-правкой снимаем дамп данных (`backup.mjs` дампит
+  public-схему в JSON). Лежат в `/backups/` (gitignored, НЕ коммитим — содержат данные клиентов).
+- **Прод-данные ОЧИЩЕНЫ** (по запросу, тестовые): остался только `owner@yur.local`; дела/клиенты/
+  платежи/задачи/подразделения/журнал — 0; `payroll_rates` (3) и строка `org_requisites` сохранены
+  (служебное). Дамп до очистки — `/backups/yur-crm-prod-backup-2026-06-30-before-wipe.json`.
+- **Security TODO пользователя:** PAT (`sbp_…`) и секретный ключ (`sb_secret_…`) светились в чате —
+  пользователю рекомендовано ПЕРЕВЫПУСТИТЬ.
+
+### Коммиты
+- `a7bc3c6` feat(users): owner credentials management (миграция + модалка + экшены + /auth/confirm)
+- `5b030e7` feat(users): copyable credentials card
+- `2aba65a` feat(users): short 6-char temp passwords
+- (+ этот коммит доков)
+
+---
+
 ## Сессия 2026-06-12 (21) — v3 Сессия 12: Качество и финал (validation, вычистка, CI, e2e, коммиты) ✅ — ЦИКЛ v3 ЗАВЕРШЁН
 
 _Двенадцатая, финальная сессия цикла v3 (docs/PLAN-V3.md). Консолидация валидации,
