@@ -186,7 +186,7 @@ column-level привилегиями (revoke табличного SELECT + gran
 «Підрозділ 5…10», переименуют позже). Читают все активные сотрудники, создаёт/правит
 только owner. Дело «принадлежит» подразделениям юриста И Експерта одновременно
 (его видят оба руководителя); скоуп видимости по подразделениям **включён** в Этапе 2
-через `private.case_visible` / `payroll_user_visible` (см. §4 и docs/PLAN-V2.md).
+через `private.case_visible` / `payroll_user_visible` (см. §4 и docs/archive/PLAN-V2.md).
 
 **clients** (доверители)
 `id, name, client_kind (individual|company|entrepreneur), phone, email, address,
@@ -289,9 +289,10 @@ P1.2). Редактирует только `owner`. См. §7-4. На конкр
 **payroll_ledger** (леджер начислений/выплат) — доработка P1.3
 `id, case_id, user_id, role_in_case (lawyer|expert), base_amount, percent, amount,
 status (accrued|paid), accrued_at, paid_at, created_by`
-— фиксирует начисление как запись. Когда фиксируется — задаёт `cases.accrual_mode`
-(`on_completion` при закрытии / `per_payment` по мере оплат — доработка P2.1). Синхрон
-триггером `cases_sync_ledger`. Отметку «выплачено»/откат делает только owner/admin.
+— фиксирует начисление как запись. ⚠ **Исторически** момент фиксации задавал `cases.accrual_mode`
+(`on_completion` / `per_payment`), синхрон триггером `cases_sync_ledger`. **После заморозки леджера
+(v3 s12, см. ниже) триггер снят; поле `accrual_mode` всё ещё пишется формой дела, но ни на что не
+влияет** (поле-призрак, кандидат на удаление в Phase 2). Отметку «выплачено»/откат делает только owner/admin.
 НЕ путать с `payments` (оплаты клиента). v2 Этап 4: леджер остаётся процентным и в
 текущем UI не отображается (источник правды отчёта — `payroll_employee_summary`/`*_cases`).
 Оклад (`salary_mode=fixed/fixed_percent`) в леджер НЕ пишем; интеграция режимов в леджер
@@ -306,15 +307,20 @@ status (accrued|paid), accrued_at, paid_at, created_by`
 comment (опц.), occurred_on date (default current_date), created_by, created_at`
 — **ИСТОЧНИК ПРАВДЫ отчёта ЗП** (через `payroll_employee_summary`): payout — выплата
 сотруднику (с разбивкой по делам в `payout_allocations`), bonus — премия. Создаёт/удаляет
-только owner/admin (RLS + RPC `create_payout`/`create_bonus` дублируют проверку).
+только owner/admin (RLS `payroll_transactions_write_managers`). ⚠ Экшены пишут **прямым `insert`**,
+не через RPC: выплата — `payroll_transactions`+`payout_allocations`, премия — `payroll_transactions
+(kind=bonus)`. RPC `create_payout` в БД есть, но код его не вызывает; `create_bonus` **не существует**.
+Целостность на активном пути — RLS + серверный пересчёт `outstanding` + DEFERRABLE-триггер Σ (ниже).
 
 **payout_allocations** (распределение выплаты по делам×роли) — правка №1
 `id, transaction_id (→ payroll_transactions cascade), case_id (→ cases restrict),
 role_in_case (lawyer|expert), amount (numeric(14,2) >0)`
 — строки выплаты payout по конкретным делам. **Σ аллокаций транзакции = её amount**
 (constraint-триггер `check_payout_allocations`, DEFERRABLE — v3 Сессия 2); uniq
-(transaction_id, case_id, role_in_case); `create_payout` проверяет принадлежность дела
-сотруднику по роли (v3 Сессия 2). RLS: staff — все, сотрудник — свои.
+(transaction_id, case_id, role_in_case). Проверку принадлежности дела сотруднику по роли содержит
+RPC `create_payout` (v3 Сессия 2), но **приложение вызывает прямой `insert`, не RPC** — на активном
+пути принадлежность обеспечивает серверный пересчёт `outstanding` из дел сотрудника в его роли.
+RLS: staff — все, сотрудник — свои.
 
 **cash_accounts** (счета кассы) — v2 Этап 7
 `id, name, kind (card|bank|cash, default bank), opening_balance numeric(14,2) (default 0),
@@ -456,7 +462,7 @@ updated_at`
 ## 8. Объём работ по фазам
 
 > **✅ ЦИКЛ v3 «Hardening & Product» ЗАВЕРШЁН (сессии 1–12, 2026-06-12).** Источник
-> правды цикла — **`docs/PLAN-V3.md`** (исторический): 12 сессий по итогам
+> правды цикла — **`docs/archive/PLAN-V3.md`** (исторический): 12 сессий по итогам
 > мультиагентного аудита 2026-06-11. **Выкачен на прод 2026-06-30** (Supabase
 > `fmzevqyquljecmsiqsoj` + Vercel `yur-crm.vercel.app`); прод-миграции — по явному
 > «ок» пользователя (см. PLAN-V3 §12.8).
@@ -476,7 +482,7 @@ updated_at`
 > леджера, CI, e2e, вычистка, коммиты (с12). См. `docs/PROGRESS.md` (записи цикла v3).
 >
 > **✅ ЦИКЛ v2 «Подразделения» ЗАВЕРШЁН (этапы 1–7, 2026-06-11).** Источник
-> правды цикла — `docs/PLAN-V2.md` (исторический). **Выкачен на прод 2026-06-30.**
+> правды цикла — `docs/archive/PLAN-V2.md` (исторический). **Выкачен на прод 2026-06-30.**
 >
 > **Готово (этапы 1–7):** БД-фундамент подразделений + департаментная RLS-видимость
 > (§4–§5, §7), **UI** подразделений (`/settings/departments`, поля в `/settings/users`

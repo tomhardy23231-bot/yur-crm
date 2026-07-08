@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Юр CRM
 
-## Getting Started
+CRM-система для юридической компании. Центральная сущность — **«Дело»** (оно же договор);
+вокруг него собираются клиент, документы, задачи и сроки, команда и финансы.
 
-First, run the development server:
+Система на проде: [`yur-crm.vercel.app`](https://yur-crm.vercel.app). Интерфейс — украинский/русский.
+
+> **Разработчику/агенту:** источник правды по домену, ролям, доступу (RLS) и бизнес-правилам —
+> [`CLAUDE.md`](CLAUDE.md). Дизайн-система — [`DESIGN.md`](DESIGN.md). Ход разработки и
+> «текущее состояние» — [`docs/PROGRESS.md`](docs/PROGRESS.md). Читай их **перед** кодом.
+
+## Стек
+
+| Слой | Технология |
+|---|---|
+| Frontend + backend | Next.js 16 (App Router) + React 19 + TypeScript (strict) |
+| БД / Auth / Storage | Supabase (PostgreSQL + Auth + Storage + Row Level Security) |
+| UI | Tailwind CSS v4 + Radix UI, шрифт IBM Plex Sans |
+| Печатные формы | ExcelJS (Рахунок-Акт → XLSX) |
+| Тесты | Vitest (unit + integration) + Playwright (e2e) |
+| Деплой | Vercel + Supabase |
+
+Доступ к данным идёт через `supabase-js` **с сессией пользователя** — чтобы работал RLS.
+`service_role` (обход RLS) — только для системных задач (миграции, сидинг, auth-админ).
+
+## Быстрый старт
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install                    # зависимости
+cp .env.example .env.local     # затем подставить значения из `npx supabase status`
+
+npx supabase start             # локальный стек (Postgres + Auth + Storage + Studio)
+npm run db:seed                # тестовые данные и логины (*@yur.local / test12345!)
+npm run dev                    # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Проверки:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run lint                   # ESLint
+npx tsc --noEmit               # тайпчек
+npm test                       # unit-тесты (Vitest)
+npm run test:integration       # integration-тесты (нужен локальный Supabase)
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Роли
 
-## Learn More
+Пять ролей (`users.role`): **owner** (владелец), **admin** (руководитель подразделения),
+**office_manager** (офис-менеджер), **lawyer** (юрист-продажник, видит свои дела по `lawyer_id`),
+**expert** (Эксперт-исполнитель, видит свои дела по `responsible_id`). Полная матрица доступа
+и правила RLS — в [`CLAUDE.md` §4](CLAUDE.md).
 
-To learn more about Next.js, take a look at the following resources:
+## Структура
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/app/          — маршруты (App Router): (app) интерфейс, (print) печать, api эндпоинты
+src/components/    — UI-компоненты (примитивы ui/, оболочка app/, доменные группы)
+src/lib/           — серверная логика: доступ к данным, финансы/ЗП, касса, акты, валидация
+supabase/migrations — SQL-миграции (схема, RLS, функции, триггеры)
+scripts/           — сидинг и служебные скрипты
+tests/             — unit / integration / e2e
+docs/              — документация; docs/archive — история завершённых циклов
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Документация
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [`CLAUDE.md`](CLAUDE.md) — стек, домен, роли, RLS, бизнес-правила, конвенции (главный документ).
+- [`DESIGN.md`](DESIGN.md) — дизайн-система (токены, типографика, компоненты).
+- [`docs/PROGRESS.md`](docs/PROGRESS.md) — журнал разработки и текущее состояние.
+- [`docs/archive/`](docs/archive) — планы и история завершённых циклов v1/v2/v3.
