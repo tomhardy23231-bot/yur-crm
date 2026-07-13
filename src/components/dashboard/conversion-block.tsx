@@ -1,7 +1,5 @@
 'use client';
 
-import { Target } from 'lucide-react';
-
 import { Card } from '@/components/ui/card';
 import { useI18n } from '@/lib/i18n/provider';
 import type { ConversionStats } from '@/lib/dashboard/queries';
@@ -16,8 +14,7 @@ export function ConversionBlock({ stats }: { stats: ConversionStats }) {
   return (
     <Card className="p-5">
       <div className="mb-2 flex items-center gap-2">
-        <Target size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">
+        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
           {t.dashboard.conversion.title}
         </h2>
       </div>

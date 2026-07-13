@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Trash2, AlertTriangle, Link2, Wallet } from 'lucide-react';
+import { Trash2, AlertTriangle, ArrowDownUp, Link2, Wallet } from 'lucide-react';
 
 import {
   Table,
@@ -179,7 +179,11 @@ function AccountPanel({
       {/* Разворот по дням */}
       {view.rows.length === 0 ? (
         <Card>
-          <EmptyState title={t.cash.report.emptyMonth} />
+          <EmptyState
+            icon={ArrowDownUp}
+            title={t.cash.report.emptyMonth}
+            hint={t.cash.report.emptyMonthHint}
+          />
         </Card>
       ) : (
         <>
@@ -395,7 +399,11 @@ function TotalTable({
   if (rows.length === 0) {
     return (
       <Card>
-        <EmptyState title={t.cash.report.emptyTotal} />
+        <EmptyState
+          icon={ArrowDownUp}
+          title={t.cash.report.emptyTotal}
+          hint={t.cash.report.emptyTotalHint}
+        />
       </Card>
     );
   }

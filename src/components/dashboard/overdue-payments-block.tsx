@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { CalendarX2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useI18n } from '@/lib/i18n/provider';
 import { formatMoney } from '@/lib/utils';
 import type { OverduePaymentRow } from '@/lib/dashboard/queries';
@@ -29,12 +30,13 @@ export function OverduePaymentsBlock({ rows }: { rows: OverduePaymentRow[] }) {
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-center gap-2">
-        <CalendarX2 size={16} strokeWidth={1.75} className="text-error" />
-        <h2 className="text-[16px] font-semibold text-text">{o.title}</h2>
+        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+          {o.title}
+        </h2>
       </div>
 
       {rows.length === 0 ? (
-        <p className="py-4 text-center text-[13px] text-text-subtle">{o.empty}</p>
+        <EmptyState size="sm" icon={CheckCircle2} title={o.empty} />
       ) : (
         <table className="w-full text-[13px]">
           <thead>

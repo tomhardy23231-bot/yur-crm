@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bell, HelpCircle, Search } from 'lucide-react';
+import { Bell, Plus, Search } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { useI18n } from '@/lib/i18n/provider';
@@ -41,12 +41,14 @@ function titleForPath(pathname: string, tb: Messages['topbar']): string {
   return tb.titleFallback;
 }
 
-// Глобальный верхний бар: заголовок страницы + поиск + уведомления + пользователь.
+// Глобальный верхний бар: заголовок страницы + поиск + «Новое дело» +
+// уведомления + пользователь (композиция — макет владельца 2026-07-08).
 export function Topbar({
   userName,
   roleLabel,
   tasksOverdue,
   tasksToday,
+  canCreateCase,
 }: {
   userName: string;
   roleLabel: string;
@@ -54,6 +56,8 @@ export function Topbar({
   tasksOverdue: number;
   /** Открытые задачи со сроком сегодня по Киеву. */
   tasksToday: number;
+  /** Право create_cases — показывает кнопку «Новое дело». */
+  canCreateCase: boolean;
 }) {
   const pathname = usePathname();
   const { open } = useCommandPalette();
@@ -72,65 +76,70 @@ export function Topbar({
       : t.topbar.notificationsAria;
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface/90 px-5 backdrop-blur-md sm:gap-4 sm:px-6">
+    <header className="sticky top-0 z-20 flex h-[60px] shrink-0 items-center gap-3 border-b border-border bg-surface/90 px-5 backdrop-blur-md sm:gap-4 sm:px-6">
       <h1 className="truncate text-[17px] font-bold tracking-[-0.01em] text-text">
         {title}
       </h1>
 
-      <div className="flex-1" />
-
-      {/* Поиск — открывает командную палитру (Cmd/Ctrl-K). Широкий вариант на ≥md. */}
+      {/* Поиск — сразу после заголовка (макет). Открывает палитру (Ctrl-K). */}
       <button
         type="button"
         onClick={open}
         data-tour="topbar-search"
-        className="hidden h-9 w-[260px] items-center gap-2 rounded-md border border-border bg-surface-sunken px-3 text-[13px] text-text-subtle transition-colors hover:border-border-strong hover:bg-surface md:flex lg:w-[300px]"
+        className="hidden h-10 w-[280px] items-center gap-2 rounded-full border border-border bg-surface-sunken px-4 text-[13px] text-text-subtle transition-colors hover:border-border-strong hover:bg-surface md:flex lg:w-[330px]"
         aria-label={t.topbar.searchAria}
       >
         <Search size={15} strokeWidth={1.75} className="shrink-0" />
         <span className="flex-1 truncate text-left">
           {t.topbar.searchButton}
         </span>
-        <kbd className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-text-subtle">
+        <kbd className="rounded-md border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-text-subtle">
           Ctrl K
         </kbd>
       </button>
+
+      {/* «Новое дело» — главное действие всегда под рукой (право create_cases). */}
+      {canCreateCase && (
+        <Link
+          href="/cases/new"
+          data-tour="cases-new"
+          style={{ boxShadow: 'var(--shadow-brand-badge)' }}
+          className="hidden h-10 shrink-0 items-center gap-1.5 rounded-full bg-primary px-4.5 text-[13.5px] font-semibold text-primary-fg transition-colors hover:bg-primary-hover md:inline-flex"
+        >
+          <Plus size={16} strokeWidth={2.25} />
+          {t.topbar.newCase}
+        </Link>
+      )}
+
+      <div className="flex-1" />
 
       {/* Компактный поиск-иконка — только на мобильных (< md). */}
       <button
         type="button"
         onClick={open}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text md:hidden"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text md:hidden"
         aria-label={t.topbar.searchAria}
       >
         <Search size={17} strokeWidth={1.75} />
       </button>
 
-      {/* Справка и онбординг-тур. На мобильных — в шторке «Ещё». */}
-      <Link
-        href="/help"
-        data-tour="topbar-help"
-        aria-label={t.topbar.helpAria}
-        className="hidden h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text md:inline-flex"
-      >
-        <HelpCircle size={17} strokeWidth={1.75} />
-      </Link>
-
-      {/* Уведомления → задачи. Точка: красная — есть просроченные, брендовая —
-          только сегодняшние, нет горящего — без точки. */}
+      {/* Уведомления → задачи. Числовой бейдж (макет): красный — есть
+          просроченные, брендовый — только сегодняшние; нет горящего — чисто. */}
       <Link
         href="/tasks"
         aria-label={dueLabel}
         title={dueLabel}
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text"
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text"
       >
         <Bell size={17} strokeWidth={1.75} />
         {dueTotal > 0 && (
           <span
-            className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-surface ${
+            className={`absolute -right-1 -top-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums text-white ring-2 ring-surface ${
               tasksOverdue > 0 ? 'bg-error' : 'bg-primary'
             }`}
-          />
+          >
+            {dueTotal > 9 ? '9+' : dueTotal}
+          </span>
         )}
       </Link>
 

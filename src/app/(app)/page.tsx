@@ -1,5 +1,13 @@
 import Link from 'next/link';
-import { Plus, Sparkles, AlertTriangle } from 'lucide-react';
+import {
+  Plus,
+  Sparkles,
+  AlertTriangle,
+  Briefcase,
+  Wallet,
+  Coins,
+  TrendingDown,
+} from 'lucide-react';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { Button } from '@/components/ui/button';
@@ -32,8 +40,8 @@ import {
 } from '@/lib/dashboard/queries';
 import { getPayrollRates } from '@/lib/payroll/queries';
 import { listCases } from '@/lib/cases/queries';
-import { listUpcomingTasks } from '@/lib/tasks/queries';
-import { STAFF_ROLES, type Role } from '@/lib/types/db';
+import { listUpcomingTasks, type UpcomingTasks } from '@/lib/tasks/queries';
+import { STAFF_ROLES, type Role, type TaskWithRefs } from '@/lib/types/db';
 import { formatMoney } from '@/lib/utils';
 import { getT } from '@/lib/i18n/server';
 import { LOCALE_BCP47, type Locale } from '@/lib/i18n/config';
@@ -97,29 +105,32 @@ export default async function HomePage() {
   const isEmpty = cases.length === 0;
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
+    <main className="flex flex-col gap-5 px-4 py-4 sm:px-6">
       {!isEmpty && truncated && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning-bg px-4 py-2.5 text-[12.5px] text-warning">
           <AlertTriangle size={14} strokeWidth={1.75} className="shrink-0" />
           {t.dashboard.truncatedWarning}
         </div>
       )}
-      {/* «Мой день» (v3 s11) — над KPI для всех ролей; пустой не рендерится. */}
-      {!isEmpty && <MyDayBlock tasks={upcoming.today} />}
 
       {isEmpty ? (
-        <EmptyDashboard
-          role={profile.role}
-          name={profile.full_name}
-          canCreateClient={user.caps.create_clients}
-          t={t}
-          fmt={fmt}
-        />
+        <>
+          <EmptyDashboard
+            role={profile.role}
+            name={profile.full_name}
+            canCreateClient={user.caps.create_clients}
+            t={t}
+            fmt={fmt}
+          />
+          <UpcomingDeadlinesBlock data={upcoming} />
+        </>
       ) : staff ? (
         <StaffDashboard
           stats={stats}
           conversion={conversion}
           recent={recent}
+          todayTasks={upcoming.today}
+          upcoming={upcoming}
           t={t}
           fmt={fmt}
           locale={locale}
@@ -129,13 +140,13 @@ export default async function HomePage() {
           cases={cases}
           stats={stats}
           recent={recent}
+          todayTasks={upcoming.today}
+          upcoming={upcoming}
           userId={profile.id}
           t={t}
           fmt={fmt}
         />
       )}
-
-      <UpcomingDeadlinesBlock data={upcoming} />
     </main>
   );
 }
@@ -210,6 +221,8 @@ async function StaffDashboard({
   stats,
   conversion,
   recent,
+  todayTasks,
+  upcoming,
   t,
   fmt,
   locale,
@@ -217,6 +230,8 @@ async function StaffDashboard({
   stats: ReturnType<typeof computeDashboardStats>;
   conversion: ConversionStats;
   recent: Awaited<ReturnType<typeof listCases>>['items'];
+  todayTasks: TaskWithRefs[];
+  upcoming: UpcomingTasks;
   t: I18n['t'];
   fmt: I18n['fmt'];
   locale: Locale;
@@ -246,6 +261,8 @@ async function StaffDashboard({
           value={String(stats.activeCases)}
           context={fmt(t.dashboard.kpi.ofTotal, { total: stats.totalCases })}
           delta={countDelta(stats.activeCases, a.activeCases.prev)}
+          icon={Briefcase}
+          iconTone="primary"
           href="/cases"
         />
         <KpiCard
@@ -255,6 +272,8 @@ async function StaffDashboard({
           context={monthName}
           delta={pctDelta(a.revenue, 'higher-good', t)}
           spark={{ points: a.revenue.series, tone: 'money' }}
+          icon={Wallet}
+          iconTone="primary"
           href="/reports/payroll"
         />
         <KpiCard
@@ -264,6 +283,8 @@ async function StaffDashboard({
           context={t.dashboard.kpi.salaryFundContext}
           delta={pctDelta(a.salary, 'neutral', t)}
           spark={{ points: a.salary.series, tone: 'money' }}
+          icon={Coins}
+          iconTone="primary"
           href="/reports/payroll"
         />
         <KpiCard
@@ -274,31 +295,31 @@ async function StaffDashboard({
           context={fmt(t.dashboard.kpi.debtPaidContext, { paid: formatMoney(stats.totalPaid) })}
           delta={pctDelta(a.debt, 'higher-bad', t)}
           spark={{ points: a.debt.series, tone: 'debt' }}
+          icon={TrendingDown}
+          iconTone="primary"
           href="/cases?debt=true"
         />
       </section>
 
-      <section className="grid grid-cols-1 gap-6 animate-fade-in-up lg:grid-cols-2">
-        <div className="flex flex-col gap-6">
-          <StageFunnel funnel={stats.funnel} />
-          <ConversionBlock stats={conversion} />
+      {/* Каркас по макету владельца (2026-07-08): широкая рабочая колонка +
+          узкая правая рейка. ВСЕ блоки живут внутри колонок (одна секция) —
+          иначе конец короткой колонки оставлял пустую дыру до следующего ряда. */}
+      <section className="grid grid-cols-1 items-start gap-5 animate-fade-in-up lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="flex min-w-0 flex-col gap-5">
+          <MyDayBlock tasks={todayTasks} />
+          <RecentCases items={recent} />
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <ConversionBlock stats={conversion} />
+            <CategoryRevenue data={stats.revenueByCategory} />
+          </div>
+          <OverduePaymentsBlock rows={overdue} />
         </div>
-        <CategoryRevenue data={stats.revenueByCategory} />
-      </section>
-
-      {/* v3 s9: контроль доплат — просроченные позиции графика + дебиторка по
-          давности. Рядом, в один ряд на широких экранах. */}
-      <section className="grid grid-cols-1 gap-6 animate-fade-in-up lg:grid-cols-2">
-        <OverduePaymentsBlock rows={overdue} />
-        <DebtAgingBlock buckets={aging} />
-      </section>
-
-      <section className="animate-fade-in-up">
-        <SourcesBlock rows={sources} />
-      </section>
-
-      <section className="animate-fade-in-up">
-        <RecentCases items={recent} funnel={stats.funnel} />
+        <div className="flex min-w-0 flex-col gap-5">
+          <StageFunnel funnel={stats.funnel} />
+          <UpcomingDeadlinesBlock data={upcoming} />
+          <SourcesBlock rows={sources} />
+          <DebtAgingBlock buckets={aging} />
+        </div>
       </section>
     </>
   );
@@ -312,6 +333,8 @@ async function PersonalDashboard({
   cases,
   stats,
   recent,
+  todayTasks,
+  upcoming,
   userId,
   t,
   fmt,
@@ -319,6 +342,8 @@ async function PersonalDashboard({
   cases: DashboardCaseRow[];
   stats: ReturnType<typeof computeDashboardStats>;
   recent: Awaited<ReturnType<typeof listCases>>['items'];
+  todayTasks: TaskWithRefs[];
+  upcoming: UpcomingTasks;
   userId: string;
   t: I18n['t'];
   fmt: I18n['fmt'];
@@ -339,6 +364,8 @@ async function PersonalDashboard({
           value={String(stats.activeCases)}
           context={fmt(t.dashboard.kpi.ofTotal, { total: stats.totalCases })}
           delta={countDelta(stats.activeCases, a.activeCases.prev)}
+          icon={Briefcase}
+          iconTone="primary"
           href="/cases"
         />
         <KpiCard
@@ -348,6 +375,8 @@ async function PersonalDashboard({
           context={t.dashboard.kpi.accruedToMeContext}
           delta={pctDelta(a.salary, 'higher-good', t)}
           spark={{ points: a.salary.series, tone: 'money' }}
+          icon={Coins}
+          iconTone="primary"
           href="/reports/payroll"
         />
         <KpiCard
@@ -358,17 +387,24 @@ async function PersonalDashboard({
           context={fmt(t.dashboard.kpi.debtPaidContext, { paid: formatMoney(stats.totalPaid) })}
           delta={pctDelta(a.debt, 'higher-bad', t)}
           spark={{ points: a.debt.series, tone: 'debt' }}
+          icon={TrendingDown}
+          iconTone="primary"
           href="/cases?debt=true"
         />
       </section>
 
-      <section className="grid grid-cols-1 gap-6 animate-fade-in-up lg:grid-cols-2">
-        <StageFunnel funnel={stats.funnel} />
-        <RecentCases items={recent} funnel={stats.funnel} />
-      </section>
-
-      <section className="animate-fade-in-up">
-        <PersonalEarnings earnings={earnings} />
+      {/* Тот же двухколоночный каркас, что и у staff (макет 2026-07-08);
+          все блоки внутри колонок — без пустых дыр между секциями. */}
+      <section className="grid grid-cols-1 items-start gap-5 animate-fade-in-up lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="flex min-w-0 flex-col gap-5">
+          <MyDayBlock tasks={todayTasks} />
+          <RecentCases items={recent} />
+          <PersonalEarnings earnings={earnings} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-5">
+          <StageFunnel funnel={stats.funnel} />
+          <UpcomingDeadlinesBlock data={upcoming} />
+        </div>
       </section>
     </>
   );

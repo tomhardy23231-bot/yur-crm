@@ -1,4 +1,9 @@
+import Link from 'next/link';
+import { CheckCircle2, Inbox, Plus } from 'lucide-react';
+
 import { BoardCard } from '@/components/cases/board-card';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   BOARD_COLUMN_CAP,
   type BoardCaseItem,
@@ -22,6 +27,7 @@ export async function BoardColumn({
   cases,
   nextStageLabel,
   canAdvanceFor,
+  showNewCaseCta = false,
 }: {
   stage: CaseStage;
   cases: BoardCaseItem[];
@@ -29,6 +35,8 @@ export async function BoardColumn({
   // Возвращает true, если текущий пользователь может двигать данное дело
   // вперёд (юрист/Експерт дела или staff).
   canAdvanceFor: (c: BoardCaseItem) => boolean;
+  /** CTA «Новое дело» в пустой колонке (первая колонка + staff). */
+  showNewCaseCta?: boolean;
 }) {
   const { t, fmt } = await getT();
   const visible = cases.slice(0, BOARD_COLUMN_CAP);
@@ -67,11 +75,21 @@ export async function BoardColumn({
 
       <div className="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col gap-2">
         {visible.length === 0 ? (
-          <div className="flex items-center justify-center px-3 py-8 text-center">
-            <p className="text-[12px] text-text-subtle">
-              {isClosed ? t.cases.column.emptyClosed : t.cases.column.empty}
-            </p>
-          </div>
+          <EmptyState
+            size="sm"
+            icon={isClosed ? CheckCircle2 : Inbox}
+            title={isClosed ? t.cases.column.emptyClosed : t.cases.column.empty}
+            action={
+              showNewCaseCta ? (
+                <Button asChild size="sm">
+                  <Link href="/cases/new">
+                    <Plus size={14} strokeWidth={2} />
+                    {t.cases.toolbar.newCase}
+                  </Link>
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           visible.map((c) => (
             <BoardCard

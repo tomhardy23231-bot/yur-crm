@@ -3,12 +3,24 @@ import { CalendarDays, ChevronLeft, ChevronRight, List } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { AgendaBlock } from '@/components/calendar/agenda-block';
+import { WeekGrid, type WeekDayCell } from '@/components/calendar/week-grid';
 import { NewTaskButton } from '@/components/tasks/new-task-button';
 import { TaskRow } from '@/components/tasks/task-row';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { LOCALE_BCP47 } from '@/lib/i18n/config';
-import type { CalendarMessages } from '@/lib/i18n/messages/ru/calendar';
+import {
+  addDays,
+  isoDayKey,
+  monthsFrom,
+  parseMonth,
+  parseWeekStart,
+  startOfWeekMonday,
+  toMonthParam,
+  weekdaysFrom,
+} from '@/lib/calendar/dates';
 import { listCasesForSelect } from '@/lib/cases/queries';
 import { listAssignableUsers, listTasksInRange } from '@/lib/tasks/queries';
 import { listAbsencesInRange } from '@/lib/absences/queries';
@@ -25,10 +37,12 @@ const KIND_DOT: Record<TaskKind, string> = {
 // от видов задач. Тип отсутствия раскрывается в панели дня (v2 Этап 6).
 const ABSENCE_DOT = 'bg-absence';
 
+type CalendarView = 'month' | 'week';
+
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; day?: string }>;
+  searchParams: Promise<{ month?: string; day?: string; view?: string; week?: string }>;
 }) {
   const user = await requireUser();
   const { t, plural, locale } = await getT();
@@ -45,19 +59,33 @@ export default async function CalendarPage({
   const monthLabels = monthsFrom(t.calendar);
 
   const today = new Date();
+  const todayStart = new Date(today);
+  todayStart.setHours(0, 0, 0, 0);
+  const view: CalendarView = sp.view === 'week' ? 'week' : 'month';
   const { year, monthIdx } = parseMonth(sp.month, today);
 
-  // Grid: 6 недель, начиная с понедельника недели, в которой 1 число месяца.
+  // Границы видимого диапазона: месяц — сетка 6 недель, неделя — 7 дней.
   const firstOfMonth = new Date(year, monthIdx, 1);
   const gridStart = startOfWeekMonday(firstOfMonth);
-  const gridEnd = addDays(gridStart, 42);
+  const gridEnd = addDays(gridStart, 42); // exclusive
+  const weekStart = parseWeekStart(sp.week, today);
+  const weekEnd = addDays(weekStart, 7); // exclusive
 
-  // Последний день сетки (включительно) — для overlap-выборки отсутствий по диапазону.
+  const rangeStart = view === 'week' ? weekStart : gridStart;
+  const rangeEnd = view === 'week' ? weekEnd : gridEnd;
+
+  // Повестка «Сегодня» должна работать и когда листаешь другой месяц/неделю —
+  // расширяем диапазон выборки до сегодняшнего дня включительно.
+  const tomorrowStart = addDays(todayStart, 1);
+  const fetchStart = rangeStart <= todayStart ? rangeStart : todayStart;
+  const fetchEnd = rangeEnd >= tomorrowStart ? rangeEnd : tomorrowStart;
+
+  // Последний день выборки (включительно) — для overlap-выборки отсутствий.
   // 6.1: справочники модалки «+ Задача» (исполнители + видимые дела) — тем же батчем.
-  const gridLastKey = isoDayKey(addDays(gridStart, 41));
+  const fetchLastKey = isoDayKey(addDays(fetchEnd, -1));
   const [tasks, absences, assignees, casesForSelect] = await Promise.all([
-    listTasksInRange({ from: gridStart.toISOString(), to: gridEnd.toISOString() }),
-    listAbsencesInRange({ from: isoDayKey(gridStart), to: gridLastKey }),
+    listTasksInRange({ from: fetchStart.toISOString(), to: fetchEnd.toISOString() }),
+    listAbsencesInRange({ from: isoDayKey(fetchStart), to: fetchLastKey }),
     listAssignableUsers(),
     listCasesForSelect(),
   ]);
@@ -82,13 +110,20 @@ export default async function CalendarPage({
   const selectedDayAbsences = selectedDayKey ? absencesOnDay(selectedDayKey) : [];
   const selectedDate = selectedDayKey ? new Date(selectedDayKey + 'T00:00:00') : null;
 
-  // Заголовок месяца, ссылки prev/next.
+  // Заголовок: месяц («липень 2026») или диапазон недели («7–13 липня 2026»).
   const monthLabel = `${monthLabels[monthIdx]} ${year}`;
+  const weekLabel = new Intl.DateTimeFormat(LOCALE_BCP47[locale], {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).formatRange(weekStart, addDays(weekEnd, -1));
   const prevMonth = toMonthParam(monthIdx === 0 ? year - 1 : year, (monthIdx + 11) % 12);
   const nextMonth = toMonthParam(monthIdx === 11 ? year + 1 : year, (monthIdx + 1) % 12);
   const thisMonthParam = toMonthParam(today.getFullYear(), today.getMonth());
+  const thisWeekParam = isoDayKey(startOfWeekMonday(today));
+  const weekParam = isoDayKey(weekStart);
 
-  // Сгенерим клетки.
+  // Сгенерим клетки месячной сетки.
   const cells: Array<{
     date: Date;
     key: string;
@@ -110,10 +145,22 @@ export default async function CalendarPage({
     });
   }
 
-  function buildHref(overrides: { month?: string; day?: string | null }): string {
+  function buildHref(overrides: {
+    month?: string;
+    day?: string | null;
+    view?: CalendarView;
+    week?: string;
+  }): string {
     const params = new URLSearchParams();
-    const m = overrides.month ?? sp.month ?? thisMonthParam;
-    if (m !== thisMonthParam) params.set('month', m);
+    const nextView = overrides.view ?? view;
+    if (nextView === 'week') {
+      params.set('view', 'week');
+      const w = overrides.week ?? weekParam;
+      if (w !== thisWeekParam) params.set('week', w);
+    } else {
+      const m = overrides.month ?? sp.month ?? thisMonthParam;
+      if (m !== thisMonthParam) params.set('month', m);
+    }
     if (overrides.day === undefined) {
       // оставить как было
       if (selectedDayKey) params.set('day', selectedDayKey);
@@ -124,11 +171,47 @@ export default async function CalendarPage({
     return s ? `/calendar?${s}` : '/calendar';
   }
 
+  // Переключение вида: месяц ← середина активной недели; неделя ← сегодняшняя,
+  // если открыт текущий месяц, иначе неделя 1-го числа месяца.
+  const monthOfWeek = toMonthParam(
+    addDays(weekStart, 3).getFullYear(),
+    addDays(weekStart, 3).getMonth(),
+  );
+  const weekOfMonth =
+    toMonthParam(year, monthIdx) === thisMonthParam
+      ? thisWeekParam
+      : isoDayKey(startOfWeekMonday(firstOfMonth));
+
+  // Клетки недельного вида.
+  const weekDays: WeekDayCell[] = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(weekStart, i);
+    const key = isoDayKey(d);
+    return {
+      date: d,
+      key,
+      isToday: key === todayKey,
+      isSelected: key === selectedDayKey,
+      href: buildHref({ day: key }),
+      tasks: tasksByDay.get(key) ?? [],
+      absences: absencesOnDay(key),
+    };
+  });
+
+  // Пусто ли в видимом диапазоне (для EmptyState под сеткой).
+  const rangeEmpty =
+    view === 'week'
+      ? weekDays.every((d) => d.tasks.length === 0 && d.absences.length === 0)
+      : cells.every((c) => c.tasks.length === 0 && c.absences.length === 0);
+
+  // Повестка «Сегодня» — задачи и отсутствия сегодняшнего дня (все видимые).
+  const agendaTasks = tasksByDay.get(todayKey) ?? [];
+  const agendaAbsences = absencesOnDay(todayKey);
+
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="text-[24px] leading-[1.2] tracking-[-0.015em] font-semibold text-text capitalize">
-          {monthLabel}
+          {view === 'week' ? weekLabel : monthLabel}
         </h1>
         <Button asChild variant="secondary" size="sm">
           <Link href="/tasks">
@@ -138,49 +221,105 @@ export default async function CalendarPage({
         </Button>
       </header>
 
-      {/* Навигация месяцами */}
+      {/* Навигация: назад/сегодня/вперёд + переключатель Месяц|Неделя + легенда */}
       <div className="flex flex-wrap items-center gap-2">
-        <NavLink href={buildHref({ month: prevMonth, day: null })} ariaLabel={t.calendar.prevMonth}>
-          <ChevronLeft size={14} strokeWidth={1.75} />
-        </NavLink>
-        <NavLink href={buildHref({ month: thisMonthParam, day: null })}>
-          {t.common.today}
-        </NavLink>
-        <NavLink href={buildHref({ month: nextMonth, day: null })} ariaLabel={t.calendar.nextMonth}>
-          <ChevronRight size={14} strokeWidth={1.75} />
-        </NavLink>
+        {view === 'week' ? (
+          <>
+            <NavLink
+              href={buildHref({ week: isoDayKey(addDays(weekStart, -7)), day: null })}
+              ariaLabel={t.calendar.prevWeek}
+            >
+              <ChevronLeft size={14} strokeWidth={1.75} />
+            </NavLink>
+            <NavLink href={buildHref({ week: thisWeekParam, day: null })}>
+              {t.common.today}
+            </NavLink>
+            <NavLink
+              href={buildHref({ week: isoDayKey(addDays(weekStart, 7)), day: null })}
+              ariaLabel={t.calendar.nextWeek}
+            >
+              <ChevronRight size={14} strokeWidth={1.75} />
+            </NavLink>
+          </>
+        ) : (
+          <>
+            <NavLink href={buildHref({ month: prevMonth, day: null })} ariaLabel={t.calendar.prevMonth}>
+              <ChevronLeft size={14} strokeWidth={1.75} />
+            </NavLink>
+            <NavLink href={buildHref({ month: thisMonthParam, day: null })}>
+              {t.common.today}
+            </NavLink>
+            <NavLink href={buildHref({ month: nextMonth, day: null })} ariaLabel={t.calendar.nextMonth}>
+              <ChevronRight size={14} strokeWidth={1.75} />
+            </NavLink>
+          </>
+        )}
+
+        {/* Переключатель вида — те же «вкладки», что и Активные/Архив в списке дел. */}
+        <div role="tablist" aria-label={t.calendar.viewAria} className="ml-1 flex items-center gap-1.5">
+          {[
+            { key: 'month' as const, label: t.calendar.viewMonth, href: buildHref({ view: 'month', month: monthOfWeek, day: null }) },
+            { key: 'week' as const, label: t.calendar.viewWeek, href: buildHref({ view: 'week', week: weekOfMonth, day: null }) },
+          ].map((tab) => {
+            const active = tab.key === view;
+            return (
+              <Link
+                key={tab.key}
+                href={tab.href}
+                role="tab"
+                aria-selected={active}
+                className={cn(
+                  'inline-flex h-9 items-center rounded-md border px-3 text-[13px] font-medium transition-colors duration-[80ms] ease-out',
+                  active
+                    ? 'border-primary-border bg-primary-subtle text-primary'
+                    : 'border-border bg-surface text-text-muted hover:border-border-strong hover:text-text',
+                )}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </div>
+
         <Legend labels={t.enums.taskKind} absenceLabel={t.absences.calendar.legend} />
       </div>
 
-      <Card className="overflow-hidden">
-        {/* Headers weekdays */}
-        <div className="grid grid-cols-7 border-b border-border bg-surface-muted">
-          {weekdayLabels.map((wd) => (
-            <div
-              key={wd}
-              className="px-2 py-2 text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle text-center"
-            >
-              {wd}
-            </div>
-          ))}
-        </div>
+      {/* Повестка дня: события сегодня (пустая — не рендерится). */}
+      <AgendaBlock tasks={agendaTasks} absences={agendaAbsences} />
 
-        {/* Days grid */}
-        <div className="grid grid-cols-7">
-          {cells.map((cell) => (
-            <DayCell
-              key={cell.key}
-              date={cell.date}
-              tasks={cell.tasks}
-              absences={cell.absences}
-              inMonth={cell.inMonth}
-              isToday={cell.isToday}
-              isSelected={cell.key === selectedDayKey}
-              href={buildHref({ day: cell.key })}
-            />
-          ))}
-        </div>
-      </Card>
+      {view === 'week' ? (
+        <WeekGrid days={weekDays} weekdayLabels={weekdayLabels} />
+      ) : (
+        <Card className="overflow-hidden">
+          {/* Headers weekdays */}
+          <div className="grid grid-cols-7 border-b border-border bg-surface-muted">
+            {weekdayLabels.map((wd) => (
+              <div
+                key={wd}
+                className="px-2 py-2 text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle text-center"
+              >
+                {wd}
+              </div>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7">
+            {cells.map((cell) => (
+              <DayCell
+                key={cell.key}
+                date={cell.date}
+                tasks={cell.tasks}
+                absences={cell.absences}
+                inMonth={cell.inMonth}
+                isToday={cell.isToday}
+                isSelected={cell.key === selectedDayKey}
+                href={buildHref({ day: cell.key })}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
       {selectedDate && (
         <section className="flex flex-col gap-3">
@@ -249,11 +388,23 @@ export default async function CalendarPage({
         </section>
       )}
 
-      {tasks.length === 0 && absences.length === 0 && !selectedDate && (
-        <div className="flex items-center gap-2 text-[13px] text-text-muted">
-          <CalendarDays size={14} strokeWidth={1.75} />
-          {t.calendar.noTasksMonth}
-        </div>
+      {/* Пустой месяц/неделя: единый EmptyState с CTA «Задача» (v4 полировка). */}
+      {rangeEmpty && !selectedDate && (
+        <Card>
+          <EmptyState
+            icon={CalendarDays}
+            title={view === 'week' ? t.calendar.weekEmptyTitle : t.calendar.monthEmptyTitle}
+            hint={view === 'week' ? t.calendar.weekEmptyHint : t.calendar.monthEmptyHint}
+            action={
+              <NewTaskButton
+                assignees={assignees}
+                cases={casesForSelect}
+                currentUserId={user.profile.id}
+                label={t.calendar.addTask}
+              />
+            }
+          />
+        </Card>
       )}
     </main>
   );
@@ -417,73 +568,4 @@ function LegendItem({ dotClass, label }: { dotClass: string; label: string }) {
       {label}
     </span>
   );
-}
-
-// =====================================================================
-// helpers
-// =====================================================================
-
-function parseMonth(
-  raw: string | undefined,
-  fallback: Date,
-): { year: number; monthIdx: number } {
-  if (raw && /^\d{4}-\d{2}$/.test(raw)) {
-    const [y, m] = raw.split('-').map(Number);
-    if (y && m && m >= 1 && m <= 12) {
-      return { year: y, monthIdx: m - 1 };
-    }
-  }
-  return { year: fallback.getFullYear(), monthIdx: fallback.getMonth() };
-}
-
-function toMonthParam(year: number, monthIdx: number): string {
-  return `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
-}
-
-function startOfWeekMonday(d: Date): Date {
-  const n = new Date(d);
-  n.setHours(0, 0, 0, 0);
-  // JS: вс=0, пн=1, ..., сб=6. Хотим пн как старт.
-  const wd = n.getDay();
-  const back = wd === 0 ? 6 : wd - 1;
-  n.setDate(n.getDate() - back);
-  return n;
-}
-
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-}
-
-function isoDayKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-// Пн…Вс из словаря в порядке отображения сетки (неделя с понедельника).
-function weekdaysFrom(c: CalendarMessages): string[] {
-  const w = c.weekdays;
-  return [w.mon, w.tue, w.wed, w.thu, w.fri, w.sat, w.sun];
-}
-
-// Месяцы из словаря по индексу (0 = январь … 11 = декабрь).
-function monthsFrom(c: CalendarMessages): string[] {
-  const m = c.months;
-  return [
-    m.january,
-    m.february,
-    m.march,
-    m.april,
-    m.may,
-    m.june,
-    m.july,
-    m.august,
-    m.september,
-    m.october,
-    m.november,
-    m.december,
-  ];
 }

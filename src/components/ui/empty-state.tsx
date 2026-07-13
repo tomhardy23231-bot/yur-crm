@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 // экрана (у списков ДВА состояния: «пусто вообще» и «не найдено по фильтрам»).
 // Без своей карточки-обёртки: родитель сам решает, во что завернуть
 // (Card-секция уже имеет рамку; отдельные экраны — свою).
+// size='sm' — компактный вариант для узких блоков (колонки канбана,
+// карточки дашборда): меньше вертикали и иконка 22px.
 // ============================================================================
 
 export function EmptyState({
@@ -16,6 +18,7 @@ export function EmptyState({
   title,
   hint,
   action,
+  size = 'md',
   className,
 }: {
   icon?: LucideIcon;
@@ -23,28 +26,35 @@ export function EmptyState({
   hint?: string;
   /** Опциональная CTA-кнопка (напр. «Новое дело»). */
   action?: ReactNode;
+  size?: 'md' | 'sm';
   className?: string;
 }) {
+  const sm = size === 'sm';
   return (
     <div
       className={cn(
-        'flex flex-col items-center px-6 py-10 text-center',
+        'flex flex-col items-center text-center',
+        sm ? 'px-4 py-6' : 'px-6 py-10',
         className,
       )}
     >
       {Icon && (
         <Icon
-          size={28}
+          size={sm ? 22 : 28}
           strokeWidth={1.5}
-          className="mb-3 text-text-subtle"
+          className={cn('text-text-subtle', sm ? 'mb-2' : 'mb-3')}
           aria-hidden="true"
         />
       )}
-      <p className="text-[14px] font-medium text-text">{title}</p>
+      <p className={cn('font-medium text-text', sm ? 'text-[13.5px]' : 'text-[14px]')}>
+        {title}
+      </p>
       {hint && (
-        <p className="mt-1 max-w-md text-[13px] text-text-muted">{hint}</p>
+        <p className={cn('mt-1 max-w-md text-text-muted', sm ? 'text-[12.5px]' : 'text-[13px]')}>
+          {hint}
+        </p>
       )}
-      {action && <div className="mt-4">{action}</div>}
+      {action && <div className={sm ? 'mt-3' : 'mt-4'}>{action}</div>}
     </div>
   );
 }

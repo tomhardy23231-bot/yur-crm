@@ -27,7 +27,7 @@ export const topbar = {
 
   searchButton: 'Поиск по делам, клиентам…',
   searchAria: 'Поиск по делам, клиентам',
-  helpAria: 'Справка и обучающий тур',
+  newCase: 'Новое дело',
   notificationsAria: 'Задачи',
   notificationsAriaCount: 'Задачи: {count} открытых',
   // Честный колокольчик (v3 Сессия 6): aria-label/title с разбивкой.

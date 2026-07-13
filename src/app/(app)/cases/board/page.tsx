@@ -195,6 +195,7 @@ export default async function CasesBoardPage({
               cases={grouped[stage] ?? []}
               nextStageLabel={nextStageLabel}
               canAdvanceFor={canAdvanceFor}
+              showNewCaseCta={isStaff && stage === 'new_request'}
             />
           );
         })}

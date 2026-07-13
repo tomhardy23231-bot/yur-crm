@@ -36,6 +36,22 @@ export const cases: CasesMessages = {
     stale: 'Завислі',
   },
 
+  savedViews: {
+    save: 'Зберегти вид',
+    title: 'Зберегти поточні фільтри як вид',
+    namePlaceholder: 'Назва виду',
+    saveConfirm: 'Зберегти',
+    deleteLabel: 'Видалити вид «{name}»',
+    limit: 'Можна зберегти до {n} видів.',
+  },
+
+  columnsMenu: {
+    button: 'Колонки',
+    aria: 'Налаштування колонок',
+    hint: 'Позначте колонки, які потрібно показувати.',
+    reset: 'Показати всі',
+  },
+
   tableAria: 'Список справ',
 
   deletedNotice: 'Справу видалено.',

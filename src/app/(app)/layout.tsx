@@ -65,6 +65,7 @@ export default async function AppLayout({
                 roleLabel={roleLabel}
                 tasksOverdue={tasksDue.overdue}
                 tasksToday={tasksDue.today}
+                canCreateCase={user.caps.create_cases}
               />
               <div
                 data-tour="page-content"

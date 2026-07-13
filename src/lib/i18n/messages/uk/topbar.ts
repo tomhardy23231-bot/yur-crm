@@ -27,7 +27,7 @@ export const topbar: TopbarMessages = {
 
   searchButton: 'Пошук за справами, клієнтами…',
   searchAria: 'Пошук за справами, клієнтами',
-  helpAria: 'Довідка та навчальний тур',
+  newCase: 'Нова справа',
   notificationsAria: 'Завдання',
   notificationsAriaCount: 'Завдання: {count} відкритих',
   // Чесний дзвіночок (v3 Сесія 6): aria-label/title з розбивкою.

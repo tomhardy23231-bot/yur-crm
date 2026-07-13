@@ -73,8 +73,8 @@ export function StageBadge({ stage, label, quiet = false, pulse = true, classNam
       className={cn(
         "inline-flex items-center gap-1.5",
         "px-2.5 py-1 rounded-chip",
-        "text-xs font-bold leading-none whitespace-nowrap",
-        "ring-1 ring-inset ring-current/20",
+        // Чистая пастель без окантовки (макет владельца 2026-07-08; ring убран).
+        "text-xs font-semibold leading-none whitespace-nowrap",
         STAGE_CLASS[stage],
         className,
       )}

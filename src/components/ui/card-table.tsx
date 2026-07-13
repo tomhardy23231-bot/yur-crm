@@ -32,7 +32,8 @@ export function CardListShell({
   cols: string;
   header: React.ReactNode;
   ariaLabel?: string;
-  minWidth?: number;
+  /** px-число или CSS-выражение (напр. var(--cases-minw, 1376px)). */
+  minWidth?: number | string;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -52,19 +53,23 @@ export function CardListShell({
   );
 }
 
-// Подпись колонки (несортируемая).
+// Подпись колонки (несортируемая). dataCol — id колонки для настраиваемой
+// видимости (см. cases-view-settings + globals.css).
 export function CardHead({
   children,
   align = 'left',
   className,
+  dataCol,
 }: {
   children?: React.ReactNode;
   align?: 'left' | 'right' | 'center';
   className?: string;
+  dataCol?: string;
 }) {
   return (
     <div
       role="columnheader"
+      data-col={dataCol}
       className={cn(
         // text-muted, не subtle: шапка лежит на --bg, subtle там 2.95:1 (v3 s10)
         'text-[10px] font-bold uppercase tracking-[0.05em] text-text-muted',
@@ -87,6 +92,7 @@ export async function CardSortHead({
   hrefFor,
   align = 'left',
   children,
+  dataCol,
 }: {
   column: string;
   currentSort: string | null;
@@ -94,6 +100,7 @@ export async function CardSortHead({
   hrefFor: (sort: string, dir: SortDir) => string;
   align?: 'left' | 'right';
   children: React.ReactNode;
+  dataCol?: string;
 }) {
   const { t, fmt } = await getT();
   const isActive = currentSort === column;
@@ -107,7 +114,7 @@ export async function CardSortHead({
       : 'descending';
 
   return (
-    <div role="columnheader" aria-sort={ariaSort} className={cn(align === 'right' && 'text-right')}>
+    <div role="columnheader" aria-sort={ariaSort} data-col={dataCol} className={cn(align === 'right' && 'text-right')}>
       <Link
         href={href}
         scroll={false}

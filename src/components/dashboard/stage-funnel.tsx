@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { Filter } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { type CaseStage } from "@/lib/types/db";
@@ -17,8 +16,9 @@ const STAGE_VAR: Record<CaseStage, string> = {
   closed: "var(--stage-closed)",
 };
 
-// Воронка дел по 5 этапам. Каждая строка кликабельна → дела этого этапа
-// (бриф §3.2: числа — вход в отфильтрованный список).
+// Воронка дел по 5 этапам (рестайл по макету владельца 2026-07-08: точка +
+// название + число сверху, полоса на всю ширину снизу — компактно в узкой
+// колонке). Каждая строка кликабельна → дела этого этапа (бриф §3.2).
 export function StageFunnel({ funnel }: { funnel: ReadonlyArray<FunnelEntry> }) {
   const { t } = useI18n();
   const max = Math.max(1, ...funnel.map((f) => f.count));
@@ -26,9 +26,10 @@ export function StageFunnel({ funnel }: { funnel: ReadonlyArray<FunnelEntry> }) 
 
   return (
     <Card className="p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <Filter size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">{t.dashboard.funnel.title}</h2>
+      <div className="mb-2.5 flex items-center gap-2">
+        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+          {t.dashboard.funnel.title}
+        </h2>
         <span className="ml-auto text-[12px] tabular-nums text-text-muted">
           {total}
         </span>
@@ -41,27 +42,34 @@ export function StageFunnel({ funnel }: { funnel: ReadonlyArray<FunnelEntry> }) 
             <Link
               key={f.stage}
               href={`/cases?stage=${f.stage}`}
-              className="-mx-2.5 flex items-center gap-3 rounded-md px-2.5 py-1.5 transition-colors hover:bg-surface-muted"
+              className="-mx-2.5 flex flex-col gap-1.5 rounded-md px-2.5 py-2 transition-colors hover:bg-surface-muted"
             >
-              <span className="w-36 shrink-0 truncate text-[13px] text-text">
-                {t.enums.caseStage[f.stage]}
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ background: STAGE_VAR[f.stage] }}
+                />
+                <span className="min-w-0 truncate text-[13px] text-text">
+                  {t.enums.caseStage[f.stage]}
+                </span>
+                <span
+                  className={`ml-auto shrink-0 text-[13px] font-semibold tabular-nums ${
+                    f.count > 0 ? "text-text" : "text-text-subtle"
+                  }`}
+                >
+                  {f.count}
+                </span>
               </span>
-              <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-sunken">
-                <div
-                  className="h-full rounded-full animate-bar-grow"
+              <span className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
+                <span
+                  className="block h-full rounded-full animate-bar-grow"
                   style={{
                     width: `${f.count > 0 ? Math.max(pct, 4) : 0}%`,
                     background: STAGE_VAR[f.stage],
                     animationDelay: `${i * 60}ms`,
                   }}
                 />
-              </div>
-              <span
-                className={`w-7 shrink-0 text-right text-[13px] font-semibold tabular-nums ${
-                  f.count > 0 ? "text-text" : "text-text-subtle"
-                }`}
-              >
-                {f.count}
               </span>
             </Link>
           );

@@ -6,6 +6,7 @@ export const dashboard: DashboardMessages = {
   myDay: {
     heading: 'Мій день',
     count: { one: '{n} завдання', few: '{n} завдання', many: '{n} завдань' },
+    empty: 'На сьогодні завдань немає — день вільний.',
   },
 
   delta: {
@@ -43,7 +44,7 @@ export const dashboard: DashboardMessages = {
   },
 
   funnel: {
-    title: 'Воронка справ',
+    title: 'Воронка за етапами',
   },
 
   // v3 Сесія 7: конверсія воронки в договір (staff-блок під воронкою).
@@ -54,14 +55,13 @@ export const dashboard: DashboardMessages = {
   },
 
   // v3 Сесія 7: джерела клієнтів за місяць (staff-блок).
+  // Рестайл 2026-07-08: смуга-розподіл + легенда замість таблиці.
   sources: {
     title: 'Джерела клієнтів за місяць',
     empty: 'Цього місяця нових клієнтів немає.',
     otherSource: 'Інше',
-    colSource: 'Джерело',
-    colClients: 'Клієнтів',
-    colCases: 'Справ',
-    colPaid: 'Сплачено',
+    clientsCount: { one: '{n} клієнт', few: '{n} клієнти', many: '{n} клієнтів' },
+    casesPaidLine: 'справ: {cases} · сплачено {paid} ₴',
   },
 
   // Прострочені доплати (v3 Сесія 9).
@@ -89,15 +89,15 @@ export const dashboard: DashboardMessages = {
     empty: 'Поки немає оплат — виручка з’явиться тут.',
   },
 
+  // Колонки — макет 2026-07-08.
   recentCases: {
     title: 'Останні справи',
     allLink: 'Усі справи →',
     empty: 'Поки немає справ.',
-    colNumberTitle: 'Номер / назва',
-    colClient: 'Клієнт',
+    colNumberTitle: 'Справа',
     colStage: 'Етап',
-    colCategory: 'Категорія',
-    colSumPayment: 'Сума / оплата',
+    colSum: 'Сума',
+    colResponsible: 'Відповідальний',
   },
 
   earnings: {

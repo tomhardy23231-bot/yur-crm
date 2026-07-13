@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-// KPI-карточка (эталон «ЮрКейс», бриф §6): капс-лейбл · крупное mono-число ·
-// дельта к прошлому периоду (▲/▼) · строка-контекст. У денежных метрик —
-// спарклайн справа. Вся карточка — ссылка на отфильтрованный список:
-// hover-подъём + уголковая стрелка.
+// KPI-карточка (эталон «ЮрКейс», бриф §6 + макет владельца 2026-07-08):
+// капс-лейбл · иконка в цветном тинт-кружке справа · крупное число · дельта
+// к прошлому периоду (▲/▼) · строка-контекст. У денежных метрик — спарклайн.
+// Вся карточка — ссылка на отфильтрованный список (hover-подъём + рамка).
 
 export type KpiDelta = {
   direction: "up" | "down" | "flat";
@@ -21,6 +21,17 @@ export type KpiDelta = {
 export type KpiSpark = {
   points: number[];
   tone: "money" | "debt";
+};
+
+export type KpiIconTone = "primary" | "success" | "warning" | "error";
+
+// Пары «тинт-подложка + тёмный цвет» для иконки-кружка (DESIGN.md: залитые
+// чипы — только парой bg+fg).
+const ICON_TONE: Record<KpiIconTone, string> = {
+  primary: "bg-primary-subtle text-primary",
+  success: "bg-success-bg text-success",
+  warning: "bg-warning-bg text-warning",
+  error: "bg-error-bg text-error",
 };
 
 const DELTA_TONE: Record<KpiDelta["tone"], string> = {
@@ -44,9 +55,11 @@ function DeltaMark({ direction }: { direction: KpiDelta["direction"] }) {
   );
 }
 
+// Спарклайн (макет 2026-07-08): линия с мягкой градиентной заливкой под ней;
+// money — бренд-синий, debt — оранжевый (полярность несёт дельта-чип, не линия).
 function Sparkline({ points, tone }: KpiSpark) {
-  const W = 66;
-  const H = 28;
+  const W = 76;
+  const H = 32;
   const pad = 3;
   const max = Math.max(...points, 1);
   const min = Math.min(...points, 0);
@@ -57,8 +70,17 @@ function Sparkline({ points, tone }: KpiSpark) {
     const y = H - pad - ((v - min) / span) * (H - pad * 2);
     return [x, y] as const;
   });
-  const stroke = tone === "debt" ? "var(--error)" : "var(--success)";
+  const stroke = tone === "debt" ? "var(--stage-awaiting)" : "var(--primary)";
+  const first = coords[0] ?? [pad, H / 2];
   const last = coords[coords.length - 1] ?? [W - pad, H / 2];
+  // Дубликаты id при нескольких спарках одного тона безвредны: определение
+  // градиента идентично, браузер берёт первое.
+  const fillId = `spark-fill-${tone}`;
+  const area = [
+    ...coords.map(([x, y]) => `${x},${y}`),
+    `${last[0]},${H - pad}`,
+    `${first[0]},${H - pad}`,
+  ].join(" ");
   return (
     <svg
       width={W}
@@ -67,11 +89,18 @@ function Sparkline({ points, tone }: KpiSpark) {
       className="mb-0.5 shrink-0"
       aria-hidden="true"
     >
+      <defs>
+        <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity="0.22" />
+          <stop offset="100%" stopColor={stroke} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill={`url(#${fillId})`} />
       <polyline
         points={coords.map(([x, y]) => `${x},${y}`).join(" ")}
         fill="none"
         stroke={stroke}
-        strokeWidth="2"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -88,6 +117,8 @@ export function KpiCard({
   href,
   delta,
   spark,
+  icon: Icon,
+  iconTone = "primary",
   valueTone = "default",
   className,
 }: {
@@ -98,11 +129,13 @@ export function KpiCard({
   href?: string;
   delta?: KpiDelta;
   spark?: KpiSpark;
+  icon?: LucideIcon;
+  iconTone?: KpiIconTone;
   valueTone?: "default" | "debt";
   className?: string;
 }) {
   const base = cn(
-    "group relative block rounded-lg border border-border bg-surface px-4 py-3.5 shadow-sm",
+    "group relative block rounded-card border border-border bg-surface px-5 py-4 shadow-sm",
     "transition-[border-color,box-shadow,transform] duration-[150ms] ease-out",
     href &&
       "hover:-translate-y-px hover:border-primary-border hover:shadow-md focus-visible:-translate-y-px",
@@ -111,13 +144,26 @@ export function KpiCard({
 
   const body = (
     <>
-      <p className="text-[11px] font-bold uppercase tracking-[0.04em] text-text-subtle">
-        {label}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="pt-2 text-[13px] font-medium text-text-muted">
+          {label}
+        </p>
+        {Icon && (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+              ICON_TONE[iconTone],
+            )}
+          >
+            <Icon size={18} strokeWidth={1.75} />
+          </span>
+        )}
+      </div>
       <div className="my-2 flex items-end justify-between gap-2.5">
         <p
           className={cn(
-            "text-[27px] font-semibold leading-none tracking-[-0.02em] tabular-nums",
+            "text-[30px] font-bold leading-none tracking-[-0.02em] tabular-nums",
             valueTone === "debt" ? "text-error" : "text-text",
           )}
         >
@@ -130,7 +176,7 @@ export function KpiCard({
         {delta && (
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 text-[12px] font-semibold",
+              "inline-flex items-center gap-1.5 rounded-chip px-2.5 py-1 text-[12px] font-semibold",
               DELTA_TONE[delta.tone],
             )}
           >
@@ -140,14 +186,6 @@ export function KpiCard({
         )}
         {context && <span className="text-[11.5px] text-text-subtle">{context}</span>}
       </div>
-      {href && (
-        <ArrowUpRight
-          size={15}
-          strokeWidth={2.2}
-          aria-hidden="true"
-          className="absolute right-3.5 top-3.5 text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-        />
-      )}
     </>
   );
 

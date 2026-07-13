@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
@@ -36,6 +37,9 @@ type ToastApi = {
   success: (message: string) => void;
   error: (message: string) => void;
 };
+
+// Стор-заглушка для useSyncExternalStore-детектора гидрации (см. ниже).
+const emptySubscribe = () => () => {};
 
 const MAX_TOASTS = 3;
 const AUTO_DISMISS_MS = 4000;
@@ -124,10 +128,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, push]);
 
+  // Портал появляется только ПОСЛЕ гидрации: `typeof document` в рендере
+  // давал разный вывод сервер/клиент → hydration mismatch на каждой странице.
+  // useSyncExternalStore: SSR-снапшот false, клиентский true — React сам
+  // дорендерит портал вторым проходом без рассинхрона.
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
+
   return (
     <ToastContext.Provider value={api}>
       {children}
-      {typeof document !== 'undefined' &&
+      {mounted &&
         createPortal(
           // pointer-events-none — контейнер не перехватывает клики по странице;
           // сами карточки кликабельны (pointer-events-auto).

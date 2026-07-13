@@ -25,9 +25,12 @@ type Preset = {
 
 export async function CasesQuickFilters({
   sp,
+  extra,
 }: {
   /** Сырые searchParams страницы (для проверки активности пресета). */
   sp: Record<string, string | undefined>;
+  /** Дополнительные чипы в той же ленте (сохранённые виды — клиентские). */
+  extra?: React.ReactNode;
 }) {
   const { t } = await getT();
 
@@ -84,6 +87,7 @@ export async function CasesQuickFilters({
           </Link>
         );
       })}
+      {extra}
     </div>
   );
 }

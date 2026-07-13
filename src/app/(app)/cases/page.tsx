@@ -19,6 +19,12 @@ import { ClickableCard } from '@/components/ui/clickable-card';
 import { CasesFilterSelect } from '@/components/cases/cases-filter-select';
 import { CasesMoreFilters } from '@/components/cases/cases-more-filters';
 import { CasesQuickFilters } from '@/components/cases/quick-filters';
+import { CasesSavedViews } from '@/components/cases/cases-saved-views';
+import {
+  CasesColumnsButton,
+  CasesColumnsScope,
+  CasesViewProvider,
+} from '@/components/cases/cases-view-settings';
 import { CasesDateFilter } from '@/components/cases/cases-date-filter';
 import { ArchiveCaseForm } from '@/components/cases/archive-case-form';
 import { CasesSearch } from '@/components/cases/cases-search';
@@ -40,6 +46,10 @@ import {
   listLawyersForFilter,
 } from '@/lib/cases/queries';
 import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
+import {
+  CASES_DEFAULT_MIN_WIDTH,
+  CASES_DEFAULT_TEMPLATE,
+} from '@/lib/cases/list-columns';
 import { listActiveDepartments } from '@/lib/departments/queries';
 import {
   CASE_CATEGORIES,
@@ -60,10 +70,11 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 
 // Колонки «карточек-строк» десктоп-списка (общие для шапки и строк):
 // номер/клиент·тип · этап · категория · приоритет · эксперт · открыто · сумма ·
-// долг · действия. Гибкие колонки (fr) тянутся на широких экранах, ниже minWidth
-// контейнер скроллится по горизонтали.
-const CASES_COLS =
-  'minmax(210px,1.6fr) minmax(150px,1fr) 132px 116px minmax(160px,1fr) 104px 152px 116px 156px';
+// долг · действия. Реестр ширин — lib/cases/list-columns.ts; фактический шаблон
+// приходит CSS-переменной из CasesColumnsScope (настройка видимости колонок),
+// дефолт — все колонки. Ниже minWidth контейнер скроллится по горизонтали.
+const CASES_COLS = `var(--cases-cols, ${CASES_DEFAULT_TEMPLATE})`;
+const CASES_MIN_WIDTH = `var(--cases-minw, ${CASES_DEFAULT_MIN_WIDTH}px)`;
 
 // Дата YYYY-MM-DD — для фильтра по дате закрытия (вкладка «Архив»).
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -297,6 +308,7 @@ export default async function CasesPage({
   ];
 
   return (
+    <CasesViewProvider>
     <main className="flex flex-col gap-3 px-3 py-2 sm:px-4">
       {deleted && (
         <div className="text-[13px] text-success bg-success-bg border border-success/20 rounded-md px-3 py-2 max-w-md">
@@ -317,9 +329,11 @@ export default async function CasesPage({
               <span className="hidden sm:inline">{t.cases.toolbar.board}</span>
             </Link>
           </Button>
+          {/* На ≥md «Нова справа» живёт в топбаре (там же data-tour) — здесь
+              кнопка остаётся только для мобильных. */}
           {isStaff && (
-            <Button asChild className="shrink-0 px-3 sm:px-4">
-              <Link href="/cases/new" data-tour="cases-new">
+            <Button asChild className="shrink-0 px-3 sm:px-4 md:hidden">
+              <Link href="/cases/new">
                 <Plus size={16} strokeWidth={2} />
                 <span className="hidden sm:inline">{t.cases.toolbar.newCase}</span>
               </Link>
@@ -360,8 +374,9 @@ export default async function CasesPage({
         </div>
 
         {/* Быстрые пресеты (v3 s11) — только на активной вкладке: «С долгом» и
-            «Зависшие» в архиве не работают, «Закрытые за месяц» сам ведёт в архив. */}
-        {!archived && <CasesQuickFilters sp={sp} />}
+            «Зависшие» в архиве не работают, «Закрытые за месяц» сам ведёт в архив.
+            Рядом — личные сохранённые виды (v4, localStorage). */}
+        {!archived && <CasesQuickFilters sp={sp} extra={<CasesSavedViews />} />}
 
         {/* Ряд 2: фильтры — горизонтальная лента (свайп) на узких экранах,
             обычный перенос на ≥ sm. */}
@@ -462,6 +477,9 @@ export default async function CasesPage({
             </CasesMoreFilters>
           )}
 
+          {/* Видимость колонок списка (только десктоп-представление). */}
+          <CasesColumnsButton />
+
           {(hasFilters || debtOnly) && (
             <Link
               href={buildHref({
@@ -531,32 +549,34 @@ export default async function CasesPage({
         {/* Мобильное представление — компактные карточки вместо таблицы. */}
         <CaseListMobile items={items} isStaff={isStaff} archived={archived} />
 
-        {/* Десктоп (≥ md) — «карточки-строки»: каждое дело отдельной карточкой. */}
+        {/* Десктоп (≥ md) — «карточки-строки»: каждое дело отдельной карточкой.
+            CasesColumnsScope задаёт шаблон сетки по настройке «Колонки». */}
+        <CasesColumnsScope>
         <CardListShell
           cols={CASES_COLS}
-          minWidth={1376}
+          minWidth={CASES_MIN_WIDTH}
           ariaLabel={t.cases.tableAria}
           header={
             <>
               <CardSortHead column="number_title" currentSort={sort} currentDir={dir} hrefFor={sortHref}>
                 {t.cases.columns.numberTitle}
               </CardSortHead>
-              <CardHead>{t.cases.columns.stage}</CardHead>
-              <CardHead>{t.cases.columns.category}</CardHead>
-              <CardHead>{t.cases.columns.priority}</CardHead>
-              <CardHead>{t.cases.columns.expert}</CardHead>
+              <CardHead dataCol="stage">{t.cases.columns.stage}</CardHead>
+              <CardHead dataCol="category">{t.cases.columns.category}</CardHead>
+              <CardHead dataCol="priority">{t.cases.columns.priority}</CardHead>
+              <CardHead dataCol="expert">{t.cases.columns.expert}</CardHead>
               {/* На «Архиве» дата закрытия важнее даты открытия (по ней фильтр). */}
               {archived ? (
-                <CardHead>{t.cases.archive.closedAtColumn}</CardHead>
+                <CardHead dataCol="opened">{t.cases.archive.closedAtColumn}</CardHead>
               ) : (
-                <CardSortHead column="opened_at" currentSort={sort} currentDir={dir} hrefFor={sortHref}>
+                <CardSortHead column="opened_at" currentSort={sort} currentDir={dir} hrefFor={sortHref} dataCol="opened">
                   {t.cases.columns.openedAt}
                 </CardSortHead>
               )}
-              <CardSortHead column="contract_sum" currentSort={sort} currentDir={dir} hrefFor={sortHref} align="right">
+              <CardSortHead column="contract_sum" currentSort={sort} currentDir={dir} hrefFor={sortHref} align="right" dataCol="sum">
                 {t.cases.columns.sum}
               </CardSortHead>
-              <CardSortHead column="debt" currentSort={sort} currentDir={dir} hrefFor={sortHref} align="right">
+              <CardSortHead column="debt" currentSort={sort} currentDir={dir} hrefFor={sortHref} align="right" dataCol="debt">
                 {t.cases.columns.debt}
               </CardSortHead>
               <CardHead align="right">{t.cases.columns.actions}</CardHead>
@@ -593,7 +613,7 @@ export default async function CasesPage({
                 </div>
 
                 {/* Этап (залитая плашка) + дни на этапе */}
-                <div role="cell" className="min-w-0">
+                <div role="cell" data-col="stage" className="min-w-0">
                   <span className="inline-flex flex-wrap items-center gap-1.5">
                     <StageBadge stage={c.stage} pulse={false} />
                     {c.outcome === 'lost' && (
@@ -617,17 +637,17 @@ export default async function CasesPage({
                 </div>
 
                 {/* Категория */}
-                <div role="cell" className="min-w-0">
+                <div role="cell" data-col="category" className="min-w-0">
                   <CategoryBadge category={c.category} quiet />
                 </div>
 
                 {/* Приоритет */}
-                <div role="cell" className="min-w-0">
+                <div role="cell" data-col="priority" className="min-w-0">
                   <PriorityBadge priority={c.priority} />
                 </div>
 
                 {/* Эксперт: аватар + имя + роль */}
-                <div role="cell" className="min-w-0">
+                <div role="cell" data-col="expert" className="min-w-0">
                   {c.responsible ? (
                     <div className="flex min-w-0 items-center gap-2">
                       <Avatar name={c.responsible.full_name} size="sm" shape="square" />
@@ -644,7 +664,7 @@ export default async function CasesPage({
                 </div>
 
                 {/* Открыто (актив) / Закрыто (архив — по этой дате фильтр) */}
-                <div role="cell" className="text-[12.5px] tabular-nums text-text-muted">
+                <div role="cell" data-col="opened" className="text-[12.5px] tabular-nums text-text-muted">
                   {archived ? (
                     c.closed_at ? (
                       DATE_FMT.format(new Date(c.closed_at))
@@ -657,7 +677,7 @@ export default async function CasesPage({
                 </div>
 
                 {/* Сумма + прогресс оплаты */}
-                <div role="cell" className="text-right">
+                <div role="cell" data-col="sum" className="text-right">
                   <div className="ml-auto flex w-full flex-col items-end gap-1">
                     <span className="whitespace-nowrap tabular-nums">{formatMoney(c.contract_sum)} ₴</span>
                     <PaymentProgress
@@ -669,7 +689,7 @@ export default async function CasesPage({
                 </div>
 
                 {/* U7: долг ИЛИ переплата (взаимоисключающи). */}
-                <div role="cell" className="whitespace-nowrap text-right tabular-nums">
+                <div role="cell" data-col="debt" className="whitespace-nowrap text-right tabular-nums">
                   {c.overpaid > 0 ? (
                     <span className="text-info" title={t.cases.row.overpaid}>
                       +{formatMoney(c.overpaid)} ₴
@@ -722,6 +742,7 @@ export default async function CasesPage({
             );
           })}
         </CardListShell>
+        </CasesColumnsScope>
         </>
       )}
 
@@ -751,6 +772,7 @@ export default async function CasesPage({
         </nav>
       )}
     </main>
+    </CasesViewProvider>
   );
 }
 

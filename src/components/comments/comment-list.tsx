@@ -1,6 +1,7 @@
 'use client';
 
 import { useOptimistic } from 'react';
+import { MessageSquare } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -68,6 +69,8 @@ export function CommentList({
 
       {optimistic.length === 0 ? (
         <EmptyState
+          size="sm"
+          icon={MessageSquare}
           title={
             canWrite
               ? t.comments.block.emptyCanWrite

@@ -1,8 +1,9 @@
 'use client';
 
-import { Hourglass } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useI18n } from '@/lib/i18n/provider';
 import { formatMoney } from '@/lib/utils';
 import type { AgingBuckets } from '@/lib/dashboard/aging';
@@ -29,14 +30,16 @@ export function DebtAgingBlock({ buckets }: { buckets: AgingBuckets }) {
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-center gap-2">
-        <Hourglass size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">{a.title}</h2>
+        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+          {a.title}
+        </h2>
       </div>
 
+      {/* Блок живёт в узкой правой колонке — бакеты всегда 2×2. */}
       {total === 0 ? (
-        <p className="py-4 text-center text-[13px] text-text-subtle">{a.empty}</p>
+        <EmptyState size="sm" icon={CheckCircle2} title={a.empty} />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3">
           {cells.map((c) => {
             const b = buckets[c.key];
             return (

@@ -1,16 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Briefcase } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { StageBadge } from "@/components/ui/stage-badge";
-import { CategoryBadge } from "@/components/ui/category-badge";
-import {
-  StatusFilterStrip,
-  type StatusChip,
-} from "@/components/ui/status-filter-strip";
 import {
   Table,
   TableHeader,
@@ -19,56 +13,23 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { PaymentProgress } from "@/components/cases/payment-progress";
 import { formatMoney } from "@/lib/utils";
-import { type CaseStage } from "@/lib/types/db";
 import { useI18n } from "@/lib/i18n/provider";
 import type { CaseListItem } from "@/lib/cases/queries";
-import type { FunnelEntry } from "@/lib/dashboard/queries";
 
-// Цвет точки этапа для статус-чипов.
-const STAGE_DOT: Record<CaseStage, string> = {
-  new_request: "bg-stage-new",
-  consultation: "bg-stage-consultation",
-  in_progress: "bg-stage-in-progress",
-  awaiting_decision: "bg-stage-awaiting",
-  closed: "bg-stage-closed",
-};
-
-// Таблица последних дел на дашборде. Данные из listCases (RLS-scoped) → специалист
-// видит только свои дела. Над таблицей — строка статус-фильтров (бриф §6), бейджи
-// в таблице — тихие (бриф §3.4).
-export function RecentCases({
-  items,
-  funnel,
-}: {
-  items: ReadonlyArray<CaseListItem>;
-  funnel?: ReadonlyArray<FunnelEntry>;
-}) {
+// Таблица последних дел на дашборде (колонки — макет владельца 2026-07-08):
+// Дело (номер/название + клиент подстрокой) · Этап · Сумма · Ответственный
+// (аватар Експерта с тултипом). Данные из listCases (RLS-scoped) → специалист
+// видит только свои дела. Строка целиком ведёт в карточку дела.
+export function RecentCases({ items }: { items: ReadonlyArray<CaseListItem> }) {
   const { t } = useI18n();
-  const chips: StatusChip[] | null = funnel
-    ? [
-        {
-          key: "all",
-          label: t.common.all,
-          count: funnel.reduce((s, f) => s + f.count, 0),
-          href: "/cases",
-        },
-        ...funnel.map((f) => ({
-          key: f.stage,
-          label: t.enums.caseStage[f.stage],
-          count: f.count,
-          dotClass: STAGE_DOT[f.stage],
-          href: `/cases?stage=${f.stage}`,
-        })),
-      ]
-    : null;
 
   return (
     <Card>
       <div className="flex items-center gap-2 border-b border-border px-5 py-4">
-        <Briefcase size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">{t.dashboard.recentCases.title}</h2>
+        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+          {t.dashboard.recentCases.title}
+        </h2>
         <Link
           href="/cases"
           className="ml-auto text-[12px] font-semibold text-primary hover:text-primary-hover"
@@ -76,10 +37,6 @@ export function RecentCases({
           {t.dashboard.recentCases.allLink}
         </Link>
       </div>
-
-      {chips && (
-        <StatusFilterStrip chips={chips} className="border-b border-border px-5 py-3" />
-      )}
 
       {items.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-text-muted">
@@ -91,58 +48,49 @@ export function RecentCases({
             <TableHeader>
               <TableRow className="hover:bg-surface">
                 <TableHead>{t.dashboard.recentCases.colNumberTitle}</TableHead>
-                <TableHead>{t.dashboard.recentCases.colClient}</TableHead>
                 <TableHead>{t.dashboard.recentCases.colStage}</TableHead>
-                <TableHead>{t.dashboard.recentCases.colCategory}</TableHead>
-                <TableHead className="text-right">{t.dashboard.recentCases.colSumPayment}</TableHead>
+                <TableHead className="text-right">{t.dashboard.recentCases.colSum}</TableHead>
+                <TableHead className="text-right">{t.dashboard.recentCases.colResponsible}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((c) => {
-                const paid = Math.max(0, c.contract_sum - c.debt);
-                return (
-                  <TableRow key={c.id} className="group cursor-pointer">
-                    <TableCell>
-                      <Link
-                        href={`/cases/${c.id}`}
-                        className="font-semibold text-text transition-colors hover:text-primary"
-                      >
-                        {c.number_title}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      {c.client ? (
-                        <span className="inline-flex items-center gap-2.5">
-                          <Avatar name={c.client.name} size="sm" shape="square" />
-                          <span className="text-[13px] text-text-muted">
-                            {c.client.name}
-                          </span>
+              {items.map((c) => (
+                <TableRow key={c.id} className="group cursor-pointer">
+                  <TableCell>
+                    <Link
+                      href={`/cases/${c.id}`}
+                      className="block min-w-0 font-semibold text-text transition-colors hover:text-primary"
+                    >
+                      <span className="block truncate text-[14px]">{c.number_title}</span>
+                      {c.client && (
+                        <span className="mt-1 block truncate font-mono text-[11.5px] font-normal text-text-muted">
+                          {c.client.name}
                         </span>
-                      ) : (
-                        <span className="text-[13px] text-text-subtle">{t.common.dash}</span>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <StageBadge stage={c.stage} quiet />
-                    </TableCell>
-                    <TableCell>
-                      <CategoryBadge category={c.category} quiet />
-                    </TableCell>
-                    <TableCell>
-                      <div className="ml-auto flex w-40 flex-col items-end gap-1">
-                        <span className="text-[12.5px] tabular-nums text-text">
-                          {formatMoney(c.contract_sum)} ₴
-                        </span>
-                        <PaymentProgress
-                          paid={paid}
-                          total={c.contract_sum}
-                          className="w-full"
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    {/* Залитый пастельный чип (макет); pulse off — список. */}
+                    <StageBadge stage={c.stage} pulse={false} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="whitespace-nowrap font-mono text-[12.5px] font-medium text-text">
+                      {formatMoney(c.contract_sum)} ₴
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {c.responsible ? (
+                      <Avatar
+                        name={c.responsible.full_name}
+                        size="md"
+                        title={c.responsible.full_name}
+                      />
+                    ) : (
+                      <span className="text-[13px] text-text-subtle">{t.common.dash}</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </div>

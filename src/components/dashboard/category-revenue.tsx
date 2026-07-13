@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PieChart } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatMoney } from "@/lib/utils";
 import { type CaseCategory } from "@/lib/types/db";
 import { useI18n } from "@/lib/i18n/provider";
@@ -30,8 +31,7 @@ export function CategoryRevenue({
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-center gap-2">
-        <PieChart size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">
+        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
           {t.dashboard.categoryRevenue.title}
         </h2>
         <span className="ml-auto text-[12px] tabular-nums text-text-muted">
@@ -40,9 +40,7 @@ export function CategoryRevenue({
       </div>
 
       {total === 0 ? (
-        <p className="py-6 text-center text-[13px] text-text-muted">
-          {t.dashboard.categoryRevenue.empty}
-        </p>
+        <EmptyState size="sm" icon={PieChart} title={t.dashboard.categoryRevenue.empty} />
       ) : (
         <div className="flex flex-col">
           {data.map((d, i) => {

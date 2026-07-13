@@ -1,80 +1,144 @@
 import Link from 'next/link';
-import { Bell, AlertTriangle } from 'lucide-react';
+import { AlarmClock, CheckCircle2 } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { TaskRow } from '@/components/tasks/task-row';
 import { getT } from '@/lib/i18n/server';
+import { cn } from '@/lib/utils';
+import type { TaskWithRefs } from '@/lib/types/db';
 import type { UpcomingTasks } from '@/lib/tasks/queries';
 
-// Блок «Приближающиеся сроки» на главной (Шаг 10).
-// Запрос фильтрует RLS — каждый видит только свои дела (admin — все).
-// v3 Сессия 4: две подсекции — «Просроченные (N)» и «Ближайшие 72 часа», чтобы
-// просрочки были видны отдельно, а не терялись среди будущих дедлайнов.
-// v3 Сессия 11: данные передаёт страница (один вызов listUpcomingTasks на
-// дашборд — срез today из того же результата уходит в «Мой день»).
+// Календарная разница дней «сегодня → срок» в киевском поясе: обе даты
+// приводим к ключу YYYY-MM-DD (en-CA) и делим разницу на сутки.
+const DAY_KEY_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+function kyivDayDiff(dueIso: string, now: Date): number {
+  return Math.round(
+    (Date.parse(DAY_KEY_FMT.format(new Date(dueIso))) -
+      Date.parse(DAY_KEY_FMT.format(now))) /
+      86_400_000,
+  );
+}
+
+// Блок «Приближающиеся сроки» на главной (Шаг 10; рестайл по макету владельца
+// 2026-07-08 — компактные строки для узкой колонки). Запрос фильтрует RLS —
+// каждый видит только свои дела (staff — по скоупу). Просроченные идут первыми
+// с красным кружком и подписью «просрочено N дней»; ближайшие 72 часа — с
+// оранжевым и «через N дней». v3 Сессия 11: данные передаёт страница.
 export async function UpcomingDeadlinesBlock({ data }: { data: UpcomingTasks }) {
-  const { t } = await getT();
+  const { t, fmt } = await getT();
   const { overdue, overdueCount, soon } = data;
 
   const isEmpty = overdueCount === 0 && soon.length === 0;
+  const hiddenOverdue = Math.max(0, overdueCount - overdue.length);
 
   return (
     <Card>
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
-        <Bell size={16} strokeWidth={1.75} className="text-text-muted" />
-        <h2 className="text-[16px] font-semibold text-text">
+      <div className="flex items-center gap-2 border-b border-border px-5 py-4">
+        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
           {t.tasks.upcoming.heading}
         </h2>
-        <span className="text-[12px] text-text-muted">
-          {t.tasks.upcoming.subtitle}
-        </span>
-        <span className="ml-auto">
-          <Link
-            href="/tasks?status=open&mode=all"
-            className="text-[12px] text-primary hover:underline"
-          >
-            {t.tasks.upcoming.allTasks}
-          </Link>
-        </span>
+        <Link
+          href="/tasks?status=open&mode=all"
+          className="ml-auto text-[12px] font-semibold text-primary hover:text-primary-hover"
+        >
+          {t.tasks.upcoming.allTasks}
+        </Link>
       </div>
 
       {isEmpty ? (
-        <EmptyState title={t.tasks.upcoming.empty} />
+        <EmptyState size="sm" icon={CheckCircle2} title={t.tasks.upcoming.empty} />
       ) : (
-        <div>
-          {overdueCount > 0 && (
-            <section>
-              <div className="flex items-center gap-2 px-5 py-2.5 bg-error-bg/40 border-b border-border">
-                <AlertTriangle
-                  size={14}
-                  strokeWidth={2}
-                  className="text-error"
-                />
-                <h3 className="text-[12px] font-semibold uppercase tracking-[0.04em] text-error">
-                  {t.tasks.upcoming.overdueHeading} ({overdueCount})
-                </h3>
-              </div>
-              {overdue.map((task) => (
-                <TaskRow key={task.id} task={task} canManage={false} showCase />
-              ))}
-            </section>
+        <ul>
+          {overdue.map((task) => (
+            <DeadlineRow key={task.id} task={task} overdue />
+          ))}
+          {hiddenOverdue > 0 && (
+            <li className="border-b border-border px-5 py-2 last:border-0">
+              <Link
+                href="/tasks?status=open&mode=all"
+                className="text-[12px] font-semibold text-error hover:underline"
+              >
+                {fmt(t.tasks.upcoming.moreOverdue, { n: hiddenOverdue })}
+              </Link>
+            </li>
           )}
-
-          {soon.length > 0 && (
-            <section>
-              <div className="px-5 py-2.5 border-b border-border">
-                <h3 className="text-[12px] font-semibold text-text-muted">
-                  {t.tasks.upcoming.soonHeading}
-                </h3>
-              </div>
-              {soon.map((task) => (
-                <TaskRow key={task.id} task={task} canManage={false} showCase />
-              ))}
-            </section>
-          )}
-        </div>
+          {soon.map((task) => (
+            <DeadlineRow key={task.id} task={task} />
+          ))}
+        </ul>
       )}
     </Card>
+  );
+}
+
+async function DeadlineRow({
+  task,
+  overdue = false,
+}: {
+  task: TaskWithRefs;
+  overdue?: boolean;
+}) {
+  const { t, plural } = await getT();
+  const diff = task.due_at ? kyivDayDiff(task.due_at, new Date()) : null;
+
+  const dueLabel =
+    diff === null
+      ? null
+      : diff < 0
+        ? plural(t.tasks.upcoming.overdueDays, Math.abs(diff))
+        : diff === 0
+          ? t.tasks.upcoming.dueToday
+          : plural(t.tasks.upcoming.inDays, diff);
+
+  return (
+    <li className="flex items-center gap-3 border-b border-border px-5 py-3 last:border-0">
+      <span
+        aria-hidden="true"
+        className={cn(
+          'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]',
+          overdue ? 'bg-error-bg text-error' : 'bg-warning-bg text-warning',
+        )}
+      >
+        <AlarmClock size={16} strokeWidth={1.75} />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[14px] font-medium leading-tight text-text">
+          {task.title}
+        </p>
+        {/* Подстрока «дело · срок» — формат макета (номер дела — mono). */}
+        <p className="mt-0.5 flex min-w-0 items-center gap-1 text-[12px] leading-snug">
+          {task.case && (
+            <>
+              <Link
+                href={`/cases/${task.case.id}`}
+                className="truncate font-mono text-[11.5px] text-text-muted transition-colors hover:text-primary"
+              >
+                {task.case.number_title}
+              </Link>
+              {dueLabel && <span className="text-text-subtle">·</span>}
+            </>
+          )}
+          {dueLabel && (
+            <span
+              className={cn(
+                'shrink-0 whitespace-nowrap font-semibold',
+                overdue || (diff !== null && diff <= 0)
+                  ? 'text-error'
+                  : 'text-text-muted',
+              )}
+            >
+              {dueLabel}
+            </span>
+          )}
+        </p>
+      </div>
+    </li>
   );
 }
