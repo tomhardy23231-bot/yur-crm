@@ -137,7 +137,7 @@ function TabButton({
         'whitespace-nowrap border-b-2 px-4 py-2 text-[13px] transition-colors',
         strong ? 'font-semibold' : 'font-medium',
         active
-          ? 'border-primary text-text'
+          ? 'border-primary text-primary-pressed'
           : 'border-transparent text-text-muted hover:text-text',
       )}
     >
@@ -228,7 +228,7 @@ function AccountPanel({
             </TableHeader>
             <TableBody>
               {view.rows.map((r: CashDayRow) => (
-                <TableRow key={r.date} className="hover:bg-surface-muted/40">
+                <TableRow key={r.date} className="hover:bg-primary-softer">
                   <TableCell className="whitespace-nowrap text-[13px] text-text">{r.date}</TableCell>
                   <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text-muted">
                     {money(r.opening)}
@@ -424,7 +424,7 @@ function TotalTable({
         </TableHeader>
         <TableBody>
           {rows.map((r) => (
-            <TableRow key={r.date} className="hover:bg-surface-muted/40">
+            <TableRow key={r.date} className="hover:bg-primary-softer">
               <TableCell className="whitespace-nowrap text-[13px] text-text">{r.date}</TableCell>
               {accounts.map((a) => (
                 <TableCell

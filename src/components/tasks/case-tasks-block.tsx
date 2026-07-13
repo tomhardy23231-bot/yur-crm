@@ -111,7 +111,7 @@ function DoneSection({
 }) {
   return (
     <details className="border-t border-border">
-      <summary className="cursor-pointer list-none px-5 py-3 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-text-subtle hover:bg-surface-muted/50 transition-colors w-full">
+      <summary className="cursor-pointer list-none px-5 py-3 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-text-subtle hover:bg-primary-softer transition-colors w-full">
         {fmt(t.tasks.caseBlock.doneSection, { n: tasks.length })}
       </summary>
       <div>

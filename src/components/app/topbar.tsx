@@ -76,37 +76,36 @@ export function Topbar({
       : t.topbar.notificationsAria;
 
   return (
-    <header className="sticky top-0 z-20 flex h-[60px] shrink-0 items-center gap-3 border-b border-border bg-surface/90 px-5 backdrop-blur-md sm:gap-4 sm:px-6">
-      <h1 className="truncate text-[17px] font-bold tracking-[-0.01em] text-text">
+    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-bg/70 px-5 backdrop-blur-xl sm:gap-4 sm:px-6">
+      <h1 className="truncate text-[18px] font-bold tracking-tight text-text">
         {title}
       </h1>
 
-      {/* Поиск — сразу после заголовка (макет). Открывает палитру (Ctrl-K). */}
+      {/* Поиск — сразу после заголовка (каркас). Открывает палитру (Ctrl-K). */}
       <button
         type="button"
         onClick={open}
         data-tour="topbar-search"
-        className="hidden h-10 w-[280px] items-center gap-2 rounded-full border border-border bg-surface-sunken px-4 text-[13px] text-text-subtle transition-colors hover:border-border-strong hover:bg-surface md:flex lg:w-[330px]"
+        className="hidden h-9 w-[280px] items-center gap-2.5 rounded-full border border-border bg-surface px-4 text-[13px] text-text-subtle transition-all duration-200 hover:border-primary-border hover:shadow-sm md:flex lg:w-[330px]"
         aria-label={t.topbar.searchAria}
       >
-        <Search size={15} strokeWidth={1.75} className="shrink-0" />
+        <Search size={15} strokeWidth={2} className="shrink-0" />
         <span className="flex-1 truncate text-left">
           {t.topbar.searchButton}
         </span>
-        <kbd className="rounded-md border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-text-subtle">
+        <kbd className="rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.04em] text-text-subtle">
           Ctrl K
         </kbd>
       </button>
 
-      {/* «Новое дело» — главное действие всегда под рукой (право create_cases). */}
+      {/* «Новое дело» — CTA с синей тенью, приподнимается на hover (каркас). */}
       {canCreateCase && (
         <Link
           href="/cases/new"
           data-tour="cases-new"
-          style={{ boxShadow: 'var(--shadow-brand-badge)' }}
-          className="hidden h-10 shrink-0 items-center gap-1.5 rounded-full bg-primary px-4.5 text-[13.5px] font-semibold text-primary-fg transition-colors hover:bg-primary-hover md:inline-flex"
+          className="hidden h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary-hover px-4 text-[13px] font-semibold text-primary-fg shadow-brand transition-all duration-200 hover:-translate-y-px hover:shadow-brand-hover md:inline-flex"
         >
-          <Plus size={16} strokeWidth={2.25} />
+          <Plus size={15} strokeWidth={2.5} />
           {t.topbar.newCase}
         </Link>
       )}
@@ -117,24 +116,24 @@ export function Topbar({
       <button
         type="button"
         onClick={open}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text md:hidden"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-pressed md:hidden"
         aria-label={t.topbar.searchAria}
       >
-        <Search size={17} strokeWidth={1.75} />
+        <Search size={17} strokeWidth={1.9} />
       </button>
 
-      {/* Уведомления → задачи. Числовой бейдж (макет): красный — есть
+      {/* Уведомления → задачи. Числовой бейдж (каркас): красный — есть
           просроченные, брендовый — только сегодняшние; нет горящего — чисто. */}
       <Link
         href="/tasks"
         aria-label={dueLabel}
         title={dueLabel}
-        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-colors hover:border-border-strong hover:text-text"
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-pressed"
       >
-        <Bell size={17} strokeWidth={1.75} />
+        <Bell size={18} strokeWidth={1.9} />
         {dueTotal > 0 && (
           <span
-            className={`absolute -right-1 -top-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums text-white ring-2 ring-surface ${
+            className={`absolute right-0.5 top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold leading-none tabular-nums text-white ${
               tasksOverdue > 0 ? 'bg-error' : 'bg-primary'
             }`}
           >
@@ -147,9 +146,9 @@ export function Topbar({
       <Link
         href="/profile"
         aria-label={t.nav.profileAria}
-        className="flex items-center gap-2.5 rounded-md pl-1 transition-opacity hover:opacity-90"
+        className="flex items-center gap-2.5 rounded-full pl-1 transition-opacity hover:opacity-90"
       >
-        <Avatar name={userName} size="md" />
+        <Avatar name={userName} size="md" className="ring-2 ring-surface" />
         <div className="hidden leading-tight sm:block">
           <p className="text-[13px] font-semibold text-text">{userName}</p>
           <p className="text-[11px] text-text-muted">{roleLabel}</p>

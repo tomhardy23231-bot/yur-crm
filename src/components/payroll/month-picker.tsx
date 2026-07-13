@@ -38,7 +38,7 @@ export function MonthPicker({ month }: { month: string }) {
         type="button"
         onClick={() => go(prevMonth(month))}
         aria-label={t.payroll.monthPicker.prev}
-        className="inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-muted hover:text-text"
+        className="inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-primary-softer hover:text-text"
       >
         <ChevronLeft size={16} strokeWidth={2} />
       </button>
@@ -55,7 +55,7 @@ export function MonthPicker({ month }: { month: string }) {
           'inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors',
           isCurrent
             ? 'cursor-not-allowed opacity-40'
-            : 'hover:bg-surface-muted hover:text-text',
+            : 'hover:bg-primary-softer hover:text-text',
         )}
       >
         <ChevronRight size={16} strokeWidth={2} />

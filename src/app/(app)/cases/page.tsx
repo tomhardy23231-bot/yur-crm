@@ -340,11 +340,11 @@ export default async function CasesPage({
             </Button>
           )}
 
-          {/* Вкладки: активные дела / архив — в правом углу строки поиска. */}
+          {/* Вкладки: активные дела / архив — сегмент-контрол каркаса. */}
           <div
             role="tablist"
             aria-label={t.cases.tabs.aria}
-            className="ml-auto flex items-center gap-1.5"
+            className="ml-auto flex items-center gap-0.5 rounded-xl border border-border bg-surface p-0.5"
           >
             {[
               { archive: false, label: t.cases.tabs.active },
@@ -358,11 +358,10 @@ export default async function CasesPage({
                   role="tab"
                   aria-selected={active}
                   className={cn(
-                    'inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium',
-                    'border transition-colors duration-[80ms] ease-out',
+                    'inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-semibold transition-all',
                     active
-                      ? 'bg-primary-subtle text-primary border-primary-border'
-                      : 'bg-surface text-text-muted border-border hover:text-text hover:border-border-strong',
+                      ? 'bg-primary-subtle text-primary-pressed'
+                      : 'text-text-subtle hover:text-text',
                   )}
                 >
                   {tab.archive && <Archive size={14} strokeWidth={1.75} />}
@@ -508,7 +507,7 @@ export default async function CasesPage({
       )}
 
       {items.length === 0 ? (
-        <div className="rounded-lg border border-border bg-surface py-8 shadow-sm">
+        <div className="rounded-card border border-dashed border-border bg-surface py-8">
           <EmptyState
             icon={archived ? Archive : Briefcase}
             title={
@@ -600,15 +599,15 @@ export default async function CasesPage({
                   >
                     {c.number_title}
                   </Link>
-                  <div className="mt-0.5 truncate text-[12px] text-text-muted">
+                  <div className="mt-0.5 truncate font-mono text-[11.5px] text-text-subtle">
                     {c.client ? (
-                      <Link href={`/clients/${c.client.id}`} className="transition-colors hover:text-primary">
+                      <Link href={`/clients/${c.client.id}`} className="text-text-muted transition-colors hover:text-primary">
                         {c.client.name}
                       </Link>
                     ) : (
                       <Empty />
                     )}
-                    <span className="text-text-subtle"> · {t.enums.caseType[c.case_type]}</span>
+                    <span> · {t.enums.caseType[c.case_type]}</span>
                   </div>
                 </div>
 
@@ -636,9 +635,9 @@ export default async function CasesPage({
                   )}
                 </div>
 
-                {/* Категория */}
+                {/* Категория — залитый бейдж (каркас 2026-07-13). */}
                 <div role="cell" data-col="category" className="min-w-0">
-                  <CategoryBadge category={c.category} quiet />
+                  <CategoryBadge category={c.category} />
                 </div>
 
                 {/* Приоритет */}
@@ -798,7 +797,7 @@ function PageLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center h-9 px-3 text-[13px] font-medium text-text bg-surface border border-border-strong rounded-md hover:bg-surface-muted transition-colors"
+      className="inline-flex items-center h-9 px-3 text-[13px] font-medium text-text bg-surface border border-border-strong rounded-md hover:bg-primary-softer transition-colors"
     >
       {children}
     </Link>

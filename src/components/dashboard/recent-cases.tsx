@@ -27,7 +27,7 @@ export function RecentCases({ items }: { items: ReadonlyArray<CaseListItem> }) {
   return (
     <Card>
       <div className="flex items-center gap-2 border-b border-border px-5 py-4">
-        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+        <h2 className="text-[15px] font-semibold text-text">
           {t.dashboard.recentCases.title}
         </h2>
         <Link

@@ -145,10 +145,10 @@ export function CasesColumnsButton() {
         aria-expanded={open}
         aria-haspopup="dialog"
         className={cn(
-          'inline-flex h-8 items-center gap-1.5 rounded-control border px-3 text-[13px] font-medium transition-colors',
+          'inline-flex h-8 items-center gap-1.5 rounded-chip border px-3 text-[13px] font-medium transition-colors',
           hidden.size > 0
-            ? 'border-primary-border bg-primary-subtle text-primary'
-            : 'border-border bg-surface text-text-muted hover:border-border-strong hover:text-text',
+            ? 'border-primary-border bg-primary-subtle text-primary-pressed'
+            : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
         )}
       >
         <Columns3 size={15} strokeWidth={1.75} />
@@ -172,7 +172,7 @@ export function CasesColumnsButton() {
           {CASES_TOGGLEABLE_COLUMNS.map((col) => (
             <label
               key={col.id}
-              className="flex cursor-pointer select-none items-center gap-2.5 rounded-md px-1.5 py-1.5 text-[13px] text-text transition-colors hover:bg-surface-muted"
+              className="flex cursor-pointer select-none items-center gap-2.5 rounded-md px-1.5 py-1.5 text-[13px] text-text transition-colors hover:bg-primary-softer"
             >
               <input
                 type="checkbox"

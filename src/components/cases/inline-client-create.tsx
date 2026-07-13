@@ -87,7 +87,7 @@ export function InlineClientCreate({
             type="button"
             onClick={onClose}
             aria-label={t.caseCard.inlineClient.closeAria}
-            className="rounded-md p-1 text-text-subtle transition-colors hover:bg-surface-muted hover:text-text"
+            className="rounded-md p-1 text-text-subtle transition-colors hover:bg-primary-softer hover:text-text"
           >
             <X size={16} strokeWidth={1.75} />
           </button>

@@ -1,26 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { getLocale } from "@/lib/i18n/server";
 
-// Редизайн «ЮрКейс» (бриф 2026-06-03): IBM Plex Sans — весь UI (строгий
-// корпоративный гротеск, полная кириллица); JetBrains Mono — числа/суммы/даты
-// с табличными цифрами. Заменяет Golos Text. Сериф не используем.
-const ibmPlexSans = IBM_Plex_Sans({
+// Редизайн 2026-07-13 (каркас владельца, вариант B «Stripe/Notion-modern»):
+// Geist — весь UI (вариативный, кириллица есть); Geist Mono — числа, суммы,
+// номера дел, время. Заменяют IBM Plex Sans / JetBrains Mono.
+const geistSans = Geist({
   variable: "--font-sans",
   subsets: ["latin", "cyrillic"],
-  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
-// Веса 400/600 — фактически используемые; 500/700 срезаны из бандла (v3 s10).
-// Ревизия 2026-07-08 (макет владельца): mono вернулся во вторичные
-// идентификаторы списков (номера дел, клиент-подстроки, суммы, время) —
-// нужен subset cyrillic, иначе кириллица падает в фолбэк Courier New.
-const jetBrainsMono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   variable: "--font-mono",
   subsets: ["latin", "cyrillic"],
-  weight: ["400", "600"],
   display: "swap",
 });
 
@@ -37,7 +31,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#C6D1DF" },
+    { media: "(prefers-color-scheme: light)", color: "#F7F8F4" },
     { media: "(prefers-color-scheme: dark)", color: "#172033" },
   ],
 };
@@ -54,7 +48,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${ibmPlexSans.variable} ${jetBrainsMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

@@ -63,7 +63,10 @@ export function Avatar({
       style={
         src
           ? { backgroundImage: `url(${src})`, backgroundSize: "cover", backgroundPosition: "center" }
-          : { background: colorForName(name) }
+          : {
+              // Мягкий градиент «цвет → чуть темнее» (каркас 2026-07-13).
+              background: `linear-gradient(135deg, ${colorForName(name)}, color-mix(in srgb, ${colorForName(name)} 82%, black))`,
+            }
       }
       aria-label={name}
       {...props}

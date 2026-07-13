@@ -53,7 +53,7 @@ export async function CaseActivityBlock({
             return (
               <li
                 key={entry.id}
-                className="px-5 py-3 flex items-start gap-3 hover:bg-surface-muted/40 transition-colors"
+                className="px-5 py-3 flex items-start gap-3 hover:bg-primary-softer transition-colors"
               >
                 <Avatar name={f.actor} size="sm" className="mt-0.5" />
                 <div className="flex-1 min-w-0">

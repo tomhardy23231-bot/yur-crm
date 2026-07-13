@@ -104,10 +104,11 @@ export function CasesSavedViews() {
           <span
             key={view.id}
             className={cn(
-              'inline-flex h-8 shrink-0 items-stretch overflow-hidden whitespace-nowrap rounded-chip border text-[12.5px] font-semibold transition-colors duration-[80ms]',
+              // Pill каркаса: активный — тёмно-синяя заливка + синяя тень.
+              'inline-flex h-8 shrink-0 items-stretch overflow-hidden whitespace-nowrap rounded-chip border text-[12.5px] font-medium transition-all duration-[200ms]',
               active
-                ? 'border-primary-border bg-primary-subtle text-primary'
-                : 'border-border bg-surface text-text-muted hover:border-border-strong hover:text-text',
+                ? 'border-primary bg-primary-hover text-white shadow-brand'
+                : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
             )}
           >
             <Link
@@ -121,7 +122,12 @@ export function CasesSavedViews() {
               type="button"
               onClick={() => removeView(view.id)}
               aria-label={fmt(t.cases.savedViews.deleteLabel, { name: view.name })}
-              className="inline-flex items-center pr-2 pl-0.5 text-text-subtle transition-colors hover:text-error"
+              className={cn(
+                'inline-flex items-center pr-2 pl-0.5 transition-colors',
+                active
+                  ? 'text-white/70 hover:text-white'
+                  : 'text-text-subtle hover:text-error',
+              )}
             >
               <X size={12} strokeWidth={2} />
             </button>

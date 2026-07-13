@@ -17,9 +17,10 @@ const badgeVariants = cva(
         // prio-low/high (v3 s11): сами тона = success/error по значению, но на
         // подложке 3.0/4.2 ✗ — текст тем же тёмным *-text (точка quiet яркая).
         success:   "text-success-text bg-success-bg",
-        warning:   "text-warning      bg-warning-bg",
+        warning:   "text-warning-text bg-warning-bg",
         error:     "text-error-text   bg-error-bg",
         info:      "text-info-text    bg-info-bg",
+        primary:   "text-primary-pressed bg-primary-subtle",
         "prio-low":  "text-success-text bg-prio-low-bg",
         "prio-mid":  "text-prio-mid     bg-prio-mid-bg",
         "prio-high": "text-error-text   bg-prio-high-bg",
@@ -42,6 +43,7 @@ const DOT: Record<NonNullable<BadgeProps["tone"]>, string> = {
   warning: "bg-warning",
   error: "bg-error",
   info: "bg-info",
+  primary: "bg-primary",
   "prio-low": "bg-prio-low",
   "prio-mid": "bg-prio-mid",
   "prio-high": "bg-prio-high",
@@ -56,12 +58,10 @@ function Badge({ className, tone = "neutral", quiet, children, ...props }: Badge
   const t = tone ?? "neutral";
   return (
     <span className={cn(badgeVariants({ tone: t, quiet }), className)} {...props}>
+      {/* Точка всегда ярким тоном при тёмном тексте (каркас 2026-07-13). */}
       <span
         aria-hidden="true"
-        className={cn(
-          "w-1.5 h-1.5 rounded-full shrink-0",
-          quiet ? DOT[t] : "bg-current",
-        )}
+        className={cn("w-1.5 h-1.5 rounded-full shrink-0", DOT[t])}
       />
       {children}
     </span>

@@ -150,9 +150,9 @@ export function Select({
             // Редизайн 2026-06-12 (Волна 0): белый триггер + видимая граница (см. input.tsx).
             'rounded-control border border-border bg-surface',
             'pl-3 pr-3 text-base font-sans md:text-sm text-text',
-            'transition-[border-color,box-shadow] duration-[180ms] ease-out',
+            'transition-[border-color,box-shadow] duration-[200ms] ease-out',
             'hover:border-border-strong',
-            'focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary-subtle',
+            'focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20',
             'data-[state=open]:border-primary',
             'disabled:opacity-50 disabled:cursor-not-allowed',
             'aria-invalid:border-error aria-invalid:focus:ring-error/15',
@@ -193,9 +193,9 @@ export function Select({
                   value={toRadix(o.value)}
                   disabled={o.disabled}
                   className={cn(
-                    'relative flex cursor-pointer select-none items-center rounded-card',
+                    'relative flex cursor-pointer select-none items-center rounded-lg',
                     'py-1.5 pl-3 pr-8 text-[13.5px] text-text outline-none',
-                    'data-[highlighted]:bg-primary-subtle data-[highlighted]:text-primary',
+                    'data-[highlighted]:bg-primary-softer data-[highlighted]:text-primary-pressed',
                     'data-[state=checked]:font-semibold',
                     'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
                   )}

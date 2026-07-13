@@ -38,7 +38,7 @@ export function SourcesBlock({ rows }: { rows: SourceRow[] }) {
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-center gap-2">
-        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+        <h2 className="text-[15px] font-semibold text-text">
           {t.dashboard.sources.title}
         </h2>
       </div>

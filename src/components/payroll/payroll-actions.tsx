@@ -170,7 +170,7 @@ function ModalShell({
             type="button"
             onClick={onClose}
             aria-label={t.payroll.actions.closeAria}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-muted hover:text-text"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-primary-softer hover:text-text"
           >
             <X size={17} strokeWidth={2} />
           </button>
@@ -286,7 +286,7 @@ function PayoutModal({
                               'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors',
                               on
                                 ? 'border-primary bg-primary/5'
-                                : 'border-border bg-surface hover:bg-surface-muted',
+                                : 'border-border bg-surface hover:bg-primary-softer',
                             )}
                           >
                             <input
@@ -324,7 +324,7 @@ function PayoutModal({
                       'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors',
                       bonusChecked
                         ? 'border-primary bg-primary/5'
-                        : 'border-border bg-surface hover:bg-surface-muted',
+                        : 'border-border bg-surface hover:bg-primary-softer',
                     )}
                   >
                     <input

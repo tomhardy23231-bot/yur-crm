@@ -2,7 +2,7 @@
 
 import { useOptimistic, useTransition } from 'react';
 import Link from 'next/link';
-import { Check, Trash2 } from 'lucide-react';
+import { CheckCircle2, Circle, Trash2 } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { useI18n } from '@/lib/i18n/provider';
@@ -64,36 +64,35 @@ export function TaskRow({ task, canManage, showCase = false }: TaskRowProps) {
       className={cn(
         'group flex items-start gap-3 px-4 py-3 border-b border-border last:border-b-0',
         'transition-colors duration-[120ms] ease-out',
-        done ? 'bg-surface-muted/40' : 'hover:bg-surface-muted/50',
+        done ? 'bg-surface-muted/40' : 'hover:bg-primary-softer',
       )}
     >
-      {/* Toggle status */}
+      {/* Toggle status — чекбокс-круг (каркас 2026-07-13). */}
       {canManage ? (
         <button
           type="button"
           onClick={handleToggle}
           disabled={pending}
           aria-label={done ? t.tasks.row.reopenAria : t.tasks.row.markDoneAria}
-          className={cn(
-            'shrink-0 mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-md border transition-colors',
-            done
-              ? 'bg-success text-white border-success'
-              : 'bg-surface border-border-strong hover:border-primary hover:bg-primary-subtle',
-          )}
+          className="mt-0.5 shrink-0"
         >
-          {done && <Check size={12} strokeWidth={3} />}
+          {done ? (
+            <CheckCircle2 size={20} strokeWidth={2.2} className="text-primary" />
+          ) : (
+            <Circle
+              size={20}
+              strokeWidth={1.8}
+              className="text-text-subtle transition-colors hover:text-primary"
+            />
+          )}
         </button>
       ) : (
-        <span
-          aria-hidden="true"
-          className={cn(
-            'shrink-0 mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-md border',
-            done
-              ? 'bg-success text-white border-success'
-              : 'bg-surface-muted border-border',
+        <span aria-hidden="true" className="mt-0.5 shrink-0">
+          {done ? (
+            <CheckCircle2 size={20} strokeWidth={2.2} className="text-primary/60" />
+          ) : (
+            <Circle size={20} strokeWidth={1.8} className="text-text-subtle/60" />
           )}
-        >
-          {done && <Check size={12} strokeWidth={3} />}
         </span>
       )}
 
@@ -127,8 +126,10 @@ export function TaskRow({ task, canManage, showCase = false }: TaskRowProps) {
           {task.due_at && (
             <span
               className={cn(
-                '',
-                !done && isOverdue(task.due_at) && 'text-error font-semibold',
+                'rounded-lg px-2 py-0.5 font-mono text-[11.5px] font-semibold tabular-nums',
+                !done && isOverdue(task.due_at)
+                  ? 'bg-error-bg text-error'
+                  : 'bg-surface-sunken text-text-muted',
               )}
             >
               {formatDue(task.due_at)}

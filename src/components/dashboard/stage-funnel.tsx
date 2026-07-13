@@ -27,7 +27,7 @@ export function StageFunnel({ funnel }: { funnel: ReadonlyArray<FunnelEntry> }) 
   return (
     <Card className="p-5">
       <div className="mb-2.5 flex items-center gap-2">
-        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+        <h2 className="text-[15px] font-semibold text-text">
           {t.dashboard.funnel.title}
         </h2>
         <span className="ml-auto text-[12px] tabular-nums text-text-muted">
@@ -42,7 +42,7 @@ export function StageFunnel({ funnel }: { funnel: ReadonlyArray<FunnelEntry> }) 
             <Link
               key={f.stage}
               href={`/cases?stage=${f.stage}`}
-              className="-mx-2.5 flex flex-col gap-1.5 rounded-md px-2.5 py-2 transition-colors hover:bg-surface-muted"
+              className="-mx-2.5 flex flex-col gap-1.5 rounded-md px-2.5 py-2 transition-colors hover:bg-primary-softer"
             >
               <span className="flex items-center gap-2">
                 <span

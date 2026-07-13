@@ -9,6 +9,37 @@ export const dashboard: DashboardMessages = {
     empty: 'На сьогодні завдань немає — день вільний.',
   },
 
+  hero: {
+    morning: 'Доброго ранку',
+    day: 'Доброго дня',
+    evening: 'Доброго вечора',
+    night: 'Доброї ночі',
+    summary: 'У вас {tasks} і {overdue}.',
+    tasksToday: {
+      one: '{n} завдання на сьогодні',
+      few: '{n} завдання на сьогодні',
+      many: '{n} завдань на сьогодні',
+    },
+    noTasksToday: 'немає завдань на сьогодні',
+    overdueCount: {
+      one: '{n} прострочення',
+      few: '{n} прострочення',
+      many: '{n} прострочень',
+    },
+    noOverdue: 'жодного прострочення',
+    revenueUp: 'Виручка місяця зросла на {pct} — чудовий темп.',
+    statMyDay: 'Мій день',
+    statMyDayHint: {
+      one: 'завдання на сьогодні',
+      few: 'завдання на сьогодні',
+      many: 'завдань на сьогодні',
+    },
+    statMyDayFree: 'день вільний',
+    statRevenue: 'Виручка',
+    statAccrued: 'Нараховано мені',
+    statHintDelta: '{delta} до минулого місяця',
+  },
+
   delta: {
     growth: 'зростання',
     decline: 'спад',

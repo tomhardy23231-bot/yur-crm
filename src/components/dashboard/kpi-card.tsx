@@ -135,40 +135,45 @@ export function KpiCard({
   className?: string;
 }) {
   const base = cn(
-    "group relative block rounded-card border border-border bg-surface px-5 py-4 shadow-sm",
-    "transition-[border-color,box-shadow,transform] duration-[150ms] ease-out",
+    // Каркас 2026-07-13: KPI-плитка мягко приподнимается на hover.
+    "group relative block rounded-card border border-border bg-surface p-5 shadow-sm",
+    "transition-all duration-300 ease-out",
     href &&
-      "hover:-translate-y-px hover:border-primary-border hover:shadow-md focus-visible:-translate-y-px",
+      "hover:-translate-y-0.5 hover:border-primary-border hover:shadow-lg focus-visible:-translate-y-0.5",
     className,
   );
 
   const body = (
     <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="pt-2 text-[13px] font-medium text-text-muted">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[12.5px] font-medium text-text-muted">
           {label}
         </p>
         {Icon && (
           <span
             aria-hidden="true"
             className={cn(
-              "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
               ICON_TONE[iconTone],
             )}
           >
-            <Icon size={18} strokeWidth={1.75} />
+            <Icon size={16} strokeWidth={2.2} />
           </span>
         )}
       </div>
-      <div className="my-2 flex items-end justify-between gap-2.5">
+      <div className="my-2.5 flex items-end justify-between gap-2.5">
         <p
           className={cn(
-            "text-[30px] font-bold leading-none tracking-[-0.02em] tabular-nums",
+            "font-mono text-[26px] font-bold leading-none tracking-tight tabular-nums",
             valueTone === "debt" ? "text-error" : "text-text",
           )}
         >
           {value}
-          {unit && <span className="ml-0.5 text-[15px] text-text-subtle">{unit}</span>}
+          {unit && (
+            <span className="ml-1 font-sans text-[13px] font-medium text-text-subtle">
+              {unit}
+            </span>
+          )}
         </p>
         {spark && spark.points.length > 0 && <Sparkline {...spark} />}
       </div>
@@ -176,7 +181,7 @@ export function KpiCard({
         {delta && (
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-chip px-2.5 py-1 text-[12px] font-semibold",
+              "inline-flex items-center gap-1 rounded-chip px-2 py-0.5 text-[11px] font-bold tabular-nums",
               DELTA_TONE[delta.tone],
             )}
           >

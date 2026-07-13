@@ -4,9 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { useI18n } from '@/lib/i18n/provider';
 import { type TaskKind } from '@/lib/types/db';
 
-const TONE: Record<TaskKind, 'neutral' | 'info' | 'warning'> = {
-  task: 'neutral',
-  hearing: 'info',
+// Каркас 2026-07-13: задача — синий, заседание (суд) — красный, срок — янтарь.
+const TONE: Record<TaskKind, 'primary' | 'error' | 'warning'> = {
+  task: 'primary',
+  hearing: 'error',
   deadline: 'warning',
 };
 

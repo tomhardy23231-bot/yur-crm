@@ -62,7 +62,7 @@ export function LoginForm({ next }: Props) {
             onClick={() => setShowPassword((v) => !v)}
             aria-label={showPassword ? t.auth.login.hidePassword : t.auth.login.showPassword}
             aria-pressed={showPassword}
-            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors"
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text hover:bg-primary-softer transition-colors"
             tabIndex={-1}
           >
             {showPassword ? (

@@ -66,10 +66,11 @@ export function CategoryBadge({
   return (
     <span
       className={cn(
+        // Каркас 2026-07-13: категория — компактный прямоугольный бейдж
+        // (rounded-md), без точки; пилюли с точками — у этапов.
         "inline-flex items-center gap-1.5",
-        "px-2.5 py-1 rounded-chip",
-        "text-xs font-bold leading-none whitespace-nowrap",
-        "before:content-[''] before:w-[7px] before:h-[7px] before:rounded-full before:bg-current before:shrink-0",
+        "px-2 py-0.5 rounded-md",
+        "text-[11px] font-semibold leading-[1.4] whitespace-nowrap",
         CATEGORY_CLASS[category],
         className,
       )}

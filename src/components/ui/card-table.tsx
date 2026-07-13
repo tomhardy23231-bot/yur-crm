@@ -37,13 +37,20 @@ export function CardListShell({
   children: React.ReactNode;
   className?: string;
 }) {
+  // Каркас 2026-07-13: список — ОДНА карточка-контейнер (rounded-card, мягкая
+  // тень), строки внутри разделены тонкими бордерами; шапка — на sunken-фоне.
   return (
     <div className={cn('hidden pb-1 md:block', className)}>
-      <div role="table" aria-label={ariaLabel} style={{ minWidth }} className="flex flex-col gap-2">
+      <div
+        role="table"
+        aria-label={ariaLabel}
+        style={{ minWidth }}
+        className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
+      >
         <div
           role="row"
           style={{ gridTemplateColumns: cols }}
-          className="sticky top-0 z-10 -mb-2 grid items-center gap-3 bg-bg px-4 pb-2.5 pt-1"
+          className="sticky top-0 z-10 grid items-center gap-3 border-b border-border bg-surface-sunken px-4 py-2.5"
         >
           {header}
         </div>
@@ -71,8 +78,8 @@ export function CardHead({
       role="columnheader"
       data-col={dataCol}
       className={cn(
-        // text-muted, не subtle: шапка лежит на --bg, subtle там 2.95:1 (v3 s10)
-        'text-[10px] font-bold uppercase tracking-[0.05em] text-text-muted',
+        // text-muted, не subtle: AA на sunken-подложке шапки
+        'text-[11px] font-semibold uppercase tracking-wide text-text-muted',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         className,
@@ -119,7 +126,7 @@ export async function CardSortHead({
         href={href}
         scroll={false}
         className={cn(
-          'inline-flex select-none items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.05em]',
+          'inline-flex select-none items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide',
           align === 'right' && 'flex-row-reverse',
           isActive
             ? 'text-text'
@@ -160,7 +167,7 @@ export function RowAction({
       {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
       aria-label={label}
       title={label}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-text-subtle transition-colors hover:border-border hover:bg-surface-sunken hover:text-text"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-text-subtle transition-colors hover:bg-primary-subtle hover:text-primary-pressed"
     >
       {icon}
     </Link>

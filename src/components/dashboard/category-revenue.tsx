@@ -31,7 +31,7 @@ export function CategoryRevenue({
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-center gap-2">
-        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+        <h2 className="text-[15px] font-semibold text-text">
           {t.dashboard.categoryRevenue.title}
         </h2>
         <span className="ml-auto text-[12px] tabular-nums text-text-muted">
@@ -49,7 +49,7 @@ export function CategoryRevenue({
               <Link
                 key={d.category}
                 href={`/cases?category=${d.category}`}
-                className="-mx-2.5 flex flex-col gap-1.5 rounded-md px-2.5 py-2 transition-colors hover:bg-surface-muted"
+                className="-mx-2.5 flex flex-col gap-1.5 rounded-md px-2.5 py-2 transition-colors hover:bg-primary-softer"
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="inline-flex items-center gap-2 text-[13px] text-text">

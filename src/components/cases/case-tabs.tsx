@@ -111,9 +111,9 @@ export function CaseTabs({ tabs, defaultTab, ariaLabel }: CaseTabsProps) {
               tabIndex={on ? 0 : -1}
               onClick={() => setActive(tb.key)}
               className={cn(
-                'inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors',
+                'inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-semibold transition-colors',
                 on
-                  ? 'border-primary text-text'
+                  ? 'border-primary text-primary-pressed'
                   : 'border-transparent text-text-muted hover:text-text',
               )}
             >

@@ -73,7 +73,8 @@ export function StageBadge({ stage, label, quiet = false, pulse = true, classNam
       className={cn(
         "inline-flex items-center gap-1.5",
         "px-2.5 py-1 rounded-chip",
-        // Чистая пастель без окантовки (макет владельца 2026-07-08; ring убран).
+        // Чистая пастель без окантовки; точка — ЯРКИМ тоном этапа при тёмном
+        // тексте (каркас 2026-07-13).
         "text-xs font-semibold leading-none whitespace-nowrap",
         STAGE_CLASS[stage],
         className,
@@ -83,7 +84,8 @@ export function StageBadge({ stage, label, quiet = false, pulse = true, classNam
       <span
         aria-hidden="true"
         className={cn(
-          "w-[7px] h-[7px] rounded-full bg-current shrink-0",
+          "w-[6px] h-[6px] rounded-full shrink-0",
+          STAGE_DOT[stage],
           live && pulse && "stage-dot-live",
         )}
       />

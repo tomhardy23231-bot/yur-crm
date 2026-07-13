@@ -82,7 +82,7 @@ export default async function TasksPage({
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <div className="flex flex-wrap items-center gap-3">
         {showModeToggle && (
-          <div className="inline-flex rounded-md bg-surface-muted p-1 gap-1">
+          <div className="inline-flex rounded-xl border border-border bg-surface p-0.5 gap-0.5">
             <ModeTab
               href={buildHref({ mode: 'mine', page: 1 })}
               active={mode === 'mine'}
@@ -207,14 +207,18 @@ function DayGroup({
   count: number;
   children: React.ReactNode;
 }) {
+  // Каркас 2026-07-13: секция дня — карточка с шапкой на sunken-подложке
+  // и счётчиком-пилюлей.
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle flex items-center gap-2">
-        {title}
-        <span className="text-text-muted">· {count}</span>
-      </h2>
-      <Card className="overflow-hidden">{children}</Card>
-    </section>
+    <Card>
+      <header className="flex items-center justify-between gap-3 border-b border-border bg-surface-sunken/40 px-4 py-2.5">
+        <h2 className="text-[12.5px] font-semibold text-text">{title}</h2>
+        <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] font-bold tabular-nums text-text-muted">
+          {count}
+        </span>
+      </header>
+      {children}
+    </Card>
   );
 }
 
@@ -227,14 +231,15 @@ function ModeTab({
   active: boolean;
   children: React.ReactNode;
 }) {
+  // Сегмент-контрол каркаса: активный пункт — синий тинт.
   return (
     <Link
       href={href}
       className={
-        'inline-flex items-center h-7 px-3 rounded text-[13px] font-medium transition-colors ' +
+        'inline-flex items-center h-8 px-3 rounded-lg text-[12.5px] font-semibold transition-all ' +
         (active
-          ? 'bg-surface text-text shadow-sm'
-          : 'text-text-muted hover:text-text')
+          ? 'bg-primary-subtle text-primary-pressed'
+          : 'text-text-subtle hover:text-text')
       }
     >
       {children}
@@ -264,7 +269,7 @@ function PageLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center h-9 px-3 text-[13px] font-medium text-text bg-surface border border-border-strong rounded-md hover:bg-surface-muted transition-colors"
+      className="inline-flex items-center h-9 px-3 text-[13px] font-medium text-text bg-surface border border-border-strong rounded-md hover:bg-primary-softer transition-colors"
     >
       {children}
     </Link>

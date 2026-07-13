@@ -12,6 +12,7 @@ import {
 import { requireUser } from '@/lib/auth/require-role';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { HeroBanner } from '@/components/dashboard/hero-banner';
 import { KpiCard, type KpiDelta } from '@/components/dashboard/kpi-card';
 import { StageFunnel } from '@/components/dashboard/stage-funnel';
 import { CategoryRevenue } from '@/components/dashboard/category-revenue';
@@ -84,7 +85,7 @@ function countDelta(current: number, prev: number): KpiDelta {
 
 export default async function HomePage() {
   const user = await requireUser();
-  const { t, fmt, locale } = await getT();
+  const { t, fmt, plural, locale } = await getT();
   const { profile } = user;
   const staff = STAFF_ROLES.includes(profile.role);
 
@@ -131,8 +132,10 @@ export default async function HomePage() {
           recent={recent}
           todayTasks={upcoming.today}
           upcoming={upcoming}
+          userName={profile.full_name}
           t={t}
           fmt={fmt}
+          plural={plural}
           locale={locale}
         />
       ) : (
@@ -143,8 +146,10 @@ export default async function HomePage() {
           todayTasks={upcoming.today}
           upcoming={upcoming}
           userId={profile.id}
+          userName={profile.full_name}
           t={t}
           fmt={fmt}
+          plural={plural}
         />
       )}
     </main>
@@ -223,8 +228,10 @@ async function StaffDashboard({
   recent,
   todayTasks,
   upcoming,
+  userName,
   t,
   fmt,
+  plural,
   locale,
 }: {
   stats: ReturnType<typeof computeDashboardStats>;
@@ -232,8 +239,10 @@ async function StaffDashboard({
   recent: Awaited<ReturnType<typeof listCases>>['items'];
   todayTasks: TaskWithRefs[];
   upcoming: UpcomingTasks;
+  userName: string;
   t: I18n['t'];
   fmt: I18n['fmt'];
+  plural: I18n['plural'];
   locale: Locale;
 }) {
   // v3 Сессия 4: staff-серии считает SQL (RPC), ставки (rates) тут больше не нужны —
@@ -253,8 +262,37 @@ async function StaffDashboard({
     timeZone: 'Europe/Kyiv',
   }).format(new Date());
 
+  // Hero-баннер (каркас): сводка дня + пара мини-статов на стекле.
+  const revenueDelta = pctDelta(a.revenue, 'higher-good', t);
+
   return (
     <>
+      <HeroBanner
+        name={userName}
+        taskCount={todayTasks.length}
+        overdueCount={upcoming.overdueCount}
+        revenueUpPct={
+          revenueDelta.direction === 'up' && revenueDelta.text.startsWith('+')
+            ? revenueDelta.text
+            : undefined
+        }
+        stats={[
+          {
+            label: t.dashboard.hero.statMyDay,
+            value: String(todayTasks.length),
+            hint:
+              todayTasks.length > 0
+                ? plural(t.dashboard.hero.statMyDayHint, todayTasks.length)
+                : t.dashboard.hero.statMyDayFree,
+          },
+          {
+            label: t.dashboard.hero.statRevenue,
+            value: `${formatMoney(a.revenue.current)} ₴`,
+            hint: fmt(t.dashboard.hero.statHintDelta, { delta: revenueDelta.text }),
+          },
+        ]}
+      />
+
       <section className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label={t.dashboard.kpi.activeCases}
@@ -336,8 +374,10 @@ async function PersonalDashboard({
   todayTasks,
   upcoming,
   userId,
+  userName,
   t,
   fmt,
+  plural,
 }: {
   cases: DashboardCaseRow[];
   stats: ReturnType<typeof computeDashboardStats>;
@@ -345,8 +385,10 @@ async function PersonalDashboard({
   todayTasks: TaskWithRefs[];
   upcoming: UpcomingTasks;
   userId: string;
+  userName: string;
   t: I18n['t'];
   fmt: I18n['fmt'];
+  plural: I18n['plural'];
 }) {
   // 4.2: справочники одним батчем — ставки (для личных начислений) + окладники.
   const [rates, fixedUserIds] = await Promise.all([
@@ -355,9 +397,31 @@ async function PersonalDashboard({
   ]);
   const a = await getDashboardAnalytics({ userId, fixedUserIds });
   const earnings = computePersonalEarnings(cases, rates, userId, fixedUserIds);
+  const salaryDelta = pctDelta(a.salary, 'higher-good', t);
 
   return (
     <>
+      <HeroBanner
+        name={userName}
+        taskCount={todayTasks.length}
+        overdueCount={upcoming.overdueCount}
+        stats={[
+          {
+            label: t.dashboard.hero.statMyDay,
+            value: String(todayTasks.length),
+            hint:
+              todayTasks.length > 0
+                ? plural(t.dashboard.hero.statMyDayHint, todayTasks.length)
+                : t.dashboard.hero.statMyDayFree,
+          },
+          {
+            label: t.dashboard.hero.statAccrued,
+            value: `${formatMoney(a.salary.current)} ₴`,
+            hint: fmt(t.dashboard.hero.statHintDelta, { delta: salaryDelta.text }),
+          },
+        ]}
+      />
+
       <section className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-3">
         <KpiCard
           label={t.dashboard.kpi.myActiveCases}

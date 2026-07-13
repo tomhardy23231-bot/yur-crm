@@ -27,15 +27,24 @@ import { listAbsencesInRange } from '@/lib/absences/queries';
 import { cn } from '@/lib/utils';
 import type { TaskKind, TaskWithRefs, AbsenceWithUser } from '@/lib/types/db';
 
+// Цвета типов (каркас 2026-07-13): задача — синий, заседание (суд) — красный,
+// срок — янтарь. Точка — ярким тоном, чип — «подложка + тёмный текст».
 const KIND_DOT: Record<TaskKind, string> = {
-  task: 'bg-text-muted',
-  hearing: 'bg-info',
+  task: 'bg-primary',
+  hearing: 'bg-error',
   deadline: 'bg-warning',
+};
+
+const KIND_CHIP: Record<TaskKind, string> = {
+  task: 'bg-primary-subtle text-primary-pressed',
+  hearing: 'bg-error-bg text-error-text',
+  deadline: 'bg-warning-bg text-warning-text',
 };
 
 // Отсутствия (отпуска/больничные) — единый violet-маркер (--absence), отличимый
 // от видов задач. Тип отсутствия раскрывается в панели дня (v2 Этап 6).
 const ABSENCE_DOT = 'bg-absence';
+const ABSENCE_CHIP = 'bg-absence-bg text-absence';
 
 type CalendarView = 'month' | 'week';
 
@@ -255,8 +264,12 @@ export default async function CalendarPage({
           </>
         )}
 
-        {/* Переключатель вида — те же «вкладки», что и Активные/Архив в списке дел. */}
-        <div role="tablist" aria-label={t.calendar.viewAria} className="ml-1 flex items-center gap-1.5">
+        {/* Переключатель вида — сегмент-контрол каркаса (синий тинт актива). */}
+        <div
+          role="tablist"
+          aria-label={t.calendar.viewAria}
+          className="ml-1 flex items-center gap-0.5 rounded-xl border border-border bg-surface p-0.5"
+        >
           {[
             { key: 'month' as const, label: t.calendar.viewMonth, href: buildHref({ view: 'month', month: monthOfWeek, day: null }) },
             { key: 'week' as const, label: t.calendar.viewWeek, href: buildHref({ view: 'week', week: weekOfMonth, day: null }) },
@@ -269,10 +282,10 @@ export default async function CalendarPage({
                 role="tab"
                 aria-selected={active}
                 className={cn(
-                  'inline-flex h-9 items-center rounded-md border px-3 text-[13px] font-medium transition-colors duration-[80ms] ease-out',
+                  'inline-flex h-8 items-center rounded-lg px-3 text-[12.5px] font-semibold transition-all',
                   active
-                    ? 'border-primary-border bg-primary-subtle text-primary'
-                    : 'border-border bg-surface text-text-muted hover:border-border-strong hover:text-text',
+                    ? 'bg-primary-subtle text-primary-pressed'
+                    : 'text-text-subtle hover:text-text',
                 )}
               >
                 {tab.label}
@@ -290,21 +303,24 @@ export default async function CalendarPage({
       {view === 'week' ? (
         <WeekGrid days={weekDays} weekdayLabels={weekdayLabels} />
       ) : (
-        <Card className="overflow-hidden">
-          {/* Headers weekdays */}
-          <div className="grid grid-cols-7 border-b border-border bg-surface-muted">
-            {weekdayLabels.map((wd) => (
+        <Card className="p-2 sm:p-4">
+          {/* Заголовки дней недели: выходные — красным (каркас). */}
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
+            {weekdayLabels.map((wd, i) => (
               <div
                 key={wd}
-                className="px-2 py-2 text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle text-center"
+                className={cn(
+                  'pb-2 text-center text-[11.5px] font-semibold uppercase tracking-wide',
+                  i >= 5 ? 'text-error' : 'text-text-subtle',
+                )}
               >
                 {wd}
               </div>
             ))}
           </div>
 
-          {/* Days grid */}
-          <div className="grid grid-cols-7">
+          {/* Сетка плиток-дней (каркас): скруглённые ячейки с зазором. */}
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {cells.map((cell) => (
               <DayCell
                 key={cell.key}
@@ -439,25 +455,33 @@ function DayCell({
     <Link
       href={href}
       className={cn(
-        'relative min-h-[58px] p-1 sm:min-h-[88px] sm:p-2 border-r border-b border-border last:border-r-0',
-        'flex flex-col gap-1 sm:gap-1.5 transition-colors duration-[120ms] ease-out',
-        inMonth ? 'bg-surface text-text' : 'bg-surface-muted/40 text-text-subtle',
-        isSelected
-          ? '!bg-primary-subtle'
-          : 'hover:bg-surface-muted/60',
+        // Плитка дня (каркас 2026-07-13): скруглённая ячейка с бордером.
+        'relative min-h-[58px] rounded-lg border p-1 sm:min-h-[92px] sm:rounded-xl sm:p-2',
+        'flex flex-col gap-1 sm:gap-1.5 transition-all duration-[150ms] ease-out',
+        !inMonth && 'border-border/50 bg-surface-sunken/40 opacity-55',
+        inMonth &&
+          !isToday &&
+          'border-border bg-surface hover:border-primary-border hover:bg-primary-softer',
+        isToday && 'border-primary bg-primary-subtle',
+        isSelected && 'ring-2 ring-primary/40',
       )}
     >
-      <span
-        className={cn(
-          'inline-flex items-center justify-center w-6 h-6 rounded-full text-[12px] font-semibold',
-          isToday
-            ? 'bg-primary text-primary-fg'
-            : inMonth
-              ? 'text-text'
-              : 'text-text-subtle',
+      <span className="flex items-center justify-between">
+        <span
+          className={cn(
+            'font-mono text-[12px] font-semibold tabular-nums leading-6',
+            !inMonth && 'text-text-subtle',
+            inMonth && !isToday && 'text-text-muted',
+            isToday && 'font-bold text-primary-pressed',
+          )}
+        >
+          {dayNum}
+        </span>
+        {isToday && (
+          <span className="rounded-full bg-primary px-1.5 py-px text-[8.5px] font-bold uppercase leading-tight text-white">
+            •
+          </span>
         )}
-      >
-        {dayNum}
       </span>
 
       {hasItems && (
@@ -489,37 +513,43 @@ function DayCell({
             )}
           </div>
 
-          {/* ≥ sm: список — отсутствия (имя сотрудника) + задачи (название). */}
-          <ul className="hidden flex-col gap-0.5 sm:flex">
+          {/* ≥ sm: чипы событий цветом типа (каркас): отсутствия + задачи. */}
+          <ul className="hidden flex-col gap-0.5 overflow-hidden sm:flex">
             {shownAbs.map((a) => (
-              <li key={a.id} className="flex items-center gap-1 text-[11px] leading-tight truncate">
+              <li key={a.id}>
                 <span
-                  className={cn('w-1.5 h-1.5 rounded-full shrink-0', ABSENCE_DOT)}
-                  aria-hidden="true"
-                />
-                <span className="truncate text-text">{a.user?.full_name ?? '—'}</span>
+                  className={cn(
+                    'flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-medium leading-tight',
+                    ABSENCE_CHIP,
+                  )}
+                >
+                  <span
+                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', ABSENCE_DOT)}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{a.user?.full_name ?? '—'}</span>
+                </span>
               </li>
             ))}
             {shownTasks.map((t) => (
-              <li
-                key={t.id}
-                className={cn(
-                  'flex items-center gap-1 text-[11px] leading-tight truncate',
-                  t.status === 'done' && 'opacity-50 line-through',
-                )}
-              >
+              <li key={t.id}>
                 <span
                   className={cn(
-                    'w-1.5 h-1.5 rounded-full shrink-0',
-                    KIND_DOT[t.kind],
+                    'flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-medium leading-tight',
+                    KIND_CHIP[t.kind],
+                    t.status === 'done' && 'opacity-50 line-through',
                   )}
-                  aria-hidden="true"
-                />
-                <span className="truncate text-text">{t.title}</span>
+                >
+                  <span
+                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', KIND_DOT[t.kind])}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{t.title}</span>
+                </span>
               </li>
             ))}
             {extra > 0 && (
-              <li className="text-[10.5px] text-text-muted pl-2.5">
+              <li className="px-1 text-[10px] font-semibold text-text-subtle">
                 +{extra}
               </li>
             )}
@@ -543,7 +573,7 @@ function NavLink({
     <Link
       href={href}
       aria-label={ariaLabel}
-      className="inline-flex items-center justify-center h-9 px-3 text-[13px] font-medium text-text bg-surface border border-border-strong rounded-md hover:bg-surface-muted transition-colors"
+      className="inline-flex h-9 items-center justify-center rounded-xl border border-border bg-surface px-3 text-[13px] font-medium text-text transition-all hover:border-primary-border hover:bg-primary-softer"
     >
       {children}
     </Link>

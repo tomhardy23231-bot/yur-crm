@@ -12,14 +12,14 @@ import { type CaseStage } from '@/lib/types/db';
 import { getT } from '@/lib/i18n/server';
 import { cn } from '@/lib/utils';
 
-// Цветовой токен заголовка колонки — по стадии. Чёрно-белый закрытый
-// этап выделен mute'ом, остальные несут цвет воронки (DESIGN.md §6).
-const STAGE_HEADER: Record<CaseStage, string> = {
-  new_request: 'text-stage-new bg-stage-new-bg',
-  consultation: 'text-stage-consultation bg-stage-consultation-bg',
-  in_progress: 'text-stage-in-progress bg-stage-in-progress-bg',
-  awaiting_decision: 'text-stage-awaiting bg-stage-awaiting-bg',
-  closed: 'text-stage-closed bg-stage-closed-bg',
+// Точка этапа в заголовке колонки (каркас 2026-07-13: заголовок с цветной
+// точкой над тонированным контейнером, без залитой шапки).
+const STAGE_DOT: Record<CaseStage, string> = {
+  new_request: 'bg-stage-new',
+  consultation: 'bg-stage-consultation',
+  in_progress: 'bg-stage-in-progress',
+  awaiting_decision: 'bg-stage-awaiting',
+  closed: 'bg-stage-closed',
 };
 
 export async function BoardColumn({
@@ -46,34 +46,28 @@ export async function BoardColumn({
   return (
     <section
       className={cn(
-        'flex flex-col w-[280px] shrink-0 bg-surface-muted/40 rounded-lg border border-border',
+        'flex flex-col w-[280px] shrink-0 gap-3',
         'max-h-[calc(100vh-13rem)]',
       )}
       aria-label={fmt(t.cases.column.aria, { stage: t.enums.caseStage[stage] })}
     >
-      <header
-        className={cn(
-          'flex items-center justify-between gap-2 px-3 py-2.5 rounded-t-lg',
-          'border-b border-border',
-          STAGE_HEADER[stage],
-        )}
-      >
-        <h2 className="text-[12px] uppercase tracking-[0.05em] font-bold leading-tight">
+      <header className="flex items-center justify-between gap-2 px-1">
+        <h2 className="flex items-center gap-2 text-[12.5px] font-semibold leading-tight text-text">
+          <span
+            aria-hidden="true"
+            className={cn('h-2 w-2 shrink-0 rounded-full', STAGE_DOT[stage])}
+          />
           {t.enums.caseStage[stage]}
         </h2>
         <span
-          className={cn(
-            'inline-flex items-center justify-center min-w-6 h-5 px-1.5 rounded-full',
-            'text-[11px] font-bold tabular-nums',
-            'bg-white/70 text-current',
-          )}
+          className="inline-flex min-w-6 items-center justify-center rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] font-bold tabular-nums text-text-muted"
           aria-label={fmt(t.cases.column.countAria, { count: cases.length })}
         >
           {cases.length}
         </span>
       </header>
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col gap-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto rounded-card bg-surface-sunken/50 p-2.5">
         {visible.length === 0 ? (
           <EmptyState
             size="sm"

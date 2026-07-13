@@ -8,8 +8,9 @@ const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2",
     "font-sans font-semibold leading-none",
-    "rounded-md border border-transparent",
-    "transition-[background-color,border-color,color,box-shadow,transform] duration-[180ms] ease-out",
+    // Каркас 2026-07-13: кнопки — пилюли (rounded-xl 18px при h-36 = полукруг).
+    "rounded-full border border-transparent",
+    "transition-[background-color,border-color,color,box-shadow,transform] duration-[200ms] ease-out",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
     "disabled:opacity-50 disabled:pointer-events-none",
     "whitespace-nowrap select-none",
@@ -18,15 +19,19 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: [
-          // Сплошная синяя CTA (эталон): один акцентный цвет, мягкий lift на hover.
-          "bg-primary text-primary-fg shadow-sm",
-          "hover:bg-primary-hover hover:-translate-y-px hover:shadow-primary-hover",
-          "active:translate-y-0 active:shadow-none active:brightness-95",
+          // Сплошная синяя CTA с «цветной» тенью (каркас shadow-mint): парит и
+          // приподнимается на hover.
+          "bg-primary-hover text-primary-fg shadow-brand",
+          "hover:-translate-y-px hover:shadow-brand-hover",
+          "active:translate-y-0 active:shadow-brand active:brightness-95",
         ],
-        secondary:
-          "bg-surface text-text border-border-strong hover:bg-surface-muted hover:border-text-muted",
+        secondary: [
+          // Белая с тёплым бордером; hover синеет (каркас mint-softer).
+          "bg-surface text-text border-border",
+          "hover:border-primary-border hover:bg-primary-softer",
+        ],
         ghost:
-          "bg-transparent text-text-muted hover:bg-surface-muted hover:text-text",
+          "bg-transparent text-text-muted hover:bg-primary-softer hover:text-primary-pressed",
         destructive: [
           "bg-error text-primary-fg",
           "hover:opacity-90 hover:-translate-y-px hover:shadow-destructive-hover",

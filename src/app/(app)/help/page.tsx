@@ -421,7 +421,7 @@ export default async function HelpPage() {
               key={f.q}
               className={`group ${i < faqs.length - 1 ? 'border-b border-border' : ''}`}
             >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 text-[14px] font-semibold text-text transition-colors hover:bg-surface-muted">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 text-[14px] font-semibold text-text transition-colors hover:bg-primary-softer">
                 {f.q}
                 <span className="text-text-subtle transition-transform duration-200 group-open:rotate-45">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

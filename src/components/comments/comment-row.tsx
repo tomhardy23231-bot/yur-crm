@@ -39,7 +39,7 @@ export function CommentRow({ comment, canDelete, canEdit }: CommentRowProps) {
   const [editing, setEditing] = useState(false);
 
   return (
-    <div className="group flex items-start gap-3 border-b border-border px-5 py-3 transition-colors last:border-b-0 hover:bg-surface-muted/40">
+    <div className="group flex items-start gap-3 border-b border-border px-5 py-3 transition-colors last:border-b-0 hover:bg-primary-softer">
       <Avatar name={name} size="md" className="mt-0.5" />
 
       <div className="min-w-0 flex-1">

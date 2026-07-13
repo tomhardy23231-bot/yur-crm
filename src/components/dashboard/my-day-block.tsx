@@ -4,8 +4,8 @@ import { useOptimistic, useTransition } from 'react';
 import Link from 'next/link';
 import {
   AlarmClock,
-  Check,
   CheckCircle2,
+  Circle,
   ClipboardList,
   Gavel,
   type LucideIcon,
@@ -34,9 +34,10 @@ const KIND_ICON: Record<TaskKind, LucideIcon> = {
   deadline: AlarmClock,
 };
 
+// Каркас 2026-07-13: задача — синий, заседание (суд) — красный, срок — янтарь.
 const KIND_TONE: Record<TaskKind, string> = {
   task: 'bg-primary-subtle text-primary',
-  hearing: 'bg-info-bg text-info-text',
+  hearing: 'bg-error-bg text-error',
   deadline: 'bg-warning-bg text-warning',
 };
 
@@ -53,7 +54,7 @@ export function MyDayBlock({ tasks }: { tasks: TaskWithRefs[] }) {
   return (
     <Card className="animate-fade-in-up">
       <div className="flex items-center gap-2 border-b border-border px-5 py-4">
-        <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-text">
+        <h2 className="text-[15px] font-semibold text-text">
           {t.dashboard.myDay.heading}
         </h2>
         {tasks.length > 0 && (
@@ -114,41 +115,45 @@ function MyDayRow({ task }: { task: TaskWithRefs }) {
   return (
     <li
       className={cn(
-        'flex items-center gap-3 border-b border-border px-5 py-3 last:border-0',
-        'transition-colors duration-[120ms] ease-out',
-        done ? 'bg-surface-muted/40' : 'hover:bg-surface-muted/40',
+        'flex items-center gap-3 border-b border-border/60 px-5 py-3 last:border-0',
+        'transition-colors duration-[150ms] ease-out',
+        done ? 'bg-surface-muted/40' : 'hover:bg-primary-softer',
       )}
     >
+      {/* Чекбокс-круг (каркас): пустой круг → синяя галочка. */}
       <button
         type="button"
         onClick={handleToggle}
         disabled={pending}
         aria-label={done ? t.tasks.row.reopenAria : t.tasks.row.markDoneAria}
-        className={cn(
-          'inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-          done
-            ? 'border-primary bg-primary text-white'
-            : 'border-border-strong bg-surface hover:border-primary hover:bg-primary-subtle',
-        )}
+        className="shrink-0"
       >
-        {done && <Check size={13} strokeWidth={3} />}
+        {done ? (
+          <CheckCircle2 size={20} strokeWidth={2.2} className="text-primary" />
+        ) : (
+          <Circle
+            size={20}
+            strokeWidth={1.8}
+            className="text-text-subtle transition-colors hover:text-primary"
+          />
+        )}
       </button>
 
       <span
         title={t.enums.taskKind[task.kind]}
         className={cn(
-          'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+          'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
           KIND_TONE[task.kind],
         )}
       >
-        <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
+        <Icon size={15} strokeWidth={2} aria-hidden="true" />
         <span className="sr-only">{t.enums.taskKind[task.kind]}</span>
       </span>
 
       <div className="min-w-0 flex-1">
         <p
           className={cn(
-            'truncate text-[14px] font-medium leading-tight',
+            'truncate text-[13.5px] font-medium leading-tight',
             done ? 'text-text-subtle line-through' : 'text-text',
           )}
         >
@@ -157,7 +162,7 @@ function MyDayRow({ task }: { task: TaskWithRefs }) {
         {task.case && (
           <Link
             href={`/cases/${task.case.id}`}
-            className="mt-0.5 block w-fit max-w-full truncate font-mono text-[11.5px] text-text-muted transition-colors hover:text-primary"
+            className="mt-0.5 block w-fit max-w-full truncate font-mono text-[11.5px] text-text-subtle transition-colors hover:text-primary"
           >
             {task.case.number_title}
           </Link>
@@ -165,7 +170,7 @@ function MyDayRow({ task }: { task: TaskWithRefs }) {
       </div>
 
       {showTime && (
-        <span className="shrink-0 rounded-md bg-surface-sunken px-2 py-1 font-mono text-[11.5px] font-semibold text-text-muted">
+        <span className="shrink-0 rounded-lg bg-surface-sunken px-2.5 py-1 font-mono text-[12px] font-semibold text-text-muted tabular-nums">
           {time}
         </span>
       )}

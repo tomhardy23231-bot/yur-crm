@@ -40,13 +40,15 @@ export async function BoardCard({
   return (
     <article
       className={cn(
-        'group relative bg-surface rounded-md border shadow-sm transition-colors',
-        isUrgent ? 'border-prio-high/40' : 'border-border hover:border-border-strong',
+        // Каркас 2026-07-13: карточка доски мягко приподнимается на hover.
+        'group relative bg-surface rounded-xl border shadow-sm',
+        'transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md',
+        isUrgent ? 'border-prio-high/40' : 'border-border hover:border-primary-border',
       )}
     >
       <Link
         href={`/cases/${c.id}`}
-        className="block px-3 pt-3 pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-md"
+        className="block px-3 pt-3 pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-xl"
       >
         <div className="flex items-start justify-between gap-2 mb-1.5">
           <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -67,7 +69,7 @@ export async function BoardCard({
         </div>
 
         {c.client && (
-          <p className="text-[13px] text-text-muted truncate mb-2">
+          <p className="mb-2 truncate font-mono text-[11.5px] text-text-subtle">
             {c.client.name}
           </p>
         )}
@@ -80,12 +82,7 @@ export async function BoardCard({
         </div>
       </Link>
 
-      <div
-        className={cn(
-          'flex items-center justify-between gap-2 px-3 py-2 border-t border-border',
-          isClosed ? 'bg-stage-closed-bg/40' : 'bg-surface-muted/30',
-        )}
-      >
+      <div className="flex items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
           {c.responsible ? (
             <>
@@ -100,8 +97,8 @@ export async function BoardCard({
         </div>
         <span
           className={cn(
-            'text-[11.5px] tabular-nums whitespace-nowrap',
-            c.debt > 0 ? 'text-error' : 'text-text-subtle',
+            'font-mono text-[12px] font-semibold tabular-nums whitespace-nowrap',
+            c.debt > 0 ? 'text-error' : 'text-text',
           )}
           title={c.debt > 0 ? t.cases.board.debtTitle : t.cases.board.noDebtTitle}
         >

@@ -155,11 +155,12 @@ export default async function ClientsPage({
                 role="tab"
                 aria-selected={active}
                 className={cn(
-                  'inline-flex items-center px-3 h-9 rounded-md text-[13px] font-medium',
-                  'border transition-colors duration-[80ms] ease-out',
+                  // Pill-фильтр каркаса: активный — тёмно-синяя заливка + тень.
+                  'inline-flex h-8 items-center rounded-chip px-3 text-[12.5px] font-medium',
+                  'border transition-all duration-[200ms]',
                   active
-                    ? 'bg-primary-subtle text-primary border-primary-border'
-                    : 'bg-surface text-text-muted border-border hover:text-text hover:border-border-strong',
+                    ? 'border-primary bg-primary-hover text-white shadow-brand'
+                    : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
                 )}
               >
                 {label}
@@ -170,7 +171,7 @@ export default async function ClientsPage({
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-lg border border-border bg-surface py-8 shadow-sm">
+        <div className="rounded-card border border-dashed border-border bg-surface py-8">
           <EmptyState
             icon={UsersIcon}
             title={
@@ -326,7 +327,7 @@ function PageLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center h-9 px-3 text-[13px] font-medium text-text bg-surface border border-border-strong rounded-md hover:bg-surface-muted transition-colors"
+      className="inline-flex items-center h-9 px-3 text-[13px] font-medium text-text bg-surface border border-border-strong rounded-md hover:bg-primary-softer transition-colors"
     >
       {children}
     </Link>

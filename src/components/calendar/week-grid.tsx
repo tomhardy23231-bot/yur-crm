@@ -12,9 +12,11 @@ const TIME_FMT = new Intl.DateTimeFormat('ru-RU', {
   minute: '2-digit',
 });
 
+// Цвета типов (каркас 2026-07-13): задача — синий, заседание — красный,
+// срок — янтарь (единый язык с месячной сеткой и списками).
 const KIND_DOT: Record<TaskKind, string> = {
-  task: 'bg-text-muted',
-  hearing: 'bg-info',
+  task: 'bg-primary',
+  hearing: 'bg-error',
   deadline: 'bg-warning',
 };
 
@@ -57,7 +59,7 @@ export async function WeekGrid({
               href={day.href}
               className={cn(
                 'flex min-h-[76px] flex-col gap-1.5 border-b border-border p-2.5 transition-colors duration-[120ms] ease-out sm:min-h-[300px] sm:border-b-0 sm:border-r last:border-b-0 sm:last:border-r-0',
-                day.isSelected ? '!bg-primary-subtle' : 'hover:bg-surface-muted/60',
+                day.isSelected ? '!bg-primary-subtle' : 'hover:bg-primary-softer',
               )}
             >
               {/* Шапка дня: «Пн · 8», сегодняшний день — синим. */}

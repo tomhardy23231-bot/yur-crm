@@ -39,14 +39,18 @@ export function EmptyState({
       )}
     >
       {Icon && (
-        <Icon
-          size={sm ? 22 : 28}
-          strokeWidth={1.5}
-          className={cn('text-text-subtle', sm ? 'mb-2' : 'mb-3')}
+        <span
+          className={cn(
+            // Иконка в синем тинт-квадрате (каркас 2026-07-13).
+            'flex items-center justify-center rounded-xl bg-primary-subtle text-primary',
+            sm ? 'mb-2 h-9 w-9' : 'mb-3 h-12 w-12',
+          )}
           aria-hidden="true"
-        />
+        >
+          <Icon size={sm ? 16 : 20} strokeWidth={2} />
+        </span>
       )}
-      <p className={cn('font-medium text-text', sm ? 'text-[13.5px]' : 'text-[14px]')}>
+      <p className={cn('font-semibold text-text', sm ? 'text-[13.5px]' : 'text-[14px]')}>
         {title}
       </p>
       {hint && (

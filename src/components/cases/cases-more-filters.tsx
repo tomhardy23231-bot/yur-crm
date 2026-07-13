@@ -57,10 +57,10 @@ export function CasesMoreFilters({
         aria-expanded={open}
         aria-haspopup="dialog"
         className={cn(
-          'inline-flex h-8 items-center gap-1.5 rounded-control border px-3 text-[13px] font-medium transition-colors',
+          'inline-flex h-8 items-center gap-1.5 rounded-chip border px-3 text-[13px] font-medium transition-colors',
           activeCount > 0
-            ? 'border-primary-border bg-primary-subtle text-primary'
-            : 'border-border bg-surface text-text-muted hover:border-border-strong hover:text-text',
+            ? 'border-primary-border bg-primary-subtle text-primary-pressed'
+            : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
         )}
       >
         <SlidersHorizontal size={15} strokeWidth={1.75} />

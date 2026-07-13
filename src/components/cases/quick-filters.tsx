@@ -77,10 +77,12 @@ export async function CasesQuickFilters({
             href={hrefFor(preset)}
             aria-pressed={active}
             className={cn(
-              'inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-chip border px-3 text-[12.5px] font-semibold transition-colors duration-[80ms]',
+              // Pill каркаса 2026-07-13: активный — тёмно-синяя заливка + белый
+              // текст + синяя тень; неактивный синеет на hover.
+              'inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-chip border px-3 text-[12.5px] font-medium transition-all duration-[200ms]',
               active
-                ? 'border-primary-border bg-primary-subtle text-primary'
-                : 'border-border bg-surface text-text-muted hover:border-border-strong hover:text-text',
+                ? 'border-primary bg-primary-hover text-white shadow-brand'
+                : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
             )}
           >
             {preset.label}

@@ -73,7 +73,7 @@ export function DocumentViewerModal({
 
           <a
             href={downloadSrc}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface-muted"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-[13px] font-medium text-text transition-colors hover:bg-primary-softer"
           >
             <Download size={14} strokeWidth={1.75} />
             {t.documents.viewer.download}
@@ -82,7 +82,7 @@ export function DocumentViewerModal({
             type="button"
             aria-label={t.documents.viewer.close}
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-surface-muted hover:text-text"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-primary-softer hover:text-text"
           >
             <X size={18} strokeWidth={1.75} />
           </button>
