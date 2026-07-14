@@ -35,6 +35,101 @@
 
 ---
 
+## Сессия 2026-07-14 — Цикл v4, Сессия 1: Фундамент (Neon, шим, baseline, data-слой) ✅
+
+_Первая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Гейт пройден целиком:
+dev-ветка Neon живая (миграции+сид), ACL-аудит и RLS-smoke 7/7 зелёные ПРЯМО НА
+NEON, схема на Neon бит-в-бит равна слепку (diff = 0). Приложение (next dev)
+пока остаётся на локальном Supabase — переключение слоя данных начнётся в
+сессиях 2–4, как и заложено в плане._
+
+**Модель:** Claude Fable 5
+
+### Сделано
+- **Решение владельца (заменило шаг 0):** автодеплой Vercel НЕ трогаем, вместо
+  этого `git push` ЗАПРЕЩЁН до сессии 7 (план §5 обновлён, T9 закрыт; хотфикс
+  прода = ветка от `origin/master` + ручной deploy ветки).
+- **Слепок схемы:** `db reset` → pg_dump → `scripts/clean-schema-dump.mjs`
+  (повторяемый чистильщик: `\restrict`, гранты anon/service_role/postgres,
+  ALTER DEFAULT PRIVILEGES, `CREATE SCHEMA public`) →
+  `db/migrations/0001_baseline.sql` (6146 строк). Самовоспроизведение доказано
+  (дамп применённой копии = слепку).
+- **Шим `0000_shim.sql`:** роли `authenticated` + `app_user` (LOGIN, только
+  SQL'ем!), схема `auth` со своей `auth.users` (+`failed_attempts`/`locked_until`
+  под rate-limit с2), `auth.uid()` STABLE из `app.user_id`, pgcrypto
+  `WITH SCHEMA extensions`; членство — идемпотентным grant'ом.
+- **Находка + фикс:** schema-only слепок терял данные, сеявшиеся миграциями →
+  `0002_baseline_data.sql` (departments ×10, payroll_rates 7/10/25,
+  org_requisites; INSERT … ON CONFLICT DO NOTHING). В план с7 вписано:
+  TRUNCATE этих таблиц перед COPY прод-данных (id не совпадут).
+- **Раннер** `scripts/db-migrate.ts` (`npm run db:migrate`): журнал
+  `public._migrations`, транзакция на файл, advisory lock, `reset all` между
+  файлами; идемпотентность проверена.
+- **ACL-аудит** `scripts/acl-audit.ts` (`npm run db:acl-audit`): DML-гранты по
+  всем таблицам, колоночная приватность users (open/private списки), закрытость
+  `private`/`auth` для app_user, RLS на всех таблицах, канарейка `_migrations`
+  против blanket-GRANT.
+- **Prisma 7 (driver adapters):** `prisma.config.ts` + `schema.prisma`
+  (22 модели; multiSchema `auth`+`public` — вынужденно из-за FK
+  `users.id → auth.users.id`; `@ignore` на `users.salary_*` — ревью A3; правило
+  «повторный db pull НЕ гонять» зашито комментарием); клиент генерится в
+  `src/generated/prisma` (gitignore + `postinstall: prisma generate`).
+- **Data-слой `src/lib/db/`:** `index.ts` — `userDb(userId, fn)`
+  (interactive-tx: `set_config('app.user_id',…,true)` → запросы; maxWait 10с /
+  timeout 15с под холодный Neon; fail-closed без обёртки), `admin.ts` —
+  `adminDb()` (owner-пул, лениво), `rpc.ts` — 26 типизированных обёрток всех
+  SQL-функций (нормализация numeric/bigint→number, date→'YYYY-MM-DD' из
+  ЛОКАЛЬНЫХ компонент Date), `errors.ts` — маппер Prisma/pg-ошибок в формат
+  существующего `lib/errors.ts` (P2010→meta.code; текст raise P0001 идёт
+  пользователю как есть).
+- **ESLint-гард (Q1):** `no-restricted-imports` на `@/lib/db/admin`; allowlist —
+  5 machine-роутов (cron/calendar/telegram/oo-content/oo-callback) +
+  `lib/users/actions|credentials-actions` + `scripts/**` + `tests/**`;
+  проверено — запрещённый импорт валит lint.
+- **Порт `scripts/seed.ts`** на Prisma+bcryptjs (auth-учётки → прямые INSERT в
+  нашу `auth.users` с bcrypt-хешем; гард `YUR_DB_ENV=prod`) и **мини-смок**
+  `scripts/smoke-rls-v4.ts` (`npm run smoke:rls:v4`, 7 секций; полный порт
+  22-секционного smoke-rls — сессия 6 по плану).
+- **Neon:** организация «Vercel: Hasky's projects» УПРАВЛЯЕТСЯ VERCEL (Launch)
+  — проект создан владельцем через Vercel → Storage → Create Database; проект
+  **«UR» `winter-credit-95791968`** (Frankfurt, PG17; первая попытка ушла в
+  us-east-1 с дефолтным регионом — пересоздана). Ветка `main`→`production`
+  (ПУСТАЯ до с7), создана `development` (`br-withered-hall-aszlshw4`,
+  endpoint `ep-proud-fire-asqdmxbl`). Прогнано на dev-ветке: миграции ×3,
+  пароль `app_user` (ALTER ROLE), ACL-аудит ✓, сид ✓, смок 7/7 ✓,
+  diff слепок↔Neon = 0 строк.
+- **Чистота:** tsc, eslint, unit 127/127, `next build` — зелёные.
+  `.env.example` дополнен v4-блоком; `.env.local` — Neon dev-строки
+  (`DATABASE_URL_APP/ADMIN/ADMIN_DIRECT`, `YUR_DB_ENV`, `NEON_API_KEY`).
+
+### Дальше
+- **Сессия 2 «Auth»** (новый чат, «Продолжаем цикл v4»): `lib/auth/session.ts`
+  (скользящий JWT + pwd_version — V2), `proxy.ts` без БД (урок POST-body),
+  rate-limit логина (V3-4), `/settings/users` на admin-пул, миграция
+  `pwd_version` в `public.users`, golden-тест bcrypt на реальном прод-хеше,
+  T6 — fixtures + 8 integration-файлов на новую базу (бюджет ~полдня).
+- Хвост владельцу: удалить в Vercel → Storage СТАРУЮ базу `yur-crm`
+  (Washington, us-east-1) — осталась от первой попытки.
+
+### Грабли / критичное для следующих сессий
+- **Neon-org managed by Vercel:** создать/переименовать/удалить ПРОЕКТ через
+  Neon API нельзя («action restricted») — только Vercel Storage. Ветки/роли/
+  endpoints нативным API управляются нормально.
+- **Роли из Neon API/Console входят в neon_superuser (BYPASSRLS!)** —
+  `app_user` создавать ТОЛЬКО SQL'ем (шим так и делает); пароль — `ALTER ROLE`;
+  pooler с SQL-ролями работает (проверено смоком через pooled-строку).
+- **Prisma-адаптер не десериализует тип `void`** → все void-RPC в rpc.ts идут
+  через `$executeRaw` (иначе UnsupportedNativeDataType).
+- **pg отдаёт `date` как JS Date с ЛОКАЛЬНОЙ полуночью** — `toISOString()`
+  сдвинул бы день; `dateStr()` в rpc.ts собирает YYYY-MM-DD из локальных
+  компонент.
+- `prisma db pull` повторно НЕ запускать (сотрёт ручные `@ignore`); новые
+  объекты БД = SQL-миграция в `db/migrations/` + правка schema.prisma руками.
+- Старые `supabase/migrations` НЕ архивировать до с6 — нужны для
+  `db push`-выравнивания прода перед с7 (план обновлён).
+- git: master впереди origin на 13 коммитов (редизайн v5 + план) + коммиты
+  этой сессии; **push запрещён до с7**.
+
 ## Сессия 2026-07-14 — Планирование цикла v4 «Переезд на Postgres (Neon)» ✅
 
 _Владелец решил ПОЛНОСТЬЮ уйти с Supabase («не нравится база, хочу чистый
