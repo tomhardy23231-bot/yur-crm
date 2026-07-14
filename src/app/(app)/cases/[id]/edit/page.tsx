@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 
 import { CaseForm } from '@/components/cases/case-form';
+import { CaseFormAside } from '@/components/cases/case-form-aside';
 import { updateCaseAction } from '@/lib/cases/actions';
 import {
   getCase,
@@ -61,22 +62,25 @@ export default async function EditCasePage({
         <p className="text-[13px] text-text-muted truncate">{c.number_title}</p>
       </div>
 
-      {/* Секции формы — сами карточки (редизайн 14.07). */}
-      <div className="w-full max-w-4xl">
-        <CaseForm
-          action={boundAction}
-          caseRow={c}
-          clients={clients}
-          lawyers={lawyers}
-          experts={experts}
-          submitLabel={t.common.save}
-          cancelHref={`/cases/${id}`}
-          allowedStages={allowedStages}
-          stageLockedHint={isArchived ? t.cases.archive.detailHint : undefined}
-          isStaff={isStaff}
-          canEditRates={user.caps.edit_rate_overrides}
-          canCreateClient={user.caps.create_clients}
-        />
+      {/* Секции формы — сами карточки (редизайн 14.07); справа — помощник. */}
+      <div className="grid w-full grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,56rem)_minmax(260px,320px)]">
+        <div className="min-w-0">
+          <CaseForm
+            action={boundAction}
+            caseRow={c}
+            clients={clients}
+            lawyers={lawyers}
+            experts={experts}
+            submitLabel={t.common.save}
+            cancelHref={`/cases/${id}`}
+            allowedStages={allowedStages}
+            stageLockedHint={isArchived ? t.cases.archive.detailHint : undefined}
+            isStaff={isStaff}
+            canEditRates={user.caps.edit_rate_overrides}
+            canCreateClient={user.caps.create_clients}
+          />
+        </div>
+        <CaseFormAside />
       </div>
     </main>
   );

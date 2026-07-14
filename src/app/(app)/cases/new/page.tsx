@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 
 import { CaseForm } from '@/components/cases/case-form';
+import { CaseFormAside } from '@/components/cases/case-form-aside';
 import { createCaseAction } from '@/lib/cases/actions';
 import {
   listClientsForSelect,
@@ -50,20 +51,23 @@ export default async function NewCasePage({
         </Link>
       </div>
 
-      {/* Секции формы — сами карточки (редизайн 14.07), внешняя обёртка не нужна.
-          max-w — чтобы поля не размазывались на очень широких экранах. */}
-      <div data-tour="case-form" className="w-full max-w-4xl">
-        <CaseForm
-          action={createCaseAction}
-          clients={clients}
-          lockedClient={lockedClient}
-          lawyers={lawyers}
-          experts={experts}
-          submitLabel={t.caseCard.create.submit}
-          cancelHref={lockedClient ? `/clients/${lockedClient.id}` : '/cases'}
-          canEditRates={canEditRates}
-          canCreateClient={user.caps.create_clients}
-        />
+      {/* Секции формы — сами карточки (редизайн 14.07); справа на широких
+          экранах — сайдбар-помощник (ставки, роли, «что дальше»). */}
+      <div className="grid w-full grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,56rem)_minmax(260px,320px)]">
+        <div data-tour="case-form" className="min-w-0">
+          <CaseForm
+            action={createCaseAction}
+            clients={clients}
+            lockedClient={lockedClient}
+            lawyers={lawyers}
+            experts={experts}
+            submitLabel={t.caseCard.create.submit}
+            cancelHref={lockedClient ? `/clients/${lockedClient.id}` : '/cases'}
+            canEditRates={canEditRates}
+            canCreateClient={user.caps.create_clients}
+          />
+        </div>
+        <CaseFormAside />
       </div>
     </main>
   );
