@@ -91,12 +91,14 @@ export function CaseTabs({ tabs, defaultTab, ariaLabel }: CaseTabsProps) {
   }
 
   return (
-    <div ref={rootRef} className="flex scroll-mt-16 flex-col gap-4">
+    <div ref={rootRef} className="flex scroll-mt-16 flex-col gap-3">
+      {/* Сегмент-контрол на белом скруглённом блоке (правка владельца 14.07):
+          вместо подчёркивания — пилюли, актив с синим тинтом. */}
       <div
         role="tablist"
         aria-label={ariaLabel}
         onKeyDown={onKeyDown}
-        className="no-scrollbar -mb-px flex items-center gap-1 overflow-x-auto border-b border-border"
+        className="no-scrollbar inline-flex max-w-full items-center gap-1 self-start overflow-x-auto rounded-full border border-border bg-surface p-1 shadow-sm"
       >
         {tabs.map((tb) => {
           const on = tb.key === active;
@@ -111,10 +113,10 @@ export function CaseTabs({ tabs, defaultTab, ariaLabel }: CaseTabsProps) {
               tabIndex={on ? 0 : -1}
               onClick={() => setActive(tb.key)}
               className={cn(
-                'inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-semibold transition-colors',
+                'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors',
                 on
-                  ? 'border-primary text-primary-pressed'
-                  : 'border-transparent text-text-muted hover:text-text',
+                  ? 'bg-primary-subtle text-primary-pressed'
+                  : 'text-text-muted hover:bg-primary-softer hover:text-primary-pressed',
               )}
             >
               {tb.label}
@@ -123,7 +125,7 @@ export function CaseTabs({ tabs, defaultTab, ariaLabel }: CaseTabsProps) {
                   className={cn(
                     'inline-flex min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] tabular-nums',
                     on
-                      ? 'bg-primary-subtle text-info-text'
+                      ? 'bg-surface text-primary-pressed'
                       : 'bg-surface-sunken text-text-muted',
                   )}
                 >

@@ -102,6 +102,18 @@ export const caseCard = {
     totalsPct: '{pct}% оплачено',
   },
 
+  // ── Блок «Описание дела» (правка владельца 2026-07-14) ───────────────
+  description: {
+    heading: 'Описание дела',
+    edit: 'Редактировать',
+    save: 'Сохранить',
+    saving: 'Сохранение…',
+    cancel: 'Отмена',
+    placeholder: 'Опишите суть дела: стороны, обстоятельства, договорённости…',
+    empty: 'Описания пока нет.',
+    emptyCanWrite: 'Добавьте описание — его увидит команда по делу.',
+  },
+
   // ── Сетка «поле: значение» в шапке (case-info-grid.tsx) ──────────────
   overview: {
     // Заголовки трёх колонок
@@ -111,6 +123,7 @@ export const caseCard = {
 
     // Колонка «Дело»
     number: '№ / название',
+    subject: 'Предмет договора',
     caseType: 'Тип дела',
     category: 'Категория',
     priority: 'Приоритет',
@@ -299,6 +312,7 @@ export const caseCard = {
     categoryRequired: 'Выберите категорию',
     categoryInvalid: 'Недопустимая категория',
     subjectTooLong: 'Слишком длинное (макс 300)',
+    descriptionTooLong: 'Слишком длинное описание (макс 5000)',
     stageRequired: 'Выберите этап',
     stageInvalid: 'Недопустимый этап',
     priorityRequired: 'Выберите приоритет',

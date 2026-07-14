@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { CaseStageDropdown } from '@/components/cases/case-stage-dropdown';
+import { CaseDescriptionBlock } from '@/components/cases/case-description-block';
 import { CaseQuickActions } from '@/components/cases/case-quick-actions';
 import { CaseActionBar } from '@/components/cases/case-action-bar';
 import { PaymentProgress } from '@/components/cases/payment-progress';
@@ -195,10 +196,13 @@ export default async function CaseDetailPage({
   const shownReward = participants.reduce((s, p) => s + p.amount, 0);
   const hasOverride = participants.some((p) => p.override);
 
-  // ── Вкладка «Обзор»: рабочая колонка + sticky-сайдбар (по каркасу) ──
+  // ── Вкладка «Обзор»: рабочая колонка + sticky-сайдбар (по каркасу).
+  // Правка владельца 14.07: слева — редактируемое «Описание дела» (+ теги),
+  // справа — «Детали дела» над «Вознаграждением команды»; история — только
+  // на своей вкладке. ──
   const overviewPanel = (
-    <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1.6fr_1fr]">
-      <div className="flex min-w-0 flex-col gap-5">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
+      <div className="flex min-w-0 flex-col gap-4">
         {!isClosed && (
           <CaseNextActions
             caseId={c.id}
@@ -209,37 +213,13 @@ export default async function CaseDetailPage({
           />
         )}
 
-        {/* Описание: предмет договора + теги (как «Описание» каркаса). */}
-        {(c.subject || c.tags.length > 0) && (
-          <Card className="p-5">
-            <CardLabel className="mb-2.5">
-              {t.caseCard.detail.descriptionTitle}
-            </CardLabel>
-            {c.subject && (
-              <p className="text-[13.5px] leading-relaxed text-text-muted">
-                {c.subject}
-              </p>
-            )}
-            {c.tags.length > 0 && (
-              <div className={cn('flex flex-wrap gap-2', c.subject && 'mt-3')}>
-                {c.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-lg bg-surface-sunken px-2.5 py-1 text-[11.5px] font-medium text-text-muted"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* Детальная сетка «поле: значение» (Дело · Клиент · Оплата и суд). */}
-        <Card className="p-5">
-          <CardLabel className="mb-3.5">{t.caseCard.detail.detailsTitle}</CardLabel>
-          <CaseInfoGrid c={c} />
-        </Card>
+        {/* Описание дела: свободный текст (редактируется, журналируется) + теги. */}
+        <CaseDescriptionBlock
+          caseId={c.id}
+          description={c.description}
+          tags={c.tags}
+          canWrite={canEdit}
+        />
 
         <section id="comments" className="scroll-mt-16">
           <CaseCommentsBlock
@@ -252,8 +232,14 @@ export default async function CaseDetailPage({
         </section>
       </div>
 
-      {/* Сайдбар: вознаграждение команды + последняя активность. */}
-      <aside className="flex min-w-0 flex-col gap-5 lg:sticky lg:top-16 lg:self-start">
+      {/* Сайдбар: детали дела + вознаграждение команды. */}
+      <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-16 lg:self-start">
+        {/* Детальная сетка «поле: значение» — одной колонкой в сайдбаре. */}
+        <Card className="p-5">
+          <CardLabel className="mb-3.5">{t.caseCard.detail.detailsTitle}</CardLabel>
+          <CaseInfoGrid c={c} stacked />
+        </Card>
+
         {payroll && participants.length > 0 && (
           <Card className="p-4">
             <CardLabel className="mb-2.5">
@@ -370,8 +356,6 @@ export default async function CaseDetailPage({
             </p>
           </Card>
         )}
-
-        <CaseActivityBlock caseId={c.id} limit={5} />
       </aside>
     </div>
   );
@@ -432,7 +416,7 @@ export default async function CaseDetailPage({
   );
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
+    <main className="flex flex-col gap-3 px-3 py-1.5 sm:px-4">
       {/* ── Закреплённая панель: «К списку» + действия над делом ── */}
       <CaseActionBar
         caseId={c.id}
@@ -468,9 +452,9 @@ export default async function CaseDetailPage({
       {/* ── Шапка дела (по каркасу): бейджи → заголовок → клиент →
            инфо-плитки → акцент-полоса «Оплата по делу». ── */}
       <Card id="overview" className="scroll-mt-16 overflow-hidden">
-        <div className="flex flex-col gap-4 p-4 sm:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
-            <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex flex-col gap-3 px-4 py-3 sm:px-5 sm:py-3.5">
+          <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+            <div className="flex min-w-0 flex-col gap-1.5">
               {/* Бейджи: этап (рабочий дропдаун) · категория · приоритет · статусы. */}
               <div className="flex flex-wrap items-center gap-2">
                 <CaseStageDropdown
@@ -551,7 +535,7 @@ export default async function CaseDetailPage({
           </div>
 
           {/* Инфо-плитки: Открыто · Дней на этапе/Завершено · Юрист · Эксперт. */}
-          <div className="grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4">
             <InfoTile
               icon={<Calendar size={13} strokeWidth={1.75} />}
               label={t.caseCard.detail.tileOpened}
@@ -613,7 +597,7 @@ export default async function CaseDetailPage({
 
         {/* Акцент-полоса оплаты (каркас): подпись слева, суммы mono справа,
             прогресс во всю ширину. Долг/переплата — чипами рядом с суммами. */}
-        <div className="flex flex-col gap-2 border-t border-border bg-primary-softer/40 px-4 py-3.5 sm:px-5">
+        <div className="flex flex-col gap-1.5 border-t border-border bg-primary-softer/40 px-4 py-2.5 sm:px-5">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[12.5px]">
             <span className="font-semibold text-text">
               {t.caseCard.detail.paymentStripTitle}

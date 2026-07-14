@@ -37,7 +37,7 @@ export function CaseActionBar({
   const { t } = useI18n();
 
   return (
-    <div className="sticky top-0 z-30 -mx-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-surface/85 px-3 py-2 backdrop-blur sm:-mx-4 sm:px-4">
+    <div className="sticky top-0 z-30 -mx-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-border bg-surface/85 px-3 py-1.5 backdrop-blur sm:-mx-4 sm:px-4">
       <Link
         href="/cases"
         className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-[12.5px] font-medium text-text-muted shadow-sm transition-colors hover:border-border-strong hover:text-text"

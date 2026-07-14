@@ -76,7 +76,7 @@ export function Topbar({
       : t.topbar.notificationsAria;
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-bg/70 px-5 backdrop-blur-xl sm:gap-4 sm:px-6">
+    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-bg/70 px-4 backdrop-blur-xl sm:gap-4 sm:px-5">
       <h1 className="truncate text-[18px] font-bold tracking-tight text-text">
         {title}
       </h1>
@@ -86,7 +86,7 @@ export function Topbar({
         type="button"
         onClick={open}
         data-tour="topbar-search"
-        className="hidden h-9 w-[280px] items-center gap-2.5 rounded-full border border-border bg-surface px-4 text-[13px] text-text-subtle transition-all duration-200 hover:border-primary-border hover:shadow-sm md:flex lg:w-[330px]"
+        className="hidden h-8 w-[280px] items-center gap-2.5 rounded-full border border-border bg-surface px-3.5 text-[13px] text-text-subtle transition-all duration-200 hover:border-primary-border hover:shadow-sm md:flex lg:w-[330px]"
         aria-label={t.topbar.searchAria}
       >
         <Search size={15} strokeWidth={2} className="shrink-0" />
@@ -103,7 +103,7 @@ export function Topbar({
         <Link
           href="/cases/new"
           data-tour="cases-new"
-          className="hidden h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary-hover px-4 text-[13px] font-semibold text-primary-fg shadow-brand transition-all duration-200 hover:-translate-y-px hover:shadow-brand-hover md:inline-flex"
+          className="hidden h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary-hover px-3.5 text-[13px] font-semibold text-primary-fg shadow-brand transition-all duration-200 hover:-translate-y-px hover:shadow-brand-hover md:inline-flex"
         >
           <Plus size={15} strokeWidth={2.5} />
           {t.topbar.newCase}
@@ -116,7 +116,7 @@ export function Topbar({
       <button
         type="button"
         onClick={open}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-pressed md:hidden"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-pressed md:hidden"
         aria-label={t.topbar.searchAria}
       >
         <Search size={17} strokeWidth={1.9} />
@@ -128,7 +128,7 @@ export function Topbar({
         href="/tasks"
         aria-label={dueLabel}
         title={dueLabel}
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-pressed"
+        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-pressed"
       >
         <Bell size={18} strokeWidth={1.9} />
         {dueTotal > 0 && (
@@ -148,7 +148,7 @@ export function Topbar({
         aria-label={t.nav.profileAria}
         className="flex items-center gap-2.5 rounded-full pl-1 transition-opacity hover:opacity-90"
       >
-        <Avatar name={userName} size="md" className="ring-2 ring-surface" />
+        <Avatar name={userName} size="sm" className="ring-2 ring-surface" />
         <div className="hidden leading-tight sm:block">
           <p className="text-[13px] font-semibold text-text">{userName}</p>
           <p className="text-[11px] text-text-muted">{roleLabel}</p>

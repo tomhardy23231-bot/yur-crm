@@ -93,6 +93,18 @@ export const caseCard: CaseCardMessages = {
     totalsPct: '{pct}% сплачено',
   },
 
+  // ── Блок «Опис справи» (правка власника 2026-07-14) ──────────────────
+  description: {
+    heading: 'Опис справи',
+    edit: 'Редагувати',
+    save: 'Зберегти',
+    saving: 'Збереження…',
+    cancel: 'Скасувати',
+    placeholder: 'Опишіть суть справи: сторони, обставини, домовленості…',
+    empty: 'Опису поки немає.',
+    emptyCanWrite: 'Додайте опис — його побачить команда у справі.',
+  },
+
   // ── Сітка «поле: значення» в шапці (case-info-grid.tsx) ──────────────
   overview: {
     colCase: 'Справа',
@@ -100,6 +112,7 @@ export const caseCard: CaseCardMessages = {
     colFinance: 'Оплата і суд',
 
     number: '№ / назва',
+    subject: 'Предмет договору',
     caseType: 'Тип справи',
     category: 'Категорія',
     priority: 'Пріоритет',
@@ -281,6 +294,7 @@ export const caseCard: CaseCardMessages = {
     categoryRequired: 'Оберіть категорію',
     categoryInvalid: 'Неприпустима категорія',
     subjectTooLong: 'Занадто довге (макс 300)',
+    descriptionTooLong: 'Занадто довгий опис (макс 5000)',
     stageRequired: 'Оберіть етап',
     stageInvalid: 'Неприпустимий етап',
     priorityRequired: 'Оберіть пріоритет',

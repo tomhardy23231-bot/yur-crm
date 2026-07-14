@@ -21,7 +21,14 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 // колонки делят одну dl-сетку, поэтому подписи выровнены по вертикали.
 const DL_CLASS = 'grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1.5';
 
-export async function CaseInfoGrid({ c }: { c: CaseWithRefs }) {
+export async function CaseInfoGrid({
+  c,
+  stacked = false,
+}: {
+  c: CaseWithRefs;
+  /** true — колонки одна под другой (узкий сайдбар «Обзора»), false — сетка 2–3 колонки. */
+  stacked?: boolean;
+}) {
   const { t } = await getT();
   const o = t.caseCard.overview;
   const dash = o.dash;
@@ -33,11 +40,17 @@ export async function CaseInfoGrid({ c }: { c: CaseWithRefs }) {
   const email = client?.email?.trim() || null;
 
   return (
-    <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+    <div
+      className={cn(
+        'grid grid-cols-1 gap-x-8 gap-y-6',
+        !stacked && 'sm:grid-cols-2 lg:grid-cols-3',
+      )}
+    >
       {/* ── Колонка «Дело» ─────────────────────────────────────────── */}
       <Column title={o.colCase}>
         <dl className={DL_CLASS}>
           <Field label={o.number}>{c.number_title}</Field>
+          {c.subject && <Field label={o.subject}>{c.subject}</Field>}
           <Field label={o.caseType}>{t.enums.caseType[c.case_type]}</Field>
           <Field label={o.category}>
             <CategoryBadge category={c.category} quiet />

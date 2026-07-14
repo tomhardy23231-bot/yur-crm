@@ -419,7 +419,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
   const { data, error } = await supabase
     .from('cases')
     .select(
-      'id, number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, priority, tags, ' +
+      'id, number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, description, stage, priority, tags, ' +
         'contract_sum, paid_total, debt, overpaid, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, closed_at, outcome, lost_reason, closed_without_act, stage_changed_at, archived_at, archived_by, created_at, updated_at, ' +
         'client:client_id(id, name, client_kind, phone, email, source), lawyer:lawyer_id(id, full_name), responsible:responsible_id(id, full_name)',
     )
@@ -491,6 +491,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
     case_type: r.case_type,
     category: r.category,
     subject: r.subject,
+    description: r.description,
     stage: r.stage,
     priority: r.priority,
     tags: r.tags ?? [],

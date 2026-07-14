@@ -739,6 +739,78 @@ export async function updateCaseStageAction(
   return { ok: true };
 }
 
+// ── Описание дела: inline-редактирование с карточки (правка 2026-07-14) ───
+// Право записи — RLS UPDATE cases (can_write_case: юрист/Експерт дела или
+// видит-всё). Правка журналируется как case_updated с diff по description
+// (значения усечены — поле может быть длинным).
+export type DescriptionActionState = { ok: boolean; message?: string };
+
+// Усечение значения для diff'а журнала (полный текст хранится в самом деле).
+function clipForDiff(s: string | null): string | null {
+  if (s === null) return null;
+  return s.length > 120 ? `${s.slice(0, 117)}…` : s;
+}
+
+export async function updateCaseDescriptionAction(
+  caseId: string,
+  _prev: DescriptionActionState,
+  formData: FormData,
+): Promise<DescriptionActionState> {
+  await requireUser();
+  const { t } = await getT();
+
+  if (!UUID_RE.test(caseId))
+    return { ok: false, message: t.caseCard.actions.caseInvalid };
+
+  const raw = String(formData.get('description') ?? '').trim();
+  const description = raw ? raw : null;
+  if (description && description.length > 5000)
+    return { ok: false, message: t.caseCard.actions.descriptionTooLong };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: before } = await supabase
+    .from('cases')
+    .select('description')
+    .eq('id', caseId)
+    .maybeSingle<{ description: string | null }>();
+  if (!before) return { ok: false, message: t.caseCard.actions.caseNotFound };
+  if ((before.description ?? null) === description) return { ok: true }; // no-op
+
+  const { error } = await supabase
+    .from('cases')
+    .update({ description })
+    .eq('id', caseId);
+  if (error) {
+    return {
+      ok: false,
+      message: dbErrorMessage(
+        'updateCaseDescriptionAction',
+        error,
+        t.caseCard.actions.updateFailed,
+        t.errors.db,
+      ),
+    };
+  }
+
+  await logActivity({
+    entity_type: 'case',
+    entity_id: caseId,
+    action: 'case_updated',
+    changes: {
+      diff: {
+        description: {
+          from: clipForDiff(before.description),
+          to: clipForDiff(description),
+        },
+      },
+    },
+  });
+
+  revalidatePath(`/cases/${caseId}`);
+  return { ok: true };
+}
+
 // ── Закрыть дело как «не заключили» (lost) — v3 Сессия 7 ──────────────────
 // Дело с этапа new_request|consultation закрывается без договора. Право (staff или
 // юрист дела + видимость) и журнал (case_lost) — внутри SECURITY DEFINER

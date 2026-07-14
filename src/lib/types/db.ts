@@ -494,6 +494,8 @@ export type Case = {
   case_type: CaseType;
   category: CaseCategory;
   subject: string | null;
+  // Свободное описание дела (блок «Описание» на карточке, правка 2026-07-14).
+  description: string | null;
   stage: CaseStage;
   priority: CasePriority;
   tags: string[];
