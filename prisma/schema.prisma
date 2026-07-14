@@ -1,0 +1,634 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["auth", "public"]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model auth_users {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String
+  encrypted_password String        @default("")
+  failed_attempts    Int           @default(0)
+  locked_until       DateTime?     @db.Timestamptz(6)
+  created_at         DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime      @default(now()) @db.Timestamptz(6)
+  users              public_users?
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model migrations {
+  name       String   @id
+  applied_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("_migrations")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model absences {
+  id                               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                          String       @db.Uuid
+  kind                             String       @default("vacation")
+  starts_on                        DateTime     @db.Date
+  ends_on                          DateTime     @db.Date
+  note                             String?
+  created_by                       String       @db.Uuid
+  created_at                       DateTime     @default(now()) @db.Timestamptz(6)
+  users_absences_created_byTousers public_users @relation("absences_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction)
+  users_absences_user_idTousers    public_users @relation("absences_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([created_by])
+  @@index([starts_on, ends_on], map: "absences_range_idx")
+  @@index([user_id], map: "absences_user_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model activity_log {
+  id          BigInt        @id @default(autoincrement())
+  entity_type String
+  entity_id   String        @db.Uuid
+  user_id     String?       @db.Uuid
+  action      String
+  changes     Json?
+  created_at  DateTime      @default(now()) @db.Timestamptz(6)
+  users       public_users? @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)])
+  @@index([entity_type, entity_id, created_at(sort: Desc)], map: "activity_log_entity_idx")
+  @@index([user_id, created_at(sort: Desc)], map: "activity_log_user_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model case_acts {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id          String       @db.Uuid
+  number           Int          @unique @default(autoincrement())
+  service_name     String       @default("Юридичні послуги")
+  service_period   String?
+  amount           Decimal      @db.Decimal(14, 2)
+  confirmed_amount Decimal?     @db.Decimal(14, 2)
+  completion       String?
+  status           String       @default("issued")
+  issued_at        DateTime     @default(dbgenerated("CURRENT_DATE")) @db.Date
+  paid_at          DateTime?    @db.Date
+  scan_document_id String?      @db.Uuid
+  note             String?
+  created_by       String       @db.Uuid
+  created_at       DateTime     @default(now()) @db.Timestamptz(6)
+  cases            cases        @relation(fields: [case_id], references: [id], onUpdate: NoAction)
+  users            public_users @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  documents        documents?   @relation(fields: [scan_document_id], references: [id], onUpdate: NoAction)
+  payments         payments?
+
+  @@index([case_id, created_at(sort: Desc)], map: "case_acts_case_idx")
+  @@index([created_by])
+  @@index([scan_document_id])
+  @@index([status])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model case_comments {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id    String       @db.Uuid
+  author_id  String       @db.Uuid
+  body       String
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at DateTime?    @db.Timestamptz(6)
+  users      public_users @relation(fields: [author_id], references: [id], onUpdate: NoAction)
+  cases      cases        @relation(fields: [case_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([case_id, created_at(sort: Desc)], map: "case_comments_case_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cases {
+  id                                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number_title                      String
+  client_id                         String               @db.Uuid
+  lawyer_id                         String               @db.Uuid
+  responsible_id                    String               @db.Uuid
+  opened_at                         DateTime             @db.Date
+  case_type                         case_type
+  category                          case_category
+  subject                           String?
+  stage                             case_stage           @default(new_request)
+  priority                          case_priority        @default(normal)
+  tags                              String[]             @default([])
+  contract_sum                      Decimal              @default(0) @db.Decimal(14, 2)
+  paid_total                        Decimal              @default(0) @db.Decimal(14, 2)
+  debt                              Decimal              @default(0) @db.Decimal(14, 2)
+  billing_types                     billing_type[]       @default([])
+  opponent                          String?
+  court_case_number                 String?
+  court                             String?
+  closed_at                         DateTime?            @db.Date
+  created_at                        DateTime             @default(now()) @db.Timestamptz(6)
+  lawyer_rate_override              Decimal?             @db.Decimal(5, 2)
+  expert_rate_override              Decimal?             @db.Decimal(5, 2)
+  accrual_mode                      accrual_mode         @default(on_completion)
+  overpaid                          Decimal              @default(0) @db.Decimal(14, 2)
+  closed_without_act                Boolean              @default(false)
+  stage_changed_at                  DateTime             @default(now()) @db.Timestamptz(6)
+  archived_at                       DateTime?            @db.Timestamptz(6)
+  archived_by                       String?              @db.Uuid
+  updated_at                        DateTime             @default(now()) @db.Timestamptz(6)
+  outcome                           String?
+  lost_reason                       String?
+  description                       String?
+  case_acts                         case_acts[]
+  case_comments                     case_comments[]
+  users_cases_archived_byTousers    public_users?        @relation("cases_archived_byTousers", fields: [archived_by], references: [id], onUpdate: NoAction)
+  clients                           clients              @relation(fields: [client_id], references: [id], onUpdate: NoAction)
+  users_cases_lawyer_idTousers      public_users         @relation("cases_lawyer_idTousers", fields: [lawyer_id], references: [id], onUpdate: NoAction)
+  users_cases_responsible_idTousers public_users         @relation("cases_responsible_idTousers", fields: [responsible_id], references: [id], onUpdate: NoAction)
+  cash_entries                      cash_entries[]
+  documents                         documents[]
+  payment_plan_items                payment_plan_items[]
+  payments                          payments[]
+  payout_allocations                payout_allocations[]
+  payroll_ledger                    payroll_ledger[]
+  tasks                             tasks[]
+
+  @@index([closed_at(sort: Desc)], map: "cases_archive_closed_at_idx", where: raw("(archived_at IS NOT NULL)"))
+  @@index([archived_at(sort: Desc)], where: raw("(archived_at IS NOT NULL)"))
+  @@index([archived_by])
+  @@index([case_type])
+  @@index([category])
+  @@index([client_id], map: "cases_client_idx")
+  @@index([lawyer_id], map: "cases_lawyer_idx")
+  @@index([opened_at(sort: Desc)])
+  @@index([responsible_id], map: "cases_responsible_idx")
+  @@index([stage])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model cash_accounts {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  kind            String         @default("bank")
+  opening_balance Decimal        @default(0) @db.Decimal(14, 2)
+  opening_date    DateTime       @default(dbgenerated("CURRENT_DATE")) @db.Date
+  is_active       Boolean        @default(true)
+  is_default      Boolean        @unique(map: "cash_accounts_one_default", where: raw("is_default")) @default(false)
+  created_by      String         @db.Uuid
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  users           public_users   @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  cash_entries    cash_entries[]
+
+  @@index([is_active], map: "cash_accounts_active_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cash_entries {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  account_id    String        @db.Uuid
+  entry_date    DateTime      @db.Date
+  direction     String
+  amount        Decimal       @db.Decimal(14, 2)
+  description   String
+  case_id       String?       @db.Uuid
+  payment_id    String?       @unique(map: "cash_entries_payment_uniq", where: raw("(payment_id IS NOT NULL)")) @db.Uuid
+  created_by    String        @db.Uuid
+  created_at    DateTime      @default(now()) @db.Timestamptz(6)
+  cash_accounts cash_accounts @relation(fields: [account_id], references: [id], onUpdate: NoAction)
+  cases         cases?        @relation(fields: [case_id], references: [id], onUpdate: NoAction)
+  users         public_users  @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  payments      payments?     @relation(fields: [payment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([account_id, entry_date], map: "cash_entries_account_date_idx")
+  @@index([case_id])
+  @@index([created_by])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model clients {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  client_kind     client_kind
+  phone           String?
+  email           String?
+  address         String?
+  source          client_source?
+  notes           String?
+  created_by      String         @db.Uuid
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  last_name       String?
+  first_name      String?
+  middle_name     String?
+  birth_date      DateTime?      @db.Date
+  inn             String?
+  contract_number String?
+  cases           cases[]
+  users           public_users   @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+
+  @@index([created_by])
+  @@index([name])
+  @@schema("public")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model departments {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String         @unique
+  is_active  Boolean        @default(true)
+  created_at DateTime       @default(now()) @db.Timestamptz(6)
+  users      public_users[]
+
+  @@schema("public")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model documents {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id     String       @db.Uuid
+  file_name   String
+  storage_key String
+  doc_type    doc_type     @default(other)
+  uploaded_by String       @db.Uuid
+  uploaded_at DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime     @default(now()) @db.Timestamptz(6)
+  case_acts   case_acts[]
+  cases       cases        @relation(fields: [case_id], references: [id], onUpdate: NoAction)
+  users       public_users @relation(fields: [uploaded_by], references: [id], onUpdate: NoAction)
+
+  @@index([case_id], map: "documents_case_idx")
+  @@index([uploaded_by])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model org_requisites {
+  id               Int           @id @default(1) @db.SmallInt
+  org_name         String        @default("")
+  edrpou           String        @default("")
+  address          String        @default("")
+  phone            String        @default("")
+  iban             String        @default("")
+  bank_name        String        @default("")
+  mfo              String        @default("")
+  tax_status_lines String[]      @default([])
+  updated_at       DateTime      @default(now()) @db.Timestamptz(6)
+  updated_by       String?       @db.Uuid
+  users            public_users? @relation(fields: [updated_by], references: [id], onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payment_plan_items {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id    String       @db.Uuid
+  due_date   DateTime     @db.Date
+  amount     Decimal      @db.Decimal(14, 2)
+  note       String?
+  created_by String       @db.Uuid
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+  cases      cases        @relation(fields: [case_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      public_users @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+
+  @@index([case_id, due_date], map: "payment_plan_items_case_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payments {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id         String        @db.Uuid
+  amount          Decimal       @db.Decimal(14, 2)
+  paid_at         DateTime      @db.Date
+  method          String?
+  note            String?
+  created_by      String        @db.Uuid
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  idempotency_key String?       @unique(map: "payments_idempotency_key_idx", where: raw("(idempotency_key IS NOT NULL)")) @db.Uuid
+  act_id          String?       @unique(map: "payments_act_id_uniq", where: raw("(act_id IS NOT NULL)")) @db.Uuid
+  cash_entries    cash_entries?
+  case_acts       case_acts?    @relation(fields: [act_id], references: [id], onUpdate: NoAction)
+  cases           cases         @relation(fields: [case_id], references: [id], onUpdate: NoAction)
+  users           public_users  @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+
+  @@index([case_id], map: "payments_case_idx")
+  @@index([created_by])
+  @@index([paid_at(sort: Desc)])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payout_allocations {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transaction_id       String               @db.Uuid
+  case_id              String               @db.Uuid
+  role_in_case         String
+  amount               Decimal              @db.Decimal(14, 2)
+  cases                cases                @relation(fields: [case_id], references: [id], onUpdate: NoAction)
+  payroll_transactions payroll_transactions @relation(fields: [transaction_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([transaction_id, case_id, role_in_case], map: "payout_allocations_uniq")
+  @@index([case_id], map: "payout_allocations_case_idx")
+  @@index([transaction_id], map: "payout_allocations_tx_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payroll_ledger {
+  id                                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id                                String        @db.Uuid
+  user_id                                String        @db.Uuid
+  role_in_case                           String
+  base_amount                            Decimal       @db.Decimal(14, 2)
+  percent                                Decimal       @db.Decimal(5, 2)
+  amount                                 Decimal       @db.Decimal(14, 2)
+  status                                 String        @default("accrued")
+  accrued_at                             DateTime      @default(now()) @db.Timestamptz(6)
+  paid_at                                DateTime?     @db.Timestamptz(6)
+  created_by                             String?       @db.Uuid
+  created_at                             DateTime      @default(now()) @db.Timestamptz(6)
+  paid_by                                String?       @db.Uuid
+  cases                                  cases         @relation(fields: [case_id], references: [id], onUpdate: NoAction)
+  users_payroll_ledger_created_byTousers public_users? @relation("payroll_ledger_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction)
+  users_payroll_ledger_paid_byTousers    public_users? @relation("payroll_ledger_paid_byTousers", fields: [paid_by], references: [id], onUpdate: NoAction)
+  users_payroll_ledger_user_idTousers    public_users  @relation("payroll_ledger_user_idTousers", fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@unique([case_id, user_id, role_in_case], map: "payroll_ledger_one_accrued_idx", where: raw("(status = 'accrued'::text)"))
+  @@index([case_id], map: "payroll_ledger_case_idx")
+  @@index([created_by])
+  @@index([status])
+  @@index([user_id], map: "payroll_ledger_user_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payroll_rates {
+  category       case_category @id
+  updated_at     DateTime      @default(now()) @db.Timestamptz(6)
+  lawyer_percent Decimal       @db.Decimal(5, 2)
+  expert_percent Decimal       @db.Decimal(5, 2)
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payroll_transactions {
+  id                                           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                                      String               @db.Uuid
+  kind                                         String
+  amount                                       Decimal              @db.Decimal(14, 2)
+  comment                                      String?
+  occurred_on                                  DateTime             @default(dbgenerated("CURRENT_DATE")) @db.Date
+  created_by                                   String?              @db.Uuid
+  created_at                                   DateTime             @default(now()) @db.Timestamptz(6)
+  payout_allocations                           payout_allocations[]
+  users_payroll_transactions_created_byTousers public_users?        @relation("payroll_transactions_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction)
+  users_payroll_transactions_user_idTousers    public_users         @relation("payroll_transactions_user_idTousers", fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([created_by])
+  @@index([kind])
+  @@index([user_id], map: "payroll_transactions_user_idx")
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model tasks {
+  id                             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id                        String       @db.Uuid
+  title                          String
+  description                    String?
+  kind                           task_kind    @default(task)
+  assignee_id                    String       @db.Uuid
+  created_by                     String       @db.Uuid
+  due_at                         DateTime?    @db.Timestamptz(6)
+  status                         task_status  @default(open)
+  created_at                     DateTime     @default(now()) @db.Timestamptz(6)
+  users_tasks_assignee_idTousers public_users @relation("tasks_assignee_idTousers", fields: [assignee_id], references: [id], onUpdate: NoAction)
+  cases                          cases        @relation(fields: [case_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_tasks_created_byTousers  public_users @relation("tasks_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction)
+
+  @@index([assignee_id], map: "tasks_assignee_idx")
+  @@index([case_id], map: "tasks_case_idx")
+  @@index([created_by])
+  @@index([due_at], map: "tasks_due_open_idx", where: raw("(status = 'open'::task_status)"))
+  @@index([status])
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model user_notify_channels {
+  user_id            String       @id @db.Uuid
+  telegram_chat_id   String?
+  telegram_link_code String?      @unique
+  calendar_token     String       @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  updated_at         DateTime     @default(now()) @db.Timestamptz(6)
+  users              public_users @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model public_users {
+  id                                                          String                 @id @db.Uuid
+  full_name                                                   String
+  email                                                       String                 @unique
+  role                                                        user_role
+  is_active                                                   Boolean                @default(true)
+  created_at                                                  DateTime               @default(now()) @db.Timestamptz(6)
+  perm_overrides                                              Json                   @default("{}")
+  language                                                    String                 @default("uk")
+  department_id                                               String?                @db.Uuid
+  position                                                    String?
+  visibility_scope                                            String                 @default("department")
+  /// ⚠ РУЧНАЯ ПРАВКА (ревью A3, НЕ стирать повторным db pull): колонки
+  /// salary_* закрыты column-level привилегиями БД — без @ignore каждый
+  /// users-запрос под app_user падал бы «permission denied». Чтение/запись
+  /// ЗП — ТОЛЬКО через DEFINER-RPC (payroll_employee_summary,
+  /// manage_user_salaries), см. lib/db/rpc.ts. Правило распространяется
+  /// на все будущие приватные колонки users.
+  salary_mode                                                 String                 @default("percent") @ignore
+  salary_fixed_amount                                         Decimal?               @db.Decimal(14, 2) @ignore
+  absences_absences_created_byTousers                         absences[]             @relation("absences_created_byTousers")
+  absences_absences_user_idTousers                            absences[]             @relation("absences_user_idTousers")
+  activity_log                                                activity_log[]
+  case_acts                                                   case_acts[]
+  case_comments                                               case_comments[]
+  cases_cases_archived_byTousers                              cases[]                @relation("cases_archived_byTousers")
+  cases_cases_lawyer_idTousers                                cases[]                @relation("cases_lawyer_idTousers")
+  cases_cases_responsible_idTousers                           cases[]                @relation("cases_responsible_idTousers")
+  cash_accounts                                               cash_accounts[]
+  cash_entries                                                cash_entries[]
+  clients                                                     clients[]
+  documents                                                   documents[]
+  org_requisites                                              org_requisites[]
+  payment_plan_items                                          payment_plan_items[]
+  payments                                                    payments[]
+  payroll_ledger_payroll_ledger_created_byTousers             payroll_ledger[]       @relation("payroll_ledger_created_byTousers")
+  payroll_ledger_payroll_ledger_paid_byTousers                payroll_ledger[]       @relation("payroll_ledger_paid_byTousers")
+  payroll_ledger_payroll_ledger_user_idTousers                payroll_ledger[]       @relation("payroll_ledger_user_idTousers")
+  payroll_transactions_payroll_transactions_created_byTousers payroll_transactions[] @relation("payroll_transactions_created_byTousers")
+  payroll_transactions_payroll_transactions_user_idTousers    payroll_transactions[] @relation("payroll_transactions_user_idTousers")
+  tasks_tasks_assignee_idTousers                              tasks[]                @relation("tasks_assignee_idTousers")
+  tasks_tasks_created_byTousers                               tasks[]                @relation("tasks_created_byTousers")
+  user_notify_channels                                        user_notify_channels?
+  departments                                                 departments?           @relation(fields: [department_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                                                       auth_users             @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([department_id])
+  @@index([role])
+  @@map("users")
+  @@schema("public")
+}
+
+enum accrual_mode {
+  on_completion
+  per_payment
+
+  @@schema("public")
+}
+
+enum billing_type {
+  prepaid
+  installments
+  fixed
+  success_fee
+
+  @@schema("public")
+}
+
+enum case_category {
+  document
+  claim
+  representation
+
+  @@schema("public")
+}
+
+enum case_priority {
+  normal
+  urgent
+
+  @@schema("public")
+}
+
+enum case_stage {
+  new_request
+  consultation
+  in_progress
+  awaiting_decision
+  closed
+
+  @@schema("public")
+}
+
+enum case_type {
+  civil
+  criminal
+  corporate
+  administrative
+  family
+  labor
+  other
+
+  @@schema("public")
+}
+
+enum client_kind {
+  individual
+  company
+  entrepreneur
+
+  @@schema("public")
+}
+
+enum client_source {
+  website
+  referral
+  advertising
+  repeat
+  other
+
+  @@schema("public")
+}
+
+enum doc_type {
+  contract
+  claim
+  power_of_attorney
+  correspondence
+  act
+  other
+
+  @@schema("public")
+}
+
+enum task_kind {
+  task
+  hearing
+  deadline
+
+  @@schema("public")
+}
+
+enum task_status {
+  open
+  done
+
+  @@schema("public")
+}
+
+enum user_role {
+  owner
+  admin
+  office_manager
+  lawyer
+  expert
+
+  @@schema("public")
+}

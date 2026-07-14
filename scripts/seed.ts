@@ -1,45 +1,27 @@
 // scripts/seed.ts
-// Сид тестовых данных для локальной разработки.
+// Сид тестовых данных для разработки (цикл v4: чистый Postgres/Neon).
 //
 // Запуск: `npm run db:seed`
-// Требует:
-//   - поднятый локальный Supabase (`npx supabase start`)
-//   - применённые миграции (`npx supabase db reset` уже это делает)
-//   - .env.local с NEXT_PUBLIC_SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY
+// Требует: применённые миграции (`npm run db:migrate`) и .env.local с
+// DATABASE_URL_ADMIN (+ DATABASE_URL_ADMIN_DIRECT для миграций).
 //
-// Использует service_role КЛЮЧ → в обход RLS (CLAUDE.md §2: service_role только
-// для системных задач, к которым сид и относится).
-//
-// Скрипт идемпотентен: повторный запуск не дублирует пользователей и тестовые сущности.
+// Идёт через admin-пул (owner БД, обходит RLS) — системная задача по
+// CLAUDE.md §2. Идемпотентен: повторный запуск не дублирует данные.
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
+import { adminDb } from '@/lib/db/admin';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SUPABASE_URL || !SERVICE_ROLE) {
+// Защита от случайного запуска против прода: в Vercel prod задаём
+// YUR_DB_ENV=prod, локально/на dev-ветке Neon — dev (см. .env.example).
+if (process.env.YUR_DB_ENV === 'prod' && process.env.ALLOW_NONLOCAL_SEED !== '1') {
   console.error(
-    'Не заданы NEXT_PUBLIC_SUPABASE_URL и/или SUPABASE_SERVICE_ROLE_KEY в .env.local.\n' +
-      'Запусти `npx supabase status` и скопируй значения в .env.local.',
+    'Отказ сидить прод (YUR_DB_ENV=prod): сид создаёт тестовых пользователей ' +
+      'с известным паролем. Если это осознанно: ALLOW_NONLOCAL_SEED=1 npm run db:seed',
   );
   process.exit(1);
 }
 
-// Защита от случайного запуска против staging/prod (CSO finding #5).
-const IS_LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(SUPABASE_URL);
-if (!IS_LOCAL && process.env.ALLOW_NONLOCAL_SEED !== '1') {
-  console.error(
-    `Отказ сидить нелокальный Supabase: ${SUPABASE_URL}\n` +
-      'Сид создаёт тестовых пользователей с известным паролем — это опасно в чужом окружении.\n' +
-      'Если действительно нужно (например, dev-ветка Supabase Cloud) — запусти:\n' +
-      '  ALLOW_NONLOCAL_SEED=1 npm run db:seed',
-  );
-  process.exit(1);
-}
-
-const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
+const db = adminDb();
 
 const PASSWORD = 'test12345!';
 
@@ -70,33 +52,26 @@ const ACCOUNTS: Account[] = [
   { email: 'expert2@yur.local', full_name: 'Елена Экспертова', role: 'expert', department: 'Львівський', position: 'експерт' },
 ];
 
+// Учётка входа: наша auth.users (замена GoTrue), пароль — bcrypt-хеш.
 async function ensureAuthUser(email: string): Promise<string> {
-  let page = 1;
-  while (true) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) throw error;
-    const found = data.users.find((u) => u.email === email);
-    if (found) return found.id;
-    if (data.users.length < 200) break;
-    page += 1;
-  }
-
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password: PASSWORD,
-    email_confirm: true,
+  const existing = await db.auth_users.findFirst({
+    where: { email },
+    select: { id: true },
   });
-  if (error) throw error;
-  if (!data.user) throw new Error(`createUser вернул пустой user для ${email}`);
-  return data.user.id;
+  if (existing) return existing.id;
+
+  const created = await db.auth_users.create({
+    data: { email, encrypted_password: bcrypt.hashSync(PASSWORD, 10) },
+    select: { id: true },
+  });
+  return created.id;
 }
 
 // Подразделения сидятся миграцией (20260610100000_departments) — здесь только
 // читаем их id, чтобы привязать сотрудников.
 async function loadDepartmentIds(): Promise<Map<string, string>> {
-  const { data, error } = await admin.from('departments').select('id, name');
-  if (error) throw error;
-  return new Map((data ?? []).map((d) => [d.name as string, d.id as string]));
+  const rows = await db.departments.findMany({ select: { id: true, name: true } });
+  return new Map(rows.map((d) => [d.name, d.id]));
 }
 
 async function upsertPublicUser(
@@ -111,8 +86,9 @@ async function upsertPublicUser(
     departmentId = found;
   }
 
-  const { error } = await admin.from('users').upsert(
-    {
+  await db.public_users.upsert({
+    where: { id },
+    create: {
       id,
       full_name: acc.full_name,
       email: acc.email,
@@ -121,9 +97,15 @@ async function upsertPublicUser(
       department_id: departmentId,
       position: acc.position,
     },
-    { onConflict: 'id' },
-  );
-  if (error) throw error;
+    update: {
+      full_name: acc.full_name,
+      email: acc.email,
+      role: acc.role,
+      is_active: true,
+      department_id: departmentId,
+      position: acc.position,
+    },
+  });
 }
 
 async function seedUsers(): Promise<Map<string, string>> {
@@ -137,29 +119,6 @@ async function seedUsers(): Promise<Map<string, string>> {
   return idByEmail;
 }
 
-async function getOrCreate<T extends { id: string }>(
-  table: string,
-  match: Record<string, unknown>,
-  payload: Record<string, unknown>,
-): Promise<T> {
-  const { data: existing, error: selErr } = await admin
-    .from(table)
-    .select('*')
-    .match(match)
-    .limit(1)
-    .maybeSingle();
-  if (selErr) throw selErr;
-  if (existing) return existing as T;
-
-  const { data: created, error: insErr } = await admin
-    .from(table)
-    .insert(payload)
-    .select('*')
-    .single();
-  if (insErr) throw insErr;
-  return created as T;
-}
-
 async function seedDomain(ids: Map<string, string>): Promise<void> {
   const adminId = ids.get('admin@yur.local')!;
   const lawyer1 = ids.get('lawyer@yur.local')!;
@@ -168,119 +127,127 @@ async function seedDomain(ids: Map<string, string>): Promise<void> {
   const expert2 = ids.get('expert2@yur.local')!;
 
   // Клиенты ----------------------------------------------------------
-  const ivanov = await getOrCreate<{ id: string }>(
-    'clients',
-    { email: 'ivanov@example.com' },
-    {
-      name: 'Иванов Иван Иванович',
-      client_kind: 'individual',
-      phone: '+380501112233',
-      email: 'ivanov@example.com',
-      source: 'referral',
-      created_by: adminId,
-    },
-  );
+  const ivanov =
+    (await db.clients.findFirst({ where: { email: 'ivanov@example.com' } })) ??
+    (await db.clients.create({
+      data: {
+        name: 'Иванов Иван Иванович',
+        client_kind: 'individual',
+        phone: '+380501112233',
+        email: 'ivanov@example.com',
+        source: 'referral',
+        created_by: adminId,
+      },
+    }));
 
-  const acme = await getOrCreate<{ id: string }>(
-    'clients',
-    { email: 'legal@acme.example' },
-    {
-      name: 'ООО «Акме»',
-      client_kind: 'company',
-      phone: '+380441234567',
-      email: 'legal@acme.example',
-      address: 'г. Киев, ул. Примерная, 1',
-      source: 'website',
-      created_by: adminId,
-    },
-  );
+  const acme =
+    (await db.clients.findFirst({ where: { email: 'legal@acme.example' } })) ??
+    (await db.clients.create({
+      data: {
+        name: 'ООО «Акме»',
+        client_kind: 'company',
+        phone: '+380441234567',
+        email: 'legal@acme.example',
+        address: 'г. Киев, ул. Примерная, 1',
+        source: 'website',
+        created_by: adminId,
+      },
+    }));
 
   // Дела -------------------------------------------------------------
   // Case A: юрист lawyer1, Експерт expert1 — изолировано от lawyer2/expert2.
-  const caseA = await getOrCreate<{ id: string }>(
-    'cases',
-    { number_title: 'CRM-2026-001' },
-    {
-      number_title: 'CRM-2026-001',
-      client_id: ivanov.id,
-      lawyer_id: lawyer1,
-      responsible_id: expert1,
-      opened_at: '2026-05-01',
-      case_type: 'civil',
-      category: 'representation',
-      subject: 'Представительство в суде по имущественному спору',
-      stage: 'in_progress',
-      priority: 'normal',
-      contract_sum: 30000,
-      billing_types: ['fixed'],
-      tags: ['imushestvo'],
-    },
-  );
+  const caseA =
+    (await db.cases.findFirst({ where: { number_title: 'CRM-2026-001' } })) ??
+    (await db.cases.create({
+      data: {
+        number_title: 'CRM-2026-001',
+        client_id: ivanov.id,
+        lawyer_id: lawyer1,
+        responsible_id: expert1,
+        opened_at: new Date('2026-05-01'),
+        case_type: 'civil',
+        category: 'representation',
+        subject: 'Представительство в суде по имущественному спору',
+        stage: 'in_progress',
+        priority: 'normal',
+        contract_sum: 30000,
+        billing_types: ['fixed'],
+        tags: ['imushestvo'],
+      },
+    }));
 
   // Case B: юрист lawyer2, Експерт expert2.
-  const caseB = await getOrCreate<{ id: string }>(
-    'cases',
-    { number_title: 'CRM-2026-002' },
-    {
-      number_title: 'CRM-2026-002',
-      client_id: acme.id,
-      lawyer_id: lawyer2,
-      responsible_id: expert2,
-      opened_at: '2026-05-15',
-      case_type: 'corporate',
-      category: 'claim',
-      subject: 'Взыскание задолженности по договору поставки',
-      stage: 'consultation',
-      priority: 'urgent',
-      contract_sum: 120000,
-      billing_types: ['prepaid', 'installments'],
-      tags: ['corporate'],
-    },
-  );
+  const caseB =
+    (await db.cases.findFirst({ where: { number_title: 'CRM-2026-002' } })) ??
+    (await db.cases.create({
+      data: {
+        number_title: 'CRM-2026-002',
+        client_id: acme.id,
+        lawyer_id: lawyer2,
+        responsible_id: expert2,
+        opened_at: new Date('2026-05-15'),
+        case_type: 'corporate',
+        category: 'claim',
+        subject: 'Взыскание задолженности по договору поставки',
+        stage: 'consultation',
+        priority: 'urgent',
+        contract_sum: 120000,
+        billing_types: ['prepaid', 'installments'],
+        tags: ['corporate'],
+      },
+    }));
 
   // Задачи и платёж — чтобы было что показать в UI и проверить триггеры.
-  await getOrCreate(
-    'tasks',
-    { case_id: caseA.id, title: 'Подготовить иск' },
-    {
-      case_id: caseA.id,
-      title: 'Подготовить иск',
-      kind: 'task',
-      assignee_id: expert1,
-      created_by: adminId,
-      due_at: '2026-06-05T10:00:00Z',
-      status: 'open',
-    },
-  );
+  if (!(await db.tasks.findFirst({ where: { case_id: caseA.id, title: 'Подготовить иск' } }))) {
+    await db.tasks.create({
+      data: {
+        case_id: caseA.id,
+        title: 'Подготовить иск',
+        kind: 'task',
+        assignee_id: expert1,
+        created_by: adminId,
+        due_at: new Date('2026-06-05T10:00:00Z'),
+        status: 'open',
+      },
+    });
+  }
 
-  await getOrCreate(
-    'tasks',
-    { case_id: caseB.id, title: 'Заседание по делу ООО Акме' },
-    {
-      case_id: caseB.id,
-      title: 'Заседание по делу ООО Акме',
-      kind: 'hearing',
-      assignee_id: expert2,
-      created_by: adminId,
-      due_at: '2026-06-10T09:00:00Z',
-      status: 'open',
-    },
-  );
+  if (
+    !(await db.tasks.findFirst({
+      where: { case_id: caseB.id, title: 'Заседание по делу ООО Акме' },
+    }))
+  ) {
+    await db.tasks.create({
+      data: {
+        case_id: caseB.id,
+        title: 'Заседание по делу ООО Акме',
+        kind: 'hearing',
+        assignee_id: expert2,
+        created_by: adminId,
+        due_at: new Date('2026-06-10T09:00:00Z'),
+        status: 'open',
+      },
+    });
+  }
 
   // Платёж по Case A → база для расчёта зарплаты (representation 25%):
   // per_specialist = 10000 × 25% = 2500; total = 5000.
-  await getOrCreate(
-    'payments',
-    { case_id: caseA.id, amount: 10000, paid_at: '2026-05-10' },
-    {
-      case_id: caseA.id,
-      amount: 10000,
-      paid_at: '2026-05-10',
-      method: 'bank',
-      note: 'Аванс по договору',
-      created_by: adminId,
-    },
-  );
+  if (
+    !(await db.payments.findFirst({
+      where: { case_id: caseA.id, amount: 10000, paid_at: new Date('2026-05-10') },
+    }))
+  ) {
+    await db.payments.create({
+      data: {
+        case_id: caseA.id,
+        amount: 10000,
+        paid_at: new Date('2026-05-10'),
+        method: 'bank',
+        note: 'Аванс по договору',
+        created_by: adminId,
+      },
+    });
+  }
 }
 
 // Касса (v2 Этап 7): три счёта по образцу ОЛІМП + право can_manage_cash офис-менеджеру
@@ -290,31 +257,44 @@ async function seedCash(ids: Map<string, string>): Promise<void> {
   const ownerId = ids.get('owner@yur.local')!;
   const officeId = ids.get('office@yur.local')!;
 
-  await getOrCreate(
-    'cash_accounts',
-    { name: 'Картка ПриватБанк' },
-    { name: 'Картка ПриватБанк', kind: 'card', opening_balance: 1500, opening_date: '2026-05-01', is_default: false, created_by: ownerId },
-  );
-  await getOrCreate(
-    'cash_accounts',
-    { name: 'Рахунок ПриватБанк' },
-    { name: 'Рахунок ПриватБанк', kind: 'bank', opening_balance: 139031.19, opening_date: '2026-05-01', is_default: true, created_by: ownerId },
-  );
-  await getOrCreate(
-    'cash_accounts',
-    { name: 'Готівка в касі' },
-    { name: 'Готівка в касі', kind: 'cash', opening_balance: 1500, opening_date: '2026-05-01', is_default: false, created_by: ownerId },
-  );
+  const accounts: Array<{
+    name: string;
+    kind: 'card' | 'bank' | 'cash';
+    opening_balance: number;
+    is_default: boolean;
+  }> = [
+    { name: 'Картка ПриватБанк', kind: 'card', opening_balance: 1500, is_default: false },
+    { name: 'Рахунок ПриватБанк', kind: 'bank', opening_balance: 139031.19, is_default: true },
+    { name: 'Готівка в касі', kind: 'cash', opening_balance: 1500, is_default: false },
+  ];
+  for (const acc of accounts) {
+    if (!(await db.cash_accounts.findFirst({ where: { name: acc.name } }))) {
+      await db.cash_accounts.create({
+        data: {
+          name: acc.name,
+          kind: acc.kind,
+          opening_balance: acc.opening_balance,
+          opening_date: new Date('2026-05-01'),
+          is_default: acc.is_default,
+          created_by: ownerId,
+        },
+      });
+    }
+  }
 
   // Право управления кассой — офис-менеджеру (merge поверх существующих оверрайдов).
-  const { data: u } = await admin
-    .from('users')
-    .select('perm_overrides')
-    .eq('id', officeId)
-    .maybeSingle<{ perm_overrides: Record<string, boolean> | null }>();
-  const overrides = { ...(u?.perm_overrides ?? {}), can_manage_cash: true };
-  const { error } = await admin.from('users').update({ perm_overrides: overrides }).eq('id', officeId);
-  if (error) throw error;
+  const u = await db.public_users.findUnique({
+    where: { id: officeId },
+    select: { perm_overrides: true },
+  });
+  const prev =
+    u?.perm_overrides && typeof u.perm_overrides === 'object' && !Array.isArray(u.perm_overrides)
+      ? (u.perm_overrides as Record<string, boolean>)
+      : {};
+  await db.public_users.update({
+    where: { id: officeId },
+    data: { perm_overrides: { ...prev, can_manage_cash: true } },
+  });
 }
 
 async function main(): Promise<void> {
@@ -336,7 +316,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => db.$disconnect());

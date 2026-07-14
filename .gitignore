@@ -59,3 +59,6 @@ next-env.d.ts
 
 # repomix output (для внешних code-review LLM, не коммитим)
 repomix-output.*
+
+# prisma client (генерится: npm run postinstall / npx prisma generate)
+/src/generated/prisma/
