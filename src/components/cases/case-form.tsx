@@ -276,9 +276,9 @@ export function CaseForm({
                   ))}
                 </Select>
                 {canCreateClient && !lockFinancial && (
+                  // Синяя CTA (фидбек 14.07) — создание клиента «на месте».
                   <Button
                     type="button"
-                    variant="secondary"
                     size="sm"
                     className="shrink-0"
                     onClick={() => setShowNewClient(true)}

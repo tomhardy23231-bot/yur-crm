@@ -63,7 +63,7 @@ export default async function EditCasePage({
       </div>
 
       {/* Секции формы — сами карточки (редизайн 14.07); справа — помощник. */}
-      <div className="grid w-full grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,56rem)_minmax(260px,320px)]">
+      <div className="grid w-full grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] xl:gap-5">
         <div className="min-w-0">
           <CaseForm
             action={boundAction}
