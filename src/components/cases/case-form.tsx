@@ -206,21 +206,21 @@ export function CaseForm({
 
   return (
     <>
-      <form ref={formRef} action={formAction} className="flex flex-col gap-6">
+      <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       {/* v3 s4: optimistic locking — версия дела на момент открытия формы. Сервер
           отклонит сохранение, если дело успели изменить параллельно. */}
       {caseRow && (
         <input type="hidden" name="base_updated_at" value={caseRow.updated_at} />
       )}
       {/* Базовый блок */}
-      <Section title={t.caseCard.form.sectionBasic}>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <Section index={1} title={t.caseCard.form.sectionBasic} hint={t.caseCard.form.sectionBasicHint}>
+        <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
           <Field
             label={t.caseCard.form.numberTitle}
             htmlFor="number_title"
             error={err('number_title')}
             required
-            className="sm:col-span-2 lg:col-span-3"
+            className="sm:col-span-2"
           >
             <Input
               id="number_title"
@@ -412,7 +412,7 @@ export function CaseForm({
             label={t.caseCard.form.subject}
             htmlFor="subject"
             error={err('subject')}
-            className="sm:col-span-2 lg:col-span-3"
+            className="sm:col-span-2"
           >
             <Input
               id="subject"
@@ -473,8 +473,8 @@ export function CaseForm({
       </Section>
 
       {/* Финансы */}
-      <Section title={t.caseCard.form.sectionFinance}>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <Section index={2} title={t.caseCard.form.sectionFinance} hint={t.caseCard.form.sectionFinanceHint}>
+        <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
           <Field
             label={t.caseCard.form.contractSum}
             htmlFor="contract_sum"
@@ -496,7 +496,7 @@ export function CaseForm({
           </Field>
 
           {canEditRates && (
-            <div className="sm:col-span-2 lg:col-span-3 flex flex-col gap-2 rounded-xl border border-border bg-surface-sunken/40 p-4">
+            <div className="sm:col-span-2 flex flex-col gap-2 rounded-xl border border-border bg-surface-sunken/40 p-4">
               <p className="text-[12px] text-text-muted">
                 {t.caseCard.form.rateOverrideTitle}
               </p>
@@ -569,7 +569,7 @@ export function CaseForm({
             label={t.caseCard.form.billingTypes}
             htmlFor="billing_types"
             error={err('billing_types')}
-            className="sm:col-span-2 lg:col-span-3"
+            className="sm:col-span-2"
           >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" id="billing_types">
               {BILLING_TYPES.map((bt) => (
@@ -595,13 +595,12 @@ export function CaseForm({
       </Section>
 
       {/* Судебная часть */}
-      <Section title={t.caseCard.form.sectionCourt}>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <Section index={3} title={t.caseCard.form.sectionCourt} hint={t.caseCard.form.sectionCourtHint}>
+        <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
           <Field
             label={t.caseCard.form.opponent}
             htmlFor="opponent"
             error={err('opponent')}
-            className="sm:col-span-2 lg:col-span-1"
           >
             <Input
               id="opponent"
@@ -640,6 +639,7 @@ export function CaseForm({
             label={t.caseCard.form.court}
             htmlFor="court"
             error={err('court')}
+            className="sm:col-span-2"
           >
             <Input
               id="court"
@@ -652,7 +652,7 @@ export function CaseForm({
       </Section>
 
       {/* Дополнительно */}
-      <Section title={t.caseCard.form.sectionExtra}>
+      <Section index={4} title={t.caseCard.form.sectionExtra} hint={t.caseCard.form.sectionExtraHint}>
         <Field label={t.caseCard.form.tags} htmlFor="tags" error={err('tags')}>
           <Textarea
             id="tags"
@@ -673,7 +673,7 @@ export function CaseForm({
         </p>
       )}
 
-      <div className="flex items-center gap-3 pt-2 border-t border-border">
+      <div className="flex items-center gap-3 pt-1">
         <SubmitButton label={submitLabel} />
         <Button asChild variant="ghost" type="button">
           <Link href={cancelHref}>{t.caseCard.form.cancel}</Link>
@@ -691,20 +691,32 @@ export function CaseForm({
   );
 }
 
+// Секция-карточка формы (редизайн 14.07): номер шага + заголовок + подсказка,
+// что здесь заполнять — форма читается сверху вниз без догадок.
 function Section({
+  index,
   title,
+  hint,
   children,
 }: {
+  index: number;
   title: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      <h3 className="text-[15px] font-semibold text-text">
-        {title}
-      </h3>
+    <section className="rounded-card border border-border bg-surface p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex items-start gap-3 border-b border-border pb-3">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-subtle text-[13px] font-bold tabular-nums text-primary-pressed">
+          {index}
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-bold leading-tight text-text">{title}</h3>
+          {hint && <p className="mt-0.5 text-[12.5px] text-text-muted">{hint}</p>}
+        </div>
+      </div>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -725,10 +737,8 @@ function Field({
 }) {
   return (
     <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
-      <Label
-        htmlFor={htmlFor}
-        className="text-[12px] text-text-muted"
-      >
+      {/* Подпись тёмная и заметная (фидбек 14.07: серые лейблы было не прочесть). */}
+      <Label htmlFor={htmlFor} className="text-[13px] font-semibold text-text">
         {label}
         {required && <span className="text-error ml-0.5">*</span>}
       </Label>

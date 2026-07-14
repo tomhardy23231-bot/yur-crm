@@ -67,7 +67,7 @@ export function CaseDescriptionBlock({
             maxLength={5000}
             placeholder={d.placeholder}
             autoFocus
-            className="w-full resize-y rounded-control border border-border bg-surface px-3 py-2 text-[13.5px] leading-relaxed text-text placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary-border"
+            className="w-full resize-y rounded-control border border-border bg-surface px-3 py-2 text-[14.5px] leading-relaxed text-text placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary-border"
           />
           {!state.ok && state.message && (
             <p role="alert" className="text-[12px] text-error">
@@ -90,11 +90,12 @@ export function CaseDescriptionBlock({
           </div>
         </form>
       ) : description ? (
-        <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-text-muted">
+        // Основной текст — тёмным и чуть крупнее (фидбек 14.07: серый было трудно читать).
+        <p className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-text">
           {description}
         </p>
       ) : (
-        <p className="text-[12.5px] text-text-subtle">
+        <p className="text-[13.5px] text-text-muted">
           {canWrite ? d.emptyCanWrite : d.empty}
         </p>
       )}

@@ -17,7 +17,14 @@ import {
 
 const INITIAL: CreateActState = { ok: false };
 
-export function ActCreateForm({ caseId }: { caseId: string }) {
+export function ActCreateForm({
+  caseId,
+  onSuccess,
+}: {
+  caseId: string;
+  /** Колбэк успеха — закрыть модалку (act-create-button). */
+  onSuccess?: () => void;
+}) {
   const { t } = useI18n();
   const toast = useToast();
   const [state, formAction] = useActionState<CreateActState, FormData>(
@@ -26,10 +33,16 @@ export function ActCreateForm({ caseId }: { caseId: string }) {
   );
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Ref — чтобы effect не перезапускался от нестабильной ссылки родителя.
+  const onSuccessRef = useRef(onSuccess);
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  });
   useEffect(() => {
     if (state.ok) {
       formRef.current?.reset();
       toast.success(t.acts.create.success);
+      onSuccessRef.current?.();
     }
   }, [state.ok, toast, t.acts.create.success]);
 

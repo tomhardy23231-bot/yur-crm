@@ -77,7 +77,14 @@ export function CaseQuickActions({
         <QuickButton
           icon={<FileSpreadsheet size={14} strokeWidth={1.75} />}
           label={t.caseCard.quickActions.act}
-          onClick={() => scrollToSectionForm('acts', 'act-create-details')}
+          onClick={() => {
+            // Переключаем вкладку «Акты» и открываем модалку выписки
+            // (форма акта — модалка с 14.07, details больше нет).
+            window.dispatchEvent(
+              new CustomEvent('casecard:tab', { detail: { key: 'acts' } }),
+            );
+            window.dispatchEvent(new CustomEvent('casecard:open-act-form'));
+          }}
         />
       )}
 

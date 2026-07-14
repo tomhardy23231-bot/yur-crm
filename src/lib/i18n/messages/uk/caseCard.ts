@@ -196,9 +196,13 @@ export const caseCard: CaseCardMessages = {
   // ── Форма справи (case-form.tsx) ─────────────────────────────────────
   form: {
     sectionBasic: 'Основне',
+    sectionBasicHint: 'Як називається справа, хто клієнт і хто її веде.',
     sectionFinance: 'Фінанси',
+    sectionFinanceHint: 'Сума договору, тип оплати та розрахунок винагороди.',
     sectionCourt: 'Судове (якщо застосовно)',
+    sectionCourtHint: 'Заповнюйте, лише якщо справа дійшла до суду.',
     sectionExtra: 'Додатково',
+    sectionExtraHint: 'Теги — для пошуку та фільтрів, через кому.',
 
     numberTitle: 'Номер / назва',
     numberTitlePlaceholder: 'CRM-2026-003 / Позов ТОВ «Ромашка»',

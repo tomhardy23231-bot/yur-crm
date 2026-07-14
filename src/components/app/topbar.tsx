@@ -76,7 +76,7 @@ export function Topbar({
       : t.topbar.notificationsAria;
 
   return (
-    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-bg/70 px-4 backdrop-blur-xl sm:gap-4 sm:px-5">
+    <header className="sticky top-0 z-20 flex h-10 shrink-0 items-center gap-3 border-b border-border bg-bg/70 px-4 backdrop-blur-xl sm:gap-4 sm:px-5">
       <h1 className="truncate text-[18px] font-bold tracking-tight text-text">
         {title}
       </h1>

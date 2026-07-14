@@ -42,6 +42,11 @@ interface TaskFormProps {
   submitLabel: string;
   /** Компактная форма (для inline на карточке дела). */
   compact?: boolean;
+  /**
+   * Один аккуратный ряд без подписей (правка владельца 14.07): Назва · Тип ·
+   * Виконавець · Строк · кнопка. Подписи — через aria-label/placeholder.
+   */
+  inline?: boolean;
   onSuccess?: () => void;
 }
 
@@ -55,6 +60,7 @@ export function TaskForm({
   defaultDueAt,
   submitLabel,
   compact = false,
+  inline = false,
   onSuccess,
 }: TaskFormProps) {
   const { t } = useI18n();
@@ -117,6 +123,85 @@ export function TaskForm({
   const formRef = useRef<HTMLFormElement>(null);
   useShakeInvalidFields(formRef, state);
 
+  // ── Инлайн-ряд (карточка дела): всё в одну строку, подписи в placeholder/aria. ──
+  if (inline) {
+    return (
+      <form ref={formRef} action={formAction} className="flex flex-col gap-2">
+        {lockedCaseId && (
+          <input type="hidden" name="case_id" value={lockedCaseId} />
+        )}
+        <div className="grid grid-cols-2 items-stretch gap-2 lg:grid-cols-[minmax(0,1fr)_140px_210px_200px_auto]">
+          <Input
+            id="task-title"
+            name="title"
+            defaultValue={value('title')}
+            required
+            maxLength={200}
+            aria-label={t.tasks.form.title}
+            aria-invalid={err('title') ? 'true' : undefined}
+            placeholder={t.tasks.form.titlePlaceholder}
+            className="col-span-2 lg:col-span-1"
+          />
+          <Select
+            id="task-kind"
+            name="kind"
+            defaultValue={value('kind') || 'task'}
+            required
+            aria-label={t.tasks.form.kind}
+            aria-invalid={err('kind') ? 'true' : undefined}
+          >
+            {TASK_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {t.enums.taskKind[k]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            id="task-assignee"
+            name="assignee_id"
+            defaultValue={value('assignee_id')}
+            required
+            aria-label={t.tasks.form.assignee}
+            aria-invalid={err('assignee_id') ? 'true' : undefined}
+          >
+            <option value="">{t.tasks.form.assigneeSelect}</option>
+            {assignees.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.full_name} · {roleHint(a.role)}
+              </option>
+            ))}
+          </Select>
+          <Input
+            id="task-due"
+            name="due_at"
+            type="datetime-local"
+            defaultValue={value('due_at')}
+            aria-label={t.tasks.form.due}
+            aria-invalid={err('due_at') ? 'true' : undefined}
+          />
+          <SubmitButton
+            label={submitLabel}
+            savingLabel={t.tasks.form.saving}
+            compact
+          />
+        </div>
+        {state.fieldErrors && (
+          <p role="alert" className="animate-field-error text-[12px] text-error">
+            {Object.values(state.fieldErrors).filter(Boolean).join(' · ')}
+          </p>
+        )}
+        {state.message && !state.fieldErrors && (
+          <p
+            role="alert"
+            className="rounded-control border border-error/15 bg-error-bg px-3 py-2 text-sm text-error-text"
+          >
+            {state.message}
+          </p>
+        )}
+      </form>
+    );
+  }
+
   return (
     <form
       ref={formRef}
@@ -169,7 +254,7 @@ export function TaskForm({
         />
       </Field>
 
-      <div className={`grid gap-${compact ? '3' : '4'} grid-cols-1 sm:grid-cols-3`}>
+      <div className={compact ? 'grid grid-cols-1 gap-3 sm:grid-cols-3' : 'grid grid-cols-1 gap-4 sm:grid-cols-3'}>
         <Field
           label={t.tasks.form.kind}
           htmlFor="task-kind"

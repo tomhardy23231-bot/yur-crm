@@ -7,7 +7,7 @@ import { getT } from '@/lib/i18n/server';
 import { formatMoney } from '@/lib/utils';
 import { listActsByCase } from '@/lib/acts/queries';
 
-import { ActCreateForm } from './act-create-form';
+import { ActCreateButton } from './act-create-button';
 import { ActConfirmForm } from './act-confirm-form';
 import { DeleteActButton, ActCompletionForm } from './act-row-controls';
 
@@ -52,10 +52,16 @@ export async function CaseActsBlock({
 
   return (
     <Card id="acts" className="scroll-mt-20">
-      <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+      {/* Шапка блока: заголовок + кнопка «Виписати акт» (модалка — правка 14.07). */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-2.5">
         <FileSpreadsheet size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[16px] font-semibold text-text">{t.acts.block.heading}</h2>
         <span className="text-[12px] text-text-muted">· {plural(t.acts.block.count, acts.length)}</span>
+        {canCreate && (
+          <div className="ml-auto">
+            <ActCreateButton caseId={caseId} />
+          </div>
+        )}
       </div>
 
       {canCreate && !requisitesUsable && (
@@ -63,19 +69,6 @@ export async function CaseActsBlock({
           <TriangleAlert size={14} strokeWidth={1.75} className="shrink-0" />
           {t.acts.block.requisitesWarning}
         </div>
-      )}
-
-      {canCreate && (
-        // id — для кнопки «+ Акт» в шапке карточки (раскрытие формы, v3 s11).
-        <details id="act-create-details" className="group border-b border-border">
-          <summary className="inline-flex w-full cursor-pointer list-none items-center gap-2 px-5 py-3 text-[13px] font-medium text-primary transition-colors hover:bg-primary-subtle/50">
-            <Plus size={14} strokeWidth={2} className="transition-transform group-open:rotate-45" />
-            {t.acts.block.createSummary}
-          </summary>
-          <div className="px-5 pb-5 pt-1">
-            <ActCreateForm caseId={caseId} />
-          </div>
-        </details>
       )}
 
       {acts.length === 0 ? (

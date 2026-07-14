@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 
-import { Card } from '@/components/ui/card';
 import { CaseForm } from '@/components/cases/case-form';
 import { createCaseAction } from '@/lib/cases/actions';
 import {
@@ -51,7 +50,9 @@ export default async function NewCasePage({
         </Link>
       </div>
 
-      <Card data-tour="case-form" className="p-4 sm:p-6 lg:p-8">
+      {/* Секции формы — сами карточки (редизайн 14.07), внешняя обёртка не нужна.
+          max-w — чтобы поля не размазывались на очень широких экранах. */}
+      <div data-tour="case-form" className="w-full max-w-4xl">
         <CaseForm
           action={createCaseAction}
           clients={clients}
@@ -63,7 +64,7 @@ export default async function NewCasePage({
           canEditRates={canEditRates}
           canCreateClient={user.caps.create_clients}
         />
-      </Card>
+      </div>
     </main>
   );
 }

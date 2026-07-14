@@ -30,6 +30,7 @@ export const acts = {
 
   // Форма создания акта
   create: {
+    modalSubtitle: 'Рахунок-Акт: выдайте клиенту, затем подтвердите оплату.',
     serviceNameLabel: 'Услуга',
     serviceNamePlaceholder: 'Юридичні послуги',
     amountLabel: 'Сумма, ₴',

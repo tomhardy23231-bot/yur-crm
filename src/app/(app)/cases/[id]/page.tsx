@@ -452,9 +452,9 @@ export default async function CaseDetailPage({
       {/* ── Шапка дела (по каркасу): бейджи → заголовок → клиент →
            инфо-плитки → акцент-полоса «Оплата по делу». ── */}
       <Card id="overview" className="scroll-mt-16 overflow-hidden">
-        <div className="flex flex-col gap-3 px-4 py-3 sm:px-5 sm:py-3.5">
-          <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
-            <div className="flex min-w-0 flex-col gap-1.5">
+        <div className="flex flex-col gap-2 px-4 py-2.5 sm:px-5 sm:py-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+            <div className="flex min-w-0 flex-col gap-1">
               {/* Бейджи: этап (рабочий дропдаун) · категория · приоритет · статусы. */}
               <div className="flex flex-wrap items-center gap-2">
                 <CaseStageDropdown
@@ -535,7 +535,7 @@ export default async function CaseDetailPage({
           </div>
 
           {/* Инфо-плитки: Открыто · Дней на этапе/Завершено · Юрист · Эксперт. */}
-          <div className="grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 border-t border-border pt-2.5 sm:grid-cols-4">
             <InfoTile
               icon={<Calendar size={13} strokeWidth={1.75} />}
               label={t.caseCard.detail.tileOpened}
@@ -597,7 +597,7 @@ export default async function CaseDetailPage({
 
         {/* Акцент-полоса оплаты (каркас): подпись слева, суммы mono справа,
             прогресс во всю ширину. Долг/переплата — чипами рядом с суммами. */}
-        <div className="flex flex-col gap-1.5 border-t border-border bg-primary-softer/40 px-4 py-2.5 sm:px-5">
+        <div className="flex flex-col gap-1 border-t border-border bg-primary-softer/40 px-4 py-2 sm:px-5">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[12.5px]">
             <span className="font-semibold text-text">
               {t.caseCard.detail.paymentStripTitle}
@@ -710,7 +710,7 @@ function InfoTile({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-0.5">
       <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-text-subtle">
         {icon}
         {label}

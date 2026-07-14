@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 
-import { Card } from '@/components/ui/card';
 import { CaseForm } from '@/components/cases/case-form';
 import { updateCaseAction } from '@/lib/cases/actions';
 import {
@@ -62,7 +61,8 @@ export default async function EditCasePage({
         <p className="text-[13px] text-text-muted truncate">{c.number_title}</p>
       </div>
 
-      <Card className="p-4 sm:p-6 lg:p-8">
+      {/* Секции формы — сами карточки (редизайн 14.07). */}
+      <div className="w-full max-w-4xl">
         <CaseForm
           action={boundAction}
           caseRow={c}
@@ -77,7 +77,7 @@ export default async function EditCasePage({
           canEditRates={user.caps.edit_rate_overrides}
           canCreateClient={user.caps.create_clients}
         />
-      </Card>
+      </div>
     </main>
   );
 }

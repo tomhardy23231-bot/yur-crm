@@ -28,6 +28,7 @@ export const acts: ActsMessages = {
   },
 
   create: {
+    modalSubtitle: 'Рахунок-Акт: видайте клієнту, потім підтвердьте оплату.',
     serviceNameLabel: 'Послуга',
     serviceNamePlaceholder: 'Юридичні послуги',
     amountLabel: 'Сума, ₴',

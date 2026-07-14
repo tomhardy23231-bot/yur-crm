@@ -35,7 +35,7 @@ export async function CaseTasksBlock({
   return (
     // id="tasks" — якорь для гайд-тура (case-tasks); это вкладка по умолчанию.
     <Card id="tasks" className="scroll-mt-20">
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-border">
+      <div className="flex items-center gap-2 px-5 py-2.5 border-b border-border">
         <CheckSquare size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[16px] font-semibold text-text">
           {t.tasks.caseBlock.heading}
@@ -49,8 +49,9 @@ export async function CaseTasksBlock({
 
       {canWrite && (
         // id — для кнопки «+ Задача» в шапке карточки (раскрытие формы, v3 s11).
+        // Форма — один аккуратный ряд (правка 14.07), а не простыня полей.
         <details id="task-create-details" className="group border-b border-border">
-          <summary className="cursor-pointer list-none px-5 py-3 inline-flex items-center gap-2 text-[13px] font-medium text-primary hover:bg-primary-subtle/50 transition-colors w-full">
+          <summary className="cursor-pointer list-none px-5 py-2.5 inline-flex items-center gap-2 text-[13px] font-medium text-primary hover:bg-primary-subtle/50 transition-colors w-full">
             <Plus
               size={14}
               strokeWidth={2}
@@ -58,14 +59,14 @@ export async function CaseTasksBlock({
             />
             {t.tasks.caseBlock.addTask}
           </summary>
-          <div className="px-5 pb-5 pt-1">
+          <div className="px-5 pb-3.5 pt-1">
             <TaskForm
               action={createTaskAction}
               assignees={assignees}
               lockedCaseId={caseId}
               defaultAssigneeId={currentUserId}
               submitLabel={t.tasks.caseBlock.createSubmit}
-              compact
+              inline
             />
           </div>
         </details>
