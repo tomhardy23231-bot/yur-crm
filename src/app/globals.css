@@ -11,12 +11,12 @@
 :root {
   /* ── Paper — холодная светло-серая зона (выбор владельца 14.07 по образцу
      прежнего прода; вся нейтральная гамма согласована в холодный тон) ── */
-  --bg:             #ECEEF1;  /* cool paper — серый, притемнён ещё раз (14.07) */
+  --bg:             #E3E6EA;  /* cool paper — серый, третий шаг затемнения (14.07) */
   --surface:        #FFFFFF;  /* карточки, таблицы */
-  --surface-muted:  #F4F5F8;  /* surface-2 — зебра/hover строки (холодный, на белом) */
-  --surface-sunken: #E9EBEF;  /* surface-3 — поля поиска, чипы, прогресс-трек */
-  --border:         #DFE3E9;  /* line — холодный hairline */
-  --border-strong:  #CBD2DA;  /* line-strong */
+  --surface-muted:  #F1F3F5;  /* surface-2 — зебра/hover строки (холодный, на белом) */
+  --surface-sunken: #E4E7EC;  /* surface-3 — поля поиска, чипы, прогресс-трек */
+  --border:         #D9DEE5;  /* line — холодный hairline */
+  --border-strong:  #C3CBD4;  /* line-strong */
 
   /* Text — глубокий зелёно-чёрный ink (каркас) */
   --text:           #14211B;
