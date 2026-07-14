@@ -247,7 +247,7 @@ export function CaseForm({
                   name="client_id"
                   value={lockedClient.id}
                 />
-                <div className="flex items-center gap-2.5 h-10 px-3 rounded-md bg-surface-muted border border-transparent">
+                <div className="flex items-center gap-2.5 h-10 px-3 rounded-control border border-border bg-surface-sunken/40">
                   <Avatar name={lockedClient.name} size="sm" />
                   <span className="text-[13.5px] text-text font-medium truncate">
                     {lockedClient.name}
@@ -496,7 +496,7 @@ export function CaseForm({
           </Field>
 
           {canEditRates && (
-            <div className="sm:col-span-2 lg:col-span-3 flex flex-col gap-2 rounded-md border border-border bg-surface-muted/40 p-4">
+            <div className="sm:col-span-2 lg:col-span-3 flex flex-col gap-2 rounded-xl border border-border bg-surface-sunken/40 p-4">
               <p className="text-[12px] text-text-muted">
                 {t.caseCard.form.rateOverrideTitle}
               </p>
@@ -575,7 +575,7 @@ export function CaseForm({
               {BILLING_TYPES.map((bt) => (
                 <label
                   key={bt}
-                  className="inline-flex items-center gap-2 px-3 h-10 rounded-md bg-surface-muted hover:bg-surface border border-transparent hover:border-border cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-2 px-3 h-10 rounded-control border border-border bg-surface hover:border-primary-border hover:bg-primary-softer cursor-pointer transition-colors"
                 >
                   <input
                     type="checkbox"
@@ -667,7 +667,7 @@ export function CaseForm({
       {state.message && !state.fieldErrors && (
         <p
           role="alert"
-          className="text-sm text-error bg-error-bg border border-error/15 rounded-md px-3 py-2"
+          className="text-sm text-error-text bg-error-bg border border-error/15 rounded-control px-3 py-2"
         >
           {state.message}
         </p>
@@ -700,7 +700,7 @@ function Section({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
+      <h3 className="text-[15px] font-semibold text-text">
         {title}
       </h3>
       {children}

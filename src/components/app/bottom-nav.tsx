@@ -112,8 +112,8 @@ export function BottomNav({
                     'relative inline-flex h-8 w-[60px] items-center justify-center rounded-full',
                     'transition-[background-color,color] duration-200 ease-out',
                     active
-                      ? 'bg-primary-subtle text-primary'
-                      : 'text-text-subtle group-active:bg-surface-sunken',
+                      ? 'bg-primary-subtle text-primary-pressed'
+                      : 'text-text-subtle group-active:bg-primary-softer',
                   )}
                 >
                   <Icon size={21} strokeWidth={active ? 2.15 : 1.85} />
@@ -127,7 +127,7 @@ export function BottomNav({
                 <span
                   className={cn(
                     'max-w-full truncate text-[10.5px] font-semibold leading-none tracking-[0.01em]',
-                    active ? 'text-primary' : 'text-text-subtle',
+                    active ? 'text-primary-pressed' : 'text-text-subtle',
                   )}
                 >
                   {tab.label}
@@ -149,8 +149,8 @@ export function BottomNav({
                 'inline-flex h-8 w-[60px] items-center justify-center rounded-full',
                 'transition-[background-color,color] duration-200 ease-out',
                 moreActive
-                  ? 'bg-primary-subtle text-primary'
-                  : 'text-text-subtle group-active:bg-surface-sunken',
+                  ? 'bg-primary-subtle text-primary-pressed'
+                  : 'text-text-subtle group-active:bg-primary-softer',
               )}
             >
               <Menu size={21} strokeWidth={moreActive ? 2.15 : 1.85} />
@@ -158,7 +158,7 @@ export function BottomNav({
             <span
               className={cn(
                 'text-[10.5px] font-semibold leading-none tracking-[0.01em]',
-                moreActive ? 'text-primary' : 'text-text-subtle',
+                moreActive ? 'text-primary-pressed' : 'text-text-subtle',
               )}
             >
               {t.nav.more}

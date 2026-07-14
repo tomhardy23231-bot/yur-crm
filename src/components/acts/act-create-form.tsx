@@ -82,7 +82,7 @@ export function ActCreateForm({ caseId }: { caseId: string }) {
       </div>
 
       {state.message && !state.ok && (
-        <p role="alert" className="rounded-md border border-error/15 bg-error-bg px-3 py-2 text-sm text-error">
+        <p role="alert" className="rounded-control border border-error/15 bg-error-bg px-3 py-2 text-sm text-error-text">
           {state.message}
         </p>
       )}

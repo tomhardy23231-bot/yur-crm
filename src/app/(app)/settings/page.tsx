@@ -29,13 +29,13 @@ export default async function SettingsPage() {
         {canEditRates && (
           <Link
             href="/settings/payroll"
-            className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
           >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
               <Coins size={20} strokeWidth={1.75} />
             </span>
             <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text">
+              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
                 {t.settings.ratesCard.title}
               </span>
               <span className="block text-[13px] text-text-muted">
@@ -53,13 +53,13 @@ export default async function SettingsPage() {
         {canManageUsers && (
           <Link
             href="/settings/users"
-            className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
           >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
               <Users size={20} strokeWidth={1.75} />
             </span>
             <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text">
+              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
                 {t.settings.usersCard.title}
               </span>
               <span className="block text-[13px] text-text-muted">
@@ -77,13 +77,13 @@ export default async function SettingsPage() {
         {isOwner && (
           <Link
             href="/settings/departments"
-            className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
           >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
               <Building2 size={20} strokeWidth={1.75} />
             </span>
             <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text">
+              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
                 {t.settings.departmentsCard.title}
               </span>
               <span className="block text-[13px] text-text-muted">
@@ -101,13 +101,13 @@ export default async function SettingsPage() {
         {isOwner && (
           <Link
             href="/settings/requisites"
-            className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
           >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
               <FileSpreadsheet size={20} strokeWidth={1.75} />
             </span>
             <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text">
+              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
                 {t.settings.requisitesCard.title}
               </span>
               <span className="block text-[13px] text-text-muted">
@@ -125,13 +125,13 @@ export default async function SettingsPage() {
         {/* Язык интерфейса — персональная настройка (полный экран в профиле). */}
         <Link
           href="/profile"
-          className="group flex items-center gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+          className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
         >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
             <Languages size={20} strokeWidth={1.75} />
           </span>
           <span className="flex-1">
-            <span className="block text-[15px] font-semibold text-text">
+            <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
               {t.settings.languageCard.title}
             </span>
             <span className="block text-[13px] text-text-muted">

@@ -88,7 +88,7 @@ export async function WeekGrid({
                   {day.absences.map((a) => (
                     <li
                       key={a.id}
-                      className="flex items-center gap-1.5 rounded-[5px] bg-absence-bg px-1.5 py-1 text-[11px] leading-tight"
+                      className="flex items-center gap-1.5 rounded-md bg-absence-bg px-1.5 py-1 text-[11px] leading-tight"
                     >
                       <span
                         className="h-1.5 w-1.5 shrink-0 rounded-full bg-absence"
@@ -127,7 +127,7 @@ export async function WeekGrid({
                         />
                         <span className="min-w-0">
                           {time && time !== '00:00' && (
-                            <span className="mr-1 font-semibold tabular-nums text-text">
+                            <span className="mr-1 font-mono font-semibold tabular-nums text-text">
                               {time}
                             </span>
                           )}

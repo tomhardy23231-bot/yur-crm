@@ -25,7 +25,7 @@ export default async function RequisitesSettingsPage() {
       </Link>
 
       <div className="flex items-center gap-3">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
           <FileSpreadsheet size={20} strokeWidth={1.75} />
         </span>
         <div>

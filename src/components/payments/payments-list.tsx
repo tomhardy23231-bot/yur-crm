@@ -79,14 +79,18 @@ export function PaymentsList({
     <div className="mt-4 border-t border-border pt-3">
       {/* Заголовок: «Платежи · N» + итог (оптимистичные). */}
       <div className="mb-2 flex items-baseline justify-between gap-2">
-        <span className="text-[11px] font-extrabold uppercase tracking-[0.05em] text-text-muted">
+        <span className="text-[15px] font-semibold text-text">
           {b.heading}
-          <span className="ml-1.5 text-text-subtle">{optimistic.length}</span>
+          <span className="ml-1.5 rounded-full bg-surface-sunken px-1.5 font-mono text-[11px] text-text-subtle">
+            {optimistic.length}
+          </span>
         </span>
         {optimistic.length > 0 && (
           <span className="text-[12px] tabular-nums text-text-muted">
             {b.total}{' '}
-            <span className="font-bold text-success">{formatMoney(total)} ₴</span>
+            <span className="font-mono font-bold text-success-text">
+              {formatMoney(total)} ₴
+            </span>
           </span>
         )}
       </div>
@@ -116,7 +120,7 @@ export function PaymentsList({
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[13px] font-bold tabular-nums text-success">
+                  <span className="font-mono text-[13px] font-bold tabular-nums text-success-text">
                     {formatMoney(p.amount)} ₴
                   </span>
                   <span className="text-[11.5px] tabular-nums text-text-subtle">

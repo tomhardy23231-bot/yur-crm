@@ -2,14 +2,12 @@ import {
   ArrowRight,
   Briefcase,
   CalendarClock,
+  ChevronDown,
   Coins,
   Eye,
-  FilePlus,
   FileText,
   GitBranch,
-  HelpCircle,
-  Keyboard,
-  Search,
+  MessageCircle,
   ShieldCheck,
   Sparkles,
   UserPlus,
@@ -154,49 +152,109 @@ export default async function HelpPage() {
       : []),
   ];
 
-  const principles: ReadonlyArray<{ icon: LucideIcon; title: string; text: string }> = [
-    { icon: Briefcase, title: h.principles.caseCenterTitle, text: h.principles.caseCenterText },
-    { icon: GitBranch, title: h.principles.funnelTitle, text: h.principles.funnelText },
-    { icon: Coins, title: h.principles.payrollTitle, text: h.principles.payrollText },
-    { icon: ShieldCheck, title: h.principles.accessTitle, text: h.principles.accessText },
+  // У каждого раздела — свой цвет тинт-плитки (токенами, без hex).
+  const hotkeyRows: ReadonlyArray<{ keys: string; label: string }> = [
+    { keys: 'Ctrl K', label: t.ui.hotkeys.searchAction },
+    { keys: '/', label: t.ui.hotkeys.searchAction },
+    ...(user.caps.create_cases
+      ? [{ keys: 'N', label: t.ui.hotkeys.newCaseAction }]
+      : []),
+    { keys: 'T', label: t.ui.hotkeys.newTaskAction },
+    { keys: '?', label: t.ui.hotkeys.helpAction },
+    { keys: 'Esc', label: t.ui.hotkeys.closeAction },
+  ];
+
+  const principles: ReadonlyArray<{
+    icon: LucideIcon;
+    title: string;
+    text: string;
+    tone: string;
+  }> = [
+    {
+      icon: Briefcase,
+      title: h.principles.caseCenterTitle,
+      text: h.principles.caseCenterText,
+      tone: 'bg-primary-subtle text-primary',
+    },
+    {
+      icon: GitBranch,
+      title: h.principles.funnelTitle,
+      text: h.principles.funnelText,
+      tone: 'bg-stage-consultation-bg text-stage-consultation',
+    },
+    {
+      icon: Coins,
+      title: h.principles.payrollTitle,
+      text: h.principles.payrollText,
+      tone: 'bg-success-bg text-success',
+    },
+    {
+      icon: ShieldCheck,
+      title: h.principles.accessTitle,
+      text: h.principles.accessText,
+      tone: 'bg-info-bg text-info',
+    },
   ];
 
   return (
     <main className="flex flex-col gap-7 px-3 py-2 sm:px-4">
-      {/* ── Hero ──────────────────────────────────────────────── */}
-      <Card
-        className="relative overflow-hidden border-0 px-6 py-7 sm:px-8"
-        style={{ backgroundImage: 'var(--grad-brand)' }}
+      {/* ── Hero (фирменный баннер — как на дашборде) ──────────── */}
+      <section
+        className="relative overflow-hidden rounded-3xl p-6 sm:p-8"
+        style={{ background: 'var(--grad-hero)' }}
       >
-        <div className="relative z-10 flex flex-col gap-4">
-          <div className="flex items-start gap-3">
-            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur-sm">
-              <HelpCircle size={26} strokeWidth={1.75} />
+        {/* Декоративные размытые орбы */}
+        <div
+          className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full opacity-40 blur-3xl"
+          style={{ background: 'rgba(255,255,255,0.45)' }}
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute -bottom-24 right-32 h-56 w-56 rounded-full opacity-30 blur-3xl"
+          style={{ background: 'var(--primary-bright)' }}
+          aria-hidden="true"
+        />
+        {/* Тонкая сетка-узор */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
+          }}
+          aria-hidden="true"
+        />
+
+        <div className="relative flex flex-col gap-4">
+          <div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11.5px] font-semibold text-white backdrop-blur-sm">
+              <Sparkles size={12} strokeWidth={2.5} aria-hidden="true" />
+              {h.page.heroBadge}
             </span>
-            <div>
-              <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.01em] text-white">
-                {h.page.heroTitle}
-              </h1>
-              <p className="mt-1 max-w-2xl text-[14.5px] leading-relaxed text-white/90">
-                {h.page.heroLead}
-              </p>
-            </div>
+            <h1 className="mt-3 text-[28px] font-bold leading-tight tracking-tight text-white">
+              {h.page.heroTitle}
+            </h1>
+            <p className="mt-2 max-w-2xl text-[14.5px] leading-relaxed text-white/85">
+              {h.page.heroLead}
+            </p>
           </div>
           <HelpActions />
         </div>
-      </Card>
+      </section>
 
       {/* ── Ключевые принципы ─────────────────────────────────── */}
-      <Section icon={Sparkles} title={h.sections.howItWorks}>
+      <Section title={h.sections.howItWorks}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {principles.map((p) => {
             const Icon = p.icon;
             return (
-              <Card key={p.title} className="flex flex-col gap-2.5 p-4">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+              <Card key={p.title} className="flex flex-col gap-2.5 p-5">
+                <span
+                  className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${p.tone}`}
+                >
                   <Icon size={20} strokeWidth={1.75} />
                 </span>
-                <h3 className="text-[14px] font-bold text-text">{p.title}</h3>
+                <h3 className="text-[15px] font-semibold text-text">{p.title}</h3>
                 <p className="text-[13px] leading-relaxed text-text-muted">{p.text}</p>
               </Card>
             );
@@ -205,14 +263,14 @@ export default async function HelpPage() {
       </Section>
 
       {/* ── Воронка из 5 этапов (визуальный пример) ────────────── */}
-      <Section icon={GitBranch} title={h.sections.casePath}>
+      <Section title={h.sections.casePath}>
         <Card className="flex flex-col gap-5 p-5 sm:p-6">
           {/* Иллюстрация-степпер (как в карточке дела) */}
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-stretch sm:gap-1">
             {STAGES.map((s, i) => (
               <div key={s.stage} className="flex flex-1 items-center gap-1">
                 <div
-                  className="flex flex-1 flex-col items-center gap-1 rounded-[10px] px-2 py-2.5 text-center"
+                  className="flex flex-1 flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-center"
                   style={{ background: `var(${s.varName}-bg)` }}
                 >
                   <span
@@ -242,7 +300,7 @@ export default async function HelpPage() {
       </Section>
 
       {/* ── Роли и доступ (пример: кто что видит) ──────────────── */}
-      <Section icon={ShieldCheck} title={h.sections.whoSeesWhat}>
+      <Section title={h.sections.whoSeesWhat}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {roles.map((r) => (
             <Card key={r.name} className="flex items-start gap-3.5 p-4">
@@ -266,7 +324,7 @@ export default async function HelpPage() {
       </Section>
 
       {/* ── Зарплата: формула + живой пример ───────────────────── */}
-      <Section icon={Coins} title={h.sections.payroll}>
+      <Section title={h.sections.payroll}>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.85fr_1.15fr]">
           {/* Ставки по категориям */}
           <Card className="flex flex-col gap-3 p-5">
@@ -277,7 +335,7 @@ export default async function HelpPage() {
               {rates.map((r) => (
                 <div
                   key={r.cat}
-                  className="flex items-center justify-between rounded-[10px] px-3.5 py-2.5"
+                  className="flex items-center justify-between rounded-xl px-3.5 py-2.5"
                   style={{ background: `var(${r.varName}-bg)` }}
                 >
                   <span className="text-[14px] font-semibold" style={{ color: `var(${r.varName})` }}>
@@ -299,7 +357,7 @@ export default async function HelpPage() {
             <h3 className="text-[13px] font-extrabold text-text-muted">
               {h.payroll.exampleTitle}
             </h3>
-            <div className="rounded-[10px] border border-border bg-surface-muted/60 p-4">
+            <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
               <div className="flex flex-wrap items-center gap-2 text-[13px]">
                 <span className="rounded-md bg-cat-claim-bg px-2 py-0.5 font-semibold text-cat-claim">
                   {h.payroll.exampleBadge}
@@ -337,7 +395,7 @@ export default async function HelpPage() {
       </Section>
 
       {/* ── Пошагово: завести клиента / создать дело ───────────── */}
-      <Section icon={FilePlus} title={h.sections.getStarted}>
+      <Section title={h.sections.getStarted}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Steps
             icon={UserPlus}
@@ -364,46 +422,48 @@ export default async function HelpPage() {
       </Section>
 
       {/* ── Документы / Платежи / Сроки ────────────────────────── */}
-      <Section icon={FileText} title={h.sections.insideCase}>
+      <Section title={h.sections.insideCase}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <MiniCard
             icon={FileText}
             title={h.inside.documentsTitle}
             text={h.inside.documentsText}
+            tone="bg-cat-document-bg text-cat-document"
           />
           <MiniCard
             icon={Wallet}
             title={h.inside.paymentsTitle}
             text={h.inside.paymentsText}
+            tone="bg-success-bg text-success"
           />
           <MiniCard
             icon={CalendarClock}
             title={h.inside.tasksTitle}
             text={h.inside.tasksText}
+            tone="bg-warning-bg text-warning"
           />
         </div>
       </Section>
 
       {/* ── Горячие клавиши (v3 Сессия 11) ─────────────────────── */}
-      <Section icon={Keyboard} title={h.sections.hotkeys}>
+      <Section
+        title={h.sections.hotkeys}
+        meta={
+          <>
+            <span className="font-mono tabular-nums">{hotkeyRows.length}</span>{' '}
+            {h.sections.hotkeysMeta}
+          </>
+        }
+      >
         <Card className="p-5">
           <div className="grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
-            {[
-              { keys: 'Ctrl K', label: t.ui.hotkeys.searchAction },
-              { keys: '/', label: t.ui.hotkeys.searchAction },
-              ...(user.caps.create_cases
-                ? [{ keys: 'N', label: t.ui.hotkeys.newCaseAction }]
-                : []),
-              { keys: 'T', label: t.ui.hotkeys.newTaskAction },
-              { keys: '?', label: t.ui.hotkeys.helpAction },
-              { keys: 'Esc', label: t.ui.hotkeys.closeAction },
-            ].map((row) => (
+            {hotkeyRows.map((row) => (
               <div
                 key={row.keys + row.label}
                 className="flex items-center justify-between gap-4 border-b border-border pb-2.5 last:border-0 sm:[&:nth-last-child(2)]:border-0"
               >
                 <span className="text-[13.5px] text-text">{row.label}</span>
-                <kbd className="shrink-0 rounded border border-border bg-surface-muted px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-text-subtle">
+                <kbd className="shrink-0 rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.04em] text-text-subtle">
                   {row.keys}
                 </kbd>
               </div>
@@ -413,9 +473,17 @@ export default async function HelpPage() {
         </Card>
       </Section>
 
-      {/* ── FAQ ───────────────────────────────────────────────── */}
-      <Section icon={Search} title={h.sections.faq}>
+      {/* ── FAQ (SectionCard: заголовок живёт в шапке карточки) ── */}
+      <section className="flex flex-col gap-3">
         <Card className="overflow-hidden">
+          <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <h2 className="text-[15px] font-semibold text-text">{h.sections.faq}</h2>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-subtle px-2.5 py-1 text-[11.5px] font-semibold text-primary-pressed">
+              <MessageCircle size={12} strokeWidth={2.4} aria-hidden="true" />
+              <span className="font-mono tabular-nums">{faqs.length}</span>
+              {h.faq.countLabel}
+            </span>
+          </header>
           {faqs.map((f, i) => (
             <details
               key={f.q}
@@ -423,11 +491,12 @@ export default async function HelpPage() {
             >
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 text-[14px] font-semibold text-text transition-colors hover:bg-primary-softer">
                 {f.q}
-                <span className="text-text-subtle transition-transform duration-200 group-open:rotate-45">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-                  </svg>
-                </span>
+                <ChevronDown
+                  size={18}
+                  strokeWidth={2.2}
+                  className="shrink-0 text-text-subtle transition-transform duration-200 group-open:rotate-180 group-open:text-primary-pressed"
+                  aria-hidden="true"
+                />
               </summary>
               <div className="px-5 pb-4 pt-0 text-[13.5px] leading-relaxed text-text-muted">
                 {f.a}
@@ -438,7 +507,7 @@ export default async function HelpPage() {
         <p className="text-[12.5px] text-text-subtle">
           {h.faq.footer}
         </p>
-      </Section>
+      </section>
     </main>
   );
 }
@@ -448,20 +517,21 @@ export default async function HelpPage() {
 // ============================================================================
 
 function Section({
-  icon: Icon,
   title,
+  meta,
   children,
 }: {
-  icon: LucideIcon;
   title: string;
+  /** Мета-подпись справа от заголовка (числа — font-mono tabular-nums). */
+  meta?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="inline-flex items-center gap-2 text-[16px] font-bold text-text">
-        <Icon size={17} strokeWidth={1.75} className="text-text-muted" />
-        {title}
-      </h2>
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[17px] font-bold tracking-[-0.01em] text-text">{title}</h2>
+        {meta && <span className="text-[12.5px] text-text-muted">{meta}</span>}
+      </div>
       {children}
     </section>
   );
@@ -526,17 +596,20 @@ function MiniCard({
   icon: Icon,
   title,
   text,
+  tone,
 }: {
   icon: LucideIcon;
   title: string;
   text: string;
+  /** Пара токенов тинт-плитки, например 'bg-success-bg text-success'. */
+  tone: string;
 }) {
   return (
-    <Card className="flex flex-col gap-2.5 p-4">
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary">
+    <Card className="flex flex-col gap-2.5 p-5">
+      <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${tone}`}>
         <Icon size={20} strokeWidth={1.75} />
       </span>
-      <h3 className="text-[14px] font-bold text-text">{title}</h3>
+      <h3 className="text-[15px] font-semibold text-text">{title}</h3>
       <p className="text-[13px] leading-relaxed text-text-muted">{text}</p>
     </Card>
   );
@@ -544,7 +617,7 @@ function MiniCard({
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="rounded border border-border bg-surface-sunken px-1.5 py-0.5 font-mono text-[11px] text-text">
+    <kbd className="rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.04em] text-text-subtle">
       {children}
     </kbd>
   );

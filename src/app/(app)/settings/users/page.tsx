@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronLeft, Users } from 'lucide-react';
+import { Check, ChevronLeft, Mail, Shield, Users } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -59,33 +59,80 @@ export default async function UsersSettingsPage() {
         {backLabel}
       </Link>
 
-      {/* Создание пользователя */}
+      {/* Создание пользователя — заголовок секции в шапке карточки (SectionCard) */}
       <section className="flex flex-col gap-3">
-        <h2 className="inline-flex items-center gap-2 text-[16px] font-semibold text-text">
-          <Users size={16} strokeWidth={1.75} className="text-text-muted" />
-          {t.users.heading}
-        </h2>
-        <Card className="p-5">
-          <p className="mb-4 text-[13px] text-text-muted">
-            {actor.profile.role === 'owner'
-              ? t.users.introOwner
-              : t.users.introManager}
-          </p>
-          <UserCreateForm
-            assignableRoles={assignable}
-            actorRole={actor.profile.role}
-            actorCaps={actor.caps}
-            departments={departments}
-            actorIsOwner={actorIsOwner}
-          />
+        <Card>
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <h2 className="text-[15px] font-semibold text-text">{t.users.heading}</h2>
+          </div>
+          <div className="p-5">
+            <p className="mb-4 text-[13px] text-text-muted">
+              {actor.profile.role === 'owner'
+                ? t.users.introOwner
+                : t.users.introManager}
+            </p>
+            <UserCreateForm
+              assignableRoles={assignable}
+              actorRole={actor.profile.role}
+              actorCaps={actor.caps}
+              departments={departments}
+              actorIsOwner={actorIsOwner}
+            />
+          </div>
         </Card>
       </section>
 
+      {/* Мини-статистика — из уже загруженного списка, без новых запросов */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="flex items-center gap-3 rounded-card border border-border bg-surface p-4 shadow-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-subtle text-primary">
+            <Users size={16} strokeWidth={1.75} />
+          </span>
+          <span className="flex flex-col gap-1">
+            <span className="text-[11.5px] font-medium text-text-muted">
+              {t.users.stats.total}
+            </span>
+            <span className="font-mono text-[22px] font-bold leading-none tabular-nums text-text">
+              {users.length}
+            </span>
+          </span>
+        </div>
+        <div className="flex items-center gap-3 rounded-card border border-border bg-surface p-4 shadow-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success-bg text-success">
+            <Check size={16} strokeWidth={1.75} />
+          </span>
+          <span className="flex flex-col gap-1">
+            <span className="text-[11.5px] font-medium text-text-muted">
+              {t.users.stats.active}
+            </span>
+            <span className="font-mono text-[22px] font-bold leading-none tabular-nums text-text">
+              {users.filter((u) => u.is_active).length}
+            </span>
+          </span>
+        </div>
+        <div className="flex items-center gap-3 rounded-card border border-border bg-surface p-4 shadow-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning-bg text-warning">
+            <Shield size={16} strokeWidth={1.75} />
+          </span>
+          <span className="flex flex-col gap-1">
+            <span className="text-[11.5px] font-medium text-text-muted">
+              {t.users.stats.admins}
+            </span>
+            <span className="font-mono text-[22px] font-bold leading-none tabular-nums text-text">
+              {users.filter((u) => u.role === 'owner' || u.role === 'admin').length}
+            </span>
+          </span>
+        </div>
+      </div>
+
       {/* Список пользователей */}
       <div className="bg-surface rounded-lg border border-border shadow-sm overflow-auto">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <h2 className="text-[15px] font-semibold text-text">{t.users.listHeading}</h2>
+        </div>
         <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-surface">
+          <TableHeader className="bg-surface-sunken">
+            <TableRow>
               <TableHead>{t.users.table.colUser}</TableHead>
               <TableHead>{t.users.table.colRole}</TableHead>
               <TableHead>{t.users.table.colDepartment}</TableHead>
@@ -103,7 +150,14 @@ export default async function UsersSettingsPage() {
                 !isSelf &&
                 canManageTargetUser(actor.profile.role, actor.caps.manage_users, u.role);
               return (
-                <TableRow key={u.id} className={u.is_active ? undefined : 'opacity-60'}>
+                <TableRow
+                  key={u.id}
+                  className={
+                    u.is_active
+                      ? 'group hover:bg-primary-softer'
+                      : 'group hover:bg-primary-softer opacity-60'
+                  }
+                >
                   <TableCell>
                     {actorIsOwner && !isSelf ? (
                       <UserCredentialsButton
@@ -115,8 +169,11 @@ export default async function UsersSettingsPage() {
                       <span className="inline-flex items-center gap-2.5">
                         <Avatar name={u.full_name} size="sm" />
                         <span className="flex flex-col">
-                          <span className="text-[13px] text-text">{u.full_name}</span>
-                          <span className="text-[12px] text-text-muted">
+                          <span className="text-[13.5px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
+                            {u.full_name}
+                          </span>
+                          <span className="flex items-center gap-1 text-[11.5px] text-text-subtle">
+                            <Mail size={10} strokeWidth={2} />
                             {u.email}
                           </span>
                         </span>
@@ -179,9 +236,9 @@ export default async function UsersSettingsPage() {
                   </TableCell>
                   <TableCell>
                     {u.is_active ? (
-                      <Badge tone="success">{t.users.table.statusActive}</Badge>
+                      <Badge tone="success" quiet>{t.users.table.statusActive}</Badge>
                     ) : (
-                      <Badge tone="neutral">{t.users.table.statusInactive}</Badge>
+                      <Badge tone="neutral" quiet>{t.users.table.statusInactive}</Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -219,7 +276,7 @@ export default async function UsersSettingsPage() {
           <span className="text-[12px] uppercase tracking-[0.05em] font-semibold text-text-subtle">
             {t.users.table.totalLabel}
           </span>
-          <span className="tabular-nums font-bold text-text">
+          <span className="font-mono tabular-nums font-bold text-text">
             {users.length}
           </span>
         </div>

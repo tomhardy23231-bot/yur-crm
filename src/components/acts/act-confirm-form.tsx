@@ -83,14 +83,14 @@ export function ActConfirmForm({
           type="file"
           required
           aria-invalid={err('file') ? 'true' : undefined}
-          className="file:mr-3 file:rounded-md file:border-0 file:bg-primary-subtle file:px-2.5 file:py-1 file:text-[12px] file:font-medium file:text-primary hover:file:bg-primary-subtle/80"
+          className="file:mr-3 file:rounded-full file:border-0 file:bg-primary-subtle file:px-2.5 file:py-1 file:text-[12px] file:font-medium file:text-primary hover:file:bg-primary-subtle/80"
         />
       </Field>
 
       <p className="text-[11px] text-text-subtle">{t.acts.confirm.hint}</p>
 
       {state.message && !state.ok && (
-        <p role="alert" className="rounded-md border border-error/15 bg-error-bg px-3 py-2 text-sm text-error">
+        <p role="alert" className="rounded-control border border-error/15 bg-error-bg px-3 py-2 text-sm text-error-text">
           {state.message}
         </p>
       )}

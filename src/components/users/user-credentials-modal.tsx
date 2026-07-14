@@ -57,7 +57,7 @@ export function UserCredentialsButton({
       >
         <Avatar name={fullName} size="sm" />
         <span className="flex flex-col">
-          <span className="inline-flex items-center gap-1.5 text-[13px] text-text group-hover:text-primary transition-colors">
+          <span className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-text group-hover:text-primary transition-colors">
             {fullName}
             <KeyRound
               size={12}
@@ -65,7 +65,10 @@ export function UserCredentialsButton({
               className="text-text-subtle group-hover:text-primary transition-colors"
             />
           </span>
-          <span className="text-[12px] text-text-muted">{email}</span>
+          <span className="inline-flex items-center gap-1 text-[11.5px] text-text-subtle">
+            <Mail size={10} strokeWidth={2} />
+            {email}
+          </span>
         </span>
       </button>
 

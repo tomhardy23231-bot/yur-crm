@@ -1,5 +1,17 @@
 import Link from 'next/link';
-import { ChevronRight, Coins, FileText, Settings } from 'lucide-react';
+import {
+  ChevronRight,
+  Coins,
+  FileText,
+  Gift,
+  Settings,
+  TrendingUp,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
+
+import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -42,7 +54,7 @@ export default async function PayrollReportPage({
   searchParams: Promise<{ month?: string; department?: string }>;
 }) {
   const user = await requireUser();
-  const { t } = await getT();
+  const { t, plural } = await getT();
   const monthNames = monthNamesFrom(t.payroll);
   const { month: monthParam, department: departmentParam } = await searchParams;
   const month = normalizeMonth(monthParam);
@@ -118,41 +130,117 @@ export default async function PayrollReportPage({
         </div>
       </div>
 
-      {/* Ставки по категориям */}
-      <Card className="p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <Coins size={16} strokeWidth={1.75} className="text-text-muted" />
-          <h2 className="text-[14px] font-semibold text-text">{t.payroll.report.ratesTitle}</h2>
+      {/* Сводные KPI-плитки месяца (редизайн v5) — данные уже посчитаны в totals */}
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <KpiTile
+          label={t.payroll.report.kpiBalance}
+          value={`${MONEY.format(totals.balance)} ₴`}
+          icon={Wallet}
+          iconClass="bg-primary-subtle text-primary"
+          valueClass="text-primary-pressed"
+        />
+        {showFixed && (
+          <KpiTile
+            label={t.payroll.report.kpiFixed}
+            value={`${MONEY.format(totals.fixed)} ₴`}
+            icon={Coins}
+            iconClass="bg-info-bg text-info"
+            valueClass="text-text"
+          />
+        )}
+        <KpiTile
+          label={t.payroll.report.kpiEarned}
+          value={`${MONEY.format(totals.earned)} ₴`}
+          icon={TrendingUp}
+          iconClass="bg-success-bg text-success"
+          valueClass="text-success-text"
+        />
+        <KpiTile
+          label={t.payroll.report.kpiBonus}
+          value={`${MONEY.format(totals.bonus)} ₴`}
+          icon={Gift}
+          iconClass="bg-warning-bg text-warning"
+          valueClass="text-warning-text"
+        />
+      </div>
+
+      {/* Ставки по категориям — цветовые якоря категорий + полосы-визуализация */}
+      <Card className="p-0">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-[15px] font-semibold text-text">{t.payroll.report.ratesTitle}</h2>
         </div>
-        <div className="flex flex-wrap gap-3">
-          {rates.map((r) => (
-            <div
-              key={r.category}
-              className="flex flex-col gap-1 rounded-md bg-surface-muted px-3 py-2"
-            >
-              <span className="text-[13px] font-medium text-text">
-                {t.enums.caseCategory[r.category]}
-              </span>
-              <span className="flex items-baseline gap-3 tabular-nums">
-                {showLawyerRate && (
-                  <span className="text-[12px] text-text-muted">
-                    {t.payroll.report.rateLawyer}{' '}
-                    <span className="text-[14px] font-bold text-text">
-                      {MONEY.format(r.lawyer_percent)}%
+        <div className="p-5">
+          <ul className="flex flex-col gap-4">
+            {rates.map((r) => {
+              const maxPercent = Math.max(
+                showLawyerRate ? r.lawyer_percent : 0,
+                showExpertRate ? r.expert_percent : 0,
+              );
+              // Трек нормируем на максимум дефолтных ставок (25% — представительство).
+              const width = Math.min(100, (maxPercent / RATE_MAX) * 100);
+              return (
+                <li key={r.category} className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ background: `var(--cat-${r.category})` }}
+                      />
+                      <span className="text-[13px] font-medium text-text">
+                        {t.enums.caseCategory[r.category]}
+                      </span>
                     </span>
-                  </span>
-                )}
-                {showExpertRate && (
-                  <span className="text-[12px] text-text-muted">
-                    {t.payroll.report.rateExpert}{' '}
-                    <span className="text-[14px] font-bold text-text">
-                      {MONEY.format(r.expert_percent)}%
+                    <span className="flex items-baseline gap-4">
+                      {showLawyerRate && (
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="text-[11px] text-text-muted">
+                            {t.payroll.report.rateLawyer}
+                          </span>
+                          <span
+                            className={cn(
+                              'font-mono text-[18px] font-bold leading-none tabular-nums',
+                              CAT_FG[r.category],
+                            )}
+                          >
+                            {MONEY.format(r.lawyer_percent)}%
+                          </span>
+                        </span>
+                      )}
+                      {showExpertRate && (
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="text-[11px] text-text-muted">
+                            {t.payroll.report.rateExpert}
+                          </span>
+                          <span
+                            className={cn(
+                              'font-mono text-[18px] font-bold leading-none tabular-nums',
+                              CAT_FG[r.category],
+                            )}
+                          >
+                            {MONEY.format(r.expert_percent)}%
+                          </span>
+                        </span>
+                      )}
                     </span>
-                  </span>
-                )}
-              </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ background: `var(--cat-${r.category})`, width: `${width}%` }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {showFixed && (
+            <div className="mt-5 rounded-xl bg-surface-sunken/60 p-3">
+              <p className="text-[11.5px] leading-relaxed text-text-muted">
+                {t.payroll.report.fixedNote}
+              </p>
             </div>
-          ))}
+          )}
         </div>
       </Card>
 
@@ -171,11 +259,21 @@ export default async function PayrollReportPage({
 
         <div
           data-tour="payroll-list"
-          className="hidden overflow-auto rounded-lg border border-border bg-surface shadow-sm md:block"
+          className="hidden overflow-auto rounded-card border border-border bg-surface shadow-sm md:block"
         >
+          {/* Шапка секции: заголовок + счётчик сотрудников (каркас v5) */}
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <h2 className="text-[15px] font-semibold text-text">
+              {t.payroll.report.employeesTitle}
+            </h2>
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-text-muted">
+              <Users size={14} strokeWidth={1.75} />
+              {plural(t.payroll.report.employeesCount, rows.length)}
+            </span>
+          </div>
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-surface">
+              <TableRow className="bg-surface-sunken/50 hover:bg-surface-sunken/50">
                 <TableHead>{t.payroll.report.colEmployee}</TableHead>
                 <TableHead className="text-right">{t.payroll.report.colEarnedMonth}</TableHead>
                 {showFixed && (
@@ -199,27 +297,37 @@ export default async function PayrollReportPage({
                 >
                   <TableCell>
                     <span className="inline-flex items-center gap-2.5">
-                      <Avatar name={r.full_name} size="sm" shape="square" />
-                      <span className="text-[13px] font-semibold text-text">
+                      <Avatar name={r.full_name} size="md" shape="square" />
+                      <span className="text-[13.5px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
                         {r.full_name}
                       </span>
                     </span>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text">
+                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] tabular-nums text-success-text">
                     {MONEY.format(r.earned)} ₴
                   </TableCell>
                   {showFixed && (
-                    <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text">
+                    <TableCell
+                      className={cn(
+                        'whitespace-nowrap text-right font-mono text-[13px] tabular-nums',
+                        r.salary_mode !== 'percent' ? 'text-text' : 'text-text-subtle',
+                      )}
+                    >
                       {r.salary_mode !== 'percent' ? `${MONEY.format(r.fixed)} ₴` : '—'}
                     </TableCell>
                   )}
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text-muted">
+                  <TableCell
+                    className={cn(
+                      'whitespace-nowrap text-right font-mono text-[13px] tabular-nums',
+                      r.bonus > 0 ? 'text-warning-text' : 'text-text-subtle',
+                    )}
+                  >
                     {r.bonus > 0 ? `+${MONEY.format(r.bonus)} ₴` : '—'}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-success">
+                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] tabular-nums text-success-text">
                     {MONEY.format(r.payout)} ₴
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] font-bold text-warning">
+                  <TableCell className="whitespace-nowrap text-right font-mono text-[14px] font-bold tabular-nums text-primary-pressed">
                     {MONEY.format(r.balance)} ₴
                   </TableCell>
                   <TableCell className="text-right text-text-subtle">
@@ -227,43 +335,86 @@ export default async function PayrollReportPage({
                   </TableCell>
                 </ClickableRow>
               ))}
+              {/* Итоги месяца — финальный ряд таблицы, выровнен под колонками */}
+              <TableRow className="bg-surface-sunken/50">
+                <TableCell className="text-[13.5px] font-bold text-text">
+                  {t.payroll.report.totalLabel}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-success-text">
+                  {MONEY.format(totals.earned)} ₴
+                </TableCell>
+                {showFixed && (
+                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-text">
+                    {MONEY.format(totals.fixed)} ₴
+                  </TableCell>
+                )}
+                <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-warning-text">
+                  {MONEY.format(totals.bonus)} ₴
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-success-text">
+                  {MONEY.format(totals.payout)} ₴
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right font-mono text-[14px] font-bold tabular-nums text-primary-pressed">
+                  {MONEY.format(totals.balance)} ₴
+                </TableCell>
+                <TableCell />
+              </TableRow>
             </TableBody>
           </Table>
-          <div className="flex flex-wrap items-center justify-start gap-x-6 gap-y-1.5 border-t border-border bg-surface-muted/50 px-4 py-3 tabular-nums text-[13px] sm:justify-end">
-            <span className="text-text-muted">
-              {t.payroll.report.totalEarnedMonth}{' '}
-              <span className="font-bold text-text">
-                {MONEY.format(totals.earned + totals.bonus)} ₴
-              </span>
-            </span>
-            {showFixed && (
-              <span className="text-text-muted">
-                {t.payroll.report.totalFixedMonth}{' '}
-                <span className="font-bold text-text">
-                  {MONEY.format(totals.fixed)} ₴
-                </span>
-              </span>
-            )}
-            <span className="text-text-muted">
-              {t.payroll.report.totalPaidMonth}{' '}
-              <span className="font-bold text-success">
-                {MONEY.format(totals.payout)} ₴
-              </span>
-            </span>
-            <span className="text-text-muted">
-              {t.payroll.report.totalBalanceTotal}{' '}
-              <span className="font-bold text-warning">
-                {MONEY.format(totals.balance)} ₴
-              </span>
-            </span>
-          </div>
         </div>
         </>
       )}
-
-      {showFixed && (
-        <p className="text-[12px] text-text-subtle">{t.payroll.report.fixedNote}</p>
-      )}
     </main>
+  );
+}
+
+// Цвет крупного процента ставки — тёмный fg-тон категории (пары --cat-*-fg).
+const CAT_FG = {
+  document: 'text-cat-document-fg',
+  claim: 'text-cat-claim-fg',
+  representation: 'text-cat-representation-fg',
+} as const;
+
+// Нормировка трека визуализации ставок: максимум дефолтных ставок (25%).
+const RATE_MAX = 25;
+
+// Сводная KPI-плитка отчёта ЗП (каркас v5: лейбл + иконка в тинт-квадрате +
+// крупное mono-число).
+function KpiTile({
+  label,
+  value,
+  icon: Icon,
+  iconClass,
+  valueClass,
+}: {
+  label: string;
+  value: string;
+  icon: LucideIcon;
+  iconClass: string;
+  valueClass: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[12.5px] font-medium text-text-muted">{label}</p>
+        <span
+          aria-hidden="true"
+          className={cn(
+            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+            iconClass,
+          )}
+        >
+          <Icon size={16} strokeWidth={2.2} />
+        </span>
+      </div>
+      <p
+        className={cn(
+          'font-mono text-[24px] font-bold leading-none tracking-tight tabular-nums',
+          valueClass,
+        )}
+      >
+        {value}
+      </p>
+    </div>
   );
 }

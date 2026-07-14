@@ -2,7 +2,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Trash2, AlertTriangle, ArrowDownUp, Link2, Wallet } from 'lucide-react';
+import {
+  Trash2,
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowDownUp,
+  ArrowUpRight,
+  Link2,
+  Wallet,
+} from 'lucide-react';
 
 import {
   Table,
@@ -75,17 +83,17 @@ export function CashReport({
         </div>
       )}
 
-      {/* Вкладки: по счёту + сводная. */}
+      {/* Вкладки: по счёту + сводная. Pill-чипы в языке пресетов /cases. */}
       <div
         role="tablist"
         aria-label={t.cash.report.tabsAria}
-        className="flex gap-1 overflow-x-auto border-b border-border"
+        className="flex flex-wrap items-center gap-2"
       >
         {accounts.map((a) => (
           <TabButton key={a.id} active={tab === a.id} onClick={() => setTab(a.id)}>
             {a.name}
             {!a.is_active && (
-              <span className="ml-1 text-[10px] text-text-subtle">
+              <span className="text-[10px] opacity-70">
                 ({t.cash.accounts.inactiveBadge})
               </span>
             )}
@@ -134,11 +142,13 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        'whitespace-nowrap border-b-2 px-4 py-2 text-[13px] transition-colors',
+        // Pill каркаса 2026-07-13 (как пресеты /cases): активная — тёмно-синяя
+        // заливка + белый текст + синяя тень; неактивная синеет на hover.
+        'inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip border px-3 text-[12.5px] transition-all duration-[200ms]',
         strong ? 'font-semibold' : 'font-medium',
         active
-          ? 'border-primary text-primary-pressed'
-          : 'border-transparent text-text-muted hover:text-text',
+          ? 'border-primary bg-primary-hover text-white shadow-brand'
+          : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
       )}
     >
       {children}
@@ -164,7 +174,7 @@ function AccountPanel({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-[13px] text-text-muted">
           {t.cash.accounts.closingNow}:{' '}
-          <span className="tabular-nums text-[15px] font-bold text-text">
+          <span className="font-mono tabular-nums text-[15px] font-bold text-text">
             {money(view.closingNow)}
           </span>
         </span>
@@ -199,15 +209,15 @@ function AccountPanel({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-surface px-3.5 py-2.5 tabular-nums text-[12.5px] shadow-sm">
             <span className="text-text-muted">
               {t.cash.report.monthInflow}{' '}
-              <span className="font-bold text-success-text">+{money(view.totals.inflow)}</span>
+              <span className="font-mono font-bold text-success-text">+{money(view.totals.inflow)}</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthOutflow}{' '}
-              <span className="font-bold text-error">−{money(view.totals.outflow)}</span>
+              <span className="font-mono font-bold text-error">−{money(view.totals.outflow)}</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthNet}{' '}
-              <span className={cn('font-bold', view.totals.net >= 0 ? 'text-success-text' : 'text-error')}>
+              <span className={cn('font-mono font-bold', view.totals.net >= 0 ? 'text-success-text' : 'text-error')}>
                 {view.totals.net >= 0 ? '+' : '−'}
                 {money(Math.abs(view.totals.net))}
               </span>
@@ -215,9 +225,9 @@ function AccountPanel({
           </div>
         </div>
 
-        <div className="hidden overflow-auto rounded-lg border border-border bg-surface shadow-sm md:block">
+        <div className="hidden overflow-auto rounded-card border border-border bg-surface shadow-sm md:block">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-surface-sunken/50">
               <TableRow className="hover:bg-surface">
                 <TableHead>{t.cash.report.colDate}</TableHead>
                 <TableHead className="text-right">{t.cash.report.colOpening}</TableHead>
@@ -229,35 +239,37 @@ function AccountPanel({
             <TableBody>
               {view.rows.map((r: CashDayRow) => (
                 <TableRow key={r.date} className="hover:bg-primary-softer">
-                  <TableCell className="whitespace-nowrap text-[13px] text-text">{r.date}</TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-text-muted">
+                  <TableCell className="whitespace-nowrap font-mono text-[12px] tabular-nums text-text">
+                    {r.date}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] text-text-muted">
                     {money(r.opening)}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-success-text">
+                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] text-success-text">
                     {r.inflow > 0 ? `+${money(r.inflow)}` : '—'}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] text-error">
+                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] text-error">
                     {r.outflow > 0 ? `−${money(r.outflow)}` : '—'}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] font-bold text-text">
+                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] font-bold text-text">
                     {money(r.closing)}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-          <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-1.5 border-t border-border bg-surface-muted/50 px-4 py-3 tabular-nums text-[13px]">
+          <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-1.5 border-t border-border bg-surface-sunken/50 px-4 py-3 tabular-nums text-[13px]">
             <span className="text-text-muted">
               {t.cash.report.monthInflow}{' '}
-              <span className="font-bold text-success-text">+{money(view.totals.inflow)}</span>
+              <span className="font-mono font-bold text-success-text">+{money(view.totals.inflow)}</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthOutflow}{' '}
-              <span className="font-bold text-error">−{money(view.totals.outflow)}</span>
+              <span className="font-mono font-bold text-error">−{money(view.totals.outflow)}</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthNet}{' '}
-              <span className={cn('font-bold', view.totals.net >= 0 ? 'text-success-text' : 'text-error')}>
+              <span className={cn('font-mono font-bold', view.totals.net >= 0 ? 'text-success-text' : 'text-error')}>
                 {view.totals.net >= 0 ? '+' : '−'}
                 {money(Math.abs(view.totals.net))}
               </span>
@@ -267,14 +279,19 @@ function AccountPanel({
         </>
       )}
 
-      {/* Журнал операций месяца. На мобильных скрыт — операции доступны из
-          разворота дня (DayCardMobile), дублировать список незачем. */}
-      <div className="hidden flex-col gap-2 md:flex">
-        <h3 className="text-[13px] font-semibold text-text">{t.cash.report.journalHeading}</h3>
+      {/* Журнал операций месяца — карточка-секция со счётчиком. На мобильных
+          скрыт — операции доступны из разворота дня (DayCardMobile). */}
+      <div className="hidden rounded-card border border-border bg-surface shadow-sm md:block">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <h3 className="text-[15px] font-semibold text-text">{t.cash.report.journalHeading}</h3>
+          <span className="inline-flex items-center rounded-chip bg-surface-sunken px-2.5 py-1 text-[11.5px] font-semibold tabular-nums text-text-muted">
+            {journal.length}
+          </span>
+        </div>
         {journal.length === 0 ? (
-          <p className="text-[13px] text-text-muted">{t.cash.report.journalEmpty}</p>
+          <p className="px-5 py-4 text-[13px] text-text-muted">{t.cash.report.journalEmpty}</p>
         ) : (
-          <div className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+          <div className="flex flex-col divide-y divide-border">
             {journal.map((e) => (
               <JournalRow key={e.id} entry={e} />
             ))}
@@ -284,9 +301,13 @@ function AccountPanel({
 
       {/* Добавление ручной операции (счёт активной вкладки предвыбран). */}
       {account.is_active && (
-        <Card className="p-4">
-          <h3 className="mb-3 text-[13px] font-semibold text-text">{t.cash.entry.heading}</h3>
-          <CashEntryForm accounts={accounts} accountId={account.id} />
+        <Card className="p-0">
+          <div className="border-b border-border px-5 py-4">
+            <h3 className="text-[15px] font-semibold text-text">{t.cash.entry.heading}</h3>
+          </div>
+          <div className="p-5">
+            <CashEntryForm accounts={accounts} accountId={account.id} />
+          </div>
         </Card>
       )}
     </div>
@@ -308,15 +329,15 @@ function DayCardMobile({
     <details className="group overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
       <summary className="cursor-pointer list-none p-3.5 transition-colors active:bg-surface-muted">
         <span className="flex items-center justify-between gap-3">
-          <span className="text-[13.5px] font-bold tabular-nums text-text">
+          <span className="font-mono text-[13px] font-bold tabular-nums text-text">
             {row.date}
           </span>
           <span className="text-[12px] tabular-nums text-text-muted">
             {t.cash.report.colClosing}:{' '}
-            <span className="font-bold text-text">{money(row.closing)}</span>
+            <span className="font-mono font-bold text-text">{money(row.closing)}</span>
           </span>
         </span>
-        <span className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 tabular-nums text-[12.5px]">
+        <span className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono tabular-nums text-[12.5px]">
           <span className="text-success-text">
             {row.inflow > 0 ? `+${money(row.inflow)}` : '—'}
           </span>
@@ -342,17 +363,32 @@ function DayCardMobile({
 function JournalRow({ entry }: { entry: CashEntryWithCase }) {
   const { t } = useI18n();
   const isAuto = entry.payment_id !== null;
-  const sign = entry.direction === 'in' ? '+' : '−';
-  const cls = entry.direction === 'in' ? 'text-success-text' : 'text-error';
+  const isIn = entry.direction === 'in';
+  const sign = isIn ? '+' : '−';
+  const cls = isIn ? 'text-success-text' : 'text-error';
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
-      <span className="tabular-nums text-[12px] text-text-subtle">{entry.entry_date}</span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 transition-colors hover:bg-primary-softer">
+      <span className="font-mono text-[12px] tabular-nums text-text-subtle">{entry.entry_date}</span>
+      {/* Чип направления (AA: текст на подложке — *-text, тон несёт стрелка) */}
+      <span
+        className={cn(
+          'inline-flex items-center gap-1 rounded-chip px-2 py-0.5 text-[11px] font-semibold',
+          isIn ? 'bg-success-bg text-success-text' : 'bg-error-bg text-error-text',
+        )}
+      >
+        {isIn ? (
+          <ArrowDownLeft size={11} strokeWidth={2.5} aria-hidden="true" />
+        ) : (
+          <ArrowUpRight size={11} strokeWidth={2.5} aria-hidden="true" />
+        )}
+        {isIn ? t.cash.report.colInflow : t.cash.report.colOutflow}
+      </span>
       <span className="min-w-0 flex-1 truncate text-[13px] text-text">{entry.description}</span>
       {entry.case && (
         <Link
           href={`/cases/${entry.case.id}`}
-          className="inline-flex items-center gap-1 text-[12px] text-primary hover:underline"
+          className="inline-flex items-center gap-1 font-mono text-[12px] text-primary hover:underline"
         >
           <Link2 size={12} strokeWidth={1.75} />
           {entry.case.number_title}
@@ -363,7 +399,7 @@ function JournalRow({ entry }: { entry: CashEntryWithCase }) {
           {t.cash.report.autoBadge}
         </Badge>
       )}
-      <span className={cn('tabular-nums text-[13px] font-semibold', cls)}>
+      <span className={cn('font-mono tabular-nums text-[13px] font-bold', cls)}>
         {sign}
         {money(entry.amount)}
       </span>
@@ -409,9 +445,9 @@ function TotalTable({
   }
 
   return (
-    <div className="overflow-auto rounded-lg border border-border bg-surface shadow-sm">
+    <div className="overflow-auto rounded-card border border-border bg-surface shadow-sm">
       <Table>
-        <TableHeader>
+        <TableHeader className="bg-surface-sunken/50">
           <TableRow className="hover:bg-surface">
             <TableHead>{t.cash.report.colDate}</TableHead>
             {accounts.map((a) => (
@@ -425,16 +461,18 @@ function TotalTable({
         <TableBody>
           {rows.map((r) => (
             <TableRow key={r.date} className="hover:bg-primary-softer">
-              <TableCell className="whitespace-nowrap text-[13px] text-text">{r.date}</TableCell>
+              <TableCell className="whitespace-nowrap font-mono text-[12px] tabular-nums text-text">
+                {r.date}
+              </TableCell>
               {accounts.map((a) => (
                 <TableCell
                   key={a.id}
-                  className="whitespace-nowrap text-right tabular-nums text-[13px] text-text-muted"
+                  className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] text-text-muted"
                 >
                   {money(r.perAccount[a.id] ?? 0)}
                 </TableCell>
               ))}
-              <TableCell className="whitespace-nowrap text-right tabular-nums text-[13px] font-bold text-text">
+              <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-[13px] font-bold text-text">
                 {money(r.total)}
               </TableCell>
             </TableRow>

@@ -103,7 +103,7 @@ export function MobileMoreSheet({
       {/* Лист */}
       <div
         className={cn(
-          'relative z-10 max-h-[85dvh] overflow-y-auto rounded-t-[22px]',
+          'relative z-10 max-h-[85dvh] overflow-y-auto rounded-t-modal',
           'border-t border-border bg-surface shadow-[var(--shadow-pop)]',
           'animate-sheet-up',
         )}
@@ -156,11 +156,16 @@ export function MobileMoreSheet({
                     : 'border-border bg-surface text-text active:bg-surface-muted',
                 )}
               >
-                <Icon
-                  size={20}
-                  strokeWidth={1.85}
-                  className={active ? 'text-primary' : 'text-text-muted'}
-                />
+                <span
+                  className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                    active
+                      ? 'bg-primary-subtle text-primary'
+                      : 'bg-surface-sunken text-text-muted',
+                  )}
+                >
+                  <Icon size={16} strokeWidth={2} />
+                </span>
                 <span className="text-[13.5px] font-semibold leading-tight">{label}</span>
               </Link>
             );
@@ -169,7 +174,7 @@ export function MobileMoreSheet({
 
         {/* Язык интерфейса */}
         <div className="px-4 pt-4">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-text-subtle">
+          <p className="mb-2 text-[12px] font-semibold text-text-muted">
             {t.account.language.label}
           </p>
           <LanguageSwitcher />
@@ -180,9 +185,11 @@ export function MobileMoreSheet({
           <form action="/logout" method="post">
             <button
               type="submit"
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface text-[14px] font-semibold text-error transition-colors active:bg-error-bg"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border bg-surface text-[14px] font-semibold text-error transition-colors active:bg-error-bg"
             >
-              <LogOut size={17} strokeWidth={1.85} />
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-error-bg text-error">
+                <LogOut size={16} strokeWidth={2} />
+              </span>
               {t.auth.logout}
             </button>
           </form>

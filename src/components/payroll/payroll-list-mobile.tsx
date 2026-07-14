@@ -52,13 +52,13 @@ export async function PayrollListMobile({
           <li key={r.user_id}>
             <Link
               href={`/reports/payroll/${r.user_id}`}
-              className="block overflow-hidden rounded-xl border border-border bg-surface p-3.5 shadow-sm transition-colors active:bg-surface-muted"
+              className="block overflow-hidden rounded-xl border border-border bg-surface p-3.5 shadow-sm transition-colors active:bg-primary-softer"
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-2.5">
                   <Avatar name={r.full_name} size="sm" shape="square" />
                   <span className="min-w-0">
-                    <span className="block truncate text-[14px] font-bold leading-tight text-text">
+                    <span className="block truncate text-[14px] font-semibold leading-tight text-text">
                       {r.full_name}
                     </span>
                     {dept && (
@@ -83,19 +83,19 @@ export async function PayrollListMobile({
                 <MoneyCell
                   label={t.payroll.report.colPaidMonth}
                   value={`${MONEY.format(r.payout)} ₴`}
-                  tone="text-success"
+                  tone="text-success-text"
                 />
                 <MoneyCell
                   label={t.payroll.report.colBalanceTotal}
                   value={`${MONEY.format(r.balance)} ₴`}
-                  tone="text-warning"
+                  tone="text-warning-text"
                 />
               </div>
 
               {r.salary_mode !== 'percent' && (
                 <p className="mt-2.5 text-[12px] tabular-nums text-text-muted">
                   {t.payroll.report.colFixedMonth}:{' '}
-                  <span className="font-semibold text-text">
+                  <span className="font-mono font-semibold text-text">
                     {MONEY.format(r.fixed)} ₴
                   </span>
                 </p>
@@ -122,7 +122,7 @@ function MoneyCell({
       <span className="truncate text-[10px] font-semibold uppercase tracking-[0.04em] text-text-subtle">
         {label}
       </span>
-      <span className={`truncate text-[13px] font-bold tabular-nums ${tone}`}>
+      <span className={`truncate font-mono text-[13px] font-bold tabular-nums ${tone}`}>
         {value}
       </span>
     </span>

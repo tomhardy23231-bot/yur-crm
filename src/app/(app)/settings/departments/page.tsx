@@ -62,6 +62,12 @@ export default async function DepartmentsSettingsPage() {
     );
   }
 
+  // Словоформа без числа: число рендерим отдельно (mono-акцент в пилюле),
+  // словарь plural остаётся единственным источником форм.
+  function membersWord(n: number): string {
+    return membersLabel(n).replace(/^\s*\d+\s*/, '');
+  }
+
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <Link
@@ -72,15 +78,18 @@ export default async function DepartmentsSettingsPage() {
         {t.nav.settings}
       </Link>
 
-      {/* Создание подразделения */}
+      {/* Создание подразделения — заголовок секции в шапке карточки (SectionCard) */}
       <section className="flex flex-col gap-3">
-        <h2 className="inline-flex items-center gap-2 text-[16px] font-semibold text-text">
-          <Building2 size={16} strokeWidth={1.75} className="text-text-muted" />
-          {t.departments.heading}
-        </h2>
-        <p className="text-[13px] text-text-muted">{t.departments.intro}</p>
-        <Card className="p-5">
-          <DepartmentCreateForm />
+        <Card>
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <h2 className="text-[15px] font-semibold text-text">
+              {t.departments.heading}
+            </h2>
+          </div>
+          <div className="p-5">
+            <p className="mb-4 text-[13px] text-text-muted">{t.departments.intro}</p>
+            <DepartmentCreateForm />
+          </div>
         </Card>
       </section>
 
@@ -98,6 +107,9 @@ export default async function DepartmentsSettingsPage() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5">
                   <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-subtle text-primary">
+                      <Building2 size={16} strokeWidth={1.75} />
+                    </span>
                     <DepartmentNameControl id={d.id} name={d.name} />
                     {d.is_active ? (
                       <Badge tone="success" quiet>
@@ -110,9 +122,12 @@ export default async function DepartmentsSettingsPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center gap-1.5 text-[12px] text-text-muted">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-sunken px-2.5 py-1 text-[12px] font-medium text-text-muted">
                       <Users size={13} strokeWidth={1.75} />
-                      {membersLabel(d.member_count)}
+                      <span className="font-mono font-semibold tabular-nums text-text">
+                        {d.member_count}
+                      </span>
+                      {membersWord(d.member_count)}
                     </span>
                     <DepartmentActiveControl id={d.id} isActive={d.is_active} />
                   </div>
@@ -175,7 +190,7 @@ function TeamRow({
 }) {
   const showsScope = user.role === 'admin' || user.role === 'office_manager';
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+    <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-primary-softer">
       <span className="inline-flex items-center gap-2.5">
         <Avatar name={user.full_name} size="sm" />
         <span className="flex flex-col">

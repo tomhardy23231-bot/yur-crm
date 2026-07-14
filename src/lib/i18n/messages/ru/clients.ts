@@ -25,6 +25,8 @@ export const clients = {
     pageInfo: 'Страница {page} из {pageCount} · по {pageSize} на странице',
     prev: '← Назад',
     next: 'Вперёд →',
+    // Счётчик результатов справа от pill-фильтров
+    countInfo: '{count} из {total}',
     // Пустые состояния
     emptyFilteredTitle: 'Ничего не нашли',
     emptyTitle: 'Здесь будут ваши клиенты',
@@ -57,6 +59,10 @@ export const clients = {
     // Шапка
     clientSince: 'клиент с',
     edit: 'Редактировать',
+    // Мини-статы шапки (Дел / На сумму / Долг)
+    statCases: 'Дел',
+    statSum: 'На сумму',
+    statDebt: 'Долг',
     // Секции
     sectionKind: 'Тип клиента',
     sectionBirthDate: 'Дата рождения',

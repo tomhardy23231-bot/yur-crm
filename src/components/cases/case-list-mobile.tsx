@@ -50,22 +50,22 @@ export async function CaseListMobile({
             <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
               <Link
                 href={`/cases/${c.id}`}
-                className="block p-3.5 transition-colors active:bg-surface-muted"
+                className="block p-3.5 transition-colors active:bg-primary-softer"
               >
                 {/* Заголовок + этап */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-[15px] font-bold leading-tight text-text">
+                    <p className="truncate text-[15px] font-semibold leading-tight text-text">
                       {c.number_title}
                     </p>
                     {c.client && (
-                      <p className="mt-0.5 truncate text-[12.5px] text-text-muted">
+                      <p className="mt-0.5 truncate font-mono text-[11.5px] tabular-nums text-text-muted">
                         {c.client.name}
                       </p>
                     )}
                   </div>
                   <div className="mt-0.5 flex shrink-0 flex-col items-end gap-1">
-                    <StageBadge stage={c.stage} quiet />
+                    <StageBadge stage={c.stage} pulse={false} />
                     {c.outcome === 'lost' && (
                       <Badge tone="neutral" title={t.cases.lost.badgeTitle}>
                         {t.cases.lost.badge}
@@ -76,7 +76,7 @@ export async function CaseListMobile({
 
                 {/* Бейджи: категория · приоритет · «без акта» · дни/закрыто */}
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                  <CategoryBadge category={c.category} quiet />
+                  <CategoryBadge category={c.category} />
                   <PriorityBadge priority={c.priority} />
                   {c.closed_without_act && (
                     <Badge tone="warning" title={t.cases.row.withoutActTitle}>
@@ -84,14 +84,14 @@ export async function CaseListMobile({
                     </Badge>
                   )}
                   {archived && c.closed_at ? (
-                    <span className="text-[11px] tabular-nums text-text-subtle">
+                    <span className="font-mono text-[11px] tabular-nums text-text-subtle">
                       {t.cases.archive.closedAtColumn}:{' '}
                       {DATE_FMT.format(new Date(c.closed_at))}
                     </span>
                   ) : (
                     days !== null && (
                       <span
-                        className={`text-[11px] tabular-nums ${stale ? 'font-medium text-warning' : 'text-text-subtle'}`}
+                        className={`font-mono text-[11px] tabular-nums ${stale ? 'font-medium text-warning' : 'text-text-subtle'}`}
                       >
                         {plural(t.cases.row.stageDays, days)}
                       </span>
@@ -116,16 +116,16 @@ export async function CaseListMobile({
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[14px] font-bold tabular-nums text-text">
+                    <p className="font-mono text-[14px] font-bold tabular-nums text-text">
                       {formatMoney(c.contract_sum)} ₴
                     </p>
                     {c.overpaid > 0 ? (
-                      <p className="text-[12px] font-medium tabular-nums text-info">
+                      <p className="font-mono text-[12px] font-medium tabular-nums text-info">
                         +{formatMoney(c.overpaid)} ₴
                       </p>
                     ) : (
                       <p
-                        className={`text-[12px] font-medium tabular-nums ${c.debt > 0 ? 'text-error' : 'text-text-subtle'}`}
+                        className={`font-mono text-[12px] font-medium tabular-nums ${c.debt > 0 ? 'text-error' : 'text-text-subtle'}`}
                       >
                         {t.cases.columns.debt}: {formatMoney(c.debt)} ₴
                       </p>

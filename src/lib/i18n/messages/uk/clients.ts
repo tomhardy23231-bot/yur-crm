@@ -21,6 +21,7 @@ export const clients: ClientsMessages = {
     pageInfo: 'Сторінка {page} з {pageCount} · по {pageSize} на сторінці',
     prev: '← Назад',
     next: 'Уперед →',
+    countInfo: '{count} з {total}',
     emptyFilteredTitle: 'Нічого не знайшли',
     emptyTitle: 'Тут будуть ваші клієнти',
     emptyFilteredHint:
@@ -47,6 +48,9 @@ export const clients: ClientsMessages = {
     errorMissingId: 'Не передано ідентифікатор клієнта.',
     clientSince: 'клієнт з',
     edit: 'Редагувати',
+    statCases: 'Справ',
+    statSum: 'На суму',
+    statDebt: 'Борг',
     sectionKind: 'Тип клієнта',
     sectionBirthDate: 'Дата народження',
     sectionInn: 'ІПН',

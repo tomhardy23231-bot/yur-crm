@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n/provider';
@@ -33,17 +33,17 @@ export function MonthPicker({ month }: { month: string }) {
   const isCurrent = month >= cur;
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-md border border-border bg-surface p-1 shadow-sm">
+    <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
       <button
         type="button"
         onClick={() => go(prevMonth(month))}
         aria-label={t.payroll.monthPicker.prev}
-        className="inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-primary-softer hover:text-text"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-pressed"
       >
-        <ChevronLeft size={16} strokeWidth={2} />
+        <ChevronLeft size={16} strokeWidth={2.2} />
       </button>
-      <span className="inline-flex items-center gap-1.5 px-2 text-[13px] font-semibold text-text">
-        <Calendar size={14} strokeWidth={1.75} className="text-text-muted" />
+      {/* Фиксированная ширина подписи — пикер не «дёргается» при переключении. */}
+      <span className="inline-flex min-w-[112px] items-center justify-center text-center text-[13px] font-semibold tabular-nums text-text">
         {monthLabel(month, monthNames)}
       </span>
       <button
@@ -52,13 +52,13 @@ export function MonthPicker({ month }: { month: string }) {
         disabled={isCurrent}
         aria-label={t.payroll.monthPicker.next}
         className={cn(
-          'inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors',
+          'inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors',
           isCurrent
             ? 'cursor-not-allowed opacity-40'
-            : 'hover:bg-primary-softer hover:text-text',
+            : 'hover:bg-primary-softer hover:text-primary-pressed',
         )}
       >
-        <ChevronRight size={16} strokeWidth={2} />
+        <ChevronRight size={16} strokeWidth={2.2} />
       </button>
     </div>
   );

@@ -239,7 +239,7 @@ export default async function PayrollEmployeePage({
           <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-text">
             <Wallet size={15} strokeWidth={1.75} className="text-text-muted" />
             {t.payroll.employee.salaryTitle}:{' '}
-            <span className="tabular-nums">
+            <span className="font-mono tabular-nums">
               {fmt(t.payroll.employee.salaryPerMonth, { amount: MONEY.format(fixedMonthly) })}
             </span>
           </span>
@@ -259,7 +259,7 @@ export default async function PayrollEmployeePage({
           <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-[0.05em] text-text-muted">
             <Wallet size={13} strokeWidth={2} />{t.payroll.employee.toPayNow}
           </span>
-          <span className="text-[30px] font-extrabold leading-none tabular-nums text-warning">
+          <span className="font-mono text-[30px] font-extrabold leading-none tracking-tight tabular-nums text-warning">
             {MONEY.format(balance)} ₴
           </span>
           <span className="text-[12px] text-text-muted">
@@ -310,10 +310,10 @@ export default async function PayrollEmployeePage({
             </p>
           </Card>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border bg-surface shadow-sm">
+          <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-sm">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-surface-sunken/50">
                   <TableHead>{t.payroll.employee.colCase}</TableHead>
                   <TableHead>{t.payroll.employee.colStage}</TableHead>
                   <TableHead>{t.payroll.employee.colRole}</TableHead>
@@ -343,7 +343,7 @@ export default async function PayrollEmployeePage({
                         {t.enums.roleInCase[c.role_in_case]} · {MONEY.format(c.percent)}%
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="text-[13px] font-semibold tabular-nums text-text">
+                        <div className="font-mono text-[13px] font-semibold tabular-nums text-text">
                           {MONEY.format(c.earned)} ₴
                         </div>
                         <div className="text-[11px] text-text-subtle">
@@ -377,7 +377,7 @@ export default async function PayrollEmployeePage({
                       </TableCell>
                       <TableCell
                         className={cn(
-                          'whitespace-nowrap text-right text-[13px] font-semibold tabular-nums',
+                          'whitespace-nowrap text-right font-mono text-[13px] font-semibold tabular-nums',
                           c.outstanding > 0.001 ? 'text-warning' : 'text-text-subtle',
                         )}
                       >
@@ -435,7 +435,7 @@ export default async function PayrollEmployeePage({
             {bonusRows.map((b) => (
               <li
                 key={b.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-sm"
+                className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm"
               >
                 <span
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning-bg text-warning"
@@ -445,7 +445,7 @@ export default async function PayrollEmployeePage({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-[14px] font-bold tabular-nums text-text">
+                    <span className="font-mono text-[14px] font-bold tabular-nums text-text">
                       +{MONEY.format(b.amount)} ₴
                     </span>
                     <span className="text-[12px] text-text-muted">
@@ -502,7 +502,7 @@ export default async function PayrollEmployeePage({
               return (
                 <li
                   key={tx.id}
-                  className="flex items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-sm"
+                  className="flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm"
                 >
                   <span
                     className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success-bg text-success"
@@ -512,7 +512,7 @@ export default async function PayrollEmployeePage({
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="text-[14px] font-bold tabular-nums text-text">
+                      <span className="font-mono text-[14px] font-bold tabular-nums text-text">
                         −{MONEY.format(tx.amount)} ₴
                       </span>
                       <span className="text-[12px] text-text-muted">
@@ -589,7 +589,7 @@ function SummaryCell({
       <span className="text-[11px] text-text-muted">
         {label}
       </span>
-      <span className={cn('text-[18px] font-bold tabular-nums', color)}>
+      <span className={cn('font-mono text-[18px] font-bold tabular-nums', color)}>
         {value}
       </span>
       {caption && (

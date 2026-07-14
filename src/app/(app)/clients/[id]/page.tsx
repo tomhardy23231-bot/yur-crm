@@ -55,6 +55,9 @@ export default async function ClientDetailPage({
   if (!client) notFound();
 
   const cases = await getClientCases(id);
+  // Мини-статы шапки — суммы из уже загруженного массива дел (без новых запросов).
+  const totalContractSum = cases.reduce((sum, c) => sum + c.contract_sum, 0);
+  const totalDebt = cases.reduce((sum, c) => sum + c.debt, 0);
   // RLS UPDATE = view_all_cases ИЛИ автор записи. Если ни то, ни другое —
   // скрываем «Редактировать», чтобы не показывать кнопку, действие которой откажет.
   const canEdit = user.caps.view_all_cases || client.created_by === user.profile.id;
@@ -84,17 +87,23 @@ export default async function ClientDetailPage({
 
       <Card>
         {/* Светлая шапка (бриф §7): без золотого баннера — аватар + имя + мета,
-            действия справа (удаление — красная второстепенная). */}
-        <div className="flex flex-wrap items-center gap-4 border-b border-border px-6 py-5">
-          <Avatar name={client.name} size="xl" shape="square" />
+            действия справа (удаление — красная второстепенная). Аватар круглый —
+            квадрат зарезервирован за таблицами (DESIGN.md). */}
+        <div className="flex flex-wrap items-center gap-4 px-6 pt-5 pb-4">
+          <Avatar name={client.name} size="xl" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[22px] font-bold leading-tight tracking-[-0.01em] text-text">
               {client.name}
             </h1>
-            <p className="mt-1 text-[13px] text-text-muted">
-              {t.enums.clientKind[client.client_kind]} · {t.clients.detail.clientSince}{' '}
-              {DATE_FMT.format(new Date(client.created_at))}
-            </p>
+            {/* Тип клиента — залитая пилюля под именем (язык каркаса), мета —
+                только «клиент с DATE». */}
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <ClientKindBadge kind={client.client_kind} quiet={false} />
+              <p className="text-[13px] text-text-muted">
+                {t.clients.detail.clientSince}{' '}
+                {DATE_FMT.format(new Date(client.created_at))}
+              </p>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {canEdit && (
@@ -111,13 +120,41 @@ export default async function ClientDetailPage({
           </div>
         </div>
 
-        {/* Реквизиты: показываем ТОЛЬКО заполненные поля — пустых «—» больше нет
-            (редизайн Волна 3). Карточка сжимается к содержимому, дела всплывают выше. */}
-        <div className="grid grid-cols-1 gap-x-6 gap-y-5 p-6 sm:grid-cols-2">
-          <Section title={t.clients.detail.sectionKind}>
-            <ClientKindBadge kind={client.client_kind} />
-          </Section>
+        {/* Мини-статы «Дел / На сумму / Долг» — фирменная композиция карточки
+            клиента из каркаса; считаются из уже загруженного массива cases. */}
+        <div className="grid grid-cols-3 gap-2 border-t border-border px-6 py-3">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10.5px] uppercase tracking-wide text-text-subtle">
+              {t.clients.detail.statCases}
+            </span>
+            <span className="font-mono text-[14px] font-bold tabular-nums text-primary-pressed">
+              {cases.length}
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10.5px] uppercase tracking-wide text-text-subtle">
+              {t.clients.detail.statSum}
+            </span>
+            <span className="font-mono text-[13px] font-semibold tabular-nums text-text">
+              {MONEY_FMT.format(totalContractSum)} ₴
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10.5px] uppercase tracking-wide text-text-subtle">
+              {t.clients.detail.statDebt}
+            </span>
+            <span
+              className={`font-mono text-[13px] font-semibold tabular-nums ${totalDebt > 0 ? 'text-error' : 'text-text-muted'}`}
+            >
+              {MONEY_FMT.format(totalDebt)} ₴
+            </span>
+          </div>
+        </div>
 
+        {/* Реквизиты: показываем ТОЛЬКО заполненные поля — пустых «—» больше нет
+            (редизайн Волна 3). Карточка сжимается к содержимому, дела всплывают выше.
+            Тип клиента здесь не дублируем — он уже пилюлей в шапке. */}
+        <div className="grid grid-cols-1 gap-x-6 gap-y-5 border-t border-border p-6 sm:grid-cols-2">
           {clientKindHasFullName(client.client_kind) && client.birth_date && (
             <Section title={t.clients.detail.sectionBirthDate}>
               <span className="text-[13.5px] text-text">
@@ -134,13 +171,13 @@ export default async function ClientDetailPage({
                   : t.clients.detail.sectionInnEdrpou
               }
             >
-              <span className="text-[13.5px] text-text">{client.inn}</span>
+              <span className="font-mono text-[13px] tabular-nums text-text">{client.inn}</span>
             </Section>
           )}
 
           {client.contract_number && (
             <Section title={t.clients.detail.sectionContractNumber}>
-              <span className="text-[13.5px] text-text">{client.contract_number}</span>
+              <span className="font-mono text-[13px] tabular-nums text-text">{client.contract_number}</span>
             </Section>
           )}
 
@@ -148,7 +185,7 @@ export default async function ClientDetailPage({
             <Section title={t.clients.detail.sectionPhone}>
               <a
                 href={`tel:${client.phone}`}
-                className="inline-flex items-center gap-2 text-[13.5px] text-text hover:text-primary transition-colors"
+                className="inline-flex items-center gap-2 font-mono text-[13px] tabular-nums text-text hover:text-primary transition-colors"
               >
                 <Phone size={14} strokeWidth={1.75} className="text-text-muted" />
                 {client.phone}
@@ -262,13 +299,13 @@ export default async function ClientDetailPage({
                       <Empty label={t.common.dash} />
                     )}
                   </TableCell>
-                  <TableCell className="text-[12.5px] text-text-muted">
+                  <TableCell className="text-[12.5px] tabular-nums text-text-muted">
                     {DATE_FMT.format(new Date(c.opened_at))}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">
+                  <TableCell className="text-right font-mono text-[13px] tabular-nums whitespace-nowrap">
                     {MONEY_FMT.format(c.contract_sum)} ₴
                   </TableCell>
-                  <TableCell className={`text-right tabular-nums whitespace-nowrap ${c.debt > 0 ? 'text-error' : 'text-text-muted'}`}>
+                  <TableCell className={`text-right font-mono text-[13px] tabular-nums whitespace-nowrap ${c.debt > 0 ? 'text-error' : 'text-text-muted'}`}>
                     {MONEY_FMT.format(c.debt)} ₴
                   </TableCell>
                 </TableRow>

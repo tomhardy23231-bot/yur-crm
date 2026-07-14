@@ -32,6 +32,17 @@ export const payroll: PayrollMessages = {
     rateLawyer: 'юрист',
     rateExpert: 'експерт',
 
+    // KPI-плитки над звітом (редизайн v5).
+    kpiBalance: 'До виплати всього',
+    kpiFixed: 'Оклади',
+    kpiEarned: 'Зароблено зі справ',
+    kpiBonus: 'Премії',
+
+    // Шапка секції таблиці співробітників.
+    employeesTitle: 'Співробітники',
+    employeesCount: { one: '{n} співробітник', few: '{n} співробітники', many: '{n} співробітників' },
+    totalLabel: 'Разом',
+
     emptyTitle: 'Поки немає даних по зарплаті',
     emptyHint: 'Нарахування з’являться, коли по справах надійдуть оплати.',
 
@@ -119,6 +130,22 @@ export const payroll: PayrollMessages = {
     fieldMissing: 'Поле {field} відсутнє',
     lawyerError: 'Юрист, «{category}»: {error}',
     expertError: 'Експерт, «{category}»: {error}',
+
+    how: {
+      title: 'Як розраховується зарплата',
+      formulaIntro: 'Виплата співробітнику =',
+      formulaFixed: 'оклад (якщо задано)',
+      formulaPercent: 'оплати за справою × ставка категорії',
+      formulaBonus: 'премії',
+      pointRates:
+        'Ставка залежить від категорії справи і задається окремо для юриста та експерта.',
+      pointFullPercent:
+        'Повний відсоток отримує кожен — і юрист, і експерт справи.',
+      pointBase:
+        'База розрахунку — фактично оплачені суми за справою, а не сума договору.',
+      pointModes:
+        'Режим співробітника: відсоток, оклад (відсоток не нараховується) або оклад + відсоток.',
+    },
   },
 
   ledger: {

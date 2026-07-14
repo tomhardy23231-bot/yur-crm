@@ -250,7 +250,7 @@ export function TaskForm({
       {state.message && !state.fieldErrors && (
         <p
           role="alert"
-          className="text-sm text-error bg-error-bg border border-error/15 rounded-md px-3 py-2"
+          className="text-sm text-error-text bg-error-bg border border-error/15 rounded-control px-3 py-2"
         >
           {state.message}
         </p>

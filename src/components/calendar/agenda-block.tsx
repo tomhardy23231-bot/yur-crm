@@ -37,7 +37,9 @@ export async function AgendaBlock({
   return (
     <Card>
       <div className="flex items-center gap-2 border-b border-border px-5 py-3">
-        <Sun size={16} strokeWidth={1.75} className="text-text-muted" />
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-subtle text-primary">
+          <Sun size={14} strokeWidth={1.75} />
+        </span>
         <h2 className="text-[16px] font-semibold text-text">
           {t.calendar.agendaTitle}
         </h2>
@@ -58,7 +60,7 @@ export async function AgendaBlock({
                 done && 'opacity-50',
               )}
             >
-              <span className="w-[44px] shrink-0 text-[13px] font-medium tabular-nums text-text">
+              <span className="w-[44px] shrink-0 font-mono text-[12.5px] font-semibold tabular-nums text-text">
                 {time && time !== '00:00' ? time : '—'}
               </span>
               <TaskKindBadge kind={task.kind} />
@@ -73,7 +75,7 @@ export async function AgendaBlock({
               {task.case && (
                 <Link
                   href={`/cases/${task.case.id}`}
-                  className="max-w-[40%] shrink-0 truncate text-[12.5px] text-primary hover:underline"
+                  className="max-w-[40%] shrink-0 truncate font-mono text-[12px] tabular-nums text-primary hover:underline"
                 >
                   {task.case.number_title}
                 </Link>

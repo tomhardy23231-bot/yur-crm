@@ -69,12 +69,12 @@ export function PlanAddForm({ caseId }: { caseId: string }) {
       </div>
 
       {state.message && !state.ok && (
-        <p role="alert" className="rounded-md border border-error/15 bg-error-bg px-3 py-2 text-sm text-error">
+        <p role="alert" className="rounded-control border border-error/15 bg-error-bg px-3 py-2 text-sm text-error-text">
           {state.message}
         </p>
       )}
       {state.ok && (
-        <p role="status" className="rounded-md border border-success/15 bg-success-bg px-3 py-2 text-sm text-success">
+        <p role="status" className="rounded-control border border-success/15 bg-success-bg px-3 py-2 text-sm text-success-text">
           {t.payments.plan.success}
         </p>
       )}

@@ -1,16 +1,14 @@
 'use client';
 
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
-import { Plus, Pencil, Star, Wallet } from 'lucide-react';
+import { Plus, Pencil, Banknote, CreditCard, Landmark } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { useI18n } from '@/lib/i18n/provider';
-import { formatMoney } from '@/lib/utils';
+import { cn, formatMoney } from '@/lib/utils';
 import { CASH_ACCOUNT_KINDS, type CashAccount } from '@/lib/types/db';
 import {
   createCashAccountAction,
@@ -21,20 +19,37 @@ import { todayIso } from '@/lib/validation';
 
 const INITIAL: CashAccountState = { ok: false };
 
+// Иконка и цвет акцент-полосы по виду счёта (каркас cash-page AccountCard).
+const KIND_ICONS = {
+  bank: Landmark,
+  cash: Banknote,
+  card: CreditCard,
+} as const;
+
+const KIND_BAR = {
+  bank: 'bg-primary',
+  cash: 'bg-success',
+  card: 'bg-warning',
+} as const;
+
 // Управление счетами кассы (видно только обладателю can_manage_cash — страница
-// уже под requireCap). Список счетов + форма добавления + правка существующего.
-export function CashAccountsManager({ accounts }: { accounts: CashAccount[] }) {
+// уже под requireCap). Витрина счетов-плиток + форма добавления + правка.
+export function CashAccountsManager({
+  accounts,
+  balances = {},
+}: {
+  accounts: CashAccount[];
+  /** Текущий остаток по счёту (accountId → closingNow, посчитан на странице). */
+  balances?: Record<string, number>;
+}) {
   const { t } = useI18n();
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
-    <Card className="p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="inline-flex items-center gap-2 text-[14px] font-semibold text-text">
-          <Wallet size={16} strokeWidth={1.75} className="text-text-muted" />
-          {t.cash.accounts.heading}
-        </h2>
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[15px] font-semibold text-text">{t.cash.accounts.heading}</h2>
         {!adding && (
           <Button size="sm" variant="secondary" onClick={() => { setAdding(true); setEditingId(null); }}>
             <Plus size={14} strokeWidth={2} />
@@ -47,57 +62,75 @@ export function CashAccountsManager({ accounts }: { accounts: CashAccount[] }) {
         <p className="text-[13px] text-text-muted">{t.cash.report.noAccounts}</p>
       )}
 
-      <div className="flex flex-col gap-2">
-        {accounts.map((acc) =>
-          editingId === acc.id ? (
-            <AccountForm
-              key={acc.id}
-              account={acc}
-              onDone={() => setEditingId(null)}
-              onCancel={() => setEditingId(null)}
-            />
-          ) : (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {accounts.map((acc) => {
+          if (editingId === acc.id) {
+            return (
+              <div key={acc.id} className="sm:col-span-2 xl:col-span-3">
+                <AccountForm
+                  account={acc}
+                  onDone={() => setEditingId(null)}
+                  onCancel={() => setEditingId(null)}
+                />
+              </div>
+            );
+          }
+          const KindIcon = KIND_ICONS[acc.kind];
+          return (
             <div
               key={acc.id}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-surface-muted/40 px-3 py-2"
+              className="group relative overflow-hidden rounded-card border border-border bg-surface shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-border hover:shadow-lg"
             >
-              <span className="text-[13.5px] font-semibold text-text">{acc.name}</span>
-              <Badge tone="neutral" quiet>
-                {t.enums.cashAccountKind[acc.kind]}
-              </Badge>
-              {acc.is_default && (
-                <Badge tone="info" quiet>
-                  <Star size={11} strokeWidth={2} className="shrink-0" />
-                  {t.cash.accounts.defaultBadge}
-                </Badge>
-              )}
-              {!acc.is_active && (
-                <Badge tone="warning" quiet>
-                  {t.cash.accounts.inactiveBadge}
-                </Badge>
-              )}
-              <span className="ml-auto tabular-nums text-[12.5px] text-text-muted">
-                {t.cash.accounts.openingBalance}:{' '}
-                <span className="font-semibold text-text">{formatMoney(acc.opening_balance)} ₴</span>
-                <span className="text-text-subtle"> ({acc.opening_date})</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => { setEditingId(acc.id); setAdding(false); }}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[12px] text-text-muted transition-colors hover:bg-surface hover:text-text"
-              >
-                <Pencil size={13} strokeWidth={1.75} />
-                {t.cash.accounts.edit}
-              </button>
+              {/* Акцент-полоса цветом вида счёта */}
+              <div className={cn('h-1 w-full', KIND_BAR[acc.kind])} aria-hidden="true" />
+              <div className="flex flex-col gap-3 p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-sunken text-text-muted">
+                    <KindIcon size={20} strokeWidth={1.75} aria-hidden="true" />
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-chip bg-surface-sunken px-2 py-0.5 text-[10.5px] font-semibold text-text-muted">
+                      <KindIcon size={11} strokeWidth={2} aria-hidden="true" />
+                      {t.enums.cashAccountKind[acc.kind]}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingId(acc.id); setAdding(false); }}
+                      aria-label={t.cash.accounts.edit}
+                      title={t.cash.accounts.edit}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-primary-softer hover:text-primary-pressed"
+                    >
+                      <Pencil size={13} strokeWidth={1.75} />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[13px] font-medium text-text-muted">{acc.name}</p>
+                  <p className="mt-1.5 font-mono text-[22px] font-bold leading-none tracking-tight text-text tabular-nums">
+                    {formatMoney(balances[acc.id] ?? acc.opening_balance)}{' '}
+                    <span className="text-[11px] font-medium text-text-subtle">₴</span>
+                  </p>
+                </div>
+
+                <p className="text-[11px] text-text-subtle">
+                  {t.cash.accounts.openingBalance}: {formatMoney(acc.opening_balance)} ₴ (
+                  {acc.opening_date})
+                  {acc.is_default && <> · {t.cash.accounts.defaultBadge}</>}
+                  {!acc.is_active && <> · {t.cash.accounts.inactiveBadge}</>}
+                </p>
+              </div>
             </div>
-          ),
-        )}
+          );
+        })}
 
         {adding && (
-          <AccountForm onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
+          <div className="sm:col-span-2 xl:col-span-3">
+            <AccountForm onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
+          </div>
         )}
       </div>
-    </Card>
+    </section>
   );
 }
 

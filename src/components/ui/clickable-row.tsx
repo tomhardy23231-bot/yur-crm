@@ -48,7 +48,9 @@ export function ClickableRow({
     <TableRow
       onClick={handleClick}
       className={cn(
-        'cursor-pointer hover:bg-surface-sunken',
+        // Hover-язык каркаса v5: строки «синеют» брендовым тинтом (не серым);
+        // group — чтобы ячейки могли реагировать на hover строки.
+        'group cursor-pointer hover:bg-primary-softer',
         className,
       )}
       {...props}

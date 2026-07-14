@@ -29,7 +29,7 @@ export function AddPaymentDialog({ caseId, addOptimistic }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border-strong px-3 py-2 text-[12.5px] font-semibold text-primary transition-colors hover:border-primary hover:bg-primary-subtle/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium text-primary-pressed transition-colors hover:bg-primary-softer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <Plus size={14} strokeWidth={2.25} />
         {t.payments.addDialog.trigger}

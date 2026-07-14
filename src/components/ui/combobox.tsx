@@ -92,15 +92,15 @@ export function Combobox({
         onClick={() => setOpen((v) => !v)}
         className={cn(
           'group inline-flex h-10 w-full items-center justify-between gap-2',
-          'rounded-md border border-transparent bg-surface-muted',
+          'rounded-control border border-border bg-surface',
           'pl-3 pr-3 text-base font-sans md:text-sm text-text',
-          'transition-[border-color,background-color,box-shadow] duration-[180ms] ease-out',
-          'hover:bg-surface hover:border-border',
-          'focus:outline-none focus:bg-surface focus:border-primary focus:ring-[3px] focus:ring-primary-subtle',
+          'transition-[border-color,box-shadow] duration-[200ms] ease-out',
+          'hover:border-border-strong',
+          'focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           'aria-invalid:border-error aria-invalid:focus:ring-error/15',
           'cursor-pointer',
-          open && 'bg-surface border-primary',
+          open && 'border-primary',
         )}
       >
         <span
@@ -159,9 +159,9 @@ export function Combobox({
                   value={`${o.label}__${o.value}`}
                   onSelect={() => choose(o.value)}
                   className={cn(
-                    'flex cursor-pointer select-none items-center gap-2 rounded-card px-2.5 py-1.5',
+                    'flex cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-1.5',
                     'text-[13.5px] text-text outline-none',
-                    'data-[selected=true]:bg-primary-subtle data-[selected=true]:text-primary',
+                    'data-[selected=true]:bg-primary-softer data-[selected=true]:text-primary-pressed',
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate">{o.label}</span>

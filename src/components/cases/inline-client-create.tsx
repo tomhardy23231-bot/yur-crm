@@ -2,11 +2,11 @@
 
 import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { UserPlus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -52,47 +52,19 @@ export function InlineClientCreate({
     }
   }, [state, onCreated]);
 
-  // ESC закрывает модалку — но НЕ если событие уже обработано вложенным слоем
-  // (открытый Radix-select ловит ESC и ставит defaultPrevented). Иначе один ESC
-  // закрывал бы и выпадашку, и всю модалку с введёнными данными.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   function err(field: ClientFormFields): string | undefined {
     return state.fieldErrors?.[field];
   }
 
+  // Канон модалок — общий ui/modal.tsx (подложка bg-overlay + blur, rounded-modal,
+  // шапка с крестиком, ESC/фокус-ловушка внутри Modal).
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={t.caseCard.inlineClient.dialogAria}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <Modal
+      open
+      onClose={onClose}
+      title={t.caseCard.inlineClient.title}
+      closeLabel={t.caseCard.inlineClient.closeAria}
     >
-      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-xl">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="inline-flex items-center gap-2 text-[16px] font-semibold text-text">
-            <UserPlus size={16} strokeWidth={1.75} className="text-primary" />
-            {t.caseCard.inlineClient.title}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t.caseCard.inlineClient.closeAria}
-            className="rounded-md p-1 text-text-subtle transition-colors hover:bg-primary-softer hover:text-text"
-          >
-            <X size={16} strokeWidth={1.75} />
-          </button>
-        </div>
-
         <form action={formAction} className="flex flex-col gap-3">
           <Field
             label={t.caseCard.inlineClient.kind}
@@ -292,7 +264,7 @@ export function InlineClientCreate({
           {state.message && !state.ok && (
             <p
               role="alert"
-              className="rounded-md border border-error/15 bg-error-bg px-3 py-2 text-sm text-error"
+              className="rounded-control border border-error/15 bg-error-bg px-3 py-2 text-sm text-error-text"
             >
               {state.message}
             </p>
@@ -305,8 +277,7 @@ export function InlineClientCreate({
             <SaveButton />
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

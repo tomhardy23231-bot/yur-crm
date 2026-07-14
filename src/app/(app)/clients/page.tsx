@@ -76,7 +76,7 @@ export default async function ClientsPage({
   // клиента). Остальные правят с карточки клиента — там работает та же проверка.
   const isStaff = STAFF_ROLES.includes(user.profile.role);
   const result = await listClients({ q, kind, page, sort, dir });
-  const { items, pageCount } = result;
+  const { items, pageCount, total } = result;
 
   const KIND_OPTIONS: ReadonlyArray<{ value: ClientKind | 'all'; label: string }> = [
     { value: 'all', label: t.common.all },
@@ -140,33 +140,39 @@ export default async function ClientsPage({
           </Button>
         </div>
 
-        {/* Ряд 2: фильтр по типу клиента. */}
-        <div
-          role="tablist"
-          aria-label={t.clients.list.kindFilterLabel}
-          className="flex flex-wrap items-center gap-1.5"
-        >
-          {KIND_OPTIONS.map(({ value, label }) => {
-            const active = (value === 'all' && !kind) || value === kind;
-            return (
-              <Link
-                key={value}
-                href={pillHref(value)}
-                role="tab"
-                aria-selected={active}
-                className={cn(
-                  // Pill-фильтр каркаса: активный — тёмно-синяя заливка + тень.
-                  'inline-flex h-8 items-center rounded-chip px-3 text-[12.5px] font-medium',
-                  'border transition-all duration-[200ms]',
-                  active
-                    ? 'border-primary bg-primary-hover text-white shadow-brand'
-                    : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
-                )}
-              >
-                {label}
-              </Link>
-            );
-          })}
+        {/* Ряд 2: фильтр по типу клиента + счётчик результатов справа. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div
+            role="tablist"
+            aria-label={t.clients.list.kindFilterLabel}
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {KIND_OPTIONS.map(({ value, label }) => {
+              const active = (value === 'all' && !kind) || value === kind;
+              return (
+                <Link
+                  key={value}
+                  href={pillHref(value)}
+                  role="tab"
+                  aria-selected={active}
+                  className={cn(
+                    // Pill-фильтр каркаса: активный — тёмно-синяя заливка + тень.
+                    'inline-flex h-8 items-center rounded-chip px-3 text-[12.5px] font-medium',
+                    'border transition-all duration-[200ms]',
+                    active
+                      ? 'border-primary bg-primary-hover text-white shadow-brand'
+                      : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
+                  )}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+          {/* «N из M» — total уже возвращается из listClients, запросов нет. */}
+          <p className="ml-auto text-[12.5px] text-text-muted tabular-nums">
+            {fmt(t.clients.list.countInfo, { count: items.length, total })}
+          </p>
         </div>
       </div>
 

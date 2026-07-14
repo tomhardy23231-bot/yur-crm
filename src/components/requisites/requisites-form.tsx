@@ -2,6 +2,14 @@
 
 import { useActionState, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
+import {
+  Building2,
+  Hash,
+  MapPin,
+  Phone,
+  Shield,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,32 +40,32 @@ export function RequisitesForm({ requisites }: { requisites: OrgRequisites }) {
 
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
-      <Field label={f.orgName} htmlFor="org_name" error={err('org_name')} required>
+      <Field label={f.orgName} htmlFor="org_name" error={err('org_name')} icon={Building2} required>
         <Input id="org_name" name="org_name" defaultValue={requisites.org_name} aria-invalid={err('org_name') ? 'true' : undefined} />
       </Field>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label={f.edrpou} htmlFor="edrpou" error={err('edrpou')}>
-          <Input id="edrpou" name="edrpou" defaultValue={requisites.edrpou} />
+        <Field label={f.edrpou} htmlFor="edrpou" error={err('edrpou')} icon={Hash}>
+          <Input id="edrpou" name="edrpou" defaultValue={requisites.edrpou} className="font-mono tabular-nums" />
         </Field>
-        <Field label={f.phone} htmlFor="phone" error={err('phone')}>
-          <Input id="phone" name="phone" defaultValue={requisites.phone} />
+        <Field label={f.phone} htmlFor="phone" error={err('phone')} icon={Phone}>
+          <Input id="phone" name="phone" defaultValue={requisites.phone} className="font-mono tabular-nums" />
         </Field>
       </div>
 
-      <Field label={f.address} htmlFor="address" error={err('address')}>
+      <Field label={f.address} htmlFor="address" error={err('address')} icon={MapPin}>
         <Input id="address" name="address" defaultValue={requisites.address} />
       </Field>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr_1fr]">
-        <Field label={f.iban} htmlFor="iban" error={err('iban')}>
-          <Input id="iban" name="iban" defaultValue={requisites.iban} />
+        <Field label={f.iban} htmlFor="iban" error={err('iban')} icon={Hash}>
+          <Input id="iban" name="iban" defaultValue={requisites.iban} className="font-mono tabular-nums" />
         </Field>
-        <Field label={f.bankName} htmlFor="bank_name" error={err('bank_name')}>
+        <Field label={f.bankName} htmlFor="bank_name" error={err('bank_name')} icon={Building2}>
           <Input id="bank_name" name="bank_name" defaultValue={requisites.bank_name} />
         </Field>
-        <Field label={f.mfo} htmlFor="mfo" error={err('mfo')}>
-          <Input id="mfo" name="mfo" defaultValue={requisites.mfo} />
+        <Field label={f.mfo} htmlFor="mfo" error={err('mfo')} icon={Hash}>
+          <Input id="mfo" name="mfo" defaultValue={requisites.mfo} className="font-mono tabular-nums" />
         </Field>
       </div>
 
@@ -82,6 +90,12 @@ export function RequisitesForm({ requisites }: { requisites: OrgRequisites }) {
         </p>
       )}
 
+      {/* Подсказка: куда идут реквизиты (печатная форма акта) */}
+      <div className="flex items-center gap-2 border-t border-border pt-4 text-[12px] text-text-subtle">
+        <Shield size={13} strokeWidth={1.75} className="shrink-0 text-primary" />
+        {t.requisites.usageNote}
+      </div>
+
       <div>
         <SubmitButton />
       </div>
@@ -104,17 +118,20 @@ function Field({
   htmlFor,
   error,
   required,
+  icon: Icon,
   children,
 }: {
   label: string;
   htmlFor: string;
   error?: string;
   required?: boolean;
+  icon?: LucideIcon;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={htmlFor} className="text-[12px] text-text-muted">
+      <Label htmlFor={htmlFor} className="flex items-center gap-1.5 text-[12px] text-text-muted">
+        {Icon && <Icon size={12} strokeWidth={1.75} className="shrink-0 text-text-subtle" />}
         {label}
         {required && <span className="ml-0.5 text-error">*</span>}
       </Label>

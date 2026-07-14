@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { Coins } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,14 @@ import {
 import { CASE_CATEGORIES, type CaseCategory } from '@/lib/types/db';
 
 const INITIAL: PayrollRatesActionState = { ok: false };
+
+// Цветовой якорь категории (токены категорий дел, DESIGN.md §3) —
+// тинт-подложка + яркий тон для иконки Coins в шапке бокса ставки.
+const CATEGORY_TONES: Record<CaseCategory, string> = {
+  document: 'bg-cat-document-bg text-cat-document',
+  claim: 'bg-cat-claim-bg text-cat-claim',
+  representation: 'bg-cat-representation-bg text-cat-representation',
+};
 
 export type CategoryRatePair = { lawyer: number; expert: number };
 
@@ -34,16 +43,23 @@ export function PayrollRatesForm({
         {CASE_CATEGORIES.map((c) => (
           <div
             key={c}
-            className="flex flex-col gap-3 rounded-lg border border-border bg-surface-muted/40 p-4"
+            className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4"
           >
-            <span className="text-[13px] font-semibold text-text">
-              {t.enums.caseCategory[c]}
+            <span className="flex items-center gap-2.5">
+              <span
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${CATEGORY_TONES[c]}`}
+              >
+                <Coins size={16} strokeWidth={1.75} />
+              </span>
+              <span className="text-[15px] font-semibold text-text">
+                {t.enums.caseCategory[c]}
+              </span>
             </span>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label
                   htmlFor={`lawyer_percent_${c}`}
-                  className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle"
+                  className="text-[12px] text-text-muted"
                 >
                   {t.payroll.settings.lawyerPercent}
                 </Label>
@@ -60,13 +76,13 @@ export function PayrollRatesForm({
                   aria-label={fmt(t.payroll.settings.lawyerRateAria, {
                     category: t.enums.caseCategory[c],
                   })}
-                  className=""
+                  className="font-mono tabular-nums"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label
                   htmlFor={`expert_percent_${c}`}
-                  className="text-[11px] uppercase tracking-[0.05em] font-semibold text-text-subtle"
+                  className="text-[12px] text-text-muted"
                 >
                   {t.payroll.settings.expertPercent}
                 </Label>
@@ -83,7 +99,7 @@ export function PayrollRatesForm({
                   aria-label={fmt(t.payroll.settings.expertRateAria, {
                     category: t.enums.caseCategory[c],
                   })}
-                  className=""
+                  className="font-mono tabular-nums"
                 />
               </div>
             </div>
