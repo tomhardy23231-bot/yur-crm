@@ -1,6 +1,14 @@
-import { History } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Banknote,
+  FileSpreadsheet,
+  FileText,
+  History,
+  MessageSquare,
+  Pencil,
+  Plus,
+} from 'lucide-react';
 
-import { Avatar } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { listCaseActivity, resolveActivityNames } from '@/lib/activity-log/queries';
 import {
@@ -17,6 +25,18 @@ interface CaseActivityBlockProps {
   limit?: number;
 }
 
+// Иконка события по `activity_log.action` (каркас: таймлайн с кружками).
+// Эвристика по подстроке — действия именуются '<entity>_<verb>'.
+function actionIcon(action: string): React.ElementType {
+  if (action.includes('payment') || action.includes('payout')) return Banknote;
+  if (action.includes('stage')) return ArrowLeftRight;
+  if (action.includes('comment')) return MessageSquare;
+  if (action.includes('document')) return FileText;
+  if (action.includes('act')) return FileSpreadsheet;
+  if (action.includes('created')) return Plus;
+  return Pencil;
+}
+
 export async function CaseActivityBlock({
   caseId,
   limit = 20,
@@ -30,7 +50,7 @@ export async function CaseActivityBlock({
 
   return (
     <Card>
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-border">
+      <div className="flex items-center gap-2 border-b border-border px-5 py-3">
         <History size={16} strokeWidth={1.75} className="text-text-muted" />
         <h2 className="text-[16px] font-semibold text-text">{t.activity.block.title}</h2>
         {entries.length > 0 && (
@@ -41,29 +61,44 @@ export async function CaseActivityBlock({
       </div>
 
       {entries.length === 0 ? (
-        <div className="py-10 px-6 flex flex-col items-center text-center">
-          <p className="text-[13px] text-text-muted max-w-md">
+        <div className="flex flex-col items-center px-6 py-10 text-center">
+          <p className="max-w-md text-[13px] text-text-muted">
             {t.activity.block.empty}
           </p>
         </div>
       ) : (
-        <ul className="divide-y divide-border">
-          {entries.map((entry) => {
+        // Таймлайн (каркас): кружок-иконка + вертикальная линия между записями.
+        <ol className="flex flex-col px-3 py-2">
+          {entries.map((entry, i) => {
             const f = formatActivity(i18n, entry, nameById);
+            const Icon = actionIcon(entry.action);
+            const last = i === entries.length - 1;
             return (
               <li
                 key={entry.id}
-                className="px-5 py-3 flex items-start gap-3 hover:bg-primary-softer transition-colors"
+                className="relative flex items-start gap-3 rounded-xl px-2 py-2.5"
               >
-                <Avatar name={f.actor} size="sm" className="mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] text-text leading-[1.45]">
-                    <span className="font-medium">{f.actor}</span>{' '}
+                <div className="relative flex flex-col items-center self-stretch">
+                  <span className="z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-subtle text-primary-pressed ring-4 ring-surface">
+                    <Icon size={13} strokeWidth={2.2} />
+                  </span>
+                  {!last && (
+                    <span
+                      className="absolute top-8 h-[calc(100%-0.75rem)] w-px bg-border"
+                      aria-hidden="true"
+                    />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 pb-1">
+                  <p className="text-[13px] leading-snug text-text">
+                    <span className="font-semibold">{f.actor}</span>{' '}
                     <span className="text-text-muted">{f.text}</span>
                   </p>
                   <p
-                    className="text-[11px] text-text-subtle tabular-nums mt-0.5"
-                    title={new Date(entry.created_at).toLocaleString(LOCALE_BCP47[i18n.locale])}
+                    className="mt-0.5 text-[11px] tabular-nums text-text-subtle"
+                    title={new Date(entry.created_at).toLocaleString(
+                      LOCALE_BCP47[i18n.locale],
+                    )}
                   >
                     {formatActivityTime(i18n, entry.created_at)}
                   </p>
@@ -71,12 +106,12 @@ export async function CaseActivityBlock({
               </li>
             );
           })}
-        </ul>
+        </ol>
       )}
 
       {entries.length === limit && (
-        <div className="px-5 py-3 border-t border-border bg-surface-muted/30">
-          <p className="text-[11px] text-text-subtle font-medium uppercase tracking-[0.05em]">
+        <div className="border-t border-border bg-surface-muted/30 px-5 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-[0.05em] text-text-subtle">
             {fmt(t.activity.block.showingLast, { limit })}
           </p>
         </div>

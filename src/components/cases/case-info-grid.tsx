@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { BillingTypesBadges } from '@/components/cases/billing-types-badges';
-import { CasePaymentsMini } from '@/components/payments/case-payments-mini';
 import { getT } from '@/lib/i18n/server';
 import { cn } from '@/lib/utils';
 import type { CaseWithRefs } from '@/lib/types/db';
@@ -22,17 +21,7 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 // колонки делят одну dl-сетку, поэтому подписи выровнены по вертикали.
 const DL_CLASS = 'grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1.5';
 
-export async function CaseInfoGrid({
-  c,
-  canWrite = false,
-  canManage = false,
-}: {
-  c: CaseWithRefs;
-  /** Может ли пользователь добавлять платёж (RLS INSERT = can_write_case). */
-  canWrite?: boolean;
-  /** Может ли удалять платёж (RLS DELETE = staff). */
-  canManage?: boolean;
-}) {
+export async function CaseInfoGrid({ c }: { c: CaseWithRefs }) {
   const { t } = await getT();
   const o = t.caseCard.overview;
   const dash = o.dash;
@@ -102,9 +91,10 @@ export async function CaseInfoGrid({
       </Column>
 
       {/* ── Колонка «Оплата и суд» ──────────────────────────────────
-          Деньги (сумма/оплачено/долг) тут НЕ дублируем — они в тройке плиток
-          шапки и в карточке «Вознаграждение команды». Здесь только тип оплаты
-          и судебные реквизиты. */}
+          Деньги (сумма/оплачено/долг) тут НЕ дублируем — они в полосе оплаты
+          шапки, в «Итого» вкладки платежей и в «Вознаграждении команды».
+          Здесь только тип оплаты и судебные реквизиты; сами платежи —
+          на вкладке «Платежи». */}
       <Column title={o.colFinance}>
         <dl className={DL_CLASS}>
           <Field label={o.billing}>
@@ -118,14 +108,6 @@ export async function CaseInfoGrid({
             </Field>
           )}
         </dl>
-        {/* Платежи по делу: компактный список + итог + добавление (кнопка/
-            модалка). Заменяет отдельную нижнюю секцию «Финансы». */}
-        <CasePaymentsMini
-          caseId={c.id}
-          canWrite={canWrite}
-          canManage={canManage}
-          overpaid={c.overpaid}
-        />
       </Column>
     </div>
   );

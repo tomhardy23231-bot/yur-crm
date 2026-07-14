@@ -213,7 +213,8 @@ export async function CaseNextActions({
       tone: 'info',
       icon: <Banknote size={18} strokeWidth={1.75} />,
       text: fmt(w.debtNoPlan, { amount: formatMoney(debt) }),
-      cta: { href: '#plan', label: w.addPlan },
+      // «#payments» — ключ вкладки платежей (график живёт внутри неё).
+      cta: { href: '#payments', label: w.addPlan },
     });
   }
 

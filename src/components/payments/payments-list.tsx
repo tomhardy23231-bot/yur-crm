@@ -1,7 +1,13 @@
 'use client';
 
 import { useOptimistic } from 'react';
-import { Trash2 } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Banknote,
+  CreditCard,
+  FileSpreadsheet,
+  Trash2,
+} from 'lucide-react';
 
 import { AddPaymentDialog } from '@/components/payments/add-payment-dialog';
 import { useI18n } from '@/lib/i18n/provider';
@@ -43,6 +49,18 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   year: 'numeric',
 });
 
+// Иконка способа оплаты (каркас) — эвристика по свободному тексту `method`:
+// карта / наличные / акт / безнал-банк; неузнанное — общий «перевод».
+function methodIcon(method: string | null): React.ElementType {
+  const m = (method ?? '').toLowerCase();
+  if (m.includes('карт') || m.includes('card')) return CreditCard;
+  if (m.includes('готів') || m.includes('налич') || m.includes('cash')) {
+    return Banknote;
+  }
+  if (m.includes('акт') || m.includes('act')) return FileSpreadsheet;
+  return ArrowLeftRight;
+}
+
 export function PaymentsList({
   payments,
   caseId,
@@ -76,7 +94,7 @@ export function PaymentsList({
   const total = optimistic.reduce((s, p) => s + p.amount, 0);
 
   return (
-    <div className="mt-4 border-t border-border pt-3">
+    <div>
       {/* Заголовок: «Платежи · N» + итог (оптимистичные). */}
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <span className="text-[15px] font-semibold text-text">
@@ -109,47 +127,50 @@ export function PaymentsList({
           {canWrite ? b.emptyCanWrite : b.empty}
         </p>
       ) : (
-        <ul className="mb-3 max-h-60 overflow-y-auto pr-1">
-          {optimistic.map((p) => (
-            <li
-              key={p.id}
-              className={
-                'group flex items-center gap-2 border-b border-border py-1.5 last:border-0' +
-                (p.pending ? ' opacity-60' : '')
-              }
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-[13px] font-bold tabular-nums text-success-text">
-                    {formatMoney(p.amount)} ₴
-                  </span>
-                  <span className="text-[11.5px] tabular-nums text-text-subtle">
+        <ul className="mb-3">
+          {optimistic.map((p) => {
+            const Icon = methodIcon(p.method);
+            return (
+              <li
+                key={p.id}
+                className={
+                  'group flex items-center gap-3 border-b border-border/60 py-2.5 last:border-0' +
+                  (p.pending ? ' opacity-60' : '')
+                }
+              >
+                {/* Тинт-плитка способа оплаты (каркас). */}
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-subtle text-primary-pressed">
+                  <Icon size={15} strokeWidth={2} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold text-text">
+                    {[p.method, p.note].filter(Boolean).join(' · ') || b.heading}
+                  </p>
+                  <p className="text-[11.5px] tabular-nums text-text-subtle">
                     {p.pending
                       ? t.payments.form.submitting
                       : DATE_FMT.format(new Date(p.paid_at + 'T00:00:00Z'))}
-                  </span>
-                </div>
-                {(p.method || p.note) && (
-                  <p className="truncate text-[11.5px] text-text-muted">
-                    {[p.method, p.note].filter(Boolean).join(' · ')}
                   </p>
+                </div>
+                <span className="shrink-0 font-mono text-[14px] font-bold tabular-nums text-success-text">
+                  {formatMoney(p.amount)} ₴
+                </span>
+                {canManage && !p.pending && (
+                  <form action={deletePaymentAction} className="shrink-0">
+                    <input type="hidden" name="payment_id" value={p.id} />
+                    <input type="hidden" name="case_id" value={p.case_id} />
+                    <button
+                      type="submit"
+                      aria-label={t.payments.row.deleteLabel}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-subtle opacity-0 transition-opacity hover:bg-error-bg hover:text-error focus:opacity-100 group-hover:opacity-100"
+                    >
+                      <Trash2 size={13} strokeWidth={1.75} />
+                    </button>
+                  </form>
                 )}
-              </div>
-              {canManage && !p.pending && (
-                <form action={deletePaymentAction} className="shrink-0">
-                  <input type="hidden" name="payment_id" value={p.id} />
-                  <input type="hidden" name="case_id" value={p.case_id} />
-                  <button
-                    type="submit"
-                    aria-label={t.payments.row.deleteLabel}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-subtle opacity-0 transition-opacity hover:bg-error-bg hover:text-error focus:opacity-100 group-hover:opacity-100"
-                  >
-                    <Trash2 size={13} strokeWidth={1.75} />
-                  </button>
-                </form>
-              )}
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
 

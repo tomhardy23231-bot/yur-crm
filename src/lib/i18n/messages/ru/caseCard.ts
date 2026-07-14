@@ -86,6 +86,20 @@ export const caseCard = {
     outstandingLabel: 'Осталось',
     payoutHint:
       'Выплаты отмечаются в разделе «Финансы и ЗП» → карточка сотрудника.',
+
+    // ── Шапка по каркасу (редизайн v5): инфо-плитки и полоса оплаты ────
+    tileOpened: 'Открыто',
+    tileClosed: 'Завершено',
+    tileStageDays: 'Дней на этапе',
+    tileLawyer: 'Юрист',
+    tileExpert: 'Эксперт',
+    paymentStripTitle: 'Оплата по делу',
+    paymentStripDebt: 'долг {amount} ₴',
+    paymentStripOverpaid: 'переплата +{amount} ₴',
+    detailsTitle: 'Детали дела',
+    descriptionTitle: 'Описание',
+    totalsTitle: 'Итого',
+    totalsPct: '{pct}% оплачено',
   },
 
   // ── Сетка «поле: значение» в шапке (case-info-grid.tsx) ──────────────
@@ -130,6 +144,7 @@ export const caseCard = {
     sectionOverview: 'Обзор',
     sectionDocuments: 'Документы',
     sectionTasks: 'Задачи',
+    sectionPayments: 'Платежи',
     sectionComments: 'Комментарии',
     sectionFinance: 'Финансы',
     sectionHistory: 'История',

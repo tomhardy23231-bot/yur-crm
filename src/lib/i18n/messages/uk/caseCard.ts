@@ -77,6 +77,20 @@ export const caseCard: CaseCardMessages = {
     outstandingLabel: 'Залишилося',
     payoutHint:
       'Виплати позначаються в розділі «Фінанси і ЗП» → картка співробітника.',
+
+    // ── Шапка за каркасом (редизайн v5): інфо-плитки та смуга оплати ────
+    tileOpened: 'Відкрито',
+    tileClosed: 'Завершено',
+    tileStageDays: 'Днів на етапі',
+    tileLawyer: 'Юрист',
+    tileExpert: 'Експерт',
+    paymentStripTitle: 'Оплата у справі',
+    paymentStripDebt: 'борг {amount} ₴',
+    paymentStripOverpaid: 'переплата +{amount} ₴',
+    detailsTitle: 'Деталі справи',
+    descriptionTitle: 'Опис',
+    totalsTitle: 'Разом',
+    totalsPct: '{pct}% сплачено',
   },
 
   // ── Сітка «поле: значення» в шапці (case-info-grid.tsx) ──────────────
@@ -116,6 +130,7 @@ export const caseCard: CaseCardMessages = {
     sectionOverview: 'Огляд',
     sectionDocuments: 'Документи',
     sectionTasks: 'Завдання',
+    sectionPayments: 'Платежі',
     sectionComments: 'Коментарі',
     sectionFinance: 'Фінанси',
     sectionHistory: 'Історія',

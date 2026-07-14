@@ -6,6 +6,7 @@ import { CheckSquare, CreditCard, FileSpreadsheet, Plus } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { PaymentForm } from '@/components/payments/payment-form';
 import { useI18n } from '@/lib/i18n/provider';
+import { cn } from '@/lib/utils';
 
 // ============================================================================
 // Быстрые действия в шапке карточки дела (v3 Сессия 11): «+ Платёж» открывает
@@ -62,6 +63,7 @@ export function CaseQuickActions({
           icon={<CreditCard size={14} strokeWidth={1.75} />}
           label={t.caseCard.quickActions.payment}
           onClick={() => setPaymentOpen(true)}
+          primary
         />
       )}
       {canAddTask && (
@@ -98,16 +100,25 @@ function QuickButton({
   icon,
   label,
   onClick,
+  primary = false,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
+  /** Главное действие (каркас): синяя пилюля с бренд-тенью («+ Платёж»). */
+  primary?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-control border border-border bg-surface px-2.5 text-[12px] font-semibold text-text-muted transition-colors hover:border-primary-border hover:bg-primary-subtle/50 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className={cn(
+        'inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12px] font-semibold',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+        primary
+          ? 'bg-primary-hover text-primary-fg shadow-brand transition-all hover:-translate-y-px hover:shadow-brand-hover'
+          : 'border border-border bg-surface text-text-muted transition-colors hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
+      )}
     >
       <Plus size={12} strokeWidth={2.25} className="-mr-0.5" />
       {icon}
