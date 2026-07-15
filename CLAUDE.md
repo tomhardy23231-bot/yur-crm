@@ -23,10 +23,14 @@ CRM-система для юридической компании.
 
 ## 2. Технологический стек
 
-> **Цикл v4 — переезд Supabase → чистый Postgres (Neon).** Весь КОД уже на стеке
-> ниже (сессии 1–5, `docs/PLAN-V4-POSTGRES.md`). Прод переключается в **сессии 7**;
-> до неё прод-БД физически ещё на Supabase (переезд 1:1, без потерь данных/паролей/
-> файлов). RLS-модель доступа (§4) СОХРАНЕНА через шим `auth.uid()` — не переписывалась.
+> **Цикл v4 — переезд Supabase → чистый Postgres (Neon) ЗАВЕРШЁН, НА ПРОДЕ с 2026-07-15.**
+> Прод переехал на **Neon** (production-ветка `ep-red-pine-as8mojal`, проект UR
+> Frankfurt) + **Cloudflare R2** (файлы, bucket `case-documents`) в сессии 7: данные,
+> пароли и файлы перенесены 1:1 (сверка COUNT+деньги+пароли сошлась), Vercel-env
+> переключён, первый push цикла выкачен. RLS-модель доступа (§4) СОХРАНЕНА через шим
+> `auth.uid()`. Прод-Supabase (`fmzevqyquljecmsiqsoj`) оставлен как откат ~30 дней.
+> Деплой теперь: push в master → Vercel (Neon-код). Миграции прода — `npm run db:migrate`
+> с `.env.prod` (Neon production). Детали — `docs/PLAN-V4-POSTGRES.md`, `docs/PROGRESS.md`.
 
 | Слой | Выбор |
 |---|---|

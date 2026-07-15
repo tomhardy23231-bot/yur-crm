@@ -35,6 +35,59 @@
 
 ---
 
+## Сессия 2026-07-15 — Цикл v4, Сессия 7: ПРОД-ПЕРЕЕЗД Supabase → Neon + R2 ✅ 🚀
+
+_Седьмая (финальная) сессия цикла v4. Боевой переезд прода с Supabase на Neon +
+Cloudflare R2. Владелец завёл R2, дал прод-Supabase доступ, обеспечил заморозку и
+переключил Vercel. **Переезд удался — прод НА NEON с 2026-07-15.**_
+
+**Модель:** Claude Opus 4.8
+
+### Сделано (боевой переезд)
+- **R2 заведён** (владелец): Cloudflare-аккаунт, bucket `case-documents`, account
+  `f33258766ec85bab64d190bab86ffd90`; ключи проверены сквозным roundtrip.
+- **Прод-Supabase доступ** (владелец, проект `fmzevqyquljecmsiqsoj`): Session-pooler
+  connection (IPv4), service_role, Project URL — в `.env.local`/`.env.prod`.
+- **Генеральная репетиция** (dev-ветка): перенос 634 строк, сверка сошлась (кроме
+  живого дрейфа +1 клиент). **Adversarial-ревью нашло 4 CRITICAL в migrate-data
+  ДО боя — исправлены** (C1 auth-first, C2 column-intersect, C3 single-tx, C4 pwd-
+  checksum); подтверждены на реальных данных.
+- **Neon production-ветка** (`ep-red-pine-as8mojal`): миграции 0000-0003 (шим+
+  baseline+данные+pwd_version), пароль app_user задан, ACL-аудит чист.
+- **Боевой перенос:** данные Supabase→Neon prod (**653 строки**, verify **0
+  расхождений** — деньги+пароли+строки 1:1), файлы Supabase→R2 (**6 док, 2.25 MB**).
+- **Vercel переключён** (владелец): env DATABASE_URL_APP/ADMIN (Neon prod), новый
+  AUTH_SECRET, STORAGE_PROVIDER=s3, S3_* (R2); старые SUPABASE_* удалены.
+- **Первый push цикла** (`c96fcbe..4b179f9`): весь стек v4 (с1-с6) + редизайн v5
+  выкачен на прод. Vercel пересобрался на Neon-коде.
+- **Smoke прода:** логин-страница без ошибок; владелец вошёл своим паролем (пароли
+  перенеслись), данные (279 клиентов, дело, документы) на месте, интерфейс новый.
+
+### Инфраструктура прода (новая)
+- **БД:** Neon проект UR (Frankfurt), production-ветка `br-jolly-recipe-asyx3pq1`,
+  endpoint `ep-red-pine-as8mojal` (direct) / `-pooler` (app+admin пулы).
+- **Файлы:** Cloudflare R2 `case-documents` (S3-совместимое, `.r2.cloudflarestorage.com`).
+- **Auth:** свой JWT (новый AUTH_SECRET на проде). **Деплой:** push master → Vercel.
+- **Миграции прода:** `node --env-file=.env.prod --import tsx scripts/db-migrate.ts`
+  (`.env.prod` gitignored — Neon production строки + Supabase-source + R2).
+
+### Осталось (хвосты, НЕ блокируют работу)
+- ⚠️ **Ротация засвеченных в чате доступов** (владелец): R2 Secret Access Key
+  (перевыпустить в Cloudflare → новый в Vercel+.env.local) + пароль прод-Supabase
+  и service_role — сменить (Supabase теперь запасной, не срочно). Значения НЕ пишем
+  в git-доки — только в `.env.*` (gitignored).
+- **Удалить старую us-east-1 Neon-базу** `yur-crm` (Washington, хвост с1) — Vercel Storage.
+- **Финальное снятие** `@supabase/supabase-js` + каталога `supabase/` + scripts
+  migrate-* (Supabase больше не источник) — уборочной сессией после отката-окна.
+- **Канарейка** первых дней: следить за ошибками прода (Vercel logs).
+- Supabase-прод НЕ удалять ~30 дней (окно отката).
+
+### Дальше
+- Цикл v4 ЗАВЕРШЁН. Система на Neon+R2. Следующее — стабилизация/наблюдение +
+  уборка supabase-остатков; при желании — почта (сессия 8 плана, Resend/nodemailer).
+
+---
+
 ## Сессия 2026-07-15 — Цикл v4, Сессия 6: Чистка, CI, скрипты переезда, доки ✅
 
 _Шестая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Владелец выбрал **автономную
