@@ -4,9 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { requireUser } from '@/lib/auth/require-role';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dbActionError } from '@/lib/db/errors';
+import { rpcLogActivity } from '@/lib/db/rpc';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { UUID_RE } from '@/lib/validation';
 
 const BODY_MAX = 5000;
@@ -44,19 +45,19 @@ export async function createCommentAction(
     return { ok: false, fieldErrors: { body: t.comments.errors.tooLong } };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('case_comments').insert({
-    case_id,
-    body,
-    author_id: user.profile.id,
-  });
-
-  if (error) {
+  try {
+    await userDb(user.profile.id, (tx) =>
+      tx.case_comments.create({
+        data: { case_id, body, author_id: user.profile.id },
+      }),
+    );
+  } catch (err) {
+    // RLS WITH CHECK / can_write_case отрезали запись → throw.
     return {
       ok: false,
-      message: dbErrorMessage(
+      message: dbActionError(
         'createCommentAction',
-        error,
+        err,
         t.comments.errors.createFailed,
         t.errors.db,
       ),
@@ -82,7 +83,7 @@ export async function updateCommentAction(
   _prev: CommentActionState,
   formData: FormData,
 ): Promise<CommentActionState> {
-  await requireUser();
+  const user = await requireUser();
   const { t } = await getT();
 
   const comment_id = getString(formData, 'comment_id');
@@ -99,55 +100,56 @@ export async function updateCommentAction(
     return { ok: false, fieldErrors: { body: t.comments.errors.tooLong } };
   }
 
-  const supabase = await createSupabaseServerClient();
+  let outcome: 'ok' | 'fail' | 'noop';
+  try {
+    outcome = await userDb(user.profile.id, async (tx) => {
+      // Старый текст — для лога from→to (и чтобы пропустить no-op). RLS SELECT
+      // отдаёт только видимые дела; чужой комментарий сюда не попадёт.
+      const before = await tx.case_comments.findUnique({
+        where: { id: comment_id },
+        select: { body: true, case_id: true },
+      });
+      if (!before) return 'fail';
+      // Ничего не изменилось — не трогаем БД и не плодим запись в журнале.
+      if (before.body === body) return 'noop';
 
-  // Старый текст — для лога from→to (и чтобы пропустить no-op). RLS SELECT
-  // отдаёт только видимые дела; чужой комментарий сюда не попадёт.
-  const { data: before } = await supabase
-    .from('case_comments')
-    .select('body, case_id')
-    .eq('id', comment_id)
-    .maybeSingle<{ body: string; case_id: string }>();
+      // updateMany (не update): чужой UPDATE RLS режет тихо (count:0), без P2025.
+      const upd = await tx.case_comments.updateMany({
+        where: { id: comment_id },
+        data: { body, updated_at: new Date() },
+      });
+      if (upd.count === 0) return 'fail';
 
-  if (!before) {
-    return { ok: false, message: t.comments.errors.updateFailed };
-  }
-  // Ничего не изменилось — не трогаем БД и не плодим запись в журнале.
-  if (before.body === body) return { ok: true };
-
-  const { data: updated, error } = await supabase
-    .from('case_comments')
-    .update({ body, updated_at: new Date().toISOString() })
-    .eq('id', comment_id)
-    .select('id')
-    .maybeSingle<{ id: string }>();
-
-  if (error || !updated) {
+      // Лог правки (с какого на какой). Тексты усекаем под cap log_activity.
+      // v3 s2: case_id берём из самой записи (БД), а не из formData — иначе правку
+      // можно было бы приписать к другому видимому делу (паттерн «CSO #2»).
+      // Ошибку лога глотаем — он не должен ломать саму правку.
+      try {
+        await rpcLogActivity(tx, {
+          entityType: 'case',
+          entityId: before.case_id,
+          action: 'comment_edited',
+          changes: { from: truncForLog(before.body), to: truncForLog(body) },
+        });
+      } catch {
+        /* лог не критичен для основной операции */
+      }
+      return 'ok';
+    });
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage(
+      message: dbActionError(
         'updateCommentAction',
-        error ?? { message: 'rls_blocked' },
+        err,
         t.comments.errors.updateFailed,
         t.errors.db,
       ),
     };
   }
 
-  // Лог правки (с какого на какой). Тексты усекаем под cap log_activity.
-  // Ошибку лога глотаем — он не должен ломать саму правку (log_activity и сам
-  // не пробрасывает исключений, но rpc-вызов оборачиваем на всякий случай).
-  try {
-    await supabase.rpc('log_activity', {
-      p_entity_type: 'case',
-      // v3 s2: case_id берём из самой записи (БД), а не из formData — иначе правку
-      // можно было бы приписать к другому видимому делу (паттерн «CSO #2»).
-      p_entity_id: before.case_id,
-      p_action: 'comment_edited',
-      p_changes: { from: truncForLog(before.body), to: truncForLog(body) },
-    });
-  } catch {
-    /* лог не критичен для основной операции */
+  if (outcome === 'fail') {
+    return { ok: false, message: t.comments.errors.updateFailed };
   }
 
   revalidatePath(`/cases/${case_id}`);
@@ -155,9 +157,9 @@ export async function updateCommentAction(
 }
 
 // Удалить комментарий. RLS разрешает только автору или owner/admin — серверный
-// гейт не дублируем, БД сама отрежет чужой DELETE (вернёт 0 строк / ошибку).
+// гейт не дублируем, БД сама отрежет чужой DELETE (вернёт 0 строк).
 export async function deleteCommentAction(formData: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
 
   const comment_id = getString(formData, 'comment_id');
   const case_id = getString(formData, 'case_id');
@@ -167,13 +169,13 @@ export async function deleteCommentAction(formData: FormData): Promise<void> {
     redirect(backToCase ? `${backToCase}?error=missing_id` : '/cases?error=missing_id');
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from('case_comments')
-    .delete()
-    .eq('id', comment_id);
-
-  if (error) {
+  try {
+    await userDb(user.profile.id, (tx) =>
+      // deleteMany: чужой DELETE RLS режет тихо (count:0), без P2025 — как прежний
+      // no-op на PostgREST. Настоящую ошибку БД ловит catch ниже.
+      tx.case_comments.deleteMany({ where: { id: comment_id } }),
+    );
+  } catch {
     redirect(backToCase ? `${backToCase}?error=delete_failed` : '/cases?error=delete_failed');
   }
 

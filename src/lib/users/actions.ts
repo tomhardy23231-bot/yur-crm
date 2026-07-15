@@ -7,10 +7,9 @@ import bcrypt from 'bcryptjs';
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { userDb } from '@/lib/db';
 import { adminDb } from '@/lib/db/admin';
-import { rpcSetUserLoginSecret } from '@/lib/db/rpc';
+import { rpcManageUserSalaries, rpcSetUserLoginSecret } from '@/lib/db/rpc';
 import { Prisma } from '@/generated/prisma/client';
 import { generateTempPassword } from '@/lib/users/temp-password';
 import { UUID_RE } from '@/lib/validation';
@@ -50,6 +49,13 @@ function collectPermOverrides(
     else delete next[cap]; // inherit → удаляем ключ
   }
   return next;
+}
+
+// perm_overrides в Prisma — Json; нормализуем в объект PermOverrides (как current-user).
+function normalizeOverrides(v: unknown): PermOverrides {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+    ? (v as PermOverrides)
+    : {};
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -237,50 +243,50 @@ export async function updateUserPermsAction(formData: FormData): Promise<void> {
   // Нельзя редактировать собственные права (как в БД-страже can_grant_cap).
   if (user_id === actor.profile.id) return;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: target } = await supabase
-    .from('users')
-    .select('id, role, is_active, perm_overrides')
-    .eq('id', user_id)
-    .maybeSingle<{
-      id: string;
-      role: Role;
-      is_active: boolean;
-      perm_overrides: PermOverrides | null;
-    }>();
-  if (!target) return;
-  // Деактивированному права не правим — сначала реактивировать.
-  if (!target.is_active) return;
-  if (!canManageTargetUser(actor.profile.role, actor.caps.manage_users, target.role)) {
+  let changed: { before: PermOverrides; next: PermOverrides } | null = null;
+  try {
+    changed = await userDb(actor.profile.id, async (tx) => {
+      const target = await tx.public_users.findUnique({
+        where: { id: user_id },
+        select: { role: true, is_active: true, perm_overrides: true },
+      });
+      // нет записи / деактивированному права не правим — сначала реактивировать.
+      if (!target || !target.is_active) return null;
+      const targetRole = target.role as Role;
+      if (
+        !canManageTargetUser(actor.profile.role, actor.caps.manage_users, targetRole)
+      ) {
+        return null;
+      }
+
+      const before = normalizeOverrides(target.perm_overrides);
+      const next = collectPermOverrides(
+        formData,
+        actor.profile.role,
+        actor.caps,
+        targetRole,
+        before,
+      );
+      if (JSON.stringify(before) === JSON.stringify(next)) return null; // no-op
+
+      // RLS users_update_managed_roles + триггер guard дублируют проверку в БД.
+      const upd = await tx.public_users.updateMany({
+        where: { id: user_id },
+        data: { perm_overrides: next as Prisma.InputJsonValue },
+      });
+      return upd.count > 0 ? { before, next } : null;
+    });
+  } catch (err) {
+    console.error('updateUserPermsAction failed:', err);
     return;
   }
-
-  const before: PermOverrides = target.perm_overrides ?? {};
-  const next = collectPermOverrides(
-    formData,
-    actor.profile.role,
-    actor.caps,
-    target.role,
-    before,
-  );
-
-  if (JSON.stringify(before) === JSON.stringify(next)) return; // no-op
-
-  // RLS users_update_managed_roles + триггер guard дублируют проверку в БД.
-  const { error } = await supabase
-    .from('users')
-    .update({ perm_overrides: next })
-    .eq('id', user_id);
-  if (error) {
-    console.error('updateUserPermsAction failed:', error.message);
-    return;
-  }
+  if (!changed) return;
 
   await logActivity({
     entity_type: 'user',
     entity_id: user_id,
     action: 'user_permissions_changed',
-    changes: { before, after: next },
+    changes: { before: changed.before, after: changed.next },
   });
   revalidatePath('/settings/users');
 }
@@ -300,42 +306,46 @@ export async function changeUserRoleAction(formData: FormData): Promise<void> {
   // Нельзя менять собственную роль (защита от самопонижения/самоблокировки owner).
   if (user_id === actor.profile.id) return;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: target } = await supabase
-    .from('users')
-    .select('id, role, is_active')
-    .eq('id', user_id)
-    .maybeSingle<{ id: string; role: Role; is_active: boolean }>();
-  if (!target) return;
-  // Задача 9b: у деактивированного роль не меняем — сначала реактивировать.
-  if (!target.is_active) return;
-  if (target.role === newRole) return; // no-op
+  let fromRole: Role | null = null;
+  try {
+    fromRole = await userDb(actor.profile.id, async (tx) => {
+      const target = await tx.public_users.findUnique({
+        where: { id: user_id },
+        select: { role: true, is_active: true },
+      });
+      // Задача 9b: у деактивированного роль не меняем — сначала реактивировать.
+      if (!target || !target.is_active) return null;
+      const targetRole = target.role as Role;
+      if (targetRole === newRole) return null; // no-op
 
-  // Ступенчатые права: и текущая, и новая роль — в зоне ответственности актора.
-  // (не-owner не трогает owner/admin и не повышает до них.) Смена роли сбрасывает
-  // персональные права цели — это делает БД-триггер reset_perm_overrides_on_role_change.
-  if (
-    !canManageTargetUser(actor.profile.role, actor.caps.manage_users, target.role) ||
-    !canManageTargetUser(actor.profile.role, actor.caps.manage_users, newRole)
-  ) {
+      // Ступенчатые права: и текущая, и новая роль — в зоне ответственности актора.
+      // (не-owner не трогает owner/admin и не повышает до них.) Смена роли сбрасывает
+      // персональные права цели — это делает БД-триггер reset_perm_overrides_on_role_change.
+      if (
+        !canManageTargetUser(actor.profile.role, actor.caps.manage_users, targetRole) ||
+        !canManageTargetUser(actor.profile.role, actor.caps.manage_users, newRole)
+      ) {
+        return null;
+      }
+
+      // RLS users_update_managed_roles дублирует проверку на уровне БД.
+      const upd = await tx.public_users.updateMany({
+        where: { id: user_id },
+        data: { role: newRole },
+      });
+      return upd.count > 0 ? targetRole : null;
+    });
+  } catch (err) {
+    console.error('changeUserRoleAction failed:', err);
     return;
   }
-
-  // RLS users_update_managed_roles дублирует проверку на уровне БД.
-  const { error } = await supabase
-    .from('users')
-    .update({ role: newRole })
-    .eq('id', user_id);
-  if (error) {
-    console.error('changeUserRoleAction failed:', error.message);
-    return;
-  }
+  if (!fromRole) return;
 
   await logActivity({
     entity_type: 'user',
     entity_id: user_id,
     action: 'user_role_changed',
-    changes: { from: target.role, to: newRole },
+    changes: { from: fromRole, to: newRole },
   });
   revalidatePath('/settings/users');
 }
@@ -361,29 +371,38 @@ export async function setUserActiveAction(formData: FormData): Promise<void> {
   // Нельзя деактивировать самого себя.
   if (user_id === actor.profile.id) return;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: target } = await supabase
-    .from('users')
-    .select('id, role, is_active')
-    .eq('id', user_id)
-    .maybeSingle<{ id: string; role: Role; is_active: boolean }>();
-  if (!target) return;
-  if (target.is_active === nextActive) return; // no-op
+  let changed = false;
+  try {
+    changed = await userDb(actor.profile.id, async (tx) => {
+      const target = await tx.public_users.findUnique({
+        where: { id: user_id },
+        select: { role: true, is_active: true },
+      });
+      if (!target || target.is_active === nextActive) return false; // нет / no-op
 
-  // Ступенчатые права: не-owner не может (де)активировать owner/admin.
-  if (!canManageTargetUser(actor.profile.role, actor.caps.manage_users, target.role)) {
+      // Ступенчатые права: не-owner не может (де)активировать owner/admin.
+      if (
+        !canManageTargetUser(
+          actor.profile.role,
+          actor.caps.manage_users,
+          target.role as Role,
+        )
+      ) {
+        return false;
+      }
+
+      // RLS users_update_managed_roles дублирует проверку на уровне БД.
+      const upd = await tx.public_users.updateMany({
+        where: { id: user_id },
+        data: { is_active: nextActive },
+      });
+      return upd.count > 0;
+    });
+  } catch (err) {
+    console.error('setUserActiveAction failed:', err);
     return;
   }
-
-  // RLS users_update_managed_roles дублирует проверку на уровне БД.
-  const { error } = await supabase
-    .from('users')
-    .update({ is_active: nextActive })
-    .eq('id', user_id);
-  if (error) {
-    console.error('setUserActiveAction failed:', error.message);
-    return;
-  }
+  if (!changed) return;
 
   await logActivity({
     entity_type: 'user',
@@ -411,76 +430,88 @@ export async function assignUserDepartmentAction(formData: FormData): Promise<vo
 
   const isOwnerActor = actor.profile.role === 'owner';
 
-  const supabase = await createSupabaseServerClient();
-  const { data: target } = await supabase
-    .from('users')
-    .select('id, role, is_active, department_id, position, visibility_scope')
-    .eq('id', user_id)
-    .maybeSingle<{
-      id: string;
-      role: Role;
-      is_active: boolean;
-      department_id: string | null;
-      position: string | null;
-      visibility_scope: VisibilityScope;
-    }>();
-  if (!target || !target.is_active) return;
-  if (!canManageTargetUser(actor.profile.role, actor.caps.manage_users, target.role)) {
+  let result:
+    | {
+        touchedVisibility: boolean;
+        before: { department_id: string | null; visibility_scope: VisibilityScope };
+        after: { department_id: string | null; visibility_scope: VisibilityScope };
+      }
+    | null = null;
+  try {
+    result = await userDb(actor.profile.id, async (tx) => {
+      const target = await tx.public_users.findUnique({
+        where: { id: user_id },
+        select: {
+          role: true,
+          is_active: true,
+          department_id: true,
+          position: true,
+          visibility_scope: true,
+        },
+      });
+      if (!target || !target.is_active) return null;
+      if (
+        !canManageTargetUser(actor.profile.role, actor.caps.manage_users, target.role as Role)
+      ) {
+        return null;
+      }
+      const targetScope: VisibilityScope =
+        target.visibility_scope === 'all' ? 'all' : 'department';
+
+      const update: {
+        position?: string | null;
+        department_id?: string | null;
+        visibility_scope?: VisibilityScope;
+      } = {};
+
+      // position — любой обладатель manage_users.
+      const positionRaw = String(formData.get('position') ?? '').trim();
+      const nextPosition = positionRaw === '' ? null : positionRaw.slice(0, 120);
+      if (nextPosition !== (target.position ?? null)) update.position = nextPosition;
+
+      // department_id / visibility_scope — только owner.
+      if (isOwnerActor) {
+        const deptRaw = String(formData.get('department_id') ?? '').trim();
+        const nextDept =
+          deptRaw === '' ? null : UUID_RE.test(deptRaw) ? deptRaw : target.department_id;
+        if (nextDept !== target.department_id) update.department_id = nextDept;
+
+        const scopeRaw = String(formData.get('visibility_scope') ?? '').trim();
+        const nextScope = isVisibilityScope(scopeRaw) ? scopeRaw : targetScope;
+        if (nextScope !== targetScope) update.visibility_scope = nextScope;
+      }
+
+      if (Object.keys(update).length === 0) return null; // no-op
+
+      // RLS users_update_managed_roles + гард users_guard_visibility_fields дублируют.
+      const upd = await tx.public_users.updateMany({ where: { id: user_id }, data: update });
+      if (upd.count === 0) return null;
+
+      return {
+        touchedVisibility: 'department_id' in update || 'visibility_scope' in update,
+        before: { department_id: target.department_id, visibility_scope: targetScope },
+        after: {
+          department_id:
+            'department_id' in update ? (update.department_id ?? null) : target.department_id,
+          visibility_scope:
+            'visibility_scope' in update ? update.visibility_scope! : targetScope,
+        },
+      };
+    });
+  } catch (err) {
+    console.error('assignUserDepartmentAction failed:', err);
     return;
   }
-
-  const update: {
-    position?: string | null;
-    department_id?: string | null;
-    visibility_scope?: VisibilityScope;
-  } = {};
-
-  // position — любой обладатель manage_users.
-  const positionRaw = String(formData.get('position') ?? '').trim();
-  const nextPosition = positionRaw === '' ? null : positionRaw.slice(0, 120);
-  if (nextPosition !== (target.position ?? null)) update.position = nextPosition;
-
-  // department_id / visibility_scope — только owner.
-  if (isOwnerActor) {
-    const deptRaw = String(formData.get('department_id') ?? '').trim();
-    const nextDept = deptRaw === '' ? null : UUID_RE.test(deptRaw) ? deptRaw : target.department_id;
-    if (nextDept !== target.department_id) update.department_id = nextDept;
-
-    const scopeRaw = String(formData.get('visibility_scope') ?? '').trim();
-    const nextScope = isVisibilityScope(scopeRaw) ? scopeRaw : target.visibility_scope;
-    if (nextScope !== target.visibility_scope) update.visibility_scope = nextScope;
-  }
-
-  if (Object.keys(update).length === 0) return; // no-op
-
-  // RLS users_update_managed_roles + гард users_guard_visibility_fields дублируют.
-  const { error } = await supabase.from('users').update(update).eq('id', user_id);
-  if (error) {
-    console.error('assignUserDepartmentAction failed:', error.code, error.message);
-    return;
-  }
+  if (!result) return;
 
   // Журналим смену подразделения/scope (аудит видимости). position — косметика,
   // в журнал не пишем (как и БД-гард его не охраняет).
-  if ('department_id' in update || 'visibility_scope' in update) {
+  if (result.touchedVisibility) {
     await logActivity({
       entity_type: 'user',
       entity_id: user_id,
       action: 'user_department_changed',
-      changes: {
-        before: {
-          department_id: target.department_id,
-          visibility_scope: target.visibility_scope,
-        },
-        after: {
-          department_id:
-            'department_id' in update ? update.department_id : target.department_id,
-          visibility_scope:
-            'visibility_scope' in update
-              ? update.visibility_scope
-              : target.visibility_scope,
-        },
-      },
+      changes: { before: result.before, after: result.after },
     });
   }
 
@@ -519,39 +550,38 @@ export async function updateUserSalaryAction(formData: FormData): Promise<void> 
     amount = Math.round(parsed * 100) / 100;
   }
 
-  const supabase = await createSupabaseServerClient();
-  // before-state и право — через DEFINER-RPC (salary_* недоступны прямым select).
-  const { data: salaries } = await supabase.rpc('manage_user_salaries');
-  const before = (
-    (salaries ?? []) as Array<{
-      user_id: string;
-      salary_mode: SalaryMode;
-      salary_fixed_amount: number | string | null;
-      can_edit: boolean;
-    }>
-  ).find((s) => s.user_id === user_id);
-  if (!before || !before.can_edit) return; // не виден / нет права (зеркало гарда)
+  let before: { salary_mode: SalaryMode; amount: number | null } | null = null;
+  try {
+    before = await userDb(actor.profile.id, async (tx) => {
+      // before-state и право — через DEFINER-RPC (salary_* недоступны прямым select).
+      const salaries = await rpcManageUserSalaries(tx);
+      const row = salaries.find((s) => s.user_id === user_id);
+      if (!row || !row.can_edit) return null; // не виден / нет права (зеркало гарда)
 
-  const beforeAmount =
-    before.salary_fixed_amount === null ? null : Number(before.salary_fixed_amount);
-  if (before.salary_mode === mode && beforeAmount === amount) return; // no-op
+      const beforeAmount = row.salary_fixed_amount;
+      if (row.salary_mode === mode && beforeAmount === amount) return null; // no-op
 
-  // RLS users_update_managed_roles + гард users_guard_salary_fields дублируют.
-  const { error } = await supabase
-    .from('users')
-    .update({ salary_mode: mode, salary_fixed_amount: amount })
-    .eq('id', user_id);
-  if (error) {
-    console.error('updateUserSalaryAction failed:', error.code, error.message);
+      // salary_* — @ignore в Prisma (column-level privacy): пишем сырым UPDATE
+      // (UPDATE выдан на уровне таблицы, SELECT на этих колонках закрыт).
+      // RLS users_update_managed_roles + гард users_guard_salary_fields дублируют.
+      await tx.$executeRaw`
+        update public.users
+        set salary_mode = ${mode}, salary_fixed_amount = ${amount}::numeric
+        where id = ${user_id}::uuid`;
+      return { salary_mode: row.salary_mode as SalaryMode, amount: beforeAmount };
+    });
+  } catch (err) {
+    console.error('updateUserSalaryAction failed:', err);
     return;
   }
+  if (!before) return;
 
   await logActivity({
     entity_type: 'user',
     entity_id: user_id,
     action: 'user_salary_changed',
     changes: {
-      before: { salary_mode: before.salary_mode, salary_fixed_amount: beforeAmount },
+      before: { salary_mode: before.salary_mode, salary_fixed_amount: before.amount },
       after: { salary_mode: mode, salary_fixed_amount: amount },
     },
   });

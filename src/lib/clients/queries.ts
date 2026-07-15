@@ -1,8 +1,10 @@
 import 'server-only';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { dateOnly, dateOnlyOrNull, dec, ts } from '@/lib/db/convert';
+import { Prisma } from '@/generated/prisma/client';
 import type {
-  CaseStage,
   CaseSummary,
   Client,
   ClientKind,
@@ -10,11 +12,11 @@ import type {
 
 export const CLIENTS_PAGE_SIZE = 20;
 
-// Поисковая строка идёт через PostgREST .or() — там запятая/паренсы/звёздочка
-// меняют структуру фильтра. Это пользовательский ввод, поэтому экранируем.
-// `_` и `%` — wildcard'ы ILIKE, тоже вычищаем (LOW#8 внешнего ревью).
+// Поисковая строка: `_`/`%` — wildcard'ы ILIKE, а прочие спецсимволы Prisma
+// параметризует безопасно. Чистим wildcard'ы, чтобы «50%» не матчил как маска
+// (Prisma `contains` их не экранирует) — сохраняем прежнее поведение.
 function sanitizeSearch(value: string): string {
-  return value.replace(/[,()*'"\\%_]/g, '').trim();
+  return value.replace(/[%_]/g, '').trim();
 }
 
 export type ClientListItem = Client & {
@@ -46,6 +48,66 @@ export type ListClientsResult = {
   pageCount: number;
 };
 
+// Поля клиента (порядок как в DTO Client) — общий select для списка/карточки.
+const CLIENT_SELECT = {
+  id: true,
+  name: true,
+  client_kind: true,
+  last_name: true,
+  first_name: true,
+  middle_name: true,
+  birth_date: true,
+  inn: true,
+  contract_number: true,
+  phone: true,
+  email: true,
+  address: true,
+  source: true,
+  notes: true,
+  created_by: true,
+  created_at: true,
+} as const;
+
+type ClientRow = {
+  id: string;
+  name: string;
+  client_kind: Client['client_kind'];
+  last_name: string | null;
+  first_name: string | null;
+  middle_name: string | null;
+  birth_date: Date | null;
+  inn: string | null;
+  contract_number: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  source: Client['source'];
+  notes: string | null;
+  created_by: string;
+  created_at: Date;
+};
+
+function toClient(r: ClientRow): Client {
+  return {
+    id: r.id,
+    name: r.name,
+    client_kind: r.client_kind,
+    last_name: r.last_name,
+    first_name: r.first_name,
+    middle_name: r.middle_name,
+    birth_date: dateOnlyOrNull(r.birth_date),
+    inn: r.inn,
+    contract_number: r.contract_number,
+    phone: r.phone,
+    email: r.email,
+    address: r.address,
+    source: r.source,
+    notes: r.notes,
+    created_by: r.created_by,
+    created_at: ts(r.created_at),
+  };
+}
+
 // RLS-видимость:
 //   - staff (owner/admin/office_manager) — все клиенты;
 //   - lawyer/expert — клиенты, привязанные к их видимым делам.
@@ -53,127 +115,103 @@ export type ListClientsResult = {
 export async function listClients(
   params: ListClientsParams = {},
 ): Promise<ListClientsResult> {
-  const supabase = await createSupabaseServerClient();
   const page = Math.max(1, params.page ?? 1);
   const offset = (page - 1) * CLIENTS_PAGE_SIZE;
   const sortColumn: ClientsSortColumn = params.sort ?? CLIENTS_DEFAULT_SORT.sort;
   const sortDir: SortDir = params.dir ?? CLIENTS_DEFAULT_SORT.dir;
-  const ascending = sortDir === 'asc';
 
-  let query = supabase
-    .from('clients')
-    .select(
-      'id, name, client_kind, last_name, first_name, middle_name, birth_date, inn, contract_number, phone, email, address, source, notes, created_by, created_at, cases(count)',
-      { count: 'exact' },
-    )
-    .order(sortColumn, { ascending })
-    .order('id', { ascending: false })
-    .range(offset, offset + CLIENTS_PAGE_SIZE - 1);
+  const user = await getCurrentUser();
+  if (!user) {
+    return { items: [], total: 0, page, pageSize: CLIENTS_PAGE_SIZE, pageCount: 1 };
+  }
+  const uid = user.profile.id;
 
   const q = params.q ? sanitizeSearch(params.q) : '';
+  const where: Prisma.clientsWhereInput = {};
   if (q) {
-    query = query.or(
-      `name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,inn.ilike.%${q}%,contract_number.ilike.%${q}%`,
-    );
+    where.OR = [
+      { name: { contains: q, mode: 'insensitive' } },
+      { phone: { contains: q, mode: 'insensitive' } },
+      { email: { contains: q, mode: 'insensitive' } },
+      { inn: { contains: q, mode: 'insensitive' } },
+      { contract_number: { contains: q, mode: 'insensitive' } },
+    ];
   }
-  if (params.kind) {
-    query = query.eq('client_kind', params.kind);
-  }
+  if (params.kind) where.client_kind = params.kind;
 
-  const { data, error, count } = await query;
-  if (error) {
-    throw new Error(`listClients failed: ${error.message}`);
-  }
+  const orderBy: Prisma.clientsOrderByWithRelationInput[] =
+    sortColumn === 'name'
+      ? [{ name: sortDir }, { id: 'desc' }]
+      : [{ created_at: sortDir }, { id: 'desc' }];
 
-  type Row = Omit<Client, never> & {
-    cases: ReadonlyArray<{ count: number }>;
-  };
+  // Страница и общий счётчик — параллельными userDb-транзакциями (норма §4.3;
+  // внутри одной interactive-tx параллелить нельзя — один коннект).
+  const [rows, total] = await Promise.all([
+    userDb(uid, (tx) =>
+      tx.clients.findMany({
+        where,
+        orderBy,
+        skip: offset,
+        take: CLIENTS_PAGE_SIZE,
+        select: { ...CLIENT_SELECT, _count: { select: { cases: true } } },
+      }),
+    ),
+    userDb(uid, (tx) => tx.clients.count({ where })),
+  ]);
 
-  const items: ClientListItem[] = (data ?? []).map((row) => {
-    const r = row as Row;
-    const casesCount = r.cases[0]?.count ?? 0;
-    return {
-      id: r.id,
-      name: r.name,
-      client_kind: r.client_kind,
-      last_name: r.last_name,
-      first_name: r.first_name,
-      middle_name: r.middle_name,
-      birth_date: r.birth_date,
-      inn: r.inn,
-      contract_number: r.contract_number,
-      phone: r.phone,
-      email: r.email,
-      address: r.address,
-      source: r.source,
-      notes: r.notes,
-      created_by: r.created_by,
-      created_at: r.created_at,
-      cases_count: casesCount,
-    };
-  });
+  const items: ClientListItem[] = rows.map((r) => ({
+    ...toClient(r),
+    cases_count: r._count.cases,
+  }));
 
-  const total = count ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / CLIENTS_PAGE_SIZE));
-
   return { items, total, page, pageSize: CLIENTS_PAGE_SIZE, pageCount };
 }
 
 export async function getClient(id: string): Promise<Client | null> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('clients')
-    .select(
-      'id, name, client_kind, last_name, first_name, middle_name, birth_date, inn, contract_number, phone, email, address, source, notes, created_by, created_at',
-    )
-    .eq('id', id)
-    .maybeSingle<Client>();
+  const user = await getCurrentUser();
+  if (!user) return null;
 
-  if (error) {
-    throw new Error(`getClient failed: ${error.message}`);
-  }
-  return data;
+  const row = await userDb(user.profile.id, (tx) =>
+    tx.clients.findUnique({ where: { id }, select: CLIENT_SELECT }),
+  );
+  return row ? toClient(row) : null;
 }
 
 export async function getClientCases(clientId: string): Promise<CaseSummary[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('cases')
-    .select(
-      'id, number_title, stage, opened_at, contract_sum, debt, responsible:responsible_id(id, full_name)',
-    )
-    .eq('client_id', clientId)
-    .order('opened_at', { ascending: false });
+  const user = await getCurrentUser();
+  if (!user) return [];
 
-  if (error) {
-    throw new Error(`getClientCases failed: ${error.message}`);
-  }
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.cases.findMany({
+      where: { client_id: clientId },
+      orderBy: { opened_at: 'desc' },
+      select: {
+        id: true,
+        number_title: true,
+        stage: true,
+        opened_at: true,
+        contract_sum: true,
+        debt: true,
+        users_cases_responsible_idTousers: {
+          select: { id: true, full_name: true },
+        },
+      },
+    }),
+  );
 
-  // PostgREST через supabase-js возвращает FK-объект как массив (даже если
-  // это many-to-one). Сворачиваем в первый элемент.
-  type Row = {
-    id: string;
-    number_title: string;
-    stage: CaseStage;
-    opened_at: string;
-    contract_sum: number | string;
-    debt: number | string;
-    responsible: ReadonlyArray<{ id: string; full_name: string }> | { id: string; full_name: string } | null;
-  };
-
-  return (data ?? []).map((row) => {
-    const r = row as unknown as Row;
-    const responsible = Array.isArray(r.responsible)
-      ? (r.responsible[0] ?? null)
-      : r.responsible;
-    return {
-      id: r.id,
-      number_title: r.number_title,
-      stage: r.stage,
-      opened_at: r.opened_at,
-      contract_sum: Number(r.contract_sum),
-      debt: Number(r.debt),
-      responsible,
-    };
-  });
+  return rows.map((r) => ({
+    id: r.id,
+    number_title: r.number_title,
+    stage: r.stage,
+    opened_at: dateOnly(r.opened_at),
+    contract_sum: dec(r.contract_sum),
+    debt: dec(r.debt),
+    responsible: r.users_cases_responsible_idTousers
+      ? {
+          id: r.users_cases_responsible_idTousers.id,
+          full_name: r.users_cases_responsible_idTousers.full_name,
+        }
+      : null,
+  }));
 }

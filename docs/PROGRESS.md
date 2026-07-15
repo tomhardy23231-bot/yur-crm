@@ -35,6 +35,82 @@
 
 ---
 
+## Сессия 2026-07-15 — Цикл v4, Сессия 3: Данные, часть 1 (6 доменов на userDb/Prisma) ✅
+
+_Третья сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Переписаны queries+actions
+шести доменов с supabase-js на `userDb`/`adminDb` + rpc-реестр. Прод не трогался;
+push не делался (запрет до сессии 7 в силе)._
+
+**Модель:** Claude Opus 4.8
+
+### Сделано
+- **6 доменов (12 файлов) → userDb/adminDb/rpc**, ноль импортов `@/lib/supabase/*`:
+  - **comments** (`queries.ts`/`actions.ts`) — лента/CRUD; лог правки через
+    `rpcLogActivity` внутри той же tx; «тихий no-op под RLS» — `updateMany`/
+    `deleteMany` (count), а не `update`/`delete` (те кинули бы P2025).
+  - **departments** — справочник со счётчиком (2 параллельных userDb) + CRUD owner.
+  - **users** — `listManagedUsers` + доперевод 5 bare-actions (role/perms/active/
+    department/**salary**). salary_* — `@ignore`/приватны → чтение через
+    `rpcManageUserSalaries`, запись сырым `$executeRaw UPDATE` (табличный UPDATE-грант
+    есть, колоночный SELECT закрыт — проверено в baseline).
+  - **clients** — список (`.or`→`OR{contains,insensitive}`, `cases(count)`→`_count`,
+    отдельный `count()`), `getClient`/`getClientCases`, CRUD; конфликт-чек не тут
+    (в rpc-реестре). `birth_date` строка↔Date через `toDbDate`/`dateOnlyOrNull`.
+  - **tasks** — 8 query-функций (карточка/страница/календарь/колокольчик/«Мой день»/
+    ассайни/`getTask`) на общий `TASK_SELECT` + типобезопасный маппер
+    (`Prisma.tasksGetPayload`); enum-сортировка `status asc` = как PostgREST; CRUD.
+  - **cases** (самый большой) — `listCases` (q→`rpcSearchCaseIds`+findMany по id с
+    восстановлением порядка; без q→findMany+count), `countCasesByStage`→**`groupBy`**,
+    `getCase`, доска, справочники; 8 экшенов (create/update/stage/description/lost/
+    delete/archive/advance).
+- **Гоча T10/V3-5 (`cases.updated_at`) закрыта:** Prisma `Date` усекает микросекунды
+  → optimistic-lock давал бы ложный конфликт на каждой правке. `getCase` тянет
+  `updated_at::text` (полная точность), `updateCaseAction` сверяет его под
+  `SELECT … FOR UPDATE` в одной tx (атомарно, без TOCTOU) → `updateMany`.
+  Тест `tests/integration/v4-cases-optimistic-lock.test.ts` (2 кейса).
+- **Новый `src/lib/db/convert.ts`** — `dec/decOrNull` (Decimal→number),
+  `dateOnly/dateOnlyOrNull` (@db.Date→'YYYY-MM-DD'), `ts/tsOrNull` (timestamptz→ISO),
+  `toDbDate` ('YYYY-MM-DD'→Date). Эмпирически проверил (проба на Neon): `@db.Date`
+  через PrismaPg приходит Date UTC-полночи → `toISOString().slice(0,10)` корректен
+  независимо от пояса раннера (Vercel — UTC).
+- **Паттерн конверсии** (эталон для сессии 4): query-функции резолвят текущего
+  через `getCurrentUser()` (cache-per-render, лишнего round-trip нет) → `userDb(id,…)`;
+  null → пусто (fail-closed). Actions: одна `userDb`-tx на write; ошибки →
+  `dbActionError`/`pgErrorCode`/`prismaErrorToDbError`; `redirect()` — ВНЕ try/catch
+  (NEXT_REDIRECT пробрасывается).
+
+### Проверки
+- `tsc --noEmit` (весь проект) ✓, `eslint` ✓, unit **141/141** ✓,
+  integration **114/114** на Neon dev ✓ (112 прежних + 2 новых T10).
+- **Runtime-смок на Neon** (dev :3001, вход owner@yur.local): `/cases` и `/clients`
+  отрисовали реальные данные (дела с клиентами/экспертами/суммами, счётчик этапов
+  «Усі етапи · 2», «2 з 2» клиента) — путь userDb-обёрток работает end-to-end.
+  Ошибки консоли — только `getDashboardCases` (дашборд ещё supabase-js, сессия 4).
+
+### Дальше
+- **Сессия 4 «Данные, часть 2»**: payments, acts, payroll, cash, dashboard,
+  notifications (cron/telegram/calendar), search, activity_log, i18n, org, absences +
+  прямые supabase-вызовы в `payroll-list-mobile.tsx`/`reports/payroll/[userId]/page.tsx`
+  и machine-роутах. Готово, когда ни одного `@/lib/supabase/*` вне auth/storage;
+  все экраны на Neon; полный e2e зелёный (гейт сессии 4).
+- Эталон стиля — конвертированные файлы сессии 3 (особенно cases для сложных случаев).
+
+### Грабли / критичное для следующих сессий
+- **`prismaErrorToDbError` типизирован как nullable** → optional chaining
+  (`?.message`/`?.code`) при разборе ошибок RPC/триггеров.
+- **salary_* и прочие `@ignore`-колонки** — только `$executeRaw`/`$queryRaw` (не
+  модельные `update`/`select`); правило распространяется на будущие приватные колонки.
+- **Промежуточное состояние всё ещё частично нерабочее** (дашборд/финансы/касса на
+  supabase-js до конца сессии 4) — норма по плану; e2e гоняем доменами, полный — гейт с4.
+- **pg-варнинг** `client already executing a query… removed in pg@9.0` — уровня
+  адаптера `@prisma/adapter-pg`, разовый, БЕЗ стека; не от прикладного кода (все
+  `userDb` строго awaited, `Promise.all` берёт разные коннекты пула). Косметика;
+  присмотреть на пуле/нагрузке в сессии 4/6.
+- git: master впереди origin (редизайн v5 + план + c1 + c2 + **коммит c3**);
+  **push запрещён до с7**. Коммит сессии 3 — локальный.
+
+---
+
 ## Сессия 2026-07-15 — Цикл v4, Сессия 2: Свой auth (JWT) + тестовая обвязка на Neon ✅
 
 _Вторая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Свой вход вместо GoTrue
@@ -619,31 +695,40 @@ _Фича по запросу пользователя: владелец не и
 ---
 
 ## Текущее состояние
-_Снимок на 2026-07-08 (этап «Активный»). Обновляется целиком при «завершаем сессию»._
+_Снимок на 2026-07-15 (цикл v4 «Переезд на Postgres/Neon», в работе). Обновляется целиком._
 
-**Стадия.** Вся разработка — **v1** (MVP) + **v2** («Подразделения») + **v3** («Hardening &
-Product») + управление доступами сотрудников — завершена и **на проде** (Supabase
-`fmzevqyquljecmsiqsoj` + Vercel `yur-crm.vercel.app`). Локальный `master` = `origin/master`
-(всё запушено, последний коммит `a2446a6`).
+**Прод (не меняется весь цикл v4).** Вся разработка v1+v2+v3+доступы — **на проде**
+(Supabase `fmzevqyquljecmsiqsoj` + Vercel `yur-crm.vercel.app`, free tier без автобэкапов).
+Функционал прода: дела (список/доска/карточка/архив, 5 этапов, исход «не заключили»); клиенты
+(+конфликт-чек); финансы/ЗП (% от оплат; percent/fixed/fixed_percent; выплаты/премии); касса;
+акты Рахунок-Акт (XLSX); задачи+календарь+отпуска; подразделения (департаментная RLS);
+уведомления (Telegram+ICS); документы (Storage+OnlyOffice); 5 ролей + 12 прав; owner-панель доступов.
 
-**Что в системе.** Дела (список/доска/карточка/архив, воронка 5 этапов, исход «не заключили»);
-клиенты (+конфликт-чек); финансы и ЗП (% от оплат по категории; режимы percent/fixed/fixed_percent;
-выплаты/премии); касса (счета + сальдо + авто-приход от платежей); акты Рахунок-Акт
-(issued→paid→XLSX); задачи + календарь + отпуска; подразделения (департаментная RLS-видимость);
-уведомления (Telegram-дайджест + ICS); документы (Storage + OnlyOffice); 5 ролей + 12 прав;
-owner-панель доступов. Тесты: 127 unit + 112 integration (в CI), e2e — только auth.
+**Цикл v4 — переезд Supabase → Neon/Prisma + свой auth** (план `docs/PLAN-V4-POSTGRES.md`,
+ENG CLEARED). Идёт по сессиям (1 диалог = 1 сессия), **весь код копится ЛОКАЛЬНО, `git push`
+ЗАПРЕЩЁН до сессии 7** (автодеплой Vercel включён — пуш выкатил бы всё сразу). Neon-проект
+«UR» `winter-credit-95791968` (Frankfurt), работаем на dev-ветке; прод-база не трогается до с7.
+- **Сессия 1 ✅** — фундамент: шим RLS (роли authenticated/app_user, `auth.uid()` из
+  set_config), baseline-слепок схемы, раннер миграций, ACL-аудит, Prisma introspect,
+  `lib/db` (userDb/adminDb/rpc/errors), ESLint-гард adminDb, порт seed.
+- **Сессия 2 ✅** — свой auth: скользящий JWT (jose) + pwd_version + rate-limit логина,
+  proxy без БД, `/settings/users` на admin-пул + своя `auth.users`; вся integration-обвязка
+  на Prisma/Neon (fixtures + 9 файлов).
+- **Сессия 3 ✅** — данные ч.1: queries+actions 6 доменов (comments/departments/users/
+  clients/tasks/cases) на userDb/adminDb/rpc; гоча `cases.updated_at` (optimistic locking
+  через `::text` + FOR UPDATE); `lib/db/convert.ts`. Смок /cases, /clients на Neon зелёный.
+- **Дальше — Сессия 4** «Данные, часть 2» (payments/acts/payroll/cash/dashboard/
+  notifications/search/activity_log/i18n/org/absences + machine-роуты). До конца с4
+  часть экранов (дашборд/финансы/касса) ещё на supabase-js — норма.
+- Осталось по плану: с5 файлы (R2), с6 чистка+репетиция переезда, с7 прод-переезд, с8 почта.
 
-**Прод (важно).** Free tier **без автобэкапов** → перед любой прод-миграцией дамп в `/backups/`
-(gitignored). Деплой: push в `master` → Vercel; миграции — `supabase db push` или Management API,
-**только по явному «ок» пользователя**. Прод-данные очищены до `owner@yur.local` (готов к боевому вводу).
+**Тесты.** unit 141 + integration 114 (на Neon dev) — зелёные; e2e auth — полный прогон
+отложен на гейт с4 (экраны-контент конвертируются).
 
-**Активный этап (с 2026-07-03) — довести до идеала.** Сессия 2026-07-08: глубокое изучение всей
-кодовой базы (4 агента — БД/RLS, backend, frontend, инфраструктура) + наведение порядка в структуре
-и документации (архивация истории, README, doc-drift в CLAUDE.md, удаление артефактов). Дыр
-доступа/RLS не найдено. Находки-мелочи на будущую уборку кода: поле-призрак `accrual_mode`; мёртвые
-RPC `payroll_by_specialist`/`create_bonus`/`revert_payout`; сломанный `scripts/smoke-rls.ts` (после
-заморозки леджера); контраст зелёных сумм ЗП ниже AA (~3.9:1); самодельная модалка выплат без
-фокус-трапа; дубли денежного форматтера. Подробности — в отчёте сессии (ниже).
+**Мелочи на будущую уборку кода** (из изучения 2026-07-08, НЕ трогаем в v4): поле-призрак
+`accrual_mode`; мёртвые RPC `payroll_by_specialist`/`create_bonus`/`revert_payout`; сломанный
+`scripts/smoke-rls.ts`; контраст зелёных сумм ЗП ниже AA; модалка выплат без фокус-трапа;
+дубли денежного форматтера.
 
 ---
 

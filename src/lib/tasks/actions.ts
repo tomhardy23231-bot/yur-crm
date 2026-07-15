@@ -6,9 +6,10 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { tsOrNull } from '@/lib/db/convert';
+import { dbActionError } from '@/lib/db/errors';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { UUID_RE } from '@/lib/validation';
 import type { Messages } from '@/lib/i18n/messages';
 import {
@@ -152,25 +153,33 @@ export async function createTaskAction(
   const result = validate(formData, t);
   if (!result.ok) return result.state;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: insertedTask, error } = await supabase
-    .from('tasks')
-    .insert({
-      ...result.data,
-      // RLS WITH CHECK требует created_by = active_uid(); ставим явно из сессии.
-      created_by: user.profile.id,
-      status: 'open' as TaskStatus,
-    })
-    .select('id')
-    .single();
-
-  if (error || !insertedTask) {
+  let newTaskId: string;
+  try {
+    const inserted = await userDb(user.profile.id, (tx) =>
+      tx.tasks.create({
+        data: {
+          case_id: result.data.case_id,
+          title: result.data.title,
+          description: result.data.description,
+          kind: result.data.kind,
+          assignee_id: result.data.assignee_id,
+          // due_at (datetime-local ISO) → Date для колонки timestamptz.
+          due_at: result.data.due_at ? new Date(result.data.due_at) : null,
+          // RLS WITH CHECK требует created_by = active_uid(); ставим явно из сессии.
+          created_by: user.profile.id,
+          status: 'open',
+        },
+        select: { id: true },
+      }),
+    );
+    newTaskId = inserted.id;
+  } catch (err) {
     return {
       ok: false,
       values: result.values,
-      message: dbErrorMessage(
+      message: dbActionError(
         'createTaskAction',
-        error,
+        err,
         t.tasks.errors.createFailed,
         t.errors.db,
       ),
@@ -182,7 +191,7 @@ export async function createTaskAction(
     entity_id: result.data.case_id,
     action: 'task_created',
     changes: {
-      task_id: insertedTask.id,
+      task_id: newTaskId,
       title: result.data.title,
       kind: result.data.kind,
       assignee_id: result.data.assignee_id,
@@ -216,49 +225,62 @@ export async function updateTaskAction(
   _prev: TaskActionState,
   formData: FormData,
 ): Promise<TaskActionState> {
-  await requireUser();
+  const user = await requireUser();
   const { t } = await getT();
   const result = validate(formData, t);
   if (!result.ok) return result.state;
 
-  const supabase = await createSupabaseServerClient();
-
-  const { data: before } = await supabase
-    .from('tasks')
-    .select('title, kind, assignee_id, due_at, case_id')
-    .eq('id', taskId)
-    .maybeSingle();
-
-  const { error } = await supabase
-    .from('tasks')
-    .update({
-      title: result.data.title,
-      description: result.data.description,
-      kind: result.data.kind,
-      assignee_id: result.data.assignee_id,
-      due_at: result.data.due_at,
-    })
-    .eq('id', taskId);
-
-  if (error) {
+  let before;
+  try {
+    before = await userDb(user.profile.id, (tx) =>
+      tx.tasks.findUnique({
+        where: { id: taskId },
+        select: {
+          title: true,
+          kind: true,
+          assignee_id: true,
+          due_at: true,
+          case_id: true,
+        },
+      }),
+    );
+  } catch (err) {
     return {
       ok: false,
       values: result.values,
-      message: dbErrorMessage(
-        'updateTaskAction',
-        error,
-        t.tasks.errors.updateFailed,
-        t.errors.db,
-      ),
+      message: dbActionError('updateTaskAction', err, t.tasks.errors.updateFailed, t.errors.db),
     };
   }
 
-  if (before) {
+  let updatedCount = 0;
+  try {
+    const upd = await userDb(user.profile.id, (tx) =>
+      tx.tasks.updateMany({
+        where: { id: taskId },
+        data: {
+          title: result.data.title,
+          description: result.data.description,
+          kind: result.data.kind,
+          assignee_id: result.data.assignee_id,
+          due_at: result.data.due_at ? new Date(result.data.due_at) : null,
+        },
+      }),
+    );
+    updatedCount = upd.count;
+  } catch (err) {
+    return {
+      ok: false,
+      values: result.values,
+      message: dbActionError('updateTaskAction', err, t.tasks.errors.updateFailed, t.errors.db),
+    };
+  }
+
+  if (before && updatedCount > 0) {
     const beforeShape: TaskDiffShape = {
-      title: String(before.title ?? ''),
-      kind: before.kind as TaskKind,
-      assignee_id: String(before.assignee_id ?? ''),
-      due_at: (before.due_at as string | null) ?? null,
+      title: before.title,
+      kind: before.kind,
+      assignee_id: before.assignee_id,
+      due_at: tsOrNull(before.due_at),
     };
     const afterShape: Partial<TaskDiffShape> = {
       title: result.data.title,
@@ -287,7 +309,7 @@ export async function updateTaskAction(
 // Bare action: переключает open ⇄ done. Форма передаёт task_id, current_status, case_id.
 // Используется на чекбоксе в task-row.
 export async function toggleTaskStatusAction(formData: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const task_id = getString(formData, 'task_id');
   const current = getString(formData, 'current_status');
   const case_id = getString(formData, 'case_id');
@@ -296,27 +318,32 @@ export async function toggleTaskStatusAction(formData: FormData): Promise<void> 
   if (!isTaskStatus(current)) return;
 
   const next: TaskStatus = current === 'open' ? 'done' : 'open';
-  const supabase = await createSupabaseServerClient();
 
-  // Берём title до апдейта — для удобства лог-чтения.
-  const { data: taskRow } = await supabase
-    .from('tasks')
-    .select('title, case_id')
-    .eq('id', task_id)
-    .maybeSingle();
-
-  const { error } = await supabase
-    .from('tasks')
-    .update({ status: next })
-    .eq('id', task_id);
-
-  if (error) {
-    console.error('toggleTaskStatusAction failed:', error.message);
+  // Title/case_id берём до апдейта (для лога) + сам апдейт — одной транзакцией.
+  let taskRow: { title: string; case_id: string } | null = null;
+  let changed = false;
+  try {
+    const res = await userDb(user.profile.id, async (tx) => {
+      const row = await tx.tasks.findUnique({
+        where: { id: task_id },
+        select: { title: true, case_id: true },
+      });
+      if (!row) return { row: null, changed: false };
+      const upd = await tx.tasks.updateMany({
+        where: { id: task_id },
+        data: { status: next },
+      });
+      return { row, changed: upd.count > 0 };
+    });
+    taskRow = res.row;
+    changed = res.changed;
+  } catch (err) {
+    console.error('toggleTaskStatusAction failed:', err);
     return;
   }
 
   // CSO #2: case_id для лога берём из taskRow (DB-truth), не из formData.
-  if (taskRow?.case_id && UUID_RE.test(taskRow.case_id)) {
+  if (changed && taskRow?.case_id && UUID_RE.test(taskRow.case_id)) {
     const trueCid = taskRow.case_id;
     await logActivity({
       entity_type: 'case',
@@ -334,7 +361,7 @@ export async function toggleTaskStatusAction(formData: FormData): Promise<void> 
 }
 
 export async function deleteTaskAction(formData: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const task_id = getString(formData, 'task_id');
   const case_id = getString(formData, 'case_id');
 
@@ -342,20 +369,18 @@ export async function deleteTaskAction(formData: FormData): Promise<void> {
     redirect('/tasks?error=missing_id');
   }
 
-  const supabase = await createSupabaseServerClient();
+  // Снапшот для лога (до удаления): case_id жив после delete, но title не достанем.
+  const taskBefore = await userDb(user.profile.id, (tx) =>
+    tx.tasks.findUnique({
+      where: { id: task_id },
+      select: { title: true, case_id: true },
+    }),
+  );
 
-  // Снапшот для лога. Можно логировать ПОСЛЕ delete (tasks → case_id жив, RLS
-  // can_see_case продолжит работать). Но title после delete не достанем — поэтому
-  // читаем заранее.
-  const { data: taskBefore } = await supabase
-    .from('tasks')
-    .select('title, case_id')
-    .eq('id', task_id)
-    .maybeSingle();
-
-  const { error } = await supabase.from('tasks').delete().eq('id', task_id);
-
-  if (error) {
+  try {
+    await userDb(user.profile.id, (tx) => tx.tasks.delete({ where: { id: task_id } }));
+  } catch {
+    // RLS-отказ невидимой строки → P2025; ведём на понятный экран ошибки.
     if (case_id && UUID_RE.test(case_id)) {
       redirect(`/cases/${case_id}?error=task_delete_failed`);
     }

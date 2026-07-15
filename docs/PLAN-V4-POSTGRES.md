@@ -280,11 +280,18 @@ push ТОЛЬКО этой ветки → ручной deploy ветки в да
   зелёные на dev-ветке; вход/выход/смена пароля/выдача пароля владельцем
   работают.
 
-### Сессия 3 — Данные, часть 1 (users, departments, clients, cases, tasks, comments)
+### Сессия 3 — Данные, часть 1 (users, departments, clients, cases, tasks, comments) — ✅ 2026-07-15
+> 12 файлов (queries+actions 6 доменов) переписаны с supabase-js на
+> userDb/adminDb + rpc-реестр; ноль импортов `@/lib/supabase/*` в них. Гейт:
+> tsc/eslint чистые, unit 141, integration 114 (+2 новых на updated_at::text),
+> runtime-смок /cases и /clients на Neon отрисовал реальные данные. Детали и
+> грабли — docs/PROGRESS.md (запись 2026-07-15, сессия 3).
 - ⚠ Домен cases: `updated_at` (optimistic locking, v3 s4) сравнивается на
   РАВЕНСТВО с микросекундной точностью — Prisma `Date` таймстамп усекает до
   миллисекунд, «дело изменено другим пользователем» вылезло бы на каждой
-  правке. Возим `updated_at::text` в DTO (ревью V3-5, покрыть тестом).
+  правке. Возим `updated_at::text` в DTO (ревью V3-5, покрыт тестом). ✅
+  Решение: `getCase` тянет `updated_at::text`, `updateCaseAction` сверяет его
+  под `SELECT … FOR UPDATE` в одной tx (атомарно, без TOCTOU).
 ### Сессия 4 — Данные, часть 2 (payments, acts, payroll, cash, dashboard, notifications: cron/telegram/calendar, search, activity_log, i18n, org, absences)
 - Механическое переписывание 156 `.from()` + 30 `.rpc()` в 56 файлах
   на `userDb`/`adminDb`. После КАЖДОГО домена: `npx tsc --noEmit` +
@@ -503,9 +510,11 @@ push ТОЛЬКО этой ветки → ручной deploy ветки в да
 - [x] **T9 (P1, решено иначе — с1 2026-07-14)** — деплой — владелец выбрал:
   автодеплой НЕ трогаем, действует запрет `git push` до сессии 7; хотфикс —
   ветка от origin/master + ручной deploy ветки — из V1.
-- [ ] **T10 (P2, CC: ~30 мин)** — данные — `cases.updated_at` сквозь формы
-  как text (микросекундная точность, optimistic locking) — из V3-5.
-  Проверка: правка дела не даёт ложный конфликт версий.
+- [x] **T10 (P2, ✅ с3 2026-07-15)** — данные — `cases.updated_at` сквозь формы
+  как text (микросекундная точность, optimistic locking) — из V3-5. Сделано:
+  `getCase` отдаёт `updated_at::text`; `updateCaseAction` сверяет его под
+  `FOR UPDATE` в одной tx; integration `v4-cases-optimistic-lock.test.ts`
+  (та же версия → нет ложного конфликта; после правки → конфликт детектится).
 
 _Секция Performance новых задач сверх T8 не дала; механика userDb (P1-4
 внешнего голоса) вошла в §4.3 и реализуется в рамках T5/сессии 1._

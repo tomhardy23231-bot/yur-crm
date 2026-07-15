@@ -6,11 +6,14 @@ import { redirect } from 'next/navigation';
 import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dateOnly, dec, decOrNull, toDbDate } from '@/lib/db/convert';
+import { dbActionError, pgErrorCode, prismaErrorToDbError } from '@/lib/db/errors';
+import { rpcCloseCaseLost } from '@/lib/db/rpc';
+import { Prisma } from '@/generated/prisma/client';
 import { getT } from '@/lib/i18n/server';
 import type { Messages } from '@/lib/i18n/messages';
 import { UUID_RE, todayIso } from '@/lib/validation';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   ACCRUAL_MODES,
   BILLING_TYPES,
@@ -298,6 +301,39 @@ function validate(
   };
 }
 
+// Validated (+ опц. override %) → data для Prisma-создания дела. Даты-строки
+// opened_at/closed_at → Date (@db.Date); прочие поля/enum'ы — как есть.
+function caseCreateData(
+  d: Validated,
+  overrides: RateOverrides | null,
+): Prisma.casesUncheckedCreateInput {
+  const data: Prisma.casesUncheckedCreateInput = {
+    number_title: d.number_title,
+    client_id: d.client_id,
+    lawyer_id: d.lawyer_id,
+    responsible_id: d.responsible_id,
+    opened_at: toDbDate(d.opened_at),
+    case_type: d.case_type,
+    category: d.category,
+    subject: d.subject,
+    stage: d.stage,
+    priority: d.priority,
+    contract_sum: d.contract_sum,
+    billing_types: d.billing_types,
+    accrual_mode: d.accrual_mode,
+    opponent: d.opponent,
+    court_case_number: d.court_case_number,
+    court: d.court,
+    tags: d.tags,
+    closed_at: d.closed_at ? toDbDate(d.closed_at) : null,
+  };
+  if (overrides) {
+    data.lawyer_rate_override = overrides.lawyer_rate_override;
+    data.expert_rate_override = overrides.expert_rate_override;
+  }
+  return data;
+}
+
 export async function createCaseAction(
   _prev: CaseActionState,
   formData: FormData,
@@ -312,25 +348,25 @@ export async function createCaseAction(
 
   // Override % задаёт только обладатель права edit_rate_overrides; иначе поля не
   // шлём вовсе (БД-триггер cases_guard_rate_overrides отверг бы non-null override).
-  const insertPayload = user.caps.edit_rate_overrides
-    ? { ...result.data, ...result.overrides }
-    : result.data;
+  const overrides = user.caps.edit_rate_overrides ? result.overrides : null;
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('cases')
-    .insert(insertPayload)
-    .select('id')
-    .single();
-
-  if (error || !data) {
+  let newId: string;
+  try {
+    const row = await userDb(user.profile.id, (tx) =>
+      tx.cases.create({
+        data: caseCreateData(result.data, overrides),
+        select: { id: true },
+      }),
+    );
+    newId = row.id;
+  } catch (err) {
     return {
       ok: false,
       values: result.values,
       selectedBillingTypes: result.selectedBillingTypes,
-      message: dbErrorMessage(
+      message: dbActionError(
         'createCaseAction',
-        error,
+        err,
         t.caseCard.actions.createFailed,
         t.errors.db,
       ),
@@ -339,7 +375,7 @@ export async function createCaseAction(
 
   await logActivity({
     entity_type: 'case',
-    entity_id: data.id,
+    entity_id: newId,
     action: 'case_created',
     changes: {
       after: {
@@ -355,7 +391,7 @@ export async function createCaseAction(
 
   revalidatePath('/cases');
   revalidatePath(`/clients/${result.data.client_id}`);
-  redirect(`/cases/${data.id}`);
+  redirect(`/cases/${newId}`);
 }
 
 const CASE_DIFF_FIELDS = [
@@ -416,43 +452,46 @@ export async function updateCaseAction(
   // v3 s1: staff (owner/admin/office_manager) — единственные, кто меняет
   // ЗП-определяющие поля дела (зеркало БД-триггера cases_guard_financial_fields).
   const isStaffUser = STAFF_ROLES.includes(user.profile.role);
-  const supabase = await createSupabaseServerClient();
 
-  // Снапшот до правки — для diff'а в activity_log. RLS отрежет невидимое →
-  // before=null → лог не запишется (это ок, тогда и update упадёт).
-  // PostgREST не выводит row-type из строкового select — поэтому ручной cast.
-  type CaseBeforeRow = {
-    number_title: string;
-    client_id: string;
-    lawyer_id: string;
-    responsible_id: string;
-    opened_at: string;
-    case_type: string;
-    category: string;
-    subject: string | null;
-    stage: string;
-    closed_at: string | null;
-    archived_at: string | null;
-    priority: string;
-    contract_sum: number | string;
-    billing_types: string[] | null;
-    lawyer_rate_override: number | string | null;
-    expert_rate_override: number | string | null;
-    accrual_mode: string;
-    opponent: string | null;
-    court_case_number: string | null;
-    court: string | null;
-    tags: string[] | null;
-  };
-  const { data: beforeRaw } = await supabase
-    .from('cases')
-    .select(
-      'number_title, client_id, lawyer_id, responsible_id, opened_at, case_type, category, subject, stage, closed_at, archived_at, ' +
-        'priority, contract_sum, billing_types, lawyer_rate_override, expert_rate_override, accrual_mode, opponent, court_case_number, court, tags',
-    )
-    .eq('id', caseId)
-    .maybeSingle();
-  const before = beforeRaw as CaseBeforeRow | null;
+  // Снапшот до правки — для diff'а и гейтов. RLS отрежет невидимое → before=null.
+  let before;
+  try {
+    before = await userDb(user.profile.id, (tx) =>
+      tx.cases.findUnique({
+        where: { id: caseId },
+        select: {
+          number_title: true,
+          client_id: true,
+          lawyer_id: true,
+          responsible_id: true,
+          opened_at: true,
+          case_type: true,
+          category: true,
+          subject: true,
+          stage: true,
+          closed_at: true,
+          archived_at: true,
+          priority: true,
+          contract_sum: true,
+          billing_types: true,
+          lawyer_rate_override: true,
+          expert_rate_override: true,
+          accrual_mode: true,
+          opponent: true,
+          court_case_number: true,
+          court: true,
+          tags: true,
+        },
+      }),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      values: result.values,
+      selectedBillingTypes: result.selectedBillingTypes,
+      message: dbActionError('updateCaseAction', err, t.caseCard.actions.updateFailed, t.errors.db),
+    };
+  }
 
   // Дело в архиве → этап менять нельзя (CHECK cases_archived_requires_closed
   // отвергнет уход из 'closed' при archived_at IS NOT NULL). Возвращаем понятную
@@ -476,7 +515,7 @@ export async function updateCaseAction(
     const ff: Partial<Record<CaseFormFields, string>> = {};
     if (result.data.category !== before.category)
       ff.category = t.cases.financialFieldStaffOnly;
-    if (result.data.contract_sum !== Number(before.contract_sum ?? 0))
+    if (result.data.contract_sum !== dec(before.contract_sum))
       ff.contract_sum = t.cases.financialFieldStaffOnly;
     if (result.data.lawyer_id !== before.lawyer_id)
       ff.lawyer_id = t.cases.financialFieldStaffOnly;
@@ -495,88 +534,109 @@ export async function updateCaseAction(
     }
   }
 
-  // closed_at — историческая дата закрытия. Если дело уже было закрыто, любая
-  // правка admin'ом не должна перезаписывать оригинальный closed_at на сегодня
-  // (validate() ставит todayIso() безусловно при stage='closed'). Сохраняем
-  // before.closed_at для no-op closed→closed; для переходов из/в closed
-  // оставляем поведение validate (today при входе в closed, null при выходе).
-  const basePayload: Validated =
-    before && before.stage === 'closed' && result.data.stage === 'closed'
-      ? { ...result.data, closed_at: before.closed_at }
-      : result.data;
+  // closed_at — историческая дата: closed→closed сохраняем оригинал (validate
+  // ставит today безусловно); вход в closed — today; выход — null.
+  const keepClosedAt =
+    !!before && before.stage === 'closed' && result.data.stage === 'closed';
+  const effectiveClosedAt: Date | null = keepClosedAt
+    ? (before!.closed_at ?? null)
+    : result.data.closed_at
+      ? toDbDate(result.data.closed_at)
+      : null;
 
-  // Override % мержим только для owner/admin; иначе колонки не трогаем (иначе
-  // guard-триггер отклонил бы изменение от не-менеджера).
-  const updatePayload: Partial<Validated> & Partial<RateOverrides> = canEditRates
-    ? { ...basePayload, ...result.overrides }
-    : { ...basePayload };
-
-  // v3 s1: не-staff не меняет финансовые поля — убираем их из SET (значения сверены
-  // с before выше; иначе BEFORE UPDATE OF впустую дёргает guard-триггер).
-  if (!isStaffUser) {
-    delete updatePayload.category;
-    delete updatePayload.contract_sum;
-    delete updatePayload.lawyer_id;
-    delete updatePayload.responsible_id;
-    delete updatePayload.client_id;
+  // SET дела. Финансовые поля — только staff; override % — только canEditRates
+  // (иначе колонки не трогаем, чтобы не дёргать guard-триггеры зря).
+  const data: Prisma.casesUncheckedUpdateManyInput = {
+    number_title: result.data.number_title,
+    opened_at: toDbDate(result.data.opened_at),
+    case_type: result.data.case_type,
+    subject: result.data.subject,
+    stage: result.data.stage,
+    priority: result.data.priority,
+    billing_types: result.data.billing_types,
+    accrual_mode: result.data.accrual_mode,
+    opponent: result.data.opponent,
+    court_case_number: result.data.court_case_number,
+    court: result.data.court,
+    tags: result.data.tags,
+    closed_at: effectiveClosedAt,
+  };
+  if (isStaffUser) {
+    data.category = result.data.category;
+    data.contract_sum = result.data.contract_sum;
+    data.lawyer_id = result.data.lawyer_id;
+    data.responsible_id = result.data.responsible_id;
+    data.client_id = result.data.client_id;
+  }
+  if (canEditRates) {
+    data.lawyer_rate_override = result.overrides.lawyer_rate_override;
+    data.expert_rate_override = result.overrides.expert_rate_override;
   }
 
-  // При смене этапа на/с 'closed' триггеров для closed_at нет — обновляем сами.
-  // (CHECK constraint cases_closed_consistency требует синхронности.)
-  // v3 s4: optimistic locking — обновляем строку только если updated_at совпал с
-  // тем, что форма прочитала при открытии (.eq('updated_at', base)). Рассинхрон →
-  // 0 строк → ниже «дело изменено». Пустой base (нет hidden) → без проверки.
+  // v3 s4: optimistic locking — сверяем updated_at::text (полная микросекундная
+  // точность, ревью V3-5) под row-lock FOR UPDATE, затем UPDATE в той же tx.
+  // Пустой base (нет hidden) → без проверки версии.
   const baseUpdatedAt = getString(formData, 'base_updated_at');
-  let updateQuery = supabase
-    .from('cases')
-    .update(updatePayload)
-    .eq('id', caseId);
-  if (baseUpdatedAt) {
-    updateQuery = updateQuery.eq('updated_at', baseUpdatedAt);
-  }
-  const { data: updatedRows, error } = await updateQuery.select('id');
-
-  if (error) {
-    // Триггер `cases_validate_stage_forward` бросает 'stage_backward_forbidden'
-    // (откат) или 'stage_skip_forbidden' (прыжок через этап, Задача 8) для
-    // юриста/Експерта. Подменяем системное сообщение Postgres на человеческое.
-    const isStageBackward = error.message?.includes('stage_backward_forbidden');
-    const isStageSkip = error.message?.includes('stage_skip_forbidden');
-    const stageMsg = isStageBackward
-      ? t.caseCard.actions.stageBackwardForbidden
-      : isStageSkip
-        ? t.caseCard.actions.stageSkipForbidden
-        : null;
-    const stageFieldErr = isStageBackward
-      ? t.caseCard.actions.stageBackwardFieldError
-      : isStageSkip
-        ? t.caseCard.actions.stageSkipFieldError
-        : null;
+  let outcome:
+    | { kind: 'concurrent' }
+    | { kind: 'gone' }
+    | { kind: 'done'; count: number };
+  try {
+    outcome = await userDb(user.profile.id, async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ t: string }>>`
+        select updated_at::text as t from public.cases where id = ${caseId}::uuid for update`;
+      if (locked.length === 0) return { kind: 'gone' as const };
+      if (baseUpdatedAt && locked[0]!.t !== baseUpdatedAt) {
+        return { kind: 'concurrent' as const };
+      }
+      const upd = await tx.cases.updateMany({ where: { id: caseId }, data });
+      return { kind: 'done' as const, count: upd.count };
+    });
+  } catch (err) {
+    // Триггер cases_validate_stage_forward: 'stage_backward_forbidden' (откат) /
+    // 'stage_skip_forbidden' (прыжок, Задача 8) для юриста/Експерта → человеческое.
+    const msg = prismaErrorToDbError(err)?.message ?? '';
+    const isStageBackward = msg.includes('stage_backward_forbidden');
+    const isStageSkip = msg.includes('stage_skip_forbidden');
+    if (isStageBackward || isStageSkip) {
+      return {
+        ok: false,
+        values: result.values,
+        selectedBillingTypes: result.selectedBillingTypes,
+        fieldErrors: {
+          stage: isStageBackward
+            ? t.caseCard.actions.stageBackwardFieldError
+            : t.caseCard.actions.stageSkipFieldError,
+        },
+        message: isStageBackward
+          ? t.caseCard.actions.stageBackwardForbidden
+          : t.caseCard.actions.stageSkipForbidden,
+      };
+    }
     return {
       ok: false,
       values: result.values,
       selectedBillingTypes: result.selectedBillingTypes,
-      fieldErrors: stageFieldErr ? { stage: stageFieldErr } : undefined,
-      message:
-        stageMsg ??
-        dbErrorMessage(
-          'updateCaseAction',
-          error,
-          t.caseCard.actions.updateFailed,
-          t.errors.db,
-        ),
+      message: dbActionError('updateCaseAction', err, t.caseCard.actions.updateFailed, t.errors.db),
     };
   }
 
-  // v3 s4: при заданном base ни одной обновлённой строки → дело изменено
-  // параллельно (updated_at уже другой). Просим обновить страницу — чужую правку
-  // не теряем. (RLS-невидимое/несуществующее дело тоже даст 0 — корректный отказ.)
-  if (baseUpdatedAt && (updatedRows == null || updatedRows.length === 0)) {
+  // Рассинхрон версии / невидимо → просим обновить страницу (чужую правку не теряем).
+  if (outcome.kind === 'concurrent' || outcome.kind === 'gone') {
     return {
       ok: false,
       values: result.values,
       selectedBillingTypes: result.selectedBillingTypes,
       message: t.cases.concurrentEdit,
+    };
+  }
+  // Видимо, но RLS UPDATE не дал ни строки (нет права записи) — общий отказ.
+  if (outcome.count === 0) {
+    return {
+      ok: false,
+      values: result.values,
+      selectedBillingTypes: result.selectedBillingTypes,
+      message: t.caseCard.actions.updateFailed,
     };
   }
 
@@ -585,27 +645,25 @@ export async function updateCaseAction(
   // пишет 'stage_corrected' триггером cases_validate_stage_forward).
   if (before) {
     const beforeShape: CaseDiffShape = {
-      number_title: String(before.number_title ?? ''),
-      client_id: String(before.client_id ?? ''),
-      lawyer_id: String(before.lawyer_id ?? ''),
-      responsible_id: String(before.responsible_id ?? ''),
-      opened_at: String(before.opened_at ?? ''),
-      case_type: before.case_type as CaseType,
-      category: before.category as CaseCategory,
-      subject: (before.subject as string | null) ?? null,
-      stage: before.stage as CaseStage,
-      priority: before.priority as CasePriority,
-      contract_sum: Number(before.contract_sum ?? 0),
-      billing_types: (before.billing_types ?? []) as BillingType[],
-      lawyer_rate_override:
-        before.lawyer_rate_override == null ? null : Number(before.lawyer_rate_override),
-      expert_rate_override:
-        before.expert_rate_override == null ? null : Number(before.expert_rate_override),
-      accrual_mode: before.accrual_mode as AccrualMode,
-      opponent: (before.opponent as string | null) ?? null,
-      court_case_number: (before.court_case_number as string | null) ?? null,
-      court: (before.court as string | null) ?? null,
-      tags: (before.tags ?? []) as string[],
+      number_title: before.number_title,
+      client_id: before.client_id,
+      lawyer_id: before.lawyer_id,
+      responsible_id: before.responsible_id,
+      opened_at: dateOnly(before.opened_at),
+      case_type: before.case_type,
+      category: before.category,
+      subject: before.subject,
+      stage: before.stage,
+      priority: before.priority,
+      contract_sum: dec(before.contract_sum),
+      billing_types: before.billing_types as BillingType[],
+      lawyer_rate_override: decOrNull(before.lawyer_rate_override),
+      expert_rate_override: decOrNull(before.expert_rate_override),
+      accrual_mode: before.accrual_mode,
+      opponent: before.opponent,
+      court_case_number: before.court_case_number,
+      court: before.court,
+      tags: before.tags ?? [],
     };
     const afterShape: Partial<CaseDiffShape> = {
       number_title: result.data.number_title,
@@ -662,7 +720,7 @@ export async function updateCaseStageAction(
   _prev: StageActionState,
   formData: FormData,
 ): Promise<StageActionState> {
-  await requireUser();
+  const user = await requireUser();
   const { t } = await getT();
 
   if (!UUID_RE.test(caseId))
@@ -673,18 +731,20 @@ export async function updateCaseStageAction(
     return { ok: false, message: t.caseCard.actions.stageInvalid };
   const stage = stage_raw as CaseStage;
 
-  const supabase = await createSupabaseServerClient();
-
-  const { data: before } = await supabase
-    .from('cases')
-    .select('stage, closed_at, client_id, archived_at')
-    .eq('id', caseId)
-    .maybeSingle<{
-      stage: string;
-      closed_at: string | null;
-      client_id: string;
-      archived_at: string | null;
-    }>();
+  let before;
+  try {
+    before = await userDb(user.profile.id, (tx) =>
+      tx.cases.findUnique({
+        where: { id: caseId },
+        select: { stage: true, closed_at: true, client_id: true, archived_at: true },
+      }),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError('updateCaseStageAction', err, t.caseCard.actions.stageChangeFailed, t.errors.db),
+    };
+  }
 
   // RLS отрезала дело (или его нет) → ничего не делаем.
   if (!before) return { ok: false, message: t.caseCard.actions.caseNotFound };
@@ -696,33 +756,29 @@ export async function updateCaseStageAction(
     return { ok: false, message: t.cases.archive.detailHint };
   }
 
-  // closed_at синхронен stage='closed'. При входе в closed ставим сегодня;
-  // при выходе — null. (Если дело уже было закрыто — сюда не попадём из-за
-  // no-op выше, кроме staff-отката, где closed_at всё равно надо снять.)
-  const closed_at = stage === 'closed' ? todayIso() : null;
+  // closed_at синхронен stage='closed': вход — сегодня, выход — null.
+  const closed_at: Date | null = stage === 'closed' ? toDbDate(todayIso()) : null;
 
-  const { error } = await supabase
-    .from('cases')
-    .update({ stage, closed_at })
-    .eq('id', caseId);
-
-  if (error) {
-    const isStageBackward = error.message?.includes('stage_backward_forbidden');
-    const isStageSkip = error.message?.includes('stage_skip_forbidden');
+  let count = 0;
+  try {
+    const upd = await userDb(user.profile.id, (tx) =>
+      tx.cases.updateMany({ where: { id: caseId }, data: { stage, closed_at } }),
+    );
+    count = upd.count;
+  } catch (err) {
+    const msg = prismaErrorToDbError(err)?.message ?? '';
+    const isStageBackward = msg.includes('stage_backward_forbidden');
+    const isStageSkip = msg.includes('stage_skip_forbidden');
     return {
       ok: false,
       message: isStageBackward
         ? t.caseCard.actions.stageBackwardForbidden
         : isStageSkip
           ? t.caseCard.actions.stageSkipForbidden
-          : dbErrorMessage(
-              'updateCaseStageAction',
-              error,
-              t.caseCard.actions.stageChangeFailed,
-              t.errors.db,
-            ),
+          : dbActionError('updateCaseStageAction', err, t.caseCard.actions.stageChangeFailed, t.errors.db),
     };
   }
+  if (count === 0) return { ok: false, message: t.caseCard.actions.stageChangeFailed };
 
   // v3 s2: смена этапа из шапки дела тоже пишется в журнал (§7-9). Формат —
   // как в advanceCaseStageAction (case_updated с diff по stage).
@@ -756,7 +812,7 @@ export async function updateCaseDescriptionAction(
   _prev: DescriptionActionState,
   formData: FormData,
 ): Promise<DescriptionActionState> {
-  await requireUser();
+  const user = await requireUser();
   const { t } = await getT();
 
   if (!UUID_RE.test(caseId))
@@ -767,31 +823,35 @@ export async function updateCaseDescriptionAction(
   if (description && description.length > 5000)
     return { ok: false, message: t.caseCard.actions.descriptionTooLong };
 
-  const supabase = await createSupabaseServerClient();
-
-  const { data: before } = await supabase
-    .from('cases')
-    .select('description')
-    .eq('id', caseId)
-    .maybeSingle<{ description: string | null }>();
-  if (!before) return { ok: false, message: t.caseCard.actions.caseNotFound };
-  if ((before.description ?? null) === description) return { ok: true }; // no-op
-
-  const { error } = await supabase
-    .from('cases')
-    .update({ description })
-    .eq('id', caseId);
-  if (error) {
+  let res:
+    | { kind: 'notFound' }
+    | { kind: 'noop' }
+    | { kind: 'blocked' }
+    | { kind: 'done'; prev: string | null };
+  try {
+    res = await userDb(user.profile.id, async (tx) => {
+      const b = await tx.cases.findUnique({
+        where: { id: caseId },
+        select: { description: true },
+      });
+      if (!b) return { kind: 'notFound' as const };
+      if ((b.description ?? null) === description) return { kind: 'noop' as const };
+      const upd = await tx.cases.updateMany({
+        where: { id: caseId },
+        data: { description },
+      });
+      if (upd.count === 0) return { kind: 'blocked' as const };
+      return { kind: 'done' as const, prev: b.description };
+    });
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage(
-        'updateCaseDescriptionAction',
-        error,
-        t.caseCard.actions.updateFailed,
-        t.errors.db,
-      ),
+      message: dbActionError('updateCaseDescriptionAction', err, t.caseCard.actions.updateFailed, t.errors.db),
     };
   }
+  if (res.kind === 'notFound') return { ok: false, message: t.caseCard.actions.caseNotFound };
+  if (res.kind === 'noop') return { ok: true };
+  if (res.kind === 'blocked') return { ok: false, message: t.caseCard.actions.updateFailed };
 
   await logActivity({
     entity_type: 'case',
@@ -800,7 +860,7 @@ export async function updateCaseDescriptionAction(
     changes: {
       diff: {
         description: {
-          from: clipForDiff(before.description),
+          from: clipForDiff(res.prev),
           to: clipForDiff(description),
         },
       },
@@ -821,34 +881,28 @@ export async function closeCaseLostAction(
   caseId: string,
   reason: string,
 ): Promise<CloseLostState> {
-  await requireUser();
+  const user = await requireUser();
   const { t } = await getT();
 
   if (!UUID_RE.test(caseId))
     return { ok: false, message: t.caseCard.actions.caseInvalid };
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc('close_case_lost', {
-    p_case_id: caseId,
-    p_reason: reason.trim().slice(0, 500),
-  });
-
-  if (error) {
+  try {
+    await userDb(user.profile.id, (tx) =>
+      rpcCloseCaseLost(tx, { caseId, reason: reason.trim().slice(0, 500) }),
+    );
+  } catch (err) {
     // RPC бросает: 'lost outcome is only…' (этап уже после контракта),
     // 'not allowed' (42501 — нет прав/не видит), иначе системный сбой.
-    const msg = error.message ?? '';
+    const de = prismaErrorToDbError(err);
+    const msg = de?.message ?? '';
     if (msg.includes('lost outcome is only'))
       return { ok: false, message: t.cases.lost.errorOnlyBeforeContract };
-    if (msg.includes('not allowed') || error.code === '42501')
+    if (msg.includes('not allowed') || de?.code === '42501')
       return { ok: false, message: t.cases.lost.errorNotAllowed };
     return {
       ok: false,
-      message: dbErrorMessage(
-        'closeCaseLostAction',
-        error,
-        t.cases.lost.errorFailed,
-        t.errors.db,
-      ),
+      message: dbActionError('closeCaseLostAction', err, t.cases.lost.errorFailed, t.errors.db),
     };
   }
 
@@ -861,34 +915,30 @@ export async function deleteCaseAction(formData: FormData): Promise<void> {
   // RLS DELETE = private.can('delete_cases'); UI скрывает кнопку. Но без gate на
   // сервере пользователь без права, форсящий POST вручную, прошёл бы мимо
   // silent-RLS-deny и получил фейковый `case_deleted` в activity_log.
-  await requireCap('delete_cases');
+  const user = await requireCap('delete_cases');
 
   const caseId = getString(formData, 'case_id');
   if (!caseId || !UUID_RE.test(caseId)) {
     redirect('/cases?error=missing_id');
   }
 
-  const supabase = await createSupabaseServerClient();
+  // Снапшот для лога (до удаления). Миграция MED#7 расширила log_activity: для
+  // 'case_deleted' проверка через is_staff() (RLS DELETE и так staff-only), не
+  // can_see_case. Логируем ПОСЛЕ delete — при FK-violation фейка не будет.
+  const before = await userDb(user.profile.id, (tx) =>
+    tx.cases.findUnique({
+      where: { id: caseId },
+      select: { number_title: true, stage: true },
+    }),
+  );
 
-  // Снапшот для лога. После DELETE строки уже нет, но миграция MED#7
-  // расширила log_activity: для 'case_deleted' проверка идёт через is_staff()
-  // (RLS DELETE и так staff-only + requireRole выше), не через can_see_case.
-  // Поэтому логируем ПОСЛЕ delete — при FK-violation фейковая запись не
-  // создаётся (раньше: лог писался до delete и оставался при ошибке).
-  const { data: before } = await supabase
-    .from('cases')
-    .select('number_title, stage, client_id')
-    .eq('id', caseId)
-    .maybeSingle();
-
-  const { error } = await supabase.from('cases').delete().eq('id', caseId);
-
-  if (error) {
-    // documents и payments — ON DELETE RESTRICT, tasks — CASCADE.
-    // FK 23503 = «есть связанные документы или платежи».
-    const isFkViolation = error.code === '23503';
-    const param = isFkViolation ? 'has_links' : 'delete_failed';
-    redirect(`/cases/${caseId}?error=${param}`);
+  try {
+    // documents/payments — ON DELETE RESTRICT (FK 23503), tasks — CASCADE;
+    // RLS-отказ невидимой строки → P2025 — оба ведут на экран ошибки.
+    await userDb(user.profile.id, (tx) => tx.cases.delete({ where: { id: caseId } }));
+  } catch (err) {
+    const isFkViolation = pgErrorCode(err) === '23503';
+    redirect(`/cases/${caseId}?error=${isFkViolation ? 'has_links' : 'delete_failed'}`);
   }
 
   if (before) {
@@ -897,10 +947,7 @@ export async function deleteCaseAction(formData: FormData): Promise<void> {
       entity_id: caseId,
       action: 'case_deleted',
       changes: {
-        before: {
-          number_title: before.number_title,
-          stage: before.stage,
-        },
+        before: { number_title: before.number_title, stage: before.stage },
       },
     });
   }
@@ -930,18 +977,12 @@ async function setCaseArchived(
   // UX-гард: кнопки и так показываем только staff, но форс-POST не пройдёт.
   if (!STAFF_ROLES.includes(user.profile.role)) return;
 
-  const supabase = await createSupabaseServerClient();
-
-  const { data: before } = await supabase
-    .from('cases')
-    .select('number_title, stage, archived_at, client_id')
-    .eq('id', caseId)
-    .maybeSingle<{
-      number_title: string;
-      stage: string;
-      archived_at: string | null;
-      client_id: string;
-    }>();
+  const before = await userDb(user.profile.id, (tx) =>
+    tx.cases.findUnique({
+      where: { id: caseId },
+      select: { number_title: true, stage: true, archived_at: true, client_id: true },
+    }),
+  );
 
   // RLS отрезала дело / его нет — тихо (как advanceCaseStageAction на гонке).
   if (!before) {
@@ -960,17 +1001,24 @@ async function setCaseArchived(
   }
 
   // archived_by ставит триггер; здесь — только флаг времени / снятие.
-  const { error } = await supabase
-    .from('cases')
-    .update({ archived_at: archive ? new Date().toISOString() : null })
-    .eq('id', caseId);
-
-  if (error) {
+  let count = 0;
+  try {
+    const upd = await userDb(user.profile.id, (tx) =>
+      tx.cases.updateMany({
+        where: { id: caseId },
+        data: { archived_at: archive ? new Date() : null },
+      }),
+    );
+    count = upd.count;
+  } catch (err) {
     // Не молчим: ошибку показываем на карточке дела (зеркало deleteCaseAction).
-    // Штатные отказы (не staff / не closed) отсечены выше, до UPDATE, — сюда
-    // долетает только нештатный сбой.
-    console.error('setCaseArchived failed:', error.message);
+    // Штатные отказы (не staff / не closed) отсечены выше, до UPDATE.
+    console.error('setCaseArchived failed:', err);
     redirect(`/cases/${caseId}?error=archive_failed`);
+  }
+  if (count === 0) {
+    revalidatePath('/cases');
+    return;
   }
 
   await logActivity({
@@ -1001,7 +1049,7 @@ export async function unarchiveCaseAction(formData: FormData): Promise<void> {
 // (защита от race-кликов между rerender'ами). Принципиально: bare action
 // без useActionState — кнопка-форма на карточке.
 export async function advanceCaseStageAction(formData: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
 
   const caseId = getString(formData, 'case_id');
   const fromStage = getString(formData, 'from_stage');
@@ -1012,26 +1060,25 @@ export async function advanceCaseStageAction(formData: FormData): Promise<void> 
   if (fromIdx < 0 || fromIdx >= CASE_STAGES.length - 1) return;
   const toStage = CASE_STAGES[fromIdx + 1]!;
 
-  const supabase = await createSupabaseServerClient();
-
-  // Re-read для DB-truth: между рендером доски и кликом этап мог уже
-  // продвинуться другим пользователем. Тогда наш UPDATE из устаревшего
-  // fromStage просто промахнётся (.eq('stage', fromStage)) — rows=0, тихо.
-  const updates: Record<string, unknown> = { stage: toStage };
+  const data: Prisma.casesUncheckedUpdateManyInput = { stage: toStage };
   if (toStage === 'closed') {
-    // CHECK constraint cases_closed_consistency требует closed_at при stage=closed.
-    updates.closed_at = new Date().toISOString().slice(0, 10);
+    // CHECK cases_closed_consistency требует closed_at при stage=closed.
+    data.closed_at = toDbDate(todayIso());
   }
 
-  const { error, count } = await supabase
-    .from('cases')
-    .update(updates, { count: 'exact' })
-    .eq('id', caseId)
-    .eq('stage', fromStage);
-
-  if (error || !count) {
-    // Триггер не должен отвергать движение вперёд. RLS / устаревший stage —
-    // тихо: не показываем ошибку (это staff-операция, доска ререндерится).
+  // DB-truth: если этап продвинули параллельно, where по устаревшему fromStage
+  // промахнётся (count 0) — тихо; ошибку/сбой триггера тоже глушим (staff-доска).
+  let count = 0;
+  try {
+    const upd = await userDb(user.profile.id, (tx) =>
+      tx.cases.updateMany({ where: { id: caseId, stage: fromStage }, data }),
+    );
+    count = upd.count;
+  } catch {
+    revalidatePath('/cases/board');
+    return;
+  }
+  if (count === 0) {
     revalidatePath('/cases/board');
     return;
   }

@@ -6,10 +6,11 @@ import { redirect } from 'next/navigation';
 import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { diffChanges } from '@/lib/activity-log/diff';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dateOnlyOrNull } from '@/lib/db/convert';
+import { dbActionError, pgErrorCode } from '@/lib/db/errors';
 import { getT } from '@/lib/i18n/server';
 import type { I18n } from '@/lib/i18n/core';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { UUID_RE } from '@/lib/validation';
 import {
   CLIENT_KINDS,
@@ -189,6 +190,26 @@ function validate(formData: FormData, t: I18n['t']):
   };
 }
 
+// Validated → data для Prisma: единственное отличие — birth_date (строка YYYY-MM-DD
+// из формы → Date UTC-полночи для колонки @db.Date; читается назад тем же днём).
+function clientDataForDb(d: Validated) {
+  return {
+    name: d.name,
+    client_kind: d.client_kind,
+    last_name: d.last_name,
+    first_name: d.first_name,
+    middle_name: d.middle_name,
+    birth_date: d.birth_date ? new Date(`${d.birth_date}T00:00:00Z`) : null,
+    inn: d.inn,
+    contract_number: d.contract_number,
+    phone: d.phone,
+    email: d.email,
+    address: d.address,
+    source: d.source,
+    notes: d.notes,
+  };
+}
+
 export async function createClientAction(
   _prev: ClientActionState,
   formData: FormData,
@@ -209,23 +230,22 @@ export async function createClientAction(
   const result = validate(formData, t);
   if (!result.ok) return result.state;
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('clients')
-    .insert({
-      ...result.data,
-      created_by: user.profile.id,
-    })
-    .select('id')
-    .single();
-
-  if (error || !data) {
+  let newId: string;
+  try {
+    const row = await userDb(user.profile.id, (tx) =>
+      tx.clients.create({
+        data: { ...clientDataForDb(result.data), created_by: user.profile.id },
+        select: { id: true },
+      }),
+    );
+    newId = row.id;
+  } catch (err) {
     return {
       ok: false,
       values: result.values,
-      message: dbErrorMessage(
+      message: dbActionError(
         'createClientAction',
-        error,
+        err,
         t.clients.actions.createFailed,
         t.errors.db,
       ),
@@ -234,7 +254,7 @@ export async function createClientAction(
 
   await logActivity({
     entity_type: 'client',
-    entity_id: data.id,
+    entity_id: newId,
     action: 'client_created',
     changes: {
       after: { name: result.data.name, client_kind: result.data.client_kind },
@@ -242,7 +262,7 @@ export async function createClientAction(
   });
 
   revalidatePath('/clients');
-  redirect(`/clients/${data.id}`);
+  redirect(`/clients/${newId}`); // NEXT_REDIRECT — вне try/catch, пробрасывается
 }
 
 // LOW#10 (внешнее ревью): `notes` намеренно НЕ в этом списке.
@@ -291,23 +311,48 @@ export async function updateClientAction(
   const result = validate(formData, t);
   if (!result.ok) return result.state;
 
-  const supabase = await createSupabaseServerClient();
-
   // Снапшот до правки — для diff'а. created_by — для проверки прав (P2.3):
   // править может staff или автор записи. Иначе RLS отклонил бы UPDATE молча
-  // (0 строк, error=null) → ложный «сохранено». Поле notes намеренно не логируем.
-  const { data: before } = await supabase
-    .from('clients')
-    .select(
-      'name, client_kind, last_name, first_name, middle_name, birth_date, inn, contract_number, phone, email, address, source, created_by',
-    )
-    .eq('id', clientId)
-    .maybeSingle();
+  // (0 строк) → ложный «сохранено». Поле notes намеренно не логируем.
+  let before;
+  try {
+    before = await userDb(user.profile.id, (tx) =>
+      tx.clients.findUnique({
+        where: { id: clientId },
+        select: {
+          name: true,
+          client_kind: true,
+          last_name: true,
+          first_name: true,
+          middle_name: true,
+          birth_date: true,
+          inn: true,
+          contract_number: true,
+          phone: true,
+          email: true,
+          address: true,
+          source: true,
+          created_by: true,
+        },
+      }),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      values: result.values,
+      message: dbActionError(
+        'updateClientAction',
+        err,
+        t.clients.actions.updateFailed,
+        t.errors.db,
+      ),
+    };
+  }
 
   if (
     before &&
     !user.caps.view_all_cases &&
-    (before as { created_by: string }).created_by !== user.profile.id
+    before.created_by !== user.profile.id
   ) {
     return {
       ok: false,
@@ -316,38 +361,42 @@ export async function updateClientAction(
     };
   }
 
-  const { error } = await supabase
-    .from('clients')
-    .update(result.data)
-    .eq('id', clientId);
-
-  if (error) {
+  let updatedCount = 0;
+  try {
+    const upd = await userDb(user.profile.id, (tx) =>
+      tx.clients.updateMany({
+        where: { id: clientId },
+        data: clientDataForDb(result.data),
+      }),
+    );
+    updatedCount = upd.count;
+  } catch (err) {
     return {
       ok: false,
       values: result.values,
-      message: dbErrorMessage(
+      message: dbActionError(
         'updateClientAction',
-        error,
+        err,
         t.clients.actions.updateFailed,
         t.errors.db,
       ),
     };
   }
 
-  if (before) {
+  if (before && updatedCount > 0) {
     const beforeShape: ClientDiffShape = {
-      name: String(before.name ?? ''),
+      name: before.name,
       client_kind: before.client_kind as ClientKind,
-      last_name: (before.last_name as string | null) ?? null,
-      first_name: (before.first_name as string | null) ?? null,
-      middle_name: (before.middle_name as string | null) ?? null,
-      birth_date: (before.birth_date as string | null) ?? null,
-      inn: (before.inn as string | null) ?? null,
-      contract_number: (before.contract_number as string | null) ?? null,
-      phone: (before.phone as string | null) ?? null,
-      email: (before.email as string | null) ?? null,
-      address: (before.address as string | null) ?? null,
-      source: (before.source as ClientSource | null) ?? null,
+      last_name: before.last_name,
+      first_name: before.first_name,
+      middle_name: before.middle_name,
+      birth_date: dateOnlyOrNull(before.birth_date),
+      inn: before.inn,
+      contract_number: before.contract_number,
+      phone: before.phone,
+      email: before.email,
+      address: before.address,
+      source: before.source as ClientSource | null,
     };
     const afterShape: Partial<ClientDiffShape> = {
       name: result.data.name,
@@ -411,23 +460,21 @@ export async function createClientInlineAction(
   const result = validate(formData, t);
   if (!result.ok) return result.state;
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('clients')
-    .insert({
-      ...result.data,
-      created_by: user.profile.id,
-    })
-    .select('id, name, client_kind')
-    .single();
-
-  if (error || !data) {
+  let created;
+  try {
+    created = await userDb(user.profile.id, (tx) =>
+      tx.clients.create({
+        data: { ...clientDataForDb(result.data), created_by: user.profile.id },
+        select: { id: true, name: true, client_kind: true },
+      }),
+    );
+  } catch (err) {
     return {
       ok: false,
       values: result.values,
-      message: dbErrorMessage(
+      message: dbActionError(
         'createClientInlineAction',
-        error,
+        err,
         t.clients.actions.createFailed,
         t.errors.db,
       ),
@@ -436,7 +483,7 @@ export async function createClientInlineAction(
 
   await logActivity({
     entity_type: 'client',
-    entity_id: data.id,
+    entity_id: created.id,
     action: 'client_created',
     changes: {
       after: { name: result.data.name, client_kind: result.data.client_kind },
@@ -447,9 +494,9 @@ export async function createClientInlineAction(
   return {
     ok: true,
     client: {
-      id: data.id as string,
-      name: data.name as string,
-      client_kind: data.client_kind as ClientKind,
+      id: created.id,
+      name: created.name,
+      client_kind: created.client_kind as ClientKind,
     },
   };
 }
@@ -459,33 +506,32 @@ export async function deleteClientAction(formData: FormData): Promise<void> {
   // получает silent-success UI ("Клиент удалён") при том, что RLS DELETE
   // молча возвращает 0 строк — клиент жив. Журнал тут защищён allowlist'ом
   // log_activity (is_staff для entity_type=client), но UI-обман всё равно есть.
-  await requireCap('delete_clients');
+  const user = await requireCap('delete_clients');
 
   const clientId = getString(formData, 'client_id');
   if (!clientId || !UUID_RE.test(clientId)) {
     redirect('/clients?error=missing_id');
   }
 
-  const supabase = await createSupabaseServerClient();
+  // Снапшот для лога (до удаления). Миграция MED#7 расширила log_activity на
+  // is_staff bypass для 'client_deleted'. Логируем ПОСЛЕ delete — при FK-violation
+  // (есть связанные дела) фейковая запись 'client_deleted' не появится в журнале.
+  const clientBefore = await userDb(user.profile.id, (tx) =>
+    tx.clients.findUnique({
+      where: { id: clientId },
+      select: { name: true, client_kind: true },
+    }),
+  );
 
-  // Снапшот для лога. После DELETE строки нет; миграция MED#7 расширила
-  // log_activity на is_staff bypass для 'client_deleted'. Логируем ПОСЛЕ
-  // delete — при FK-violation (есть связанные дела) фейковая запись
-  // 'client_deleted' не появится в журнале.
-  const { data: clientBefore } = await supabase
-    .from('clients')
-    .select('name, client_kind')
-    .eq('id', clientId)
-    .maybeSingle();
-
-  const { error } = await supabase.from('clients').delete().eq('id', clientId);
-
-  if (error) {
-    // Самая частая причина — FK от cases (RESTRICT). RLS-отказ (нет прав)
-    // молчаливо вернёт 0 строк, без ошибки — поэтому ловим только реальный SQL-error.
-    const isFkViolation = error.code === '23503';
-    const param = isFkViolation ? 'has_cases' : 'delete_failed';
-    redirect(`/clients/${clientId}?error=${param}`);
+  try {
+    // delete (не deleteMany): FK от cases (RESTRICT) → 23503; RLS-отказ невидимой
+    // строки → P2025 — оба ведут на понятный экран ошибки, не ложное «удалено».
+    await userDb(user.profile.id, (tx) =>
+      tx.clients.delete({ where: { id: clientId } }),
+    );
+  } catch (err) {
+    const isFkViolation = pgErrorCode(err) === '23503';
+    redirect(`/clients/${clientId}?error=${isFkViolation ? 'has_cases' : 'delete_failed'}`);
   }
 
   if (clientBefore) {

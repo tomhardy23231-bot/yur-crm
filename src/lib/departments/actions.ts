@@ -4,14 +4,14 @@ import { revalidatePath } from 'next/cache';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dbActionError, pgErrorCode } from '@/lib/db/errors';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { UUID_RE } from '@/lib/validation';
 
 // Управление структурой компании — только owner (RLS departments_write_owner
 // дублирует на стороне БД; здесь — ранний понятный отказ + журнал).
-// Все операции идут под сессией пользователя (RLS работает); service_role НЕ нужен.
+// Все операции идут под сессией пользователя (RLS работает); adminDb НЕ нужен.
 
 // ============================================================================
 // Создание подразделения (useActionState-форма).
@@ -38,27 +38,25 @@ export async function createDepartmentAction(
   if (name.length > 100)
     return { ok: false, fieldError: t.departments.errors.nameTooLong };
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('departments')
-    .insert({ name })
-    .select('id')
-    .single<{ id: string }>();
-  if (error) {
+  let newId: string;
+  try {
+    const dep = await userDb(actor.profile.id, (tx) =>
+      tx.departments.create({ data: { name }, select: { id: true } }),
+    );
+    newId = dep.id;
+  } catch (err) {
+    if (pgErrorCode(err) === '23505') {
+      return { ok: false, fieldError: t.departments.errors.nameTaken };
+    }
     return {
       ok: false,
-      fieldError:
-        error.code === '23505' ? t.departments.errors.nameTaken : undefined,
-      message:
-        error.code === '23505'
-          ? undefined
-          : dbErrorMessage('createDepartmentAction', error, undefined, t.errors.db),
+      message: dbActionError('createDepartmentAction', err, undefined, t.errors.db),
     };
   }
 
   await logActivity({
     entity_type: 'department',
-    entity_id: data.id,
+    entity_id: newId,
     action: 'department_created',
     changes: { name },
   });
@@ -79,28 +77,28 @@ export async function renameDepartmentAction(formData: FormData): Promise<void> 
   const name = String(formData.get('name') ?? '').trim();
   if (!UUID_RE.test(id) || !name || name.length > 100) return;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: before } = await supabase
-    .from('departments')
-    .select('name')
-    .eq('id', id)
-    .maybeSingle<{ name: string }>();
-  if (!before || before.name === name) return; // нет записи / no-op
-
-  const { error } = await supabase
-    .from('departments')
-    .update({ name })
-    .eq('id', id);
-  if (error) {
-    console.error('renameDepartmentAction failed:', error.code, error.message);
+  let beforeName: string | null = null;
+  try {
+    beforeName = await userDb(actor.profile.id, async (tx) => {
+      const before = await tx.departments.findUnique({
+        where: { id },
+        select: { name: true },
+      });
+      if (!before || before.name === name) return null; // нет записи / no-op
+      const upd = await tx.departments.updateMany({ where: { id }, data: { name } });
+      return upd.count > 0 ? before.name : null;
+    });
+  } catch (err) {
+    console.error('renameDepartmentAction failed:', err);
     return;
   }
+  if (beforeName === null) return;
 
   await logActivity({
     entity_type: 'department',
     entity_id: id,
     action: 'department_renamed',
-    changes: { from: before.name, to: name },
+    changes: { from: beforeName, to: name },
   });
   revalidatePath('/settings/departments');
 }
@@ -120,22 +118,25 @@ export async function setDepartmentActiveAction(formData: FormData): Promise<voi
   if (!UUID_RE.test(id) || (active_raw !== 'true' && active_raw !== 'false')) return;
   const nextActive = active_raw === 'true';
 
-  const supabase = await createSupabaseServerClient();
-  const { data: before } = await supabase
-    .from('departments')
-    .select('is_active')
-    .eq('id', id)
-    .maybeSingle<{ is_active: boolean }>();
-  if (!before || before.is_active === nextActive) return; // нет записи / no-op
-
-  const { error } = await supabase
-    .from('departments')
-    .update({ is_active: nextActive })
-    .eq('id', id);
-  if (error) {
-    console.error('setDepartmentActiveAction failed:', error.code, error.message);
+  let changed = false;
+  try {
+    changed = await userDb(actor.profile.id, async (tx) => {
+      const before = await tx.departments.findUnique({
+        where: { id },
+        select: { is_active: true },
+      });
+      if (!before || before.is_active === nextActive) return false; // нет записи / no-op
+      const upd = await tx.departments.updateMany({
+        where: { id },
+        data: { is_active: nextActive },
+      });
+      return upd.count > 0;
+    });
+  } catch (err) {
+    console.error('setDepartmentActiveAction failed:', err);
     return;
   }
+  if (!changed) return;
 
   await logActivity({
     entity_type: 'department',
