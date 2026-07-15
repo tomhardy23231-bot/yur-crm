@@ -1,6 +1,5 @@
-// Доменные типы, синхронные с public-схемой (см. supabase/migrations).
-// `supabase gen types` подключим позже — пока вручную, чтобы не тянуть в Шаге 2
-// генератор и не закладываться на структуру, которая ещё будет меняться.
+// Доменные типы, синхронные с public-схемой (см. db/migrations).
+// Ведутся вручную; типы Prisma генерятся отдельно из schema.prisma.
 
 import type { Locale } from '@/lib/i18n/config';
 
@@ -92,7 +91,7 @@ export function canManageTargetUser(
 
 // ────────────────────────────────────────────────────────────────────────
 // Персональные права поверх ролей (per-user permission overrides).
-// Зеркало supabase/migrations/20260601100000_permission_overrides.sql.
+// Зеркало миграции 20260601100000_permission_overrides.
 // БД — источник правды (RLS/триггеры зовут private.can/can_grant_cap);
 // эти функции нужны для гейтинга UI и предпроверок в server actions.
 // ВНИМАНИЕ: CAP_ROLE_DEFAULTS обязан совпадать с private.cap_role_default (SQL).

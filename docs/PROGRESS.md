@@ -35,6 +35,113 @@
 
 ---
 
+## Сессия 2026-07-15 — Цикл v4, Сессия 6: Чистка, CI, скрипты переезда, доки ✅
+
+_Шестая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Владелец выбрал **автономную
+часть целиком**: чистка supabase из приложения, полный порт smoke-rls на Prisma, CI
+на Postgres-service, скрипты генеральной репетиции переноса (T7), порт демо-сида,
+обновление доков. Боевая репетиция переноса (нужен прод-дамп) и R2 — отдельным шагом
+ближе к с7. Прод не трогался; push запрещён до с7._
+
+**Модель:** Claude Opus 4.8
+
+### Сделано
+- **Чистка supabase из приложения (`src/` — 0 упоминаний):** удалены 3 мёртвых
+  обёртки `src/lib/supabase/{server,client,admin}.ts` (приложение их не импортировало
+  с сессий 2–5) + `@supabase/ssr` из package.json/lock; вычищено слово «Supabase» из
+  комментариев/типов/i18n (temp-password, types/db, storage/types, db/{rpc,index,admin},
+  documents/actions, user-credentials-modal, ru+uk users inviteHint/inviteFailed).
+  `.env.example` — supabase-секция переориентирована на «только источник переноса
+  файлов» (URL+SERVICE_ROLE для migrate-files, ANON убран).
+- **Полный порт `scripts/smoke-rls.ts` на Prisma/userDb** (1116 строк supabase-js →
+  21 живая секция на userDb/adminDb/rpc). Прогнан **21/21 зелёным на Neon dev**.
+  Секции про `payroll_ledger` (accrual per_payment / revert_payout / гонка «выплата+
+  платёж») НЕ портированы — механика леджера заморожена в v3 с12. Адаптации: департ.
+  скоуп (admin/office Києва видят только дело A), storage-часть убрана (свой слой не в
+  RLS БД), Prisma-семантика (тихий отказ → `updateMany` count:0, WITH CHECK/триггер →
+  throw). Удалён частичный `smoke-rls-v4.ts`; `smoke:rls:v4` из package.json убран.
+- **CI (`.github/workflows/ci.yml`) переписан:** `supabase start` → **Postgres 17
+  service** + наш раннер (`db:migrate` создаёт шим-роли authenticated/app_user →
+  `ALTER ROLE app_user PASSWORD` → `db:acl-audit` → `db:seed` → `smoke:rls` →
+  `test:integration`). checks-job (tsc/lint/unit) — с dummy `AUTH_SECRET`. Вживую
+  активируется первым push (с7).
+- **Скрипты генеральной репетиции T7:** `scripts/migrate-data.ts` (самодостаточный
+  кросс-БД перенос на `pg`, без pg_dump в PATH: TRUNCATE baseline-таблиц, DISABLE
+  TRIGGER USER — НЕ session_replication_role, недоступен на Neon; COPY в FK-порядке
+  топосортом, `OVERRIDING SYSTEM VALUE` только для identity-таблиц, auth.users
+  маппингом, private-схема, setval из source, ANALYZE) + `scripts/verify-migration.ts`
+  (стоп-гейт: COUNT по таблицам + Σ денежных полей до копейки). npm: `migrate:data`,
+  `verify:migration`. **verify самопроверен** (source=target=dev → 0 расхождений).
+  ⚠ Боевой прогон — с прод-дампом на репетиции (владелец, ближе к с7).
+- **Демо-сид `scripts/seed-demo.ts` портирован** на adminDb/Prisma (убран мёртвый
+  леджер/payouts/accrual_mode, storage через свой слой, департаменты как seed.ts) —
+  прогнан на dev (**10 дел с историями**). Удалены `seed-more.ts` (вариация demo) и
+  `seed-accounts.ts` (устарел — прод-учётки через UI `/settings/users`); `db:seed:more`
+  из package.json убран.
+- **Доки:** CLAUDE.md §2 «Стек» (Neon/свой-auth/Prisma/userDb/adminDb/S3-R2 + пометка
+  «прод переключается в с7») и §3 «Команды» (db:migrate/acl-audit/seed/smoke вместо
+  supabase CLI); README (стек-таблица, быстрый старт, структура db/migrations);
+  `vitest.integration.config.ts` — комментарий Supabase→Postgres.
+
+### Проверки
+- `tsc --noEmit` ✓, `eslint` ✓, unit **148/148** ✓, `npm run build` ✓ (все маршруты
+  dynamic, без ошибок), `npm install` (lock без `@supabase/ssr`).
+- **smoke-rls 21/21 на Neon dev** (все инварианты доступа зелёные).
+- **verify-migration самопроверка** (source=target=dev): все COUNT и Σ денежных полей
+  идентичны, 0 расхождений — логика сверки валидна.
+- **seed-demo на Neon dev:** 10 дел, 7 клиентов, override/документы (storage-слой).
+- Финальный аудит: `src/` — 0 supabase; `scripts/` — только источники переноса
+  (migrate-files/migrate-data/verify/clean-schema-dump); `@supabase/supabase-js` в deps
+  остаётся до переноса файлов (с7).
+- **Adversarial-ревью (независимый субагент) нашёл 4 CRITICAL в `migrate-data.ts` —
+  ИСПРАВЛЕНЫ** (нельзя было поймать без прод-source): (C1) `public.users` копировался
+  до `auth.users`, но имеет FK на неё, а FK — не USER-триггер → abort; фикс — auth
+  ПЕРВЫМ. (C2) `copyTable` читал target-колонку `pwd_version` из source, где её нет →
+  фикс: пересечение колонок source∩target. (C3) не было обёртки-транзакции → провал
+  оставлял триггеры выключенными + baseline вырезанным; фикс — единая target-tx с
+  rollback. (C4) `verify` проверял пароли только COUNT, а `coalesce(pwd,'')` обнулял
+  NULL-хеш → пустой пароль проходил GREEN; фикс — md5-checksum паролей/секретов в
+  verify + СТОП на source-NULL. Плюс: setval из target-max, jsonb через JSON.stringify,
+  bind-лимит, каталог-гейт RLS в smoke (20 таблиц). После фиксов: smoke 22/22, verify
+  с integrity-хешами 0 расхождений.
+
+### Грабли / критичное для следующих сессий
+- **Триггеры срабатывают и под adminDb** (owner БД обходит RLS, НЕ триггеры): откат
+  этапа назад в smoke-сетапе через adminDb упал `stage_backward_forbidden` — stage-
+  сетап/cleanup идут через `userDb(owner)` (staff, is_staff-bypass в триггере). То же
+  учтено в migrate-data (DISABLE TRIGGER USER на время COPY).
+- **`OVERRIDING SYSTEM VALUE`** в INSERT допустим ТОЛЬКО для таблиц с `GENERATED …AS
+  IDENTITY` (в схеме только `activity_log.id`) — иначе Postgres отвергает INSERT.
+  migrate-data вычисляет identity-таблицы из information_schema и применяет условно.
+- **CI не прогнан вживую** (push запрещён до с7) — написан по механике раннера/шима,
+  первый реальный прогон = первый push цикла (с7). Пароль app_user задаётся в CI
+  `ALTER ROLE` (шим создаёт роль LOGIN без пароля).
+- **T7-скрипты боеготовы после РЕПЕТИЦИИ** (плановая оговорка): нет прод-source-БД для
+  боевого прогона сейчас; структурно проверены (tsc + verify самопроверка). Финал —
+  генеральная репетиция с прод-дампом.
+- **dev-ветка сейчас с ДЕМО-данными** (10 дел от seed-demo) — не seed.ts-состояние.
+  Для smoke-rls на 2-дельном сиде: `npm run db:seed` (перезальёт). Integration
+  независим (свой IT-namespace).
+- **git:** master впереди origin (редизайн v5 + план + c1..c5 + **коммит c6**);
+  **push запрещён до с7**. Коммит сессии 6 — локальный.
+
+### Дальше
+- **R2 (перед с7, на владельце):** завести Cloudflare R2 (карта), bucket
+  `case-documents`, API-token → `S3_*` в env, `STORAGE_PROVIDER=s3`; прогнать
+  `npm run migrate:files` (Supabase-прод → R2), сверка количества/размеров.
+- **Генеральная репетиция T7 (перед назначением даты переезда):** свежий дамп
+  прод-данных Supabase → `SOURCE_DATABASE_URL` → `npm run migrate:data` на Neon dev →
+  `npm run verify:migration` (стоп-гейт). Замерить длительность (уточняет окно с7).
+- **Перед с7:** `/cso` на финальном стеке доступа (auth + userDb/шим) — правило
+  проекта «перед выкаткой»; выравнивание прода по миграциям (db push language +
+  case_description), затем сверка слепок↔прод = 0.
+- **Сессия 7 (прод-переезд):** окно ~1–2 ч; дамп прода → миграции Neon prod →
+  migrate:data → verify (стоп-гейт) → файлы R2 → env-переключение Vercel → **первый
+  push цикла** → smoke прода под каждой ролью → канарейка. Финальное снятие
+  `@supabase/supabase-js` + каталога `supabase/` — после переноса.
+
+---
+
 ## Сессия 2026-07-15 — Цикл v4, Сессия 5: Файлы (storage-слой + перенос) ✅
 
 _Пятая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Интерфейс `lib/storage`

@@ -1,11 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 
-// Интеграционные тесты — поверх ЛОКАЛЬНОГО Supabase (npm run test:integration).
-// Требуют: поднятый `npx supabase start` + .env.local с URL/ANON/SERVICE_ROLE.
-// Если переменных нет — наборы помечают себя skipped (см. hasSupabaseEnv).
+// Интеграционные тесты — поверх Postgres/Neon (npm run test:integration).
+// Требуют .env.local (или CI-env) с DATABASE_URL_APP + DATABASE_URL_ADMIN.
+// Если переменных нет — наборы помечают себя skipped (см. hasDbEnv в fixtures).
 //
-// fileParallelism:false и singleFork — тесты делят одно состояние БД и сессии,
+// fileParallelism:false и singleFork — тесты делят одно состояние БД,
 // гоняем последовательно, чтобы не ловить гонки RLS/триггеров.
 export default defineConfig({
   resolve: {

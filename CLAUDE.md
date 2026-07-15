@@ -23,25 +23,35 @@ CRM-система для юридической компании.
 
 ## 2. Технологический стек
 
+> **Цикл v4 — переезд Supabase → чистый Postgres (Neon).** Весь КОД уже на стеке
+> ниже (сессии 1–5, `docs/PLAN-V4-POSTGRES.md`). Прод переключается в **сессии 7**;
+> до неё прод-БД физически ещё на Supabase (переезд 1:1, без потерь данных/паролей/
+> файлов). RLS-модель доступа (§4) СОХРАНЕНА через шим `auth.uid()` — не переписывалась.
+
 | Слой | Выбор |
 |---|---|
 | Frontend + backend | **Next.js (App Router) + TypeScript** |
-| БД / Auth / Storage | **Supabase** (PostgreSQL + Auth + Storage + Row Level Security) |
-| Доступ к данным | `supabase-js` на сервере, **с сессией пользователя** (чтобы работал RLS) |
-| Схема и миграции | SQL-миграции через **Supabase CLI** (`supabase/migrations`) |
+| БД | **Neon** (managed PostgreSQL, регион Frankfurt); ветки production / development |
+| Auth | **свой**: JWT в httpOnly-cookie (`jose`, HS256) + пароли `bcryptjs`; проверка сессии ЛОКАЛЬНАЯ (без сети) |
+| Доступ к данным | **Prisma**: `userDb(id, tx⇒…)` под ролью `app_user` **с контекстом пользователя** (RLS работает); admin-пул `adminDb()` (owner БД, обходит RLS) — только системно |
+| Схема и миграции | SQL-миграции `db/migrations/*.sql`, свой раннер `npm run db:migrate` (журнал `_migrations`) |
 | UI | **Tailwind CSS + shadcn/ui** |
-| Хранение файлов по делам | **Supabase Storage** (приватный бакет) |
-| Деплой | Vercel (или любой Node-хостинг) |
+| Хранение файлов по делам | **S3-совместимое** (`lib/storage`): Cloudflare R2 на проде, локальный провайдер для dev; MinIO/диск на корп-сервере потом |
+| Деплой | Vercel + Neon |
 
 **Почему так.** RLS в Postgres напрямую ложится на нашу модель доступа («специалист
 видит только свои дела»): правило проверяется в самой базе, а не только в коде —
-это надёжнее и безопаснее. Один Next.js-проект закрывает и внутренний интерфейс,
-и будущий клиентский портал через ролевые маршруты.
+это надёжнее и безопаснее. Модель RLS написана под Supabase (`auth.uid()`, роли
+`authenticated`) и СОХРАНЕНА в v4 через шим `0000_shim.sql`: `auth.uid()` читает
+`app.user_id`, который выставляет обёртка `userDb` на каждую транзакцию.
 
-**Важно про RLS (легко сломать):** запросы к данным от лица пользователя должны идти
-через клиент Supabase **с его JWT/сессией**, иначе RLS не сработает. `service_role`
-(ключ в обход RLS) использовать только для системных задач (миграции, сидинг,
-фоновые операции) — никогда для обычных пользовательских запросов.
+**Важно про RLS (легко сломать):** пользовательские запросы идут ТОЛЬКО через
+`userDb(userId, tx ⇒ …)` — обёртка первым стейтментом ставит
+`set_config('app.user_id', …)`, на нём держится вся модель доступа. Забыл обёртку →
+`auth.uid()` = NULL → RLS отрезает всё (**пустой результат, не утечка** — fail-closed).
+Admin-пул `adminDb()` (owner БД, обходит RLS) — только для machine-роутов / seed /
+миграций (аналог прежнего `service_role`); импорт `@/lib/db/admin` вне allowlist
+валит ESLint (`no-restricted-imports`).
 
 **Стек можно поменять.** При смене правится только этот раздел и раздел «Команды»;
 доменная модель и бизнес-правила (разделы 4–8) не меняются.
@@ -62,26 +72,25 @@ npm run lint           # ESLint (flat config, eslint.config.mjs)
 npx tsc --noEmit       # тайпчек без сборки
 ```
 
-### Supabase (локально, через Docker)
+### БД (Neon) — без Docker/CLI
+Локалка = ветка **development** проекта Neon (Console → Connect → строки подключения
+в `.env.local`). Новая миграция = новый файл `db/migrations/NNNN_name.sql` (правка уже
+применённого файла НЕ перезапускает его — пиши следующий).
 ```bash
-npx supabase start            # поднять локальный стек (Postgres + Auth + Storage + Studio)
-npx supabase stop             # остановить
-npx supabase status           # URL и ключи локального стека → копировать в .env.local
-npx supabase db reset         # пересоздать БД из миграций + seed.sql
-npx supabase migration new <name>   # создать новый файл миграции
-npx supabase db push          # применить миграции на удалённый Supabase (когда подключим)
+npm run db:migrate      # применить db/migrations/*.sql (свой раннер; DATABASE_URL_ADMIN_DIRECT)
+npm run db:acl-audit    # проверка грантов/колоночной приватности users.salary_*/закрытости private,auth
+npm run db:seed         # тестовые данные + логины (*@yur.local / test12345!); adminDb, гард YUR_DB_ENV=prod
+npm run db:seed:demo    # богатый догфудинг-сид: 10 дел с историями (ЧИСТИТ доменные данные)
+npm run smoke:rls       # быстрый RLS-smoke на живой БД (21 инвариант доступа)
 ```
 
-Studio (веб-интерфейс БД) после `supabase start` доступен на `http://127.0.0.1:54323`.
-
-### Seed (тестовые данные)
-```bash
-npm run db:seed   # появится в Шаге 1; использует SUPABASE_SERVICE_ROLE_KEY
-```
+Управление БД — **Neon Console** (ветки, SQL-редактор) + `psql`. Прод-переезд и сверка —
+`npm run migrate:data` / `npm run verify:migration` (сессия 7).
 
 ### Окружение
 - Скопировать `.env.example` → `.env.local`
-- Подставить значения из вывода `npx supabase status`
+- Заполнить `DATABASE_URL_APP` / `DATABASE_URL_ADMIN` / `DATABASE_URL_ADMIN_DIRECT`
+  (Neon Console → Connect), `AUTH_SECRET` (сгенерировать), storage (`STORAGE_PROVIDER=local` для dev)
 - `.env*` в `.gitignore`, исключение — `.env.example`
 
 ---
