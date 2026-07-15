@@ -1,77 +1,97 @@
 import 'server-only';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { dateOnly, dec, toDbDate, ts } from '@/lib/db/convert';
+import {
+  rpcCashBalancesBefore,
+  rpcCashUnsyncedPaymentsCount,
+} from '@/lib/db/rpc';
 import { nextMonth } from '@/lib/payroll/month';
 import type {
   CashAccount,
-  CashAccountKind,
   CashDirection,
   CashEntryWithCase,
 } from '@/lib/types/db';
 
-const ACCOUNT_SELECT =
-  'id, name, kind, opening_balance, opening_date, is_active, is_default, created_by, created_at';
+const ACCOUNT_SELECT = {
+  id: true,
+  name: true,
+  kind: true,
+  opening_balance: true,
+  opening_date: true,
+  is_active: true,
+  is_default: true,
+  created_by: true,
+  created_at: true,
+} as const;
 
-const ENTRY_SELECT =
-  'id, account_id, entry_date, direction, amount, description, case_id, payment_id, created_by, created_at';
+const ENTRY_SELECT = {
+  id: true,
+  account_id: true,
+  entry_date: true,
+  direction: true,
+  amount: true,
+  description: true,
+  case_id: true,
+  payment_id: true,
+  created_by: true,
+  created_at: true,
+} as const;
 
-type RawAccount = {
+type AccountRow = {
   id: string;
   name: string;
-  kind: CashAccountKind;
-  opening_balance: number | string;
-  opening_date: string;
+  kind: string;
+  opening_balance: unknown;
+  opening_date: Date;
   is_active: boolean;
   is_default: boolean;
   created_by: string;
-  created_at: string;
+  created_at: Date;
 };
 
-function normalizeAccount(r: RawAccount): CashAccount {
+function normalizeAccount(r: AccountRow): CashAccount {
   return {
     id: r.id,
     name: r.name,
-    kind: r.kind,
-    opening_balance: Number(r.opening_balance),
-    opening_date: r.opening_date,
+    kind: r.kind as CashAccount['kind'],
+    opening_balance: dec(r.opening_balance),
+    opening_date: dateOnly(r.opening_date),
     is_active: r.is_active,
     is_default: r.is_default,
     created_by: r.created_by,
-    created_at: r.created_at,
+    created_at: ts(r.created_at),
   };
 }
 
-type RawEntry = {
+type EntryRow = {
   id: string;
   account_id: string;
-  entry_date: string;
-  direction: CashDirection;
-  amount: number | string;
+  entry_date: Date;
+  direction: string;
+  amount: unknown;
   description: string;
   case_id: string | null;
   payment_id: string | null;
   created_by: string;
-  created_at: string;
-  case:
-    | ReadonlyArray<{ id: string; number_title: string }>
-    | { id: string; number_title: string }
-    | null;
+  created_at: Date;
+  cases: { id: string; number_title: string } | null;
 };
 
-function normalizeEntry(r: RawEntry): CashEntryWithCase {
-  const c = Array.isArray(r.case) ? (r.case[0] ?? null) : r.case;
+function normalizeEntry(r: EntryRow): CashEntryWithCase {
   return {
     id: r.id,
     account_id: r.account_id,
-    entry_date: r.entry_date,
-    direction: r.direction,
-    amount: Number(r.amount),
+    entry_date: dateOnly(r.entry_date),
+    direction: r.direction as CashDirection,
+    amount: dec(r.amount),
     description: r.description,
     case_id: r.case_id,
     payment_id: r.payment_id,
     created_by: r.created_by,
-    created_at: r.created_at,
-    case: c,
+    created_at: ts(r.created_at),
+    case: r.cases ? { id: r.cases.id, number_title: r.cases.number_title } : null,
   };
 }
 
@@ -79,26 +99,27 @@ function normalizeEntry(r: RawEntry): CashEntryWithCase {
 export async function listCashAccounts(
   opts: { activeOnly?: boolean } = {},
 ): Promise<CashAccount[]> {
-  const supabase = await createSupabaseServerClient();
-  let query = supabase
-    .from('cash_accounts')
-    .select(ACCOUNT_SELECT)
-    .order('created_at', { ascending: true });
-  if (opts.activeOnly) query = query.eq('is_active', true);
+  const user = await getCurrentUser();
+  if (!user) return [];
 
-  const { data, error } = await query;
-  if (error) throw new Error(`listCashAccounts failed: ${error.message}`);
-  return (data ?? []).map((r) => normalizeAccount(r as RawAccount));
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.cash_accounts.findMany({
+      where: opts.activeOnly ? { is_active: true } : undefined,
+      orderBy: { created_at: 'asc' },
+      select: ACCOUNT_SELECT,
+    }),
+  );
+  return rows.map(normalizeAccount);
 }
 
-// Потолок выборки операций месяца. Защита от молчаливого усечения PostgREST
-// (max_rows=1000): тянем явно с count:'exact' и сравниваем — при превышении UI
-// покажет предупреждение «показаны не все операции месяца».
+// Потолок выборки операций месяца. Раньше страховал от молчаливого усечения
+// PostgREST (max_rows=1000); у Prisma тихого усечения нет, но лимит оставляем как
+// защиту от аномально большого месяца + сравниваем с count() для флага truncated.
 const MONTH_ENTRY_LIMIT = 5000;
 
 export type CashReportData = {
   accounts: CashAccount[];
-  // Операции ТОЛЬКО выбранного месяца (свежие не теряются под потолком PostgREST).
+  // Операции ТОЛЬКО выбранного месяца (свежие не теряются под потолком выборки).
   // Перенос из прошлых периодов считается SQL'ем (openingBalances), а не выкачкой истории.
   entries: CashEntryWithCase[];
   // Перенос остатка на начало месяца по счёту (accountId → net до monthStart, начиная с
@@ -109,57 +130,59 @@ export type CashReportData = {
 };
 
 // Данные сальдо-отчёта за месяц. month — 'YYYY-MM-01' (см. lib/payroll/month).
-// Тянем ТОЛЬКО операции выбранного месяца (свежие не теряются под потолком 1000), а
-// перенос остатка на начало месяца считаем SQL-функцией cash_balances_before (без
-// выкачки всей истории). RLS/право скоупит по can_manage_cash.
+// Тянем ТОЛЬКО операции выбранного месяца, а перенос остатка на начало месяца
+// считаем SQL-функцией cash_balances_before (без выкачки всей истории). RLS/право
+// скоупит по can_manage_cash.
 export async function getCashReportData(month: string): Promise<CashReportData> {
-  const supabase = await createSupabaseServerClient();
+  const user = await getCurrentUser();
+  if (!user) {
+    return { accounts: [], entries: [], openingBalances: {}, truncated: false };
+  }
+  const uid = user.profile.id;
   const monthStart = month; // 'YYYY-MM-01'
-  // Верхняя граница — первый день следующего месяца (строго меньше).
-  const upperExclusive = nextMonth(month);
+  const upperExclusive = nextMonth(month); // первый день следующего месяца (строго меньше)
+  const entryWhere = {
+    entry_date: { gte: toDbDate(monthStart), lt: toDbDate(upperExclusive) },
+  };
 
-  const [accounts, balancesRes, entriesRes] = await Promise.all([
+  const [accounts, balances, entryRows, total] = await Promise.all([
     listCashAccounts(),
-    supabase.rpc('cash_balances_before', { p_before: monthStart }),
-    supabase
-      .from('cash_entries')
-      .select(`${ENTRY_SELECT}, case:case_id(id, number_title)`, { count: 'exact' })
-      .gte('entry_date', monthStart)
-      .lt('entry_date', upperExclusive)
-      .order('entry_date', { ascending: true })
-      .order('created_at', { ascending: true })
-      .limit(MONTH_ENTRY_LIMIT),
+    userDb(uid, (tx) => rpcCashBalancesBefore(tx, { before: monthStart })),
+    userDb(uid, (tx) =>
+      tx.cash_entries.findMany({
+        where: entryWhere,
+        orderBy: [{ entry_date: 'asc' }, { created_at: 'asc' }],
+        take: MONTH_ENTRY_LIMIT,
+        select: {
+          ...ENTRY_SELECT,
+          cases: { select: { id: true, number_title: true } },
+        },
+      }),
+    ),
+    userDb(uid, (tx) => tx.cash_entries.count({ where: entryWhere })),
   ]);
 
-  if (balancesRes.error) {
-    throw new Error(`getCashReportData balances failed: ${balancesRes.error.message}`);
-  }
-  if (entriesRes.error) {
-    throw new Error(`getCashReportData failed: ${entriesRes.error.message}`);
-  }
-
   const openingBalances: Record<string, number> = {};
-  for (const r of (balancesRes.data ?? []) as Array<{
-    account_id: string;
-    balance: number | string;
-  }>) {
-    openingBalances[r.account_id] = Number(r.balance);
-  }
+  for (const r of balances) openingBalances[r.account_id] = r.balance;
 
-  const rows = (entriesRes.data ?? []).map((r) => normalizeEntry(r as RawEntry));
-  const truncated = (entriesRes.count ?? rows.length) > rows.length;
+  const entries = entryRows.map(normalizeEntry);
+  const truncated = total > entries.length;
 
-  return { accounts, entries: rows, openingBalances, truncated };
+  return { accounts, entries, openingBalances, truncated };
 }
 
 // Сколько платежей ещё не отражены в кассе (для баннера «Синхронизировать»). Не валит
 // страницу: при ошибке/без права RPC вернёт 0 (право проверяется внутри функции).
 export async function getUnsyncedPaymentsCount(): Promise<number> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('cash_unsynced_payments_count');
-  if (error) {
-    console.error('getUnsyncedPaymentsCount failed:', error.message);
+  const user = await getCurrentUser();
+  if (!user) return 0;
+
+  try {
+    return await userDb(user.profile.id, (tx) =>
+      rpcCashUnsyncedPaymentsCount(tx),
+    );
+  } catch (err) {
+    console.error('getUnsyncedPaymentsCount failed:', err);
     return 0;
   }
-  return Number(data ?? 0);
 }

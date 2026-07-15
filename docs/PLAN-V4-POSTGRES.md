@@ -292,13 +292,22 @@ push ТОЛЬКО этой ветки → ручной deploy ветки в да
   правке. Возим `updated_at::text` в DTO (ревью V3-5, покрыт тестом). ✅
   Решение: `getCase` тянет `updated_at::text`, `updateCaseAction` сверяет его
   под `SELECT … FOR UPDATE` в одной tx (атомарно, без TOCTOU).
-### Сессия 4 — Данные, часть 2 (payments, acts, payroll, cash, dashboard, notifications: cron/telegram/calendar, search, activity_log, i18n, org, absences)
-- Механическое переписывание 156 `.from()` + 30 `.rpc()` в 56 файлах
-  на `userDb`/`adminDb`. После КАЖДОГО домена: `npx tsc --noEmit` +
-  **прогон integration-тестов домена + e2e** (ревью T1 — тесты уже живые
-  с сессии 2) + ручной smoke.
-- **Готово, когда:** ни одного импорта `@/lib/supabase/*` вне auth/storage;
-  все экраны работают на dev-ветке; integration + e2e зелёные.
+### Сессия 4 — Данные, часть 2 (payments, payroll, cash, dashboard, notifications: cron/telegram/calendar, search, activity_log, i18n, org, absences) — ✅ 2026-07-15
+> 23 доменных файла (+rpc.ts +eslint.config.mjs) переписаны с supabase-js на
+> userDb/adminDb + rpc-реестр. Гейт: tsc/eslint чистые, unit 141, integration
+> 114 (все 10 файлов на Neon dev), runtime-смок /,/reports/cash,/reports/payroll,
+> /reports/summary — все 200 с реальными данными. Формальный Playwright e2e в
+> сессии НЕ гонялся (гейт закрыт integration + runtime-смоком). Детали и грабли —
+> docs/PROGRESS.md (запись 2026-07-15, сессия 4).
+> ⚠ Границу уточнили с владельцем: **acts + documents ушли в сессию 5** (6
+> storage-переплетённых файлов — не трогать дважды), поэтому список доменов с4
+> без acts/documents. После с4 supabase остался ТОЛЬКО в этих 6 файлах.
+- Механическое переписывание `.from()`/`.rpc()` на `userDb`/`adminDb`. После
+  КАЖДОГО домена: `npx tsc --noEmit` + прогон integration-тестов домена + ручной
+  smoke (ревью T1 — тесты живые с сессии 2).
+- **Готово, когда:** ни одного импорта `@/lib/supabase/*` вне storage-файлов
+  (documents/acts/OnlyOffice — сессия 5); все экраны работают на dev-ветке;
+  integration зелёные. ✅
 
 ### Сессия 5 — Файлы
 - `lib/storage.ts` + провайдер; переписать 6 мест (documents/acts

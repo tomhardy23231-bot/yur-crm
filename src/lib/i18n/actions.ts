@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache';
 
 import { LOCALE_COOKIE, coerceLocale, type Locale } from './config';
 import { requireUser } from '@/lib/auth/require-role';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { userDb } from '@/lib/db';
+import { rpcSetMyLanguage } from '@/lib/db/rpc';
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
@@ -18,14 +19,14 @@ export type ChangeLanguageState = { ok: boolean; error?: string };
 export async function changeLanguageAction(
   next: Locale,
 ): Promise<ChangeLanguageState> {
-  await requireUser();
+  const user = await requireUser();
   const lang = coerceLocale(next);
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc('set_my_language', { lang });
-  if (error) {
-    console.error('changeLanguageAction.rpc:', error.message);
-    return { ok: false, error: error.message };
+  try {
+    await userDb(user.profile.id, (tx) => rpcSetMyLanguage(tx, { lang }));
+  } catch (err) {
+    console.error('changeLanguageAction.rpc:', err);
+    return { ok: false, error: String(err) };
   }
 
   const store = await cookies();

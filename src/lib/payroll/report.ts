@@ -1,6 +1,8 @@
 import 'server-only';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { dateOnly, dec, toDbDate } from '@/lib/db/convert';
 import {
   getPayrollEmployeeCases,
   getPayrollEmployeeSummary,
@@ -108,16 +110,20 @@ export async function buildEmployeeReport(
   userId: string,
   month: string,
 ): Promise<EmployeeReport> {
-  const supabase = await createSupabaseServerClient();
   const { t } = await getT();
+  const viewer = await getCurrentUser();
+  const uid = viewer?.profile.id ?? null;
 
-  const [{ data: userRow }, summary, monthCases, allCases, monthTx, allTx] =
+  const [userRow, summary, monthCases, allCases, monthTx, allTx] =
     await Promise.all([
-      supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', userId)
-        .maybeSingle<{ full_name: string }>(),
+      uid
+        ? userDb(uid, (tx) =>
+            tx.public_users.findUnique({
+              where: { id: userId },
+              select: { full_name: true },
+            }),
+          )
+        : Promise.resolve(null),
       getPayrollEmployeeSummary(month),
       getPayrollEmployeeCases(userId, month),
       getPayrollEmployeeCases(userId),
@@ -169,62 +175,70 @@ export async function buildEmployeeReport(
 
   type CaseMeta = {
     id: string;
-    category: CaseCategory | null;
-    contract_sum: number | string | null;
-    opened_at: string | null;
-    client: { name: string } | ReadonlyArray<{ name: string }> | null;
-  };
-  type PaymentRow = {
-    case_id: string;
-    amount: number | string;
-    paid_at: string;
-    method: string | null;
+    category: CaseCategory;
+    contract_sum: number;
+    opened_at: string;
+    client_name: string | null;
   };
 
-  const [{ data: caseMetaRows }, { data: paymentRows }] = await Promise.all([
-    caseIds.length
-      ? supabase
-          .from('cases')
-          .select('id, category, contract_sum, opened_at, client:client_id(name)')
-          .in('id', caseIds)
-      : Promise.resolve({ data: [] as CaseMeta[] }),
-    caseIds.length
-      ? supabase
-          .from('payments')
-          .select('case_id, amount, paid_at, method')
-          .in('case_id', caseIds)
-          .gte('paid_at', month)
-          .lt('paid_at', monthEnd)
-          .order('paid_at', { ascending: true })
-      : Promise.resolve({ data: [] as PaymentRow[] }),
+  const [caseMetaRows, paymentRows] = await Promise.all([
+    caseIds.length && uid
+      ? userDb(uid, (tx) =>
+          tx.cases.findMany({
+            where: { id: { in: caseIds } },
+            select: {
+              id: true,
+              category: true,
+              contract_sum: true,
+              opened_at: true,
+              clients: { select: { name: true } },
+            },
+          }),
+        )
+      : Promise.resolve([]),
+    caseIds.length && uid
+      ? userDb(uid, (tx) =>
+          tx.payments.findMany({
+            where: {
+              case_id: { in: caseIds },
+              paid_at: { gte: toDbDate(month), lt: toDbDate(monthEnd) },
+            },
+            orderBy: { paid_at: 'asc' },
+            select: { case_id: true, amount: true, paid_at: true, method: true },
+          }),
+        )
+      : Promise.resolve([]),
   ]);
 
   const metaById = new Map<string, CaseMeta>();
-  for (const m of (caseMetaRows ?? []) as CaseMeta[]) metaById.set(m.id, m);
+  for (const m of caseMetaRows) {
+    metaById.set(m.id, {
+      id: m.id,
+      category: m.category as CaseCategory,
+      contract_sum: dec(m.contract_sum),
+      opened_at: dateOnly(m.opened_at),
+      client_name: m.clients?.name ?? null,
+    });
+  }
   const titleById = new Map(monthCasesShown.map((c) => [c.case_id, c.number_title]));
 
   const cases: ReportCase[] = monthCasesShown.map((c) => {
     const meta = metaById.get(c.case_id);
-    const client = meta
-      ? Array.isArray(meta.client)
-        ? (meta.client[0] ?? null)
-        : meta.client
-      : null;
     return {
       ...c,
-      client_name: client?.name ?? null,
+      client_name: meta?.client_name ?? null,
       category: meta?.category ?? null,
-      contract_sum: meta?.contract_sum != null ? Number(meta.contract_sum) : null,
+      contract_sum: meta?.contract_sum ?? null,
       opened_at: meta?.opened_at ?? null,
     };
   });
 
-  const clientPayments: ClientPayment[] = ((paymentRows ?? []) as PaymentRow[])
+  const clientPayments: ClientPayment[] = paymentRows
     .map((p) => ({
       case_id: p.case_id,
       number_title: titleById.get(p.case_id) ?? t.common.dash,
-      paid_at: p.paid_at,
-      amount: Number(p.amount),
+      paid_at: dateOnly(p.paid_at),
+      amount: dec(p.amount),
       method: p.method,
     }))
     // Только дела, попавшие в начисления месяца (на всякий случай).

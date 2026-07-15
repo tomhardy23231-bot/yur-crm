@@ -3,23 +3,16 @@
 import { revalidatePath } from 'next/cache';
 
 import { requireCap, requireUser } from '@/lib/auth/require-role';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dbActionError } from '@/lib/db/errors';
+import { toDbDate } from '@/lib/db/convert';
+import { rpcCashBackfillPayments } from '@/lib/db/rpc';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CASH_ACCOUNT_KINDS, type CashAccountKind } from '@/lib/types/db';
 import { UUID_RE, parseAmount, parseNonNegAmount, isValidDate } from '@/lib/validation';
 
 // Валидаторы суммы/даты/UUID — в @/lib/validation: parseAmount (> 0) для операций,
 // parseNonNegAmount (>= 0) для начального остатка счёта.
-
-// Если выставляем новый дефолтный счёт — снимаем флаг с прежнего (partial-unique
-// индекс cash_accounts_one_default допускает лишь один is_default на компанию).
-async function clearOtherDefaults(exceptId: string | null): Promise<void> {
-  const supabase = await createSupabaseServerClient();
-  let q = supabase.from('cash_accounts').update({ is_default: false }).eq('is_default', true);
-  if (exceptId) q = q.neq('id', exceptId);
-  await q;
-}
 
 // ============================================================================
 // Создание счёта кассы. Право — can_manage_cash (по дефолту только owner).
@@ -63,22 +56,31 @@ export async function createCashAccountAction(
     return { ok: false, fieldErrors, message: t.cash.actions.checkForm };
   }
 
-  if (is_default) await clearOtherDefaults(null);
-
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('cash_accounts').insert({
-    name,
-    kind: kind as CashAccountKind,
-    opening_balance,
-    opening_date,
-    is_default,
-    created_by: user.profile.id,
-  });
-
-  if (error) {
+  // Снятие флага с прежнего дефолта + вставка — одной транзакцией (partial-unique
+  // индекс cash_accounts_one_default допускает лишь один is_default на компанию).
+  try {
+    await userDb(user.profile.id, async (tx) => {
+      if (is_default) {
+        await tx.cash_accounts.updateMany({
+          where: { is_default: true },
+          data: { is_default: false },
+        });
+      }
+      await tx.cash_accounts.create({
+        data: {
+          name,
+          kind: kind as CashAccountKind,
+          opening_balance: opening_balance!,
+          opening_date: toDbDate(opening_date),
+          is_default,
+          created_by: user.profile.id,
+        },
+      });
+    });
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage('createCashAccountAction', error, t.cash.actions.saveFailed, t.errors.db),
+      message: dbActionError('createCashAccountAction', err, t.cash.actions.saveFailed, t.errors.db),
     };
   }
 
@@ -120,18 +122,29 @@ export async function updateCashAccountAction(
     return { ok: false, fieldErrors, message: t.cash.actions.checkForm };
   }
 
-  if (is_default) await clearOtherDefaults(id);
-
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from('cash_accounts')
-    .update({ name, opening_balance, opening_date, is_active, is_default })
-    .eq('id', id);
-
-  if (error) {
+  try {
+    await userDb(user.profile.id, async (tx) => {
+      if (is_default) {
+        await tx.cash_accounts.updateMany({
+          where: { is_default: true, NOT: { id } },
+          data: { is_default: false },
+        });
+      }
+      await tx.cash_accounts.updateMany({
+        where: { id },
+        data: {
+          name,
+          opening_balance: opening_balance!,
+          opening_date: toDbDate(opening_date),
+          is_active,
+          is_default,
+        },
+      });
+    });
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage('updateCashAccountAction', error, t.cash.actions.saveFailed, t.errors.db),
+      message: dbActionError('updateCashAccountAction', err, t.cash.actions.saveFailed, t.errors.db),
     };
   }
 
@@ -180,21 +193,24 @@ export async function createCashEntryAction(
     return { ok: false, fieldErrors, message: t.cash.actions.checkForm };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('cash_entries').insert({
-    account_id,
-    entry_date,
-    direction: direction as 'in' | 'out',
-    amount: parseAmount(amount_raw)!,
-    description,
-    created_by: user.profile.id,
-    // payment_id остаётся NULL — это ручная операция (RLS требует payment_id IS NULL).
-  });
-
-  if (error) {
+  try {
+    await userDb(user.profile.id, (tx) =>
+      tx.cash_entries.create({
+        data: {
+          account_id,
+          entry_date: toDbDate(entry_date),
+          direction: direction as 'in' | 'out',
+          amount: parseAmount(amount_raw)!,
+          description,
+          created_by: user.profile.id,
+          // payment_id остаётся NULL — это ручная операция (RLS требует payment_id IS NULL).
+        },
+      }),
+    );
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage('createCashEntryAction', error, t.cash.actions.saveFailed, t.errors.db),
+      message: dbActionError('createCashEntryAction', err, t.cash.actions.saveFailed, t.errors.db),
     };
   }
 
@@ -207,14 +223,18 @@ export async function createCashEntryAction(
 // Bare-form action (void) по образцу deletePaymentAction/deleteAbsenceAction.
 // ============================================================================
 export async function deleteCashEntryAction(formData: FormData): Promise<void> {
-  await requireCap('can_manage_cash');
+  const user = await requireCap('can_manage_cash');
   const id = String(formData.get('id') ?? '').trim();
   if (!id || !UUID_RE.test(id)) return;
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('cash_entries').delete().eq('id', id);
-  if (error) {
-    console.error('deleteCashEntryAction failed:', error.message);
+  try {
+    // deleteMany — тихий no-op, если строка невидима или это авто-приход
+    // (RLS DELETE отсекает payment_id IS NOT NULL).
+    await userDb(user.profile.id, (tx) =>
+      tx.cash_entries.deleteMany({ where: { id } }),
+    );
+  } catch (err) {
+    console.error('deleteCashEntryAction failed:', err);
     return;
   }
   revalidatePath('/reports/cash');
@@ -234,15 +254,16 @@ export async function backfillCashAction(): Promise<CashBackfillResult> {
     return { ok: false, message: t.cash.actions.noPermission };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('cash_backfill_payments');
-  if (error) {
+  let count: number;
+  try {
+    count = await userDb(user.profile.id, (tx) => rpcCashBackfillPayments(tx));
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage('backfillCashAction', error, t.cash.actions.saveFailed, t.errors.db),
+      message: dbActionError('backfillCashAction', err, t.cash.actions.saveFailed, t.errors.db),
     };
   }
 
   revalidatePath('/reports/cash');
-  return { ok: true, count: Number(data ?? 0) };
+  return { ok: true, count };
 }

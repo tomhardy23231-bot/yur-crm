@@ -8,10 +8,13 @@ import nextTs from "eslint-config-next/typescript";
 // Новую точку добавлять ТОЛЬКО с осознанием: adminDb не фильтрует данные.
 const ADMIN_DB_ALLOWLIST = [
   "src/app/api/cron/reminders/route.ts",
-  "src/app/api/calendar/[token]/route.ts",
+  // Wildcard, НЕ [token]/[id]: в globе квадратные скобки — это character-class,
+  // а не литеральная папка Next.js-роута, поэтому буквальный "[token]" не матчит
+  // и adminDb-импорт ошибочно попадал бы под запрет. `*` матчит один сегмент.
+  "src/app/api/calendar/*/route.ts",
   "src/app/api/telegram/webhook/route.ts",
-  "src/app/api/documents/[id]/content/route.ts",
-  "src/app/api/documents/[id]/oo-callback/route.ts",
+  "src/app/api/documents/*/content/route.ts",
+  "src/app/api/documents/*/oo-callback/route.ts",
   // Свой auth (цикл v4 с2): логин сверяет пароль ДО аутентификации, смена
   // пароля пишет bcrypt-хеш — auth.users доступна только admin-пулу.
   "src/app/login/actions.ts",

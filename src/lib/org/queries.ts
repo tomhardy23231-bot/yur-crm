@@ -1,6 +1,8 @@
 import 'server-only';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { ts } from '@/lib/db/convert';
 import type { OrgRequisites } from '@/lib/types/db';
 
 const EMPTY: OrgRequisites = {
@@ -16,28 +18,40 @@ const EMPTY: OrgRequisites = {
 };
 
 // Реквизиты компании-исполнителя (single-row, id=1). RLS: SELECT всем активным.
-// Если строки нет (теоретически) — отдаём пустую болванку, чтобы UI/печать не падали.
+// Если строки нет (теоретически) или зритель не аутентифицирован — отдаём пустую
+// болванку, чтобы UI/печать не падали (fail-closed: без сессии userDb недоступен).
 export async function getOrgRequisites(): Promise<OrgRequisites> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('org_requisites')
-    .select('org_name, edrpou, address, phone, iban, bank_name, mfo, tax_status_lines, updated_at')
-    .eq('id', 1)
-    .maybeSingle();
+  const user = await getCurrentUser();
+  if (!user) return EMPTY;
 
-  if (error) throw new Error(`getOrgRequisites failed: ${error.message}`);
-  if (!data) return EMPTY;
+  const row = await userDb(user.profile.id, (tx) =>
+    tx.org_requisites.findUnique({
+      where: { id: 1 },
+      select: {
+        org_name: true,
+        edrpou: true,
+        address: true,
+        phone: true,
+        iban: true,
+        bank_name: true,
+        mfo: true,
+        tax_status_lines: true,
+        updated_at: true,
+      },
+    }),
+  );
+  if (!row) return EMPTY;
 
   return {
-    org_name: data.org_name ?? '',
-    edrpou: data.edrpou ?? '',
-    address: data.address ?? '',
-    phone: data.phone ?? '',
-    iban: data.iban ?? '',
-    bank_name: data.bank_name ?? '',
-    mfo: data.mfo ?? '',
-    tax_status_lines: (data.tax_status_lines as string[] | null) ?? [],
-    updated_at: data.updated_at ?? '',
+    org_name: row.org_name ?? '',
+    edrpou: row.edrpou ?? '',
+    address: row.address ?? '',
+    phone: row.phone ?? '',
+    iban: row.iban ?? '',
+    bank_name: row.bank_name ?? '',
+    mfo: row.mfo ?? '',
+    tax_status_lines: row.tax_status_lines ?? [],
+    updated_at: ts(row.updated_at),
   };
 }
 

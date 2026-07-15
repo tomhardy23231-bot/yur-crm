@@ -4,9 +4,10 @@ import { revalidatePath } from 'next/cache';
 
 import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dbActionError, pgErrorCode } from '@/lib/db/errors';
+import { dateOnly, dec, toDbDate } from '@/lib/db/convert';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { UUID_RE, parseAmount, isValidDate } from '@/lib/validation';
 
 export type CreatePaymentFields =
@@ -69,23 +70,22 @@ export async function createPaymentAction(
   const method = method_raw === '' ? null : method_raw;
   const note = note_raw === '' ? null : note_raw;
 
-  const supabase = await createSupabaseServerClient();
-
   // Задача 2 (defense-in-depth): серверный дедуп-гард. Если за последние ~3 секунды
   // от того же пользователя по тому же делу уже прошёл платёж на ту же сумму —
   // считаем это повторной отправкой и тихо отдаём успех, не плодя строку и не
   // показывая ошибку. Основная (атомарная) защита — стабильный idempotency_key +
   // уникальный индекс; этот гард страхует на случай разных ключей (refresh формы).
-  const dedupSince = new Date(Date.now() - 3000).toISOString();
-  const { data: recentDup } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('case_id', case_id)
-    .eq('created_by', user.profile.id)
-    .eq('amount', amount)
-    .gte('created_at', dedupSince)
-    .limit(1)
-    .maybeSingle();
+  const recentDup = await userDb(user.profile.id, (tx) =>
+    tx.payments.findFirst({
+      where: {
+        case_id,
+        created_by: user.profile.id,
+        amount,
+        created_at: { gte: new Date(Date.now() - 3000) },
+      },
+      select: { id: true },
+    }),
+  );
   if (recentDup) {
     revalidatePath(`/cases/${case_id}`);
     return { ok: true };
@@ -93,33 +93,36 @@ export async function createPaymentAction(
 
   // RLS WITH CHECK: payments_insert_via_case требует
   // can_write_case(case_id) AND created_by = active_uid().
-  const { data: insertedPay, error } = await supabase
-    .from('payments')
-    .insert({
-      case_id,
-      amount,
-      paid_at,
-      method,
-      note,
-      created_by: user.profile.id,
-      idempotency_key,
-    })
-    .select('id')
-    .single();
-
-  if (error || !insertedPay) {
+  let insertedId: string;
+  try {
+    const inserted = await userDb(user.profile.id, (tx) =>
+      tx.payments.create({
+        data: {
+          case_id,
+          amount,
+          paid_at: toDbDate(paid_at),
+          method,
+          note,
+          created_by: user.profile.id,
+          idempotency_key,
+        },
+        select: { id: true },
+      }),
+    );
+    insertedId = inserted.id;
+  } catch (err) {
     // Задача 2: дубль по idempotency_key (мульти-сабмит) → нарушение уникального
-    // индекса (SQLSTATE 23505). Первый платёж уже прошёл — тихо отдаём успех,
-    // ошибку не показываем. Логировать/ревалидировать тоже не нужно: запись одна.
-    if (error?.code === '23505') {
+    // индекса (SQLSTATE 23505 / Prisma P2002). Первый платёж уже прошёл — тихо
+    // отдаём успех, ошибку не показываем. Логировать/ревалидировать не нужно.
+    if (pgErrorCode(err) === '23505') {
       revalidatePath(`/cases/${case_id}`);
       return { ok: true };
     }
     return {
       ok: false,
-      message: dbErrorMessage(
+      message: dbActionError(
         'createPaymentAction',
-        error,
+        err,
         t.payments.errors.saveFailed,
         t.errors.db,
       ),
@@ -131,7 +134,7 @@ export async function createPaymentAction(
     entity_id: case_id,
     action: 'payment_created',
     changes: {
-      payment_id: insertedPay.id,
+      payment_id: insertedId,
       amount,
       paid_at,
       method,
@@ -146,31 +149,30 @@ export async function createPaymentAction(
 
 // Bare action: удаление платежа. RLS UPDATE/DELETE = private.can('edit_payments').
 // requireCap — первая линия защиты: иначе пользователь без права, форсящий POST
-// вручную, прошёл бы мимо silent-RLS-deny (rows=0, error=null) и записал бы
-// фейковый `payment_deleted` в activity_log на видимое ему дело.
+// вручную, прошёл бы мимо silent-RLS-deny (rows=0) и записал бы фейковый
+// `payment_deleted` в activity_log на видимое ему дело.
 export async function deletePaymentAction(formData: FormData): Promise<void> {
-  await requireCap('edit_payments');
+  const user = await requireCap('edit_payments');
   const payment_id = String(formData.get('payment_id') ?? '').trim();
   const case_id = String(formData.get('case_id') ?? '').trim();
 
   if (!payment_id || !UUID_RE.test(payment_id)) return;
 
-  const supabase = await createSupabaseServerClient();
-
   // Снапшот для лога — после delete amount уже не достать.
-  const { data: payBefore } = await supabase
-    .from('payments')
-    .select('amount, case_id')
-    .eq('id', payment_id)
-    .maybeSingle();
+  const payBefore = await userDb(user.profile.id, (tx) =>
+    tx.payments.findUnique({
+      where: { id: payment_id },
+      select: { amount: true, case_id: true },
+    }),
+  );
 
-  const { error } = await supabase
-    .from('payments')
-    .delete()
-    .eq('id', payment_id);
-
-  if (error) {
-    console.error('deletePaymentAction failed:', error.message);
+  try {
+    // deleteMany — тихий no-op под RLS (0 строк), не исключение невидимой строки.
+    await userDb(user.profile.id, (tx) =>
+      tx.payments.deleteMany({ where: { id: payment_id } }),
+    );
+  } catch (err) {
+    console.error('deletePaymentAction failed:', err);
     return;
   }
 
@@ -185,7 +187,7 @@ export async function deletePaymentAction(formData: FormData): Promise<void> {
       action: 'payment_deleted',
       changes: {
         payment_id,
-        amount: Number(payBefore.amount),
+        amount: dec(payBefore.amount),
       },
     });
     revalidatePath(`/cases/${trueCid}`);
@@ -244,28 +246,28 @@ export async function createPlanItemAction(
   const amount = parseAmount(amount_raw)!;
   const note = note_raw === '' ? null : note_raw;
 
-  const supabase = await createSupabaseServerClient();
-
   // RLS WITH CHECK: plan_insert_via_case = can_write_case(case_id) AND
   // created_by = active_uid(). case_id возвращаем для лога (DB-truth).
-  const { data: inserted, error } = await supabase
-    .from('payment_plan_items')
-    .insert({
-      case_id,
-      due_date,
-      amount,
-      note,
-      created_by: user.profile.id,
-    })
-    .select('id, case_id')
-    .single();
-
-  if (error || !inserted) {
+  let inserted;
+  try {
+    inserted = await userDb(user.profile.id, (tx) =>
+      tx.payment_plan_items.create({
+        data: {
+          case_id,
+          due_date: toDbDate(due_date),
+          amount,
+          note,
+          created_by: user.profile.id,
+        },
+        select: { id: true, case_id: true },
+      }),
+    );
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage(
+      message: dbActionError(
         'createPlanItemAction',
-        error,
+        err,
         t.payments.plan.saveFailed,
         t.errors.db,
       ),
@@ -285,29 +287,27 @@ export async function createPlanItemAction(
 
 // Bare action: удаление позиции графика. RLS DELETE = can_write_case(case_id).
 export async function deletePlanItemAction(formData: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const item_id = String(formData.get('item_id') ?? '').trim();
   const case_id = String(formData.get('case_id') ?? '').trim();
 
   if (!item_id || !UUID_RE.test(item_id)) return;
 
-  const supabase = await createSupabaseServerClient();
-
   // Снапшот для лога — после delete не достать. case_id берём из БД (CSO #2),
   // не из user-controlled formData.
-  const { data: before } = await supabase
-    .from('payment_plan_items')
-    .select('case_id, due_date, amount')
-    .eq('id', item_id)
-    .maybeSingle<{ case_id: string; due_date: string; amount: number }>();
+  const before = await userDb(user.profile.id, (tx) =>
+    tx.payment_plan_items.findUnique({
+      where: { id: item_id },
+      select: { case_id: true, due_date: true, amount: true },
+    }),
+  );
 
-  const { error } = await supabase
-    .from('payment_plan_items')
-    .delete()
-    .eq('id', item_id);
-
-  if (error) {
-    console.error('deletePlanItemAction failed:', error.message);
+  try {
+    await userDb(user.profile.id, (tx) =>
+      tx.payment_plan_items.deleteMany({ where: { id: item_id } }),
+    );
+  } catch (err) {
+    console.error('deletePlanItemAction failed:', err);
     return;
   }
 
@@ -320,8 +320,8 @@ export async function deletePlanItemAction(formData: FormData): Promise<void> {
       changes: {
         item_id,
         op: 'deleted',
-        due_date: before.due_date,
-        amount: Number(before.amount),
+        due_date: dateOnly(before.due_date),
+        amount: dec(before.amount),
       },
     });
     revalidatePath(`/cases/${trueCid}`);

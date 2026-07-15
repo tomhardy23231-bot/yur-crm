@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { requireUser } from '@/lib/auth/require-role';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { userDb } from '@/lib/db';
+import { rpcConflictCheck } from '@/lib/db/rpc';
 
 // POST /api/conflict-check  { name?, inn?, phone? } → { matches: {kind,label}[] }
 // Конфликт-чек/дедуп при заведении клиента или указании оппонента (v3 Сессия 7).
@@ -9,7 +10,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 // базе, возвращает только метаданные kind/label). Ничего не нашли по чему искать →
 // пустой ответ без похода в БД. Дедупим по label (ветки 1/3 RPC могут совпасть).
 export async function POST(req: Request) {
-  await requireUser();
+  const user = await requireUser();
 
   let body: { name?: unknown; inn?: unknown; phone?: unknown };
   try {
@@ -28,19 +29,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ matches: [] });
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('conflict_check', {
-    p_name: name || null,
-    p_inn: inn || null,
-    p_phone: phone || null,
-  });
-  if (error) {
+  let rows: Array<{ kind: string; label: string }>;
+  try {
+    rows = await userDb(user.profile.id, (tx) =>
+      rpcConflictCheck(tx, {
+        name: name || null,
+        inn: inn || null,
+        phone: phone || null,
+      }),
+    );
+  } catch {
     return NextResponse.json({ matches: [] });
   }
 
   const seen = new Set<string>();
   const matches: Array<{ kind: string; label: string }> = [];
-  for (const m of (data ?? []) as Array<{ kind: string; label: string }>) {
+  for (const m of rows) {
     if (!m.label || seen.has(m.label)) continue;
     seen.add(m.label);
     matches.push({ kind: m.kind, label: m.label });

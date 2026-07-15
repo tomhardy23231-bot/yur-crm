@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache';
 
 import { requireRole, requireCap } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
+import { userDb } from '@/lib/db';
+import { dbActionError } from '@/lib/db/errors';
+import { toDbDate } from '@/lib/db/convert';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CASE_CATEGORIES, type CaseCategory } from '@/lib/types/db';
 import {
   getPayrollEmployeeCases,
@@ -29,9 +31,8 @@ export async function updatePayrollRatesAction(
   _prev: PayrollRatesActionState,
   formData: FormData,
 ): Promise<PayrollRatesActionState> {
-  await requireCap('edit_payroll_rates');
+  const user = await requireCap('edit_payroll_rates');
   const { t, fmt } = await getT();
-  const supabase = await createSupabaseServerClient();
 
   // Парсит и валидирует процент из поля формы (0..100, запятая/точка).
   function parsePercent(field: string): number | { error: string } {
@@ -46,6 +47,9 @@ export async function updatePayrollRatesAction(
     return n;
   }
 
+  // Сначала валидируем все категории (ранний выход с сообщением), потом пишем
+  // всё одной userDb-транзакцией (мульти-шаговая запись = одна обёртка на action).
+  const updates: Array<{ category: CaseCategory; lawyer: number; expert: number }> = [];
   for (const category of CASE_CATEGORIES) {
     if (!isCaseCategory(category)) continue;
 
@@ -69,29 +73,33 @@ export async function updatePayrollRatesAction(
         }),
       };
     }
+    updates.push({ category, lawyer, expert });
+  }
 
-    const { error } = await supabase
-      .from('payroll_rates')
-      .update({
-        lawyer_percent: lawyer,
-        expert_percent: expert,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('category', category);
-    if (error) {
-      return { ok: false, message: error.message };
-    }
+  try {
+    await userDb(user.profile.id, async (tx) => {
+      for (const u of updates) {
+        await tx.payroll_rates.updateMany({
+          where: { category: u.category },
+          data: {
+            lawyer_percent: u.lawyer,
+            expert_percent: u.expert,
+            updated_at: new Date(),
+          },
+        });
+      }
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError('updatePayrollRatesAction', err, undefined, t.errors.db),
+    };
   }
 
   revalidatePath('/settings/payroll');
   revalidatePath('/reports/payroll');
   return { ok: true, message: t.payroll.settings.ratesSaved };
 }
-
-// ============================================================================
-// Леджер: отметка «выплачено» / откат. Только owner/admin (RLS дублирует).
-// bare actions (форма-кнопка), без useActionState.
-// ============================================================================
 
 // ============================================================================
 // Ручные движения зарплаты (правка №1): выплата (с распределением по делам) и
@@ -203,10 +211,7 @@ export async function createPayoutAction(
   const payoutTotal = row?.payout ?? 0;
   const bonusPaid = Math.max(0, payoutTotal - caseAllocatedTotal);
   const bonusOutstanding = Math.max(0, Math.round((bonusTotal - bonusPaid) * 100) / 100);
-  const bonusAmount = Math.min(
-    bonusRequested,
-    bonusOutstanding,
-  );
+  const bonusAmount = Math.min(bonusRequested, bonusOutstanding);
 
   const caseSum = allocations.reduce((s, a) => s + a.amount, 0);
   const total = Math.round((caseSum + bonusAmount) * 100) / 100;
@@ -217,41 +222,44 @@ export async function createPayoutAction(
     };
   }
 
-  const supabase = await createSupabaseServerClient();
-
   // Прямые вставки (без RPC), чтобы сумма выплаты могла включать долю премии
-  // сверх распределённого по делам. Атомарность подстрахуем откатом транзакции
-  // при сбое вставки аллокаций.
-  const { data: tx, error: txErr } = await supabase
-    .from('payroll_transactions')
-    .insert({
-      user_id: userId,
-      kind: 'payout',
-      amount: total,
-      comment,
-      occurred_on: occurredOn,
-      created_by: actor.profile.id,
-    })
-    .select('id')
-    .single<{ id: string }>();
-  if (txErr || !tx) {
-    return { ok: false, message: txErr?.message ?? t.payroll.mutations.payoutCreateFailed };
-  }
-
-  if (allocations.length > 0) {
-    const { error: allocErr } = await supabase.from('payout_allocations').insert(
-      allocations.map((a) => ({
-        transaction_id: tx.id,
-        case_id: a.case_id,
-        role_in_case: a.role_in_case,
-        amount: a.amount,
-      })),
-    );
-    if (allocErr) {
-      // Откат: удаляем выплату, чтобы не осталась без распределения.
-      await supabase.from('payroll_transactions').delete().eq('id', tx.id);
-      return { ok: false, message: allocErr.message };
-    }
+  // сверх распределённого по делам (RPC create_payout ставит amount = Σ аллокаций).
+  // Обе вставки — в ОДНОЙ userDb-транзакции: сбой аллокаций откатывает и выплату,
+  // а DEFERRABLE-триггер check_payout_allocations (Σ ≤ amount) проверяется на коммите.
+  try {
+    await userDb(actor.profile.id, async (tx) => {
+      const created = await tx.payroll_transactions.create({
+        data: {
+          user_id: userId,
+          kind: 'payout',
+          amount: total,
+          comment,
+          occurred_on: toDbDate(occurredOn),
+          created_by: actor.profile.id,
+        },
+        select: { id: true },
+      });
+      if (allocations.length > 0) {
+        await tx.payout_allocations.createMany({
+          data: allocations.map((a) => ({
+            transaction_id: created.id,
+            case_id: a.case_id,
+            role_in_case: a.role_in_case,
+            amount: a.amount,
+          })),
+        });
+      }
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError(
+        'createPayoutAction',
+        err,
+        t.payroll.mutations.payoutCreateFailed,
+        t.errors.db,
+      ),
+    };
   }
 
   // Логируем выплату по каждому затронутому делу. v3 s2: честное действие
@@ -305,17 +313,24 @@ export async function createBonusAction(
       ? commentRaw.slice(0, 500)
       : null;
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('payroll_transactions').insert({
-    user_id: userId,
-    kind: 'bonus',
-    amount,
-    comment,
-    ...(occurred ? { occurred_on: occurred } : {}),
-    created_by: actor.profile.id,
-  });
-  if (error) {
-    return { ok: false, message: error.message };
+  try {
+    await userDb(actor.profile.id, (tx) =>
+      tx.payroll_transactions.create({
+        data: {
+          user_id: userId,
+          kind: 'bonus',
+          amount,
+          comment,
+          ...(occurred ? { occurred_on: toDbDate(occurred) } : {}),
+          created_by: actor.profile.id,
+        },
+      }),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError('createBonusAction', err, undefined, t.errors.db),
+    };
   }
 
   revalidatePayroll(userId);
@@ -326,22 +341,25 @@ export async function createBonusAction(
 export async function deletePayrollTransactionAction(
   formData: FormData,
 ): Promise<void> {
-  await requireRole(['owner', 'admin']);
+  const actor = await requireRole(['owner', 'admin']);
   const id = formData.get('transaction_id');
   if (typeof id !== 'string' || !UUID_RE.test(id)) return;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: row } = await supabase
-    .from('payroll_transactions')
-    .select('user_id')
-    .eq('id', id)
-    .maybeSingle<{ user_id: string }>();
+  const row = await userDb(actor.profile.id, (tx) =>
+    tx.payroll_transactions.findUnique({
+      where: { id },
+      select: { user_id: true },
+    }),
+  );
 
-  const { error } = await supabase
-    .from('payroll_transactions')
-    .delete()
-    .eq('id', id);
-  if (error) return;
+  try {
+    await userDb(actor.profile.id, (tx) =>
+      tx.payroll_transactions.deleteMany({ where: { id } }),
+    );
+  } catch (err) {
+    console.error('deletePayrollTransactionAction failed:', err);
+    return;
+  }
 
   revalidatePayroll(row?.user_id);
 }

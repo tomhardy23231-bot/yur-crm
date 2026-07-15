@@ -1,8 +1,8 @@
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { adminDb } from '@/lib/db/admin';
+import { ts } from '@/lib/db/convert';
 import { buildIcs, type IcsEvent } from '@/lib/calendar/ics';
 import { taskKindLabel } from '@/lib/notifications/digest';
 import { coerceLocale } from '@/lib/i18n/config';
-import type { TaskKind } from '@/lib/types/db';
 import { UUID_RE } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
@@ -23,48 +23,44 @@ export async function GET(
     return new Response('Not found', { status: 404 });
   }
 
-  const admin = createSupabaseAdminClient();
-  const { data: channel } = await admin
-    .from('user_notify_channels')
-    .select('user_id')
-    .eq('calendar_token', token)
-    .maybeSingle();
+  const admin = adminDb();
+  const channel = await admin.user_notify_channels.findFirst({
+    where: { calendar_token: token },
+    select: { user_id: true },
+  });
   if (!channel) {
     return new Response('Not found', { status: 404 });
   }
 
-  const { data: userRow } = await admin
-    .from('users')
-    .select('language')
-    .eq('id', channel.user_id)
-    .maybeSingle();
+  const userRow = await admin.public_users.findUnique({
+    where: { id: channel.user_id },
+    select: { language: true },
+  });
   const lang = coerceLocale(userRow?.language);
 
-  const from = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const to = new Date(Date.now() + 60 * 86_400_000).toISOString();
-  const { data: rows } = await admin
-    .from('tasks')
-    .select('id, title, kind, due_at, case:case_id(number_title)')
-    .eq('assignee_id', channel.user_id)
-    .eq('status', 'open')
-    .not('due_at', 'is', null)
-    .gte('due_at', from)
-    .lte('due_at', to);
+  const from = new Date(Date.now() - 7 * 86_400_000);
+  const to = new Date(Date.now() + 60 * 86_400_000);
+  const rows = await admin.tasks.findMany({
+    where: {
+      assignee_id: channel.user_id,
+      status: 'open',
+      due_at: { not: null, gte: from, lte: to },
+    },
+    select: {
+      id: true,
+      title: true,
+      kind: true,
+      due_at: true,
+      cases: { select: { number_title: true } },
+    },
+  });
 
-  type Row = {
-    id: string;
-    title: string;
-    kind: TaskKind;
-    due_at: string;
-    case: { number_title: string } | { number_title: string }[] | null;
-  };
-  const events: IcsEvent[] = ((rows ?? []) as Row[]).map((r) => {
-    const caseRef = Array.isArray(r.case) ? r.case[0] : r.case;
+  const events: IcsEvent[] = rows.map((r) => {
     const kind = taskKindLabel(r.kind, lang);
-    const summary = caseRef?.number_title
-      ? `${kind}: ${caseRef.number_title} — ${r.title}`
+    const summary = r.cases?.number_title
+      ? `${kind}: ${r.cases.number_title} — ${r.title}`
       : `${kind}: ${r.title}`;
-    return { uid: r.id, start: r.due_at, summary };
+    return { uid: r.id, start: ts(r.due_at), summary };
   });
 
   return new Response(buildIcs(events), {

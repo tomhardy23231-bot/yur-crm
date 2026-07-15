@@ -19,7 +19,7 @@ import {
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { cn } from '@/lib/utils';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { userDb } from '@/lib/db';
 import {
   getPayrollEmployeeCases,
   getPayrollEmployeeSummary,
@@ -41,7 +41,7 @@ import {
 import { listAbsencesByUser } from '@/lib/absences/queries';
 import { canManageAbsencesOf } from '@/lib/absences/access';
 import { AbsencesBlock } from '@/components/absences/absences-block';
-import { MANAGER_ROLES, type Role } from '@/lib/types/db';
+import { MANAGER_ROLES } from '@/lib/types/db';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
   style: 'decimal',
@@ -76,15 +76,15 @@ export default async function PayrollEmployeePage({
 
   const canManage = MANAGER_ROLES.includes(user.profile.role);
 
-  const supabase = await createSupabaseServerClient();
   // За месяц — для цифр секций; за всё время — для накопленного долга и модалки выплаты.
-  const [{ data: userRow }, summary, monthCases, allCases, monthTx, allTx, absences] =
+  const [userRow, summary, monthCases, allCases, monthTx, allTx, absences] =
     await Promise.all([
-      supabase
-        .from('users')
-        .select('full_name, department_id, role')
-        .eq('id', userId)
-        .maybeSingle<{ full_name: string; department_id: string | null; role: Role }>(),
+      userDb(user.profile.id, (tx) =>
+        tx.public_users.findUnique({
+          where: { id: userId },
+          select: { full_name: true, department_id: true },
+        }),
+      ),
       getPayrollEmployeeSummary(month),
       getPayrollEmployeeCases(userId, month),
       getPayrollEmployeeCases(userId),

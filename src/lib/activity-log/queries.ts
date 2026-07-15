@@ -1,6 +1,8 @@
 import 'server-only';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { ts } from '@/lib/db/convert';
 
 export type ActivityChanges = Record<string, unknown>;
 
@@ -22,48 +24,35 @@ export async function listCaseActivity(
   caseId: string,
   limit: number = 20,
 ): Promise<ActivityLogEntry[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('activity_log')
-    .select(
-      'id, entity_type, entity_id, action, changes, created_at, ' +
-        'user:user_id(id, full_name)',
-    )
-    .eq('entity_type', 'case')
-    .eq('entity_id', caseId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  const user = await getCurrentUser();
+  if (!user) return [];
 
-  if (error) {
-    throw new Error(`listCaseActivity failed: ${error.message}`);
-  }
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.activity_log.findMany({
+      where: { entity_type: 'case', entity_id: caseId },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        entity_type: true,
+        entity_id: true,
+        action: true,
+        changes: true,
+        created_at: true,
+        users: { select: { id: true, full_name: true } },
+      },
+    }),
+  );
 
-  type Row = {
-    id: number;
-    entity_type: string;
-    entity_id: string;
-    action: string;
-    changes: ActivityChanges | null;
-    created_at: string;
-    user:
-      | ReadonlyArray<{ id: string; full_name: string }>
-      | { id: string; full_name: string }
-      | null;
-  };
-
-  return (data ?? []).map((row) => {
-    const r = row as unknown as Row;
-    const user = Array.isArray(r.user) ? (r.user[0] ?? null) : r.user;
-    return {
-      id: r.id,
-      entity_type: r.entity_type,
-      entity_id: r.entity_id,
-      action: r.action,
-      changes: r.changes,
-      created_at: r.created_at,
-      user,
-    };
-  });
+  return rows.map((r) => ({
+    id: Number(r.id),
+    entity_type: r.entity_type,
+    entity_id: r.entity_id,
+    action: r.action,
+    changes: (r.changes as ActivityChanges | null) ?? null,
+    created_at: ts(r.created_at),
+    user: r.users ? { id: r.users.id, full_name: r.users.full_name } : null,
+  }));
 }
 
 // Резолв UUID пользователей/клиентов в имена для журнала (Задача 3): чтобы в
@@ -77,27 +66,31 @@ export async function resolveActivityNames(
   const map = new Map<string, string>();
   if (userIds.length === 0 && clientIds.length === 0) return map;
 
-  const supabase = await createSupabaseServerClient();
+  const currentUser = await getCurrentUser();
+  if (!currentUser) return map;
+  const uid = currentUser.profile.id;
 
-  if (userIds.length > 0) {
-    const { data } = await supabase
-      .from('users')
-      .select('id, full_name')
-      .in('id', userIds as string[]);
-    for (const u of (data ?? []) as Array<{ id: string; full_name: string }>) {
-      map.set(u.id, u.full_name);
-    }
-  }
+  const [users, clients] = await Promise.all([
+    userIds.length > 0
+      ? userDb(uid, (tx) =>
+          tx.public_users.findMany({
+            where: { id: { in: userIds as string[] } },
+            select: { id: true, full_name: true },
+          }),
+        )
+      : Promise.resolve([]),
+    clientIds.length > 0
+      ? userDb(uid, (tx) =>
+          tx.clients.findMany({
+            where: { id: { in: clientIds as string[] } },
+            select: { id: true, name: true },
+          }),
+        )
+      : Promise.resolve([]),
+  ]);
 
-  if (clientIds.length > 0) {
-    const { data } = await supabase
-      .from('clients')
-      .select('id, name')
-      .in('id', clientIds as string[]);
-    for (const c of (data ?? []) as Array<{ id: string; name: string }>) {
-      map.set(c.id, c.name);
-    }
-  }
+  for (const u of users) map.set(u.id, u.full_name);
+  for (const c of clients) map.set(c.id, c.name);
 
   return map;
 }

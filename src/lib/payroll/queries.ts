@@ -1,6 +1,14 @@
 import 'server-only';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { dateOnly, dec, toDbDate, ts } from '@/lib/db/convert';
+import {
+  rpcCasePayroll,
+  rpcManageUserSalaries,
+  rpcPayrollEmployeeCases,
+  rpcPayrollEmployeeSummary,
+} from '@/lib/db/rpc';
 import { nextMonth } from '@/lib/payroll/month';
 import type {
   CaseCategory,
@@ -19,56 +27,46 @@ import type {
 // Начисление по конкретному делу (public.case_payroll). SECURITY INVOKER →
 // вернёт строку только если пользователь видит дело (RLS на cases).
 export async function getCasePayroll(caseId: string): Promise<CasePayroll | null> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('case_payroll', {
-    p_case_id: caseId,
-  });
-  if (error) {
-    throw new Error(`getCasePayroll failed: ${error.message}`);
-  }
-  type Row = {
-    category: CaseCategory;
-    lawyer_percent: number | string;
-    lawyer_amount: number | string;
-    expert_percent: number | string;
-    expert_amount: number | string;
-    total: number | string;
-  };
-  const rows = (data ?? []) as Row[];
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const rows = await userDb(user.profile.id, (tx) =>
+    rpcCasePayroll(tx, { caseId }),
+  );
   const r = rows[0];
   if (!r) return null;
   return {
-    category: r.category,
-    lawyer_percent: Number(r.lawyer_percent),
-    lawyer_amount: Number(r.lawyer_amount),
-    expert_percent: Number(r.expert_percent),
-    expert_amount: Number(r.expert_amount),
-    total: Number(r.total),
+    category: r.category as CaseCategory,
+    lawyer_percent: r.lawyer_percent,
+    lawyer_amount: r.lawyer_amount,
+    expert_percent: r.expert_percent,
+    expert_amount: r.expert_amount,
+    total: r.total,
   };
 }
 
 // Ставки % по категории. Читают staff и активные пользователи (для отображения
 // начислений). Редактирует только owner (см. updatePayrollRateAction).
 export async function getPayrollRates(): Promise<PayrollRate[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('payroll_rates')
-    .select('category, lawyer_percent, expert_percent, updated_at')
-    .order('category', { ascending: true });
-  if (error) {
-    throw new Error(`getPayrollRates failed: ${error.message}`);
-  }
-  type Row = {
-    category: CaseCategory;
-    lawyer_percent: number | string;
-    expert_percent: number | string;
-    updated_at: string;
-  };
-  return ((data ?? []) as Row[]).map((r) => ({
-    category: r.category,
-    lawyer_percent: Number(r.lawyer_percent),
-    expert_percent: Number(r.expert_percent),
-    updated_at: r.updated_at,
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.payroll_rates.findMany({
+      orderBy: { category: 'asc' },
+      select: {
+        category: true,
+        lawyer_percent: true,
+        expert_percent: true,
+        updated_at: true,
+      },
+    }),
+  );
+  return rows.map((r) => ({
+    category: r.category as CaseCategory,
+    lawyer_percent: dec(r.lawyer_percent),
+    expert_percent: dec(r.expert_percent),
+    updated_at: ts(r.updated_at),
   }));
 }
 
@@ -77,22 +75,14 @@ export async function getPayrollRates(): Promise<PayrollRate[]> {
 // с флагом can_edit (право менять). Колонки salary_* защищены column-level
 // привилегиями — читаются ТОЛЬКО через этот RPC, не прямым select по users.
 export async function listManagedUserSalaries(): Promise<ManagedUserSalary[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('manage_user_salaries');
-  if (error) {
-    throw new Error(`listManagedUserSalaries failed: ${error.message}`);
-  }
-  type Row = {
-    user_id: string;
-    salary_mode: SalaryMode;
-    salary_fixed_amount: number | string | null;
-    can_edit: boolean;
-  };
-  return ((data ?? []) as Row[]).map((r) => ({
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const rows = await userDb(user.profile.id, (tx) => rpcManageUserSalaries(tx));
+  return rows.map((r) => ({
     user_id: r.user_id,
-    salary_mode: r.salary_mode,
-    salary_fixed_amount:
-      r.salary_fixed_amount === null ? null : Number(r.salary_fixed_amount),
+    salary_mode: r.salary_mode as SalaryMode,
+    salary_fixed_amount: r.salary_fixed_amount,
     can_edit: r.can_edit,
   }));
 }
@@ -112,43 +102,32 @@ export async function getPayrollEmployeeSummary(
   month?: string | null,
   departmentId?: string | null,
 ): Promise<PayrollEmployeeSummary[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('payroll_employee_summary', {
-    p_month: month ?? null,
-  });
-  if (error) {
-    throw new Error(`getPayrollEmployeeSummary failed: ${error.message}`);
-  }
-  type Row = {
-    user_id: string;
-    full_name: string;
-    earned: number | string;
-    fixed: number | string;
-    bonus: number | string;
-    payout: number | string;
-    balance: number | string;
-    salary_mode: SalaryMode;
-  };
-  let rows = ((data ?? []) as Row[]).map((r) => ({
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const uid = user.profile.id;
+
+  const rpcRows = await userDb(uid, (tx) =>
+    rpcPayrollEmployeeSummary(tx, { month: month ?? null }),
+  );
+  let rows: PayrollEmployeeSummary[] = rpcRows.map((r) => ({
     user_id: r.user_id,
     full_name: r.full_name,
-    earned: Number(r.earned),
-    fixed: Number(r.fixed),
-    bonus: Number(r.bonus),
-    payout: Number(r.payout),
-    balance: Number(r.balance),
-    salary_mode: r.salary_mode,
+    earned: r.earned,
+    fixed: r.fixed,
+    bonus: r.bonus,
+    payout: r.payout,
+    balance: r.balance,
+    salary_mode: r.salary_mode as SalaryMode,
   }));
 
   if (departmentId) {
-    const { data: members, error: memErr } = await supabase
-      .from('users')
-      .select('id')
-      .eq('department_id', departmentId);
-    if (memErr) {
-      throw new Error(`getPayrollEmployeeSummary (dept) failed: ${memErr.message}`);
-    }
-    const allow = new Set((members ?? []).map((m) => (m as { id: string }).id));
+    const members = await userDb(uid, (tx) =>
+      tx.public_users.findMany({
+        where: { department_id: departmentId },
+        select: { id: true },
+      }),
+    );
+    const allow = new Set(members.map((m) => m.id));
     rows = rows.filter((r) => allow.has(r.user_id));
   }
 
@@ -161,35 +140,22 @@ export async function getPayrollEmployeeCases(
   userId: string,
   month?: string | null,
 ): Promise<PayrollEmployeeCase[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('payroll_employee_cases', {
-    p_user_id: userId,
-    p_month: month ?? null,
-  });
-  if (error) {
-    throw new Error(`getPayrollEmployeeCases failed: ${error.message}`);
-  }
-  type Row = {
-    case_id: string;
-    number_title: string;
-    stage: CaseStage;
-    role_in_case: RoleInCase;
-    paid_total: number | string;
-    percent: number | string;
-    earned: number | string;
-    paid: number | string;
-    outstanding: number | string;
-  };
-  return ((data ?? []) as Row[]).map((r) => ({
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const rows = await userDb(user.profile.id, (tx) =>
+    rpcPayrollEmployeeCases(tx, { userId, month: month ?? null }),
+  );
+  return rows.map((r) => ({
     case_id: r.case_id,
     number_title: r.number_title,
-    stage: r.stage,
-    role_in_case: r.role_in_case,
-    paid_total: Number(r.paid_total),
-    percent: Number(r.percent),
-    earned: Number(r.earned),
-    paid: Number(r.paid),
-    outstanding: Number(r.outstanding),
+    stage: r.stage as CaseStage,
+    role_in_case: r.role_in_case as RoleInCase,
+    paid_total: r.paid_total,
+    percent: r.percent,
+    earned: r.earned,
+    paid: r.paid,
+    outstanding: r.outstanding,
   }));
 }
 
@@ -200,20 +166,20 @@ export async function getPayrollEmployeeCases(
 export async function getCasePaidByRole(
   caseId: string,
 ): Promise<{ lawyer: number; expert: number }> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('payout_allocations')
-    .select('role_in_case, amount')
-    .eq('case_id', caseId);
-  if (error) {
-    throw new Error(`getCasePaidByRole failed: ${error.message}`);
-  }
+  const user = await getCurrentUser();
+  if (!user) return { lawyer: 0, expert: 0 };
+
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.payout_allocations.findMany({
+      where: { case_id: caseId },
+      select: { role_in_case: true, amount: true },
+    }),
+  );
   const acc = { lawyer: 0, expert: 0 };
-  for (const r of (data ?? []) as Array<{
-    role_in_case: RoleInCase;
-    amount: number | string;
-  }>) {
-    acc[r.role_in_case] += Number(r.amount);
+  for (const r of rows) {
+    if (r.role_in_case === 'lawyer' || r.role_in_case === 'expert') {
+      acc[r.role_in_case] += dec(r.amount);
+    }
   }
   return acc;
 }
@@ -224,62 +190,54 @@ export async function getPayrollTransactions(
   userId: string,
   month?: string | null,
 ): Promise<PayrollTransaction[]> {
-  const supabase = await createSupabaseServerClient();
-  let query = supabase
-    .from('payroll_transactions')
-    .select(
-      'id, user_id, kind, amount, comment, occurred_on, created_at, ' +
-        'allocations:payout_allocations(case_id, role_in_case, amount, case:case_id(number_title))',
-    )
-    .eq('user_id', userId);
+  const user = await getCurrentUser();
+  if (!user) return [];
+
   // Помесячный режим: только движения с occurred_on внутри месяца.
-  if (month) {
-    const next = nextMonth(month);
-    query = query.gte('occurred_on', month).lt('occurred_on', next);
-  }
-  const { data, error } = await query
-    .order('occurred_on', { ascending: false })
-    .order('created_at', { ascending: false });
-  if (error) {
-    throw new Error(`getPayrollTransactions failed: ${error.message}`);
-  }
+  const occurredFilter = month
+    ? { gte: toDbDate(month), lt: toDbDate(nextMonth(month)) }
+    : undefined;
 
-  type AllocRow = {
-    case_id: string;
-    role_in_case: RoleInCase;
-    amount: number | string;
-    case:
-      | { number_title: string }
-      | ReadonlyArray<{ number_title: string }>
-      | null;
-  };
-  type Row = {
-    id: string;
-    user_id: string;
-    kind: PayrollTxKind;
-    amount: number | string;
-    comment: string | null;
-    occurred_on: string;
-    created_at: string;
-    allocations: AllocRow[] | null;
-  };
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.payroll_transactions.findMany({
+      where: {
+        user_id: userId,
+        ...(occurredFilter ? { occurred_on: occurredFilter } : {}),
+      },
+      orderBy: [{ occurred_on: 'desc' }, { created_at: 'desc' }],
+      select: {
+        id: true,
+        user_id: true,
+        kind: true,
+        amount: true,
+        comment: true,
+        occurred_on: true,
+        created_at: true,
+        payout_allocations: {
+          select: {
+            case_id: true,
+            role_in_case: true,
+            amount: true,
+            cases: { select: { number_title: true } },
+          },
+        },
+      },
+    }),
+  );
 
-  return ((data ?? []) as unknown as Row[]).map((r) => ({
+  return rows.map((r) => ({
     id: r.id,
     user_id: r.user_id,
-    kind: r.kind,
-    amount: Number(r.amount),
+    kind: r.kind as PayrollTxKind,
+    amount: dec(r.amount),
     comment: r.comment,
-    occurred_on: r.occurred_on,
-    created_at: r.created_at,
-    allocations: (r.allocations ?? []).map((a) => {
-      const caseRef = Array.isArray(a.case) ? (a.case[0] ?? null) : a.case;
-      return {
-        case_id: a.case_id,
-        number_title: caseRef?.number_title ?? '—',
-        role_in_case: a.role_in_case,
-        amount: Number(a.amount),
-      };
-    }),
+    occurred_on: dateOnly(r.occurred_on),
+    created_at: ts(r.created_at),
+    allocations: r.payout_allocations.map((a) => ({
+      case_id: a.case_id,
+      number_title: a.cases?.number_title ?? '—',
+      role_in_case: a.role_in_case as RoleInCase,
+      amount: dec(a.amount),
+    })),
   }));
 }

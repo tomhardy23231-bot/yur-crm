@@ -266,7 +266,7 @@ export type PayrollEmployeeSummaryRow = {
 /** ИСТОЧНИК ПРАВДЫ отчёта ЗП /reports/payroll (учитывает salary_mode). */
 export async function rpcPayrollEmployeeSummary(
   db: DbLike,
-  args: { month: string }, // YYYY-MM-01
+  args: { month: string | null }, // YYYY-MM-01; null → за всё время
 ): Promise<PayrollEmployeeSummaryRow[]> {
   const rows = await db.$queryRaw<Row[]>`
     select * from public.payroll_employee_summary(${args.month}::date)`;
@@ -297,7 +297,7 @@ export type PayrollEmployeeCaseRow = {
 /** Разбивка ЗП сотрудника по делам (карточка /reports/payroll/[userId]). */
 export async function rpcPayrollEmployeeCases(
   db: DbLike,
-  args: { userId: string; month: string },
+  args: { userId: string; month: string | null }, // null → за всё время
 ): Promise<PayrollEmployeeCaseRow[]> {
   const rows = await db.$queryRaw<Row[]>`
     select * from public.payroll_employee_cases(

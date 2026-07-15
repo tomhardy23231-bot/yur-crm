@@ -3,9 +3,10 @@
 import { revalidatePath } from 'next/cache';
 
 import { requireUser } from '@/lib/auth/require-role';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dbActionError, pgErrorCode, prismaErrorToDbError } from '@/lib/db/errors';
+import { toDbDate } from '@/lib/db/convert';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ABSENCE_KINDS, type AbsenceKind } from '@/lib/types/db';
 import { canManageAbsencesOf } from './access';
 import { UUID_RE, isValidDate } from '@/lib/validation';
@@ -59,15 +60,14 @@ export async function createAbsenceAction(
     return { ok: false, fieldErrors, message: t.absences.actions.checkForm };
   }
 
-  const supabase = await createSupabaseServerClient();
-
   // Право (зеркало RLS absence_can_write): сам / owner / admin своего подразделения.
   // Дружелюбный ранний отказ; финальный страж — сама RLS на INSERT.
-  const { data: target } = await supabase
-    .from('users')
-    .select('id, department_id')
-    .eq('id', user_id)
-    .maybeSingle<{ id: string; department_id: string | null }>();
+  const target = await userDb(user.profile.id, (tx) =>
+    tx.public_users.findUnique({
+      where: { id: user_id },
+      select: { id: true, department_id: true },
+    }),
+  );
   if (!target) {
     return { ok: false, message: t.absences.actions.userInvalid };
   }
@@ -84,23 +84,28 @@ export async function createAbsenceAction(
     return { ok: false, message: t.absences.actions.noWritePermission };
   }
 
-  const { error } = await supabase.from('absences').insert({
-    user_id,
-    kind: kind as AbsenceKind,
-    starts_on,
-    ends_on,
-    note: note || null,
-    created_by: user.profile.id,
-  });
-
-  if (error) {
+  try {
+    await userDb(user.profile.id, (tx) =>
+      tx.absences.create({
+        data: {
+          user_id,
+          kind: kind as AbsenceKind,
+          starts_on: toDbDate(starts_on),
+          ends_on: toDbDate(ends_on),
+          note: note || null,
+          created_by: user.profile.id,
+        },
+      }),
+    );
+  } catch (err) {
     // v3 s2: пересечение периодов отсутствия — триггер absences_no_overlap (errcode 23P01).
-    if (error.code === '23P01' || (error.message ?? '').toLowerCase().includes('overlap')) {
+    const message = prismaErrorToDbError(err)?.message ?? '';
+    if (pgErrorCode(err) === '23P01' || message.toLowerCase().includes('overlap')) {
       return { ok: false, message: t.absences.overlapError };
     }
     return {
       ok: false,
-      message: dbErrorMessage('createAbsenceAction', error, t.absences.actions.createFailed, t.errors.db),
+      message: dbActionError('createAbsenceAction', err, t.absences.actions.createFailed, t.errors.db),
     };
   }
 
@@ -117,15 +122,18 @@ export async function createAbsenceAction(
 // логируем на сервер и тихо выходим, без отдельного канала фидбэка.
 // ============================================================================
 export async function deleteAbsenceAction(formData: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const id = String(formData.get('id') ?? '').trim();
   const user_id = String(formData.get('user_id') ?? '').trim();
   if (!id || !UUID_RE.test(id)) return;
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('absences').delete().eq('id', id);
-  if (error) {
-    console.error('deleteAbsenceAction failed:', error.message);
+  try {
+    // deleteMany — тихий no-op под RLS (0 строк), не исключение невидимой строки.
+    await userDb(user.profile.id, (tx) =>
+      tx.absences.deleteMany({ where: { id } }),
+    );
+  } catch (err) {
+    console.error('deleteAbsenceAction failed:', err);
     return;
   }
   if (user_id && UUID_RE.test(user_id)) revalidatePath(`/reports/payroll/${user_id}`);

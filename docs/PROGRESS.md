@@ -35,6 +35,76 @@
 
 ---
 
+## Сессия 2026-07-15 — Цикл v4, Сессия 4: Данные, часть 2 (11 доменов + machine-роуты) ✅
+
+_Четвёртая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Механическое переписывание
+оставшихся data-доменов с supabase-js на `userDb`/`adminDb` + rpc-реестр по эталону
+сессии 3. Прод не трогался; push не делался (запрет до сессии 7 в силе)._
+
+**Модель:** Claude Opus 4.8
+
+### Сделано
+- **23 доменных файла → userDb/adminDb/rpc** (+ `rpc.ts` и `eslint.config.mjs` —
+  правки-обвязки, итого 25 файлов, ~1300 строк дифф). Ноль импортов
+  `@/lib/supabase/*` вне 6 storage-файлов:
+  - **Мелочи:** org, i18n, notifications, activity-log, absences.
+  - **Финансы:** payments (дедуп + 23505/P2002), payroll (queries+actions+report),
+    cash (queries+actions).
+  - **Аналитика:** dashboard (6 RPC + getDashboardCases findMany+count +
+    getRevenueThisMonth на `aggregate _sum`), search (rpcSearchCaseIds + 4 findMany),
+    conflict-check роут.
+  - **Machine-роуты (adminDb, allowlist):** cron/reminders, telegram/webhook,
+    calendar/[token] — фильтрация везде явная (adminDb обходит RLS).
+  - **UI-точки:** payroll-list-mobile.tsx, reports/payroll/[userId]/page.tsx
+    (оба — серверные компоненты, механическая замена).
+- **Граница с сессией 5 (решение владельца — вариант A):** 6 storage-переплетённых
+  файлов (documents×2, acts×2, content, oo-callback) НЕ трогали — целиком в сессию 5
+  вместе с `lib/storage.ts` (не касаться файла дважды). Это ровно «6 мест» плана с5.
+- **Выплата ЗП (createPayoutAction):** обе вставки (payroll_transactions + аллокации)
+  слиты в ОДНУ `userDb`-tx — атомарно; ручной откат оригинала убран. Проверено по
+  миграции `20260611100700`: триггер `check_payout_allocations` — `Σ ≤ amount`
+  (НЕ строгое равенство, из-за доли премии), DEFERRABLE → срабатывает на коммите.
+- **rpc.ts:** 2 обёртки (`rpcPayrollEmployeeSummary/Cases`) → `month: string | null`
+  (SQL-функции принимают NULL = «за всё время»).
+- **Касса/дефолт-счёт:** снятие прежнего is_default + вставка/правка — в одной tx
+  (partial-unique `cash_accounts_one_default`).
+
+### Проверки
+- `tsc --noEmit` (весь проект) ✓, `eslint` ✓, unit **141/141** ✓,
+  integration **114/114** на Neon dev (все 10 файлов вместе) ✓.
+- **Runtime-смок на Neon** (dev :3001, вход owner): `/` (дашборд, 6 функций),
+  `/reports/cash`, `/reports/payroll` (реальные данные — «До виплати 5 000 ₴» + ставки),
+  `/reports/summary` — все **200**, ноль ошибок приложения (в консоли только
+  косметические pg-варнинги SSL + «client already executing», как в с3).
+- ⚠ **Формальный Playwright e2e-прогон в этой сессии НЕ гонялся** — гейт с4 закрыт
+  integration-сьютом (114, покрывает userDb/RLS-пути напрямую) + runtime-смоком
+  конвертированных экранов. Полный e2e — по желанию отдельным прогоном.
+
+### Грабли / критичное для следующих сессий
+- **eslint adminDb-allowlist и Next-роуты с `[param]`:** в eslint-globе квадратные
+  скобки — это character-class, поэтому буквальный `calendar/[token]/route.ts` НЕ
+  матчился и adminDb-импорт падал под запрет. Починено на `*`-wildcard
+  (`calendar/*/route.ts`); те же латентные `documents/*/…` записи для с5 тоже
+  поправлены заранее. **Правило: новые роуты с `[param]` в allowlist — только через `*`.**
+- **`calendar_token` НЕ `@unique`** в schema.prisma (только PK + `telegram_link_code`)
+  → `findFirst`, не `findUnique`.
+- **DbErrorLike включает `| null | undefined`** → при `prismaErrorToDbError(err).message`
+  нужен `?.` (иначе TS2533).
+- **Триггерные ошибки (overlap 23P01 и пр.) под model-запросами Prisma:** всплывают
+  не всегда как KnownRequestError — детект по `pgErrorCode(err)===code` ИЛИ по тексту
+  сообщения (см. absences createAction).
+- **git:** master впереди origin (редизайн v5 + план + c1 + c2 + c3 + **коммит c4**);
+  **push запрещён до с7**. Коммит сессии 4 — локальный.
+
+### Дальше
+- **Сессия 5 «Файлы»:** `lib/storage.ts` (интерфейс + R2/провайдер) + переписать 6
+  storage-файлов ЦЕЛИКОМ (documents×2, acts×2, content, oo-callback — и data, и
+  storage-часть) + скрипт переноса файлов. R2-аккаунт заводится НА ВЛАДЕЛЬЦА (bus
+  factor). После с5 — ни одного импорта supabase вне самих модулей `lib/supabase`.
+- Эталон стиля конверсии — файлы сессий 3–4 (для storage-переплетения — acts/actions).
+
+---
+
 ## Сессия 2026-07-15 — Цикл v4, Сессия 3: Данные, часть 1 (6 доменов на userDb/Prisma) ✅
 
 _Третья сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Переписаны queries+actions

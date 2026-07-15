@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { PayrollEmployeeSummary } from '@/lib/types/db';
 
 const MONEY = new Intl.NumberFormat('ru-RU', {
@@ -24,23 +25,20 @@ export async function PayrollListMobile({
 }) {
   const { t } = await getT();
 
-  // user_id → название подразделения (PostgREST join может вернуть массив).
+  // user_id → название подразделения (в RPC-сводке его нет; дочитываем под RLS).
   const deptByUser = new Map<string, string>();
   if (rows.length > 0) {
-    const supabase = await createSupabaseServerClient();
-    const { data } = await supabase
-      .from('users')
-      .select('id, department:department_id(name)')
-      .in('id', rows.map((r) => r.user_id));
-    for (const row of data ?? []) {
-      const r = row as unknown as {
-        id: string;
-        department: { name: string } | ReadonlyArray<{ name: string }> | null;
-      };
-      const dept = Array.isArray(r.department)
-        ? (r.department[0] ?? null)
-        : r.department;
-      if (dept?.name) deptByUser.set(r.id, dept.name);
+    const viewer = await getCurrentUser();
+    if (viewer) {
+      const userRows = await userDb(viewer.profile.id, (tx) =>
+        tx.public_users.findMany({
+          where: { id: { in: rows.map((r) => r.user_id) } },
+          select: { id: true, departments: { select: { name: true } } },
+        }),
+      );
+      for (const r of userRows) {
+        if (r.departments?.name) deptByUser.set(r.id, r.departments.name);
+      }
     }
   }
 

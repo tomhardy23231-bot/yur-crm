@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { adminDb } from '@/lib/db/admin';
 import { sendTelegramMessage } from '@/lib/notifications/telegram';
 
 export const dynamic = 'force-dynamic';
@@ -39,23 +39,22 @@ export async function POST(req: Request) {
   const code = /^\/start\s+(\S+)$/.exec(text)?.[1];
 
   if (code && chatId != null) {
-    const admin = createSupabaseAdminClient();
-    const { data: row } = await admin
-      .from('user_notify_channels')
-      .select('user_id')
-      .eq('telegram_link_code', code)
-      .maybeSingle();
+    const admin = adminDb();
+    const row = await admin.user_notify_channels.findUnique({
+      where: { telegram_link_code: code },
+      select: { user_id: true },
+    });
 
     if (row) {
       // Привязываем чат и гасим одноразовый код.
-      await admin
-        .from('user_notify_channels')
-        .update({
+      await admin.user_notify_channels.update({
+        where: { user_id: row.user_id },
+        data: {
           telegram_chat_id: String(chatId),
           telegram_link_code: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', row.user_id);
+          updated_at: new Date(),
+        },
+      });
       await sendTelegramMessage(String(chatId), 'Готово ✅ Уведомления подключены.');
     } else {
       await sendTelegramMessage(

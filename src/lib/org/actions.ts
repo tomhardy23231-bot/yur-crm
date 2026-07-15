@@ -3,9 +3,9 @@
 import { revalidatePath } from 'next/cache';
 
 import { requireUser } from '@/lib/auth/require-role';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dbActionError } from '@/lib/db/errors';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export type RequisitesField =
   | 'org_name'
@@ -80,29 +80,32 @@ export async function updateOrgRequisitesAction(
     return { ok: false, fieldErrors, message: t.errors.checkForm };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from('org_requisites')
-    .update({
-      org_name,
-      edrpou,
-      address,
-      phone,
-      iban,
-      bank_name,
-      mfo,
-      tax_status_lines,
-      updated_at: new Date().toISOString(),
-      updated_by: user.profile.id,
-    })
-    .eq('id', 1);
-
-  if (error) {
+  // updateMany (не update): под RLS не-owner получил бы 0 строк, а не исключение;
+  // owner-гейт уже проверен выше, RLS (org_requisites_update_owner) дублирует.
+  try {
+    await userDb(user.profile.id, (tx) =>
+      tx.org_requisites.updateMany({
+        where: { id: 1 },
+        data: {
+          org_name,
+          edrpou,
+          address,
+          phone,
+          iban,
+          bank_name,
+          mfo,
+          tax_status_lines,
+          updated_at: new Date(),
+          updated_by: user.profile.id,
+        },
+      }),
+    );
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage(
+      message: dbActionError(
         'updateOrgRequisitesAction',
-        error,
+        err,
         t.requisites.actions.saveFailed,
         t.errors.db,
       ),
