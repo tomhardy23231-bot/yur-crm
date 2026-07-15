@@ -12,8 +12,12 @@ const ADMIN_DB_ALLOWLIST = [
   "src/app/api/telegram/webhook/route.ts",
   "src/app/api/documents/[id]/content/route.ts",
   "src/app/api/documents/[id]/oo-callback/route.ts",
+  // Свой auth (цикл v4 с2): логин сверяет пароль ДО аутентификации, смена
+  // пароля пишет bcrypt-хеш — auth.users доступна только admin-пулу.
+  "src/app/login/actions.ts",
   "src/lib/users/actions.ts",
   "src/lib/users/credentials-actions.ts",
+  "src/lib/users/profile-actions.ts",
   "scripts/**",
   "tests/**",
 ];

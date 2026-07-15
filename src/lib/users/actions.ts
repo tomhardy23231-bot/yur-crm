@@ -1,13 +1,17 @@
 'use server';
 
+import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
+import bcrypt from 'bcryptjs';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
-import { dbErrorMessage } from '@/lib/errors';
 import { getT } from '@/lib/i18n/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { userDb } from '@/lib/db';
+import { adminDb } from '@/lib/db/admin';
+import { rpcSetUserLoginSecret } from '@/lib/db/rpc';
+import { Prisma } from '@/generated/prisma/client';
 import { generateTempPassword } from '@/lib/users/temp-password';
 import { UUID_RE } from '@/lib/validation';
 import {
@@ -139,52 +143,44 @@ export async function createUserAction(
     if (isVisibilityScope(scopeRaw)) visibility_scope = scopeRaw;
   }
 
-  const admin = createSupabaseAdminClient();
+  // Цикл v4: учётка входа (auth.users, bcrypt-хеш) и профиль (public.users)
+  // создаются ОДНОЙ транзакцией admin-пула — осиротевшие auth-строки
+  // исключены по построению (прежний двухшаговый путь GoTrue компенсировал
+  // это ручным deleteUser).
   const password = generateTempPassword();
-
-  const { data: created, error: authErr } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
-  if (authErr || !created?.user) {
-    const msg = authErr?.message ?? '';
-    if (/already|exist|registered/i.test(msg)) {
+  const newId = randomUUID();
+  try {
+    const db = adminDb();
+    const hash = await bcrypt.hash(password, 10);
+    await db.$transaction([
+      db.auth_users.create({
+        data: { id: newId, email, encrypted_password: hash },
+      }),
+      db.public_users.create({
+        data: {
+          id: newId,
+          full_name,
+          email,
+          role,
+          is_active: true,
+          perm_overrides: permOverrides as Prisma.InputJsonValue,
+          department_id,
+          position,
+          visibility_scope,
+        },
+      }),
+    ]);
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      (err.code === 'P2002' ||
+        (err.code === 'P2010' &&
+          String((err.meta as { code?: unknown } | undefined)?.code) === '23505'))
+    ) {
       return { ok: false, fieldErrors: { email: t.users.errors.emailExists } };
     }
-    console.error('[createUserAction.auth]', msg);
+    console.error('[createUserAction]', err);
     return { ok: false, message: t.users.errors.createFailed };
-  }
-
-  const newId = created.user.id;
-  const { error: profErr } = await admin.from('users').insert({
-    id: newId,
-    full_name,
-    email,
-    role,
-    is_active: true,
-    perm_overrides: permOverrides,
-    department_id,
-    position,
-    visibility_scope,
-  });
-  if (profErr) {
-    // Профиль не записался — удаляем осиротевшего auth-пользователя, чтобы
-    // повторная попытка по тому же email не упёрлась в «уже существует».
-    try {
-      await admin.auth.admin.deleteUser(newId);
-    } catch {
-      // best-effort
-    }
-    return {
-      ok: false,
-      message: dbErrorMessage(
-        'createUserAction.profile',
-        profErr,
-        t.users.errors.saveProfileFailed,
-        t.errors.db,
-      ),
-    };
   }
 
   // Лог под сессией актора (private.active_uid = он). entity_type='user'.
@@ -208,12 +204,13 @@ export async function createUserAction(
   // Зеркало пароля для модалки «Доступ» (владелец видит выданный пароль позже).
   // Только когда создаёт owner: set_user_login_secret — owner-gated DEFINER.
   if (actor.profile.role === 'owner') {
-    const sb = await createSupabaseServerClient();
-    const { error: secErr } = await sb.rpc('set_user_login_secret', {
-      p_user_id: newId,
-      p_password: password,
-    });
-    if (secErr) console.error('[createUserAction.mirror]', secErr.message);
+    try {
+      await userDb(actor.profile.id, (tx) =>
+        rpcSetUserLoginSecret(tx, { userId: newId, password }),
+      );
+    } catch (err) {
+      console.error('[createUserAction.mirror]', err);
+    }
   }
 
   revalidatePath('/settings/users');

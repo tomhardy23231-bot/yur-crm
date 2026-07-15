@@ -1,18 +1,28 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import bcrypt from 'bcryptjs';
 
 import { requireUser } from '@/lib/auth/require-role';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { adminDb } from '@/lib/db/admin';
+import {
+  SESSION_COOKIE,
+  issueSessionToken,
+  sessionCookieOptions,
+} from '@/lib/auth/session';
 import { getT } from '@/lib/i18n/server';
 
-// Задача 6: смена собственного пароля любым авторизованным пользователем.
-// Поток (безопасно, через стандартный Supabase auth):
+// Смена собственного пароля (цикл v4 — свой auth).
+// Поток:
 //   1) валидируем новый пароль и совпадение с повтором;
-//   2) проверяем ТЕКУЩИЙ пароль на отдельном клиенте (persistSession:false —
-//      без записи cookie/сессии), чтобы нельзя было сменить пароль, не зная
-//      старого;
-//   3) меняем пароль для текущей сессии (supabase.auth.updateUser).
+//   2) сверяем ТЕКУЩИЙ пароль с bcrypt-хешем auth.users — нельзя сменить
+//      пароль, не зная старого;
+//   3) пишем новый хеш + инкрементим public.users.pwd_version одной
+//      транзакцией: ВСЕ сессии пользователя отзываются мгновенно
+//      (клейм pwd_version в чужих токенах устарел — ревью V2);
+//   4) текущему устройству выпускаем свежий токен с новой версией —
+//      пользователь остаётся залогиненным.
+// auth.users доступна только admin-пулу — файл в ESLint-allowlist осознанно.
 
 export type ChangePasswordFields = 'current' | 'next' | 'confirm';
 
@@ -23,7 +33,7 @@ export type ChangePasswordState = {
 };
 
 const MIN_LEN = 8;
-const MAX_LEN = 72; // bcrypt-предел Supabase auth.
+const MAX_LEN = 72; // предел bcrypt.
 
 export async function changePasswordAction(
   _prev: ChangePasswordState,
@@ -52,32 +62,61 @@ export async function changePasswordAction(
     return { ok: false, fieldErrors, message: t.errors.checkForm };
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) {
-    console.error('changePasswordAction: missing Supabase env');
-    return { ok: false, message: t.errors.serviceUnavailable };
-  }
+  let freshToken: string;
+  try {
+    const db = adminDb();
 
-  // 1) Проверяем текущий пароль на изолированном клиенте (не трогаем сессию).
-  const verifier = createClient(url, anon, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { error: signInErr } = await verifier.auth.signInWithPassword({
-    email: user.email,
-    password: current,
-  });
-  if (signInErr) {
-    return { ok: false, fieldErrors: { current: t.account.password.wrongCurrent } };
-  }
+    // 1) Проверяем текущий пароль по хешу (без сети, в отличие от GoTrue).
+    const account = await db.auth_users.findUnique({
+      where: { id: user.authId },
+    });
+    if (!account) {
+      console.error('changePasswordAction: auth account not found', user.authId);
+      return { ok: false, message: t.errors.serviceUnavailable };
+    }
+    const currentOk =
+      account.encrypted_password.length > 0 &&
+      (await bcrypt.compare(current, account.encrypted_password));
+    if (!currentOk) {
+      return {
+        ok: false,
+        fieldErrors: { current: t.account.password.wrongCurrent },
+      };
+    }
 
-  // 2) Меняем пароль для текущей сессии пользователя.
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.updateUser({ password: next });
-  if (error) {
-    console.error('changePasswordAction.updateUser:', error.message);
+    // 2) Новый хеш + отзыв всех сессий — атомарно.
+    const hash = await bcrypt.hash(next, 10);
+    const [, profile] = await db.$transaction([
+      db.auth_users.update({
+        where: { id: user.authId },
+        data: {
+          encrypted_password: hash,
+          failed_attempts: 0,
+          locked_until: null,
+          updated_at: new Date(),
+        },
+      }),
+      db.public_users.update({
+        where: { id: user.authId },
+        data: { pwd_version: { increment: 1 } },
+        select: { pwd_version: true },
+      }),
+    ]);
+
+    // 3) Свежий токен для ЭТОГО устройства (lat обновляется: смена пароля —
+    // событие уровня «новый вход»).
+    freshToken = await issueSessionToken({
+      sub: user.authId,
+      email: user.email,
+      pwdVersion: profile.pwd_version,
+    });
+  } catch (err) {
+    console.error('changePasswordAction:', err);
     return { ok: false, message: t.account.password.updateFailed };
   }
+
+  const store = await cookies();
+  store.set(SESSION_COOKIE, freshToken, sessionCookieOptions());
 
   return { ok: true, message: t.account.password.successDefault };
 }

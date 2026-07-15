@@ -1,13 +1,19 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { headers } from 'next/headers';
+import bcrypt from 'bcryptjs';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { userDb } from '@/lib/db';
+import { adminDb } from '@/lib/db/admin';
+import {
+  rpcGetUserLoginSecret,
+  rpcSetUserLoginSecret,
+  rpcUserDeleteBlockers,
+} from '@/lib/db/rpc';
+import { Prisma } from '@/generated/prisma/client';
 import { generateTempPassword } from '@/lib/users/temp-password';
 import { UUID_RE } from '@/lib/validation';
 import type { Role } from '@/lib/types/db';
@@ -17,9 +23,14 @@ import type { Role } from '@/lib/types/db';
 // списка /settings/users). Все экшены — строго owner-only (проверка в коде +
 // owner-gated DEFINER-функции в БД: get/set_user_login_secret, user_delete_blockers).
 //
-// Текущий пароль из auth показать нельзя (хеш). Поэтому владелец задаёт/генерирует
-// пароль, а мы храним его ЗЕРКАЛО (private.user_login_secrets, зашифровано) — оно
-// и показывается. Источник истины для входа остаётся auth.users.
+// Цикл v4: auth.users — наша таблица, пароли пишем сами (bcrypt) через
+// admin-пул; каждая смена пароля инкрементит public.users.pwd_version —
+// все сессии сотрудника отзываются мгновенно (ревью V2). Зеркало пароля
+// (private.user_login_secrets) и его показ владельцу работают как раньше.
+//
+// Email-приглашения (прежний resetPasswordForEmail + /auth/confirm) удалены —
+// СВОЯ отправка почты приедет в сессии 8 (решение ревью D1); до неё выдача
+// доступов — копи-блоком «логин+пароль» (основной флоу и раньше).
 // ============================================================================
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -56,10 +67,6 @@ export type EmailChangeResult =
   | { ok: true; email: string }
   | { ok: false; error: string };
 
-export type InviteResult =
-  | { ok: true; email: string }
-  | { ok: false; error: string };
-
 export type DeleteBlockers = {
   can_delete: boolean;
   total: number;
@@ -78,45 +85,79 @@ export type DeleteUserResult =
   | { ok: true }
   | { ok: false; error: string; blockers?: DeleteBlockers };
 
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    (err.code === 'P2002' ||
+      (err.code === 'P2010' &&
+        String((err.meta as { code?: unknown } | undefined)?.code) === '23505'))
+  );
+}
+
+// Смена пароля сотрудника: bcrypt-хеш в auth.users + инкремент pwd_version
+// (отзыв всех его сессий) — одной транзакцией admin-пула.
+async function writePassword(userId: string, password: string): Promise<void> {
+  const db = adminDb();
+  const hash = await bcrypt.hash(password, 10);
+  await db.$transaction([
+    db.auth_users.update({
+      where: { id: userId },
+      data: {
+        encrypted_password: hash,
+        failed_attempts: 0,
+        locked_until: null,
+        updated_at: new Date(),
+      },
+    }),
+    db.public_users.update({
+      where: { id: userId },
+      data: { pwd_version: { increment: 1 } },
+    }),
+  ]);
+}
+
 // ── Чтение логина + зеркала пароля ──────────────────────────────────────────
 export async function getUserCredentialsAction(
   userId: string,
 ): Promise<GetCredentialsResult> {
   const gate = await ownerOrError((error) => ({ ok: false as const, error }));
   if ('ok' in gate) return gate;
+  const { actor } = gate;
   const { t } = await getT();
   if (!UUID_RE.test(userId)) {
     return { ok: false, error: t.users.errors.userNotFound };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data: u } = await supabase
-    .from('users')
-    .select('id, full_name, email')
-    .eq('id', userId)
-    .maybeSingle<{ id: string; full_name: string; email: string | null }>();
-  if (!u) return { ok: false, error: t.users.errors.userNotFound };
-
-  let password: string | null = null;
-  let passwordUpdatedAt: string | null = null;
-  const { data: sec, error: secErr } = await supabase.rpc('get_user_login_secret', {
-    p_user_id: userId,
-  });
-  if (!secErr && Array.isArray(sec) && sec.length > 0) {
-    password = (sec[0] as { password: string | null }).password ?? null;
-    passwordUpdatedAt =
-      (sec[0] as { updated_at: string | null }).updated_at ?? null;
+  try {
+    const data = await userDb(actor.profile.id, async (tx) => {
+      const u = await tx.public_users.findUnique({
+        where: { id: userId },
+        select: { id: true, full_name: true, email: true },
+      });
+      if (!u) return null;
+      // Зеркало читает owner-gated DEFINER (под сессией владельца).
+      let password: string | null = null;
+      let passwordUpdatedAt: string | null = null;
+      try {
+        const sec = await rpcGetUserLoginSecret(tx, { userId });
+        password = sec?.password ?? null;
+        passwordUpdatedAt = sec?.updated_at ?? null;
+      } catch (err) {
+        console.error('[getUserCredentials.secret]', err);
+      }
+      return {
+        email: u.email,
+        fullName: u.full_name,
+        password,
+        passwordUpdatedAt,
+      };
+    });
+    if (!data) return { ok: false, error: t.users.errors.userNotFound };
+    return { ok: true, data };
+  } catch (err) {
+    console.error('[getUserCredentials]', err);
+    return { ok: false, error: t.users.errors.userNotFound };
   }
-
-  return {
-    ok: true,
-    data: {
-      email: u.email ?? '',
-      fullName: u.full_name,
-      password,
-      passwordUpdatedAt,
-    },
-  };
 }
 
 // ── Выдать новый (случайный) пароль ─────────────────────────────────────────
@@ -125,35 +166,31 @@ export async function reissueUserPasswordAction(
 ): Promise<PasswordResult> {
   const gate = await ownerOrError((error) => ({ ok: false as const, error }));
   if ('ok' in gate) return gate;
+  const { actor } = gate;
   const { t } = await getT();
   if (!UUID_RE.test(userId)) {
     return { ok: false, error: t.users.errors.userNotFound };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data: u } = await supabase
-    .from('users')
-    .select('id')
-    .eq('id', userId)
-    .maybeSingle<{ id: string }>();
-  if (!u) return { ok: false, error: t.users.errors.userNotFound };
-
   const password = generateTempPassword();
-  const admin = createSupabaseAdminClient();
-  const { error: authErr } = await admin.auth.admin.updateUserById(userId, {
-    password,
-  });
-  if (authErr) {
-    console.error('[reissueUserPassword]', authErr.message);
+  try {
+    await writePassword(userId, password);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return { ok: false, error: t.users.errors.userNotFound };
+    }
+    console.error('[reissueUserPassword]', err);
     return { ok: false, error: t.users.errors.updatePasswordFailed };
   }
 
   // Зеркало для показа владельцу (owner-gated DEFINER под сессией владельца).
-  const { error: secErr } = await supabase.rpc('set_user_login_secret', {
-    p_user_id: userId,
-    p_password: password,
-  });
-  if (secErr) console.error('[reissueUserPassword.mirror]', secErr.message);
+  try {
+    await userDb(actor.profile.id, (tx) =>
+      rpcSetUserLoginSecret(tx, { userId, password }),
+    );
+  } catch (err) {
+    console.error('[reissueUserPassword.mirror]', err);
+  }
 
   await logActivity({
     entity_type: 'user',
@@ -172,6 +209,7 @@ export async function setUserPasswordAction(
 ): Promise<PasswordResult> {
   const gate = await ownerOrError((error) => ({ ok: false as const, error }));
   if ('ok' in gate) return gate;
+  const { actor } = gate;
   const { t } = await getT();
   if (!UUID_RE.test(userId)) {
     return { ok: false, error: t.users.errors.userNotFound };
@@ -180,21 +218,23 @@ export async function setUserPasswordAction(
   if (pw.length < 6) return { ok: false, error: t.users.errors.passwordTooShort };
   if (pw.length > 72) return { ok: false, error: t.users.errors.passwordTooLong };
 
-  const admin = createSupabaseAdminClient();
-  const { error: authErr } = await admin.auth.admin.updateUserById(userId, {
-    password: pw,
-  });
-  if (authErr) {
-    console.error('[setUserPassword]', authErr.message);
+  try {
+    await writePassword(userId, pw);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return { ok: false, error: t.users.errors.userNotFound };
+    }
+    console.error('[setUserPassword]', err);
     return { ok: false, error: t.users.errors.updatePasswordFailed };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error: secErr } = await supabase.rpc('set_user_login_secret', {
-    p_user_id: userId,
-    p_password: pw,
-  });
-  if (secErr) console.error('[setUserPassword.mirror]', secErr.message);
+  try {
+    await userDb(actor.profile.id, (tx) =>
+      rpcSetUserLoginSecret(tx, { userId, password: pw }),
+    );
+  } catch (err) {
+    console.error('[setUserPassword.mirror]', err);
+  }
 
   await logActivity({
     entity_type: 'user',
@@ -222,27 +262,40 @@ export async function changeUserEmailAction(
     return { ok: false, error: t.users.errors.invalidEmail };
   }
 
-  const admin = createSupabaseAdminClient();
-  const { error: authErr } = await admin.auth.admin.updateUserById(userId, {
-    email,
-    email_confirm: true,
-  });
-  if (authErr) {
-    if (/already|exist|registered/i.test(authErr.message)) {
+  const db = adminDb();
+  try {
+    // Дружелюбная проверка занятости; гонку добивает unique-индекс
+    // lower(email) (ловим 23505 ниже).
+    const clash = await db.auth_users.findFirst({
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        NOT: { id: userId },
+      },
+      select: { id: true },
+    });
+    if (clash) return { ok: false, error: t.users.errors.emailExists };
+
+    // Email в auth (логин) и в профиле (отображение) — одной транзакцией.
+    await db.$transaction([
+      db.auth_users.update({
+        where: { id: userId },
+        data: { email, updated_at: new Date() },
+      }),
+      db.public_users.update({
+        where: { id: userId },
+        data: { email },
+      }),
+    ]);
+  } catch (err) {
+    if (isUniqueViolation(err)) {
       return { ok: false, error: t.users.errors.emailExists };
     }
-    console.error('[changeUserEmail]', authErr.message);
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return { ok: false, error: t.users.errors.userNotFound };
+    }
+    console.error('[changeUserEmail]', err);
     return { ok: false, error: t.users.errors.updateEmailFailed };
   }
-
-  // Зеркалим email в public.users (источник истины для входа — auth, но в
-  // приложении email читается из профиля). RLS owner-update разрешён.
-  const supabase = await createSupabaseServerClient();
-  const { error: profErr } = await supabase
-    .from('users')
-    .update({ email })
-    .eq('id', userId);
-  if (profErr) console.error('[changeUserEmail.profile]', profErr.message);
 
   await logActivity({
     entity_type: 'user',
@@ -252,50 +305,6 @@ export async function changeUserEmailAction(
   });
   revalidatePath('/settings/users');
   return { ok: true, email };
-}
-
-// ── Отправить приглашение на email (встроенная почта Supabase) ───────────────
-// Письмо «восстановления пароля»: сотрудник по ссылке попадает в систему и
-// задаёт свой пароль. Ссылка обрабатывается /auth/confirm.
-export async function sendUserInviteAction(
-  userId: string,
-): Promise<InviteResult> {
-  const gate = await ownerOrError((error) => ({ ok: false as const, error }));
-  if ('ok' in gate) return gate;
-  const { t } = await getT();
-  if (!UUID_RE.test(userId)) {
-    return { ok: false, error: t.users.errors.userNotFound };
-  }
-
-  const supabase = await createSupabaseServerClient();
-  const { data: u } = await supabase
-    .from('users')
-    .select('id, email')
-    .eq('id', userId)
-    .maybeSingle<{ id: string; email: string | null }>();
-  if (!u?.email) return { ok: false, error: t.users.errors.userNotFound };
-
-  const h = await headers();
-  const host = h.get('host') ?? 'localhost:3000';
-  const proto =
-    h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
-  const redirectTo = `${proto}://${host}/auth/confirm?next=/profile`;
-
-  const { error } = await supabase.auth.resetPasswordForEmail(u.email, {
-    redirectTo,
-  });
-  if (error) {
-    console.error('[sendUserInvite]', error.message);
-    return { ok: false, error: t.users.errors.inviteFailed };
-  }
-
-  await logActivity({
-    entity_type: 'user',
-    entity_id: userId,
-    action: 'user_invited',
-    changes: { email: u.email },
-  });
-  return { ok: true, email: u.email };
 }
 
 // ── Удаление сотрудника (умное: чистые учётки — насовсем, с историей — блок) ──
@@ -313,38 +322,38 @@ export async function deleteUserAction(
     return { ok: false, error: t.users.errors.cannotSelf };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data: u } = await supabase
-    .from('users')
-    .select('id, email, role, full_name')
-    .eq('id', userId)
-    .maybeSingle<{
-      id: string;
-      email: string | null;
-      role: Role;
-      full_name: string;
-    }>();
-  if (!u) return { ok: false, error: t.users.errors.userNotFound };
-
-  // Превентивная проверка истории (дружелюбное сообщение). Реальный страж — FK.
-  const { data: blk, error: blkErr } = await supabase.rpc('user_delete_blockers', {
-    p_user_id: userId,
-  });
-  if (blkErr) {
-    console.error('[deleteUser.blockers]', blkErr.message);
+  let target: { email: string; role: Role; full_name: string } | null;
+  let blockers: DeleteBlockers;
+  try {
+    const res = await userDb(actor.profile.id, async (tx) => {
+      const u = await tx.public_users.findUnique({
+        where: { id: userId },
+        select: { email: true, role: true, full_name: true },
+      });
+      if (!u) return null;
+      // Превентивная проверка истории (дружелюбное сообщение). Реальный страж — FK.
+      const blk = await rpcUserDeleteBlockers(tx, { userId });
+      return { u, blk };
+    });
+    if (!res) return { ok: false, error: t.users.errors.userNotFound };
+    target = res.u;
+    blockers = res.blk as unknown as DeleteBlockers;
+  } catch (err) {
+    console.error('[deleteUser.blockers]', err);
     return { ok: false, error: t.users.errors.deleteFailed };
   }
-  const blockers = blk as DeleteBlockers;
+
   if (!blockers?.can_delete) {
     return { ok: false, error: t.users.errors.deleteBlocked, blockers };
   }
 
-  // Чистая учётка → удаляем из auth (каскадом снимется public.users + зеркало).
-  const admin = createSupabaseAdminClient();
-  const { error: delErr } = await admin.auth.admin.deleteUser(userId);
-  if (delErr) {
+  // Чистая учётка → удаляем auth-строку; public.users и зеркало пароля
+  // снимаются каскадом (FK users_id_fkey ON DELETE CASCADE).
+  try {
+    await adminDb().auth_users.delete({ where: { id: userId } });
+  } catch (err) {
     // Гонка: история появилась между проверкой и удалением → FK не дал. Безопасно.
-    console.error('[deleteUser]', delErr.message);
+    console.error('[deleteUser]', err);
     return { ok: false, error: t.users.errors.deleteFailed, blockers };
   }
 
@@ -352,7 +361,7 @@ export async function deleteUserAction(
     entity_type: 'user',
     entity_id: userId,
     action: 'user_deleted',
-    changes: { email: u.email, role: u.role, full_name: u.full_name },
+    changes: { email: target.email, role: target.role, full_name: target.full_name },
   });
   revalidatePath('/settings/users');
   return { ok: true };

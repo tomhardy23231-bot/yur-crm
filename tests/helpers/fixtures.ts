@@ -1,41 +1,33 @@
-// Самодостаточные фикстуры для интеграционных тестов.
+// Самодостаточные фикстуры для интеграционных тестов (цикл v4 — Neon/Prisma).
 // Каждый прогон создаёт изолированный namespace (уникальный runId): свои
-// пользователи, клиент и дела через service_role (в обход RLS — это системная
-// операция, как сид). Тесты проверяют RLS уже от лица обычных сессий.
-// destroyWorld убирает за собой в порядке, учитывающем on delete restrict
-// (payments/payroll_ledger → cases → client → users → auth users).
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+// пользователи, клиент и дела через admin-пул (owner БД обходит RLS — это
+// системная операция, как сид). Тесты проверяют RLS уже от лица обычных
+// пользователей: «сессия» = вызов userDb(userId, tx => …) — ТОТ ЖЕ боевой
+// путь (set_config('app.user_id') → auth.uid() шима), что и приложение.
+//
+// Отличие семантики от прежнего supabase-js: PostgREST возвращал { error }
+// объектом, Prisma на отказ RLS КИДАЕТ (P2010/42501 на insert/raw, P2025 на
+// update/delete невидимой строки) — отказные ветки тестов ждут reject;
+// «SELECT отрезан» остаётся пустым результатом (не ошибкой) в обоих мирах.
+import { randomUUID } from 'node:crypto';
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+import type { PrismaClient } from '@/generated/prisma/client';
+import { adminDb } from '@/lib/db/admin';
+import { userDb, type Db } from '@/lib/db';
 
-export const hasSupabaseEnv = Boolean(URL && ANON && SERVICE);
+export { adminDb, userDb };
+export type { Db };
 
-export const PASSWORD = 'test12345!';
-
-export function adminClient(): SupabaseClient {
-  return createClient(URL, SERVICE, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-// Вход обычным пользователем (anon-клиент + JWT) — чтобы работал RLS.
-export async function signIn(email: string): Promise<SupabaseClient> {
-  const c = createClient(URL, ANON, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { error } = await c.auth.signInWithPassword({ email, password: PASSWORD });
-  if (error) throw new Error(`signIn ${email}: ${error.message}`);
-  return c;
-}
+export const hasDbEnv = Boolean(
+  process.env.DATABASE_URL_APP && process.env.DATABASE_URL_ADMIN,
+);
 
 type UserRef = { id: string; email: string };
 
 export type World = {
   runId: string;
   prefix: string; // 'IT-<runId>-' — фильтр наших дел среди прочих в БД
-  admin: SupabaseClient;
+  admin: PrismaClient;
   users: Record<
     // owner — режим бога (видит/правит всё, для матрицы отпусков Этапа 6);
     // staffAdmin — БЕЗ подразделения (переходное правило «NULL = видит всё»);
@@ -66,51 +58,49 @@ export type World = {
 type Role = 'owner' | 'admin' | 'office_manager' | 'lawyer' | 'expert';
 
 type UserOpts = {
-  department?: string | null; // имя подразделения из миграции 20260610100000 (null — вне структуры)
+  department?: string | null; // имя подразделения из 0002_baseline_data (null — вне структуры)
   scope?: 'department' | 'all';
 };
 
 export async function createWorld(): Promise<World> {
-  const admin = adminClient();
+  const admin = adminDb();
   const runId = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
   const prefix = `IT-${runId}-`;
 
-  // Подразделения сидятся миграцией 20260610100000 — берём их id по имени.
-  const { data: depRows, error: depErr } = await admin
-    .from('departments')
-    .select('id, name');
-  if (depErr) throw new Error(`load departments: ${depErr.message}`);
-  const departments = new Map<string, string>((depRows ?? []).map((d) => [d.name, d.id]));
+  // Подразделения сидятся миграцией 0002_baseline_data — берём их id по имени.
+  const depRows = await admin.departments.findMany({
+    select: { id: true, name: true },
+  });
+  const departments = new Map<string, string>(depRows.map((d) => [d.name, d.id]));
   const depId = (name: string): string => {
     const id = departments.get(name);
     if (!id) throw new Error(`Подразделение «${name}» не найдено — миграции применены?`);
     return id;
   };
 
-  async function mkUser(slug: string, role: Role, opts: UserOpts = {}): Promise<UserRef> {
+  async function mkUser(
+    slug: string,
+    role: Role,
+    opts: UserOpts = {},
+  ): Promise<UserRef> {
+    const id = randomUUID();
     const email = `it-${runId}-${slug}@yur.test`;
-    const { data, error } = await admin.auth.admin.createUser({
-      email,
-      password: PASSWORD,
-      email_confirm: true,
-    });
-    if (error || !data.user) throw new Error(`createUser ${email}: ${error?.message}`);
-    const id = data.user.id;
-    // service_role → RLS и guard_user_visibility_fields в обход (auth.uid() IS NULL),
-    // поэтому department_id/visibility_scope проставляются напрямую (как в seed.ts).
-    const { error: uErr } = await admin.from('users').upsert(
-      {
-        id,
-        full_name: `IT ${slug} ${runId}`,
-        email,
-        role,
-        is_active: true,
-        department_id: opts.department ? depId(opts.department) : null,
-        visibility_scope: opts.scope ?? 'department',
-      },
-      { onConflict: 'id' },
-    );
-    if (uErr) throw new Error(`upsert user ${email}: ${uErr.message}`);
+    // Учётка входа + профиль одной транзакцией (как createUserAction).
+    // Пароль тестам не нужен: «вход» = userDb(id), форму логина проверяет e2e.
+    await admin.$transaction([
+      admin.auth_users.create({ data: { id, email } }),
+      admin.public_users.create({
+        data: {
+          id,
+          full_name: `IT ${slug} ${runId}`,
+          email,
+          role,
+          is_active: true,
+          department_id: opts.department ? depId(opts.department) : null,
+          visibility_scope: opts.scope ?? 'department',
+        },
+      }),
+    ]);
     return { id, email };
   }
 
@@ -131,17 +121,15 @@ export async function createWorld(): Promise<World> {
   const expert1 = await mkUser('expert1', 'expert', { department: 'Дніпровський' });
   const expert2 = await mkUser('expert2', 'expert', { department: 'Львівський' });
 
-  const { data: client, error: cErr } = await admin
-    .from('clients')
-    .insert({
+  const client = await admin.clients.create({
+    data: {
       name: `IT Client ${runId}`,
       client_kind: 'individual',
       source: 'referral',
       created_by: staffAdmin.id,
-    })
-    .select('id')
-    .single();
-  if (cErr || !client) throw new Error(`client: ${cErr?.message}`);
+    },
+    select: { id: true },
+  });
 
   async function mkCase(
     suffix: string,
@@ -152,39 +140,38 @@ export async function createWorld(): Promise<World> {
     stage: string,
     caseType = 'civil',
   ): Promise<string> {
-    const { data, error } = await admin
-      .from('cases')
-      .insert({
+    const row = await admin.cases.create({
+      data: {
         number_title: `${prefix}${suffix}`,
-        client_id: client!.id,
+        client_id: client.id,
         lawyer_id: lawyerId,
         responsible_id: expertId,
-        opened_at: '2026-05-01',
-        case_type: caseType,
-        category,
-        stage,
+        opened_at: new Date('2026-05-01'),
+        case_type: caseType as never,
+        category: category as never,
+        stage: stage as never,
         priority: 'normal',
         contract_sum: contract,
-      })
-      .select('id')
-      .single();
-    if (error || !data) throw new Error(`case ${suffix}: ${error?.message}`);
-    return data.id as string;
+      },
+      select: { id: true },
+    });
+    return row.id;
   }
 
   const caseA = await mkCase('A', lawyer1.id, expert1.id, 'representation', 30000, 'in_progress');
   const caseB = await mkCase('B', lawyer2.id, expert2.id, 'claim', 120000, 'consultation', 'corporate');
   const caseS = await mkCase('S', lawyer1.id, expert1.id, 'document', 5000, 'new_request');
 
-  const { error: pErr } = await admin.from('payments').insert({
-    case_id: caseA,
-    amount: 10000,
-    paid_at: '2026-05-10',
-    method: 'bank',
-    note: 'IT seed payment',
-    created_by: staffAdmin.id,
+  await admin.payments.create({
+    data: {
+      case_id: caseA,
+      amount: 10000,
+      paid_at: new Date('2026-05-10'),
+      method: 'bank',
+      note: 'IT seed payment',
+      created_by: staffAdmin.id,
+    },
   });
-  if (pErr) throw new Error(`payment: ${pErr.message}`);
 
   return {
     runId,
@@ -216,26 +203,24 @@ export async function destroyWorld(w: World): Promise<void> {
   const userIds = Object.values(w.users).map((u) => u.id);
 
   // Порядок важен: дети cases стоят on delete restrict.
-  await admin.from('payroll_ledger').delete().in('case_id', caseIds);
+  await admin.payroll_ledger.deleteMany({ where: { case_id: { in: caseIds } } });
   // case_acts → payments.act_id (set null) → потом сами платежи; акты/документы
   // тоже on delete restrict у cases, поэтому чистим их ДО удаления дел.
-  await admin.from('case_acts').delete().in('case_id', caseIds);
-  await admin.from('payments').delete().in('case_id', caseIds);
-  await admin.from('documents').delete().in('case_id', caseIds);
-  await admin.from('tasks').delete().in('case_id', caseIds);
-  await admin.from('cases').delete().in('id', caseIds);
-  await admin.from('clients').delete().eq('id', w.clientId);
+  await admin.case_acts.deleteMany({ where: { case_id: { in: caseIds } } });
+  await admin.payments.deleteMany({ where: { case_id: { in: caseIds } } });
+  await admin.documents.deleteMany({ where: { case_id: { in: caseIds } } });
+  await admin.tasks.deleteMany({ where: { case_id: { in: caseIds } } });
+  await admin.cases.deleteMany({ where: { id: { in: caseIds } } });
+  await admin.clients.deleteMany({ where: { id: w.clientId } });
   // absences (Этап 6): user_id ON DELETE CASCADE, но created_by RESTRICT — чистим до
   // удаления пользователей (и по user_id, и по created_by — на случай чужого автора).
-  await admin.from('absences').delete().in('user_id', userIds);
-  await admin.from('absences').delete().in('created_by', userIds);
+  await admin.absences.deleteMany({ where: { user_id: { in: userIds } } });
+  await admin.absences.deleteMany({ where: { created_by: { in: userIds } } });
   // Касса (Этап 7): авто-приходы уже удалены каскадом вместе с payments выше; здесь
   // снимаем ручные операции и счета (created_by → users RESTRICT). Сначала операции
   // (account_id → cash_accounts RESTRICT), потом сами счета.
-  await admin.from('cash_entries').delete().in('created_by', userIds);
-  await admin.from('cash_accounts').delete().in('created_by', userIds);
-  await admin.from('users').delete().in('id', userIds);
-  for (const id of userIds) {
-    await admin.auth.admin.deleteUser(id);
-  }
+  await admin.cash_entries.deleteMany({ where: { created_by: { in: userIds } } });
+  await admin.cash_accounts.deleteMany({ where: { created_by: { in: userIds } } });
+  await admin.public_users.deleteMany({ where: { id: { in: userIds } } });
+  await admin.auth_users.deleteMany({ where: { id: { in: userIds } } });
 }

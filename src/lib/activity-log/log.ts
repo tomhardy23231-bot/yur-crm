@@ -1,9 +1,13 @@
 import 'server-only';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { rpcLogActivity } from '@/lib/db/rpc';
 
 // Контракт совпадает с public.log_activity(text, uuid, text, jsonb) в БД.
 // SECURITY DEFINER + проверки видимости — см. 20260527110000_activity_log_writer.sql.
+// Цикл v4: вызов через rpc-реестр под userDb (DEFINER читает auth.uid() шима,
+// которому нужен app.user_id транзакции).
 //
 // ВАЖНО: эта функция НИКОГДА не должна выбрасывать исключение наружу —
 // логирование вторично, не должно ломать основной серверный action.
@@ -19,16 +23,21 @@ export type LogActivityInput = {
 
 export async function logActivity(input: LogActivityInput): Promise<void> {
   try {
-    const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.rpc('log_activity', {
-      p_entity_type: input.entity_type,
-      p_entity_id: input.entity_id,
-      p_action: input.action,
-      p_changes: input.changes ?? null,
-    });
-    if (error) {
-      console.error('[activity-log] rpc.log_activity failed:', error.message);
+    const user = await getCurrentUser();
+    if (!user) {
+      // Системные пути (seed, machine-роуты) журналируют сами при
+      // необходимости; лог всегда пишется от лица конкретного сотрудника.
+      console.error('[activity-log] skipped: no current user');
+      return;
     }
+    await userDb(user.authId, (tx) =>
+      rpcLogActivity(tx, {
+        entityType: input.entity_type,
+        entityId: input.entity_id,
+        action: input.action,
+        changes: input.changes ?? null,
+      }),
+    );
   } catch (err) {
     console.error('[activity-log] logActivity threw:', err);
   }

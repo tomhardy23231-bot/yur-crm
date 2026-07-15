@@ -251,7 +251,12 @@ push ТОЛЬКО этой ветки → ручной deploy ветки в да
 - **Готово, когда:** локальный dev работает на Neon-ветке, seed проходит,
   RLS-smoke зелёный, ACL-аудит чист (гранты/колоночные/private закрыты).
 
-### Сессия 2 — Auth
+### Сессия 2 — Auth — ✅ 2026-07-15
+> Свой вход (скользящий JWT, ревью V2) + вся integration-обвязка на Prisma/Neon
+> (T6). Гейт: tsc/lint/unit(141)/integration(112, все 9 файлов вместе на Neon dev)
+> зелёные; golden-тест bcrypt на реальном GoTrue-хеше пройден. e2e auth.spec —
+> ПОЛНЫЙ прогон отложен на гейт сессии 4 (экраны-контент ещё на supabase-js,
+> честная оговорка плана). Детали/грабли — docs/PROGRESS.md (запись 2026-07-15).
 - `lib/auth/session.ts` (скользящий JWT + pwd_version — ревью V2), `proxy.ts`
   (без БД; урок POST-body), login/logout + rate-limit (V3-4),
   `current-user.ts`, смена своего пароля (profile-actions).
@@ -459,11 +464,12 @@ push ТОЛЬКО этой ветки → ручной deploy ветки в да
 
 Синтез находок ревью; каждая задача привязана к решению.
 
-- [ ] **T1 (P1, CC: ~1 ч)** — auth — скользящий JWT + pwd_version +
+- [x] **T1 (P1, ✅ с2 2026-07-15)** — auth — скользящий JWT + pwd_version +
   rate-limit логина + урок POST-body в proxy — из V2/V3 (заменяет прежний T1
-  по A1). Файлы: lib/auth/session.ts, proxy.ts, shim (auth.users:
-  failed_attempts/locked_until; pwd_version в public.users). Проверка:
-  unit-матрица (продление/устаревший pwd_version/блокировка перебора).
+  по A1). Файлы: lib/auth/session.ts, proxy.ts, миграция 0003_pwd_version.sql
+  (failed_attempts/locked_until были в шиме с1; pwd_version в public.users).
+  Сделано: unit-матрица session.test (13 кейсов) зелёная; rate-limit
+  (экспоненц. locked_until) + dummy-hash в login/actions; golden-тест bcrypt.
 - [x] **T2 (P1, ✅ с1 2026-07-14)** — БД — baseline-слепок с локальной базы + чистка
   Supabase-специфики + раннер + **ACL-аудит** (гранты, колоночные users,
   закрытость private/auth; blanket-GRANT запрещён) — из A2 + V3-3. Файлы:
@@ -482,9 +488,10 @@ push ТОЛЬКО этой ветки → ручной deploy ветки в да
   обёрток; void-функции через $executeRaw) + lib/db/errors.ts (маппер) — из Q2.
   Проверка: tsc ловит опечатку параметра; живой вызов case_payroll/log_activity
   в smoke-rls-v4. Остаток: unit маппера — вместе с тестовой волной с2 (T6).
-- [ ] **T6 (P1, CC: ~полдня)** — тесты — fixtures + 8 integration-файлов на
-  новую базу в СЕССИИ 2; e2e-прогон после каждого домена — из T1(тесты);
-  бюджет честный (ревью V3). Проверка: integration зелёные до старта сессии 3.
+- [x] **T6 (P1, ✅ с2 2026-07-15)** — тесты — fixtures + 9 integration-файлов на
+  новую базу (Prisma/Neon, 112 тестов); unit session + golden-bcrypt — из
+  T1(тесты). Сделано: integration 112/112 вместе на Neon dev. Остаток:
+  e2e-прогон полными доменами — по мере конверсии сессий 3–4 (гейт с4).
 - [ ] **T7 (P1, CC: ~1 ч)** — переезд — скрипт автосверки данных
   (COUNT по таблицам + Σ денежных полей) как стоп-гейт сессии 7 +
   **генеральная репетиция** полного переноса прод-дампа на dev-ветке в

@@ -1,12 +1,26 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+
+import {
+  SESSION_COOKIE,
+  issueSessionToken,
+  sessionCookieOptions,
+  shouldRenewSession,
+  verifySessionToken,
+} from '@/lib/auth/session';
 
 // Next.js 16 переименовал middleware в Proxy — этот файл выполняет роль
-// прежнего middleware.ts: на каждый запрос рефрешит сессию Supabase, чтобы
-// серверные компоненты получали уже актуальный JWT в cookies.
+// прежнего middleware.ts.
 //
-// Это «optimistic check»: финальное решение о доступе принимают серверные
-// компоненты через createSupabaseServerClient + getUser (см. lib/auth/*).
+// Цикл v4: сессия — наш «скользящий JWT» (lib/auth/session.ts). Проверка
+// ЛОКАЛЬНАЯ: подпись HS256 без сети и без БД — сетевых round-trip'ов GoTrue
+// больше нет. Это «optimistic check»: финальное решение о доступе принимают
+// серверные компоненты через getCurrentUser (там же is_active и pwd_version,
+// один запрос профиля под RLS).
+//
+// ⚠ Урок прежнего proxy (v3, логин ломался): НЕ пересоздавать request
+// (NextResponse.next({ request })) — для POST server-action это роняет тело
+// запроса. Здесь request не трогаем ВООБЩЕ: читаем cookie, максимум ставим
+// Set-Cookie на ответ (продление). Требование закреплено e2e auth.spec.
 
 const PUBLIC_PATHS = new Set(['/login', '/forbidden']);
 
@@ -27,14 +41,8 @@ const NOTIFY_MACHINE_PATH =
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const path = request.nextUrl.pathname;
 
-  // Публичные пути (/login, /forbidden) НЕ трогаем сессией Supabase.
-  // Причина: при протухшем refresh-токене getUser() инициирует refresh,
-  // @supabase/ssr пересоздаёт ответ через NextResponse.next({ request }),
-  // и для POST-запроса (Server Action логина) это РОНЯЕТ тело запроса →
-  // loginAction получает пустую FormData → «Заполните email и пароль».
-  // Логину сессия не нужна (страница сама зовёт getCurrentUser), поэтому
-  // просто пропускаем — тело POST остаётся целым, login работает даже со
-  // старой кукой (успешный вход перезапишет её свежей).
+  // Публичные и machine-пути пропускаем как есть (см. урок выше: даже
+  // безобидная работа с request на POST /login роняла FormData экшена).
   if (
     PUBLIC_PATHS.has(path) ||
     OO_MACHINE_PATH.test(path) ||
@@ -43,67 +51,39 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
-  let response = NextResponse.next({ request });
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const claims = token ? await verifySessionToken(token) : null;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    // На локалке без env — пропускаем, страницы упадут с понятной ошибкой.
-    return response;
-  }
-
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        // Сначала кладём cookies в request — чтобы downstream SSR увидел их
-        // уже в этом же рендере, без следующего навигационного раунда.
-        for (const { name, value } of cookiesToSet) {
-          request.cookies.set(name, value);
-        }
-        response = NextResponse.next({ request });
-        for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options);
-        }
-      },
-    },
-  });
-
-  // Проверяем сессию через getClaims(): при асимметричных JWT-ключах подпись
-  // валидируется ЛОКАЛЬНО по кэшированному JWKS — без сетевого round-trip к
-  // Auth-серверу на КАЖДЫЙ запрос (главный системный тормоз). При симметричном
-  // ключе (HS256) getClaims внутри откатывается на getUser() — поведение не
-  // ухудшается. ВАЖНО: вызываем БЕЗ аргумента — тогда внутри идёт getSession(),
-  // который рефрешит протухший токен, и setAll выше обновляет cookie. Передать
-  // токен явно — значит отключить рефреш и ловить throw на истёкшем exp.
-  //
-  // getClaims может бросить НЕ-AuthError (сбой fetch JWKS, кривой alg, ошибка
-  // WebCrypto). Непойманный throw в Edge-middleware = 500 на каждый маршрут,
-  // поэтому fail-closed: любой сбой проверки трактуем как «не залогинен» → /login
-  // (старый getUser возвращал ошибку, а не падал — сохраняем это поведение).
-  let claims: { sub?: string } | null = null;
-  try {
-    const { data: claimsData } = await supabase.auth.getClaims();
-    claims = claimsData?.claims ?? null;
-  } catch {
-    claims = null;
-  }
-
-  // Не залогинен или сбой проверки → шлём на /login (публичные пути отсеяны выше).
-  if (!claims?.sub) {
+  // Не залогинен / токен не признан → на /login (fail-closed: сбой проверки
+  // неотличим от отсутствия сессии).
+  if (!claims) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/login';
     loginUrl.searchParams.set('next', path);
     return NextResponse.redirect(loginUrl);
   }
 
+  const response = NextResponse.next();
+
+  // Скользящее продление: токену больше суток → перевыпуск с прежним lat
+  // (первичный вход), локально, без БД. Идемпотентно (ревью V2): параллельные
+  // вкладки могут перевыпустить каждая свою копию — обе валидны, гонок нет.
+  // Downstream текущего запроса продолжает жить со старой кукой — она ещё
+  // валидна, прокидывать свежую в request не нужно (и нельзя — см. урок).
+  if (shouldRenewSession(claims)) {
+    const fresh = await issueSessionToken({
+      sub: claims.sub,
+      email: claims.email,
+      pwdVersion: claims.pwd_version,
+      lat: claims.lat,
+    });
+    response.cookies.set(SESSION_COOKIE, fresh, sessionCookieOptions());
+  }
+
   // Редирект /login → / для залогиненных делается НА /login странице, а не
-  // здесь: страница имеет доступ к getCurrentUser (фильтр по is_active),
-  // proxy — нет. Иначе деактивированный пользователь с ещё валидным JWT
-  // попадёт в цикл / ↔ /login (главная редиректит на /login, потому что
-  // is_active=false, proxy редиректит обратно на /, потому что JWT валидный).
+  // здесь: страница имеет доступ к getCurrentUser (фильтр по is_active и
+  // pwd_version), proxy — нет. Иначе деактивированный пользователь с ещё
+  // валидным JWT попал бы в цикл / ↔ /login.
 
   return response;
 }

@@ -35,6 +35,105 @@
 
 ---
 
+## Сессия 2026-07-15 — Цикл v4, Сессия 2: Свой auth (JWT) + тестовая обвязка на Neon ✅
+
+_Вторая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Свой вход вместо GoTrue
+(скользящий JWT, ревью V2) + переезд ВСЕЙ integration-обвязки на Prisma/Neon (T6).
+Работа автономная ночная (владельца рядом не было). Прод не трогался; push не
+делался (запрет до сессии 7 в силе)._
+
+**Модель:** Claude Fable 5 (до исчерпания кредитов) → Opus 4.8 (доводка).
+
+### Сделано
+- **Свой auth (замена GoTrue), план §4.2:**
+  - `src/lib/auth/session.ts` — скользящий JWT (jose, HS256): `issueSessionToken`/
+    `verifySessionToken`/`shouldRenewSession`. Клеймы `sub/email/pwd_version/lat/iat`;
+    30 дней бездействия (exp), перевыпуск раз в сутки с сохранением `lat`, потолок
+    90 дней от первичного входа. Таблицы сессий НЕТ (перевыпуск идемпотентен).
+  - `src/proxy.ts` — переписан: проверка подписи ЛОКАЛЬНО (без сети и БД),
+    скользящее продление куки. Урок POST-body соблюдён: request НЕ пересоздаётся,
+    публичные/machine-пути пропускаются как есть.
+  - `src/lib/auth/current-user.ts` — verify JWT (jose) + ОДИН запрос профиля через
+    `userDb` под RLS; сверка `pwd_version` клейма с колонкой (инвалидация сессий),
+    страж `is_active`.
+  - `src/app/login/actions.ts` — вход через admin-пул: `bcryptjs.compare` с
+    `auth.users.encrypted_password` → выпуск JWT-куки. **Rate-limit** (ревью V3-4):
+    `failed_attempts` + экспоненциальный `locked_until` (1м→2м→…→15м); dummy-hash
+    compare для несуществующего email (анти-тайминговая утечка).
+  - `src/app/logout/route.ts` — просто удаление куки (серверного состояния нет).
+  - `src/lib/users/profile-actions.ts` — смена своего пароля: bcrypt-сверка старого
+    → новый хеш + `pwd_version++` (отзыв всех устройств) одной транзакцией →
+    свежая кука текущему устройству.
+  - `src/lib/users/credentials-actions.ts` — owner-панель доступов на admin-пул +
+    своя `auth.users` (`writePassword` = bcrypt-хеш + `pwd_version++`); email-change
+    транзакцией auth+profile; умное удаление через FK-cascade. **Приглашение на email
+    удалено** (почта Supabase ушла; своя — сессия 8). Зеркало пароля (RPC) как было.
+  - `src/lib/users/actions.ts` — `createUserAction` на admin-пул: `auth_users` +
+    `public_users` ОДНОЙ транзакцией (осиротевшие auth-строки исключены); зеркало
+    пароля через `userDb`+RPC. (Остальные экшены — role/perms/salary/department —
+    ПОКА на supabase-js: это домен users, сессия 3.)
+  - `src/lib/activity-log/log.ts` — `logActivity` через `userDb`+`rpcLogActivity`
+    (от лица `getCurrentUser`).
+  - `src/app/auth/confirm/route.ts` — **удалён** (email-флоу уезжает в сессию 8).
+  - i18n: ключ `auth.login.locked` (ru/uk).
+- **Миграция `db/migrations/0003_pwd_version.sql`** — `public.users.pwd_version int`
+  (+`grant select` колонки authenticated); применена на Neon dev. `schema.prisma` —
+  `pwd_version` добавлен вручную (комментарий-предупреждение против db pull).
+- **ESLint-allowlist adminDb** расширен: `login/actions.ts`, `users/profile-actions.ts`
+  (свой auth лезет в `auth.users` до аутентификации).
+- **T6 — вся integration-обвязка на Prisma/Neon (гейт сессии 2):**
+  - `tests/helpers/fixtures.ts` — createWorld/destroyWorld на Prisma; «вход» = `userDb`
+    (тот же боевой RLS-путь), `hasDbEnv`, пользователь = randomUUID + $transaction
+    (auth_users+public_users). Экспорт `userDb`/`adminDb`/`Db`.
+  - Все 9 файлов конвертированы (57 → 112 тестов): system(52), absences(20), cash(13),
+    v3-financial-guard(6), v3-journal-integrity(5), v3-payment-plan(5), v3-dashboard-rpc(4),
+    v3-outcome-conflict(4), v3-cash-rpc(3). Семантика ошибок: PostgREST `{error}` →
+    Prisma throw (P2010=raise/42501, P2025=невидимая строка); «SELECT отрезан» → []/null.
+  - Unit: `tests/unit/session.test.ts` (13 кейсов: roundtrip/продление/потолок/битый/
+    чужая подпись/exp) + `tests/unit/bcrypt-compat.test.ts` — **golden-тест на РЕАЛЬНОМ
+    GoTrue-хеше** (выпущен локальным Supabase-стеком, `$2a$10$…`), совместимость
+    подтверждена.
+- **SQL-функции user management: адаптация НЕ нужна** — проверил тела в baseline:
+  ни одна не читает колонки `auth.users` напрямую, все на `auth.uid()` (шим) +
+  `public.users`/`private.*`. Плановый пункт снят.
+- **Чистота:** `tsc --noEmit` ✓, `eslint` ✓, unit 141/141 ✓, **integration 112/112
+  вместе против Neon dev** ✓. `.env.example` +`AUTH_SECRET`; `.env.local` — сгенерён
+  AUTH_SECRET (48 байт base64url).
+
+### Дальше
+- **Сессия 3 «Данные, часть 1»** (users/departments/clients/cases/tasks/comments):
+  переписать `queries.ts`/`actions.ts` этих доменов с supabase-js на `userDb`/`adminDb`.
+  ⚠ cases: `updated_at::text` сквозь DTO (optimistic locking, микросекунды — ревью V3-5).
+  Остальные экшены users (role/perms/salary/department/active) ещё на supabase-js —
+  доперевести здесь.
+- **e2e auth.spec** — ПОЛНЫЙ прогон отложен (гейт сессии 4): в промежуточном
+  состоянии страницы-контент ещё на supabase-js (дашборд/дела не отрисуются без
+  supabase-сессии). Сам auth-механизм покрыт unit(session)+integration(userDb-путь)+
+  golden-bcrypt. Гонять e2e вертикальными подмножествами по мере конверсии доменов.
+- Хвост владельцу (из сессии 1, не сделано): удалить в Vercel → Storage СТАРУЮ базу
+  `yur-crm` (Washington, us-east-1) — от первой попытки.
+
+### Грабли / критичное для следующих сессий
+- **Промежуточное состояние ОЖИДАЕМО нерабочее** (план, честная оговорка): вход уже
+  свой (JWT), но 44 доменных файла (`queries/actions`) ещё зовут `createSupabaseServerClient`
+  — без supabase-сессии их RLS видит anon → экраны данных пусты/падают. Это норма до
+  конца сессии 4; тесты идут мимо экранов (прямой userDb-путь), поэтому зелёные.
+- **Семантика ошибок Prisma vs PostgREST** (для будущих конверсий): запрещённая
+  RLS-запись — throw (не `{error}`); `update/delete` невидимой строки → P2025; для
+  «тихий no-op под RLS» использовать `updateMany`/`deleteMany` (вернут count:0 без
+  throw), НЕ `update`/`delete` (кинут P2025). raise-текст триггеров доходит в message
+  (можно `rejects.toThrow(/фрагмент/)`).
+- **Уборка тестов с оплаченными актами**: платёж с `act_id` нельзя снять удалением
+  `case_acts` (триггер `payments_guard_act_payment` immutable) — сначала удалить сам
+  платёж (revert акта в issued), потом акт. Напоролись cash.test и system.test —
+  учтено в их teardown.
+- **salary_* недоступны типизированному Prisma** (`@ignore`): в тестах гардов писать
+  через `$executeRaw`/`$queryRaw` (helpers setSalaryRaw/getSalaryRaw в system.test).
+- **AUTH_SECRET** на проде (Vercel env, сессия 7) — сгенерить свой; смена секрета
+  разлогинивает всех. Формат генерации — в `.env.example`.
+- git: master впереди origin (редизайн v5 + план + c1 + **коммит c2**); **push
+  запрещён до с7**. Коммит сессии 2 — локальный.
+
 ## Сессия 2026-07-14 — Цикл v4, Сессия 1: Фундамент (Neon, шим, baseline, data-слой) ✅
 
 _Первая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Гейт пройден целиком:

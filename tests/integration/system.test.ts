@@ -1,27 +1,77 @@
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PrismaClient } from '@/generated/prisma/client';
 import {
-  hasSupabaseEnv,
+  hasDbEnv,
   createWorld,
   destroyWorld,
-  signIn,
-  PASSWORD,
+  userDb,
   type World,
+  type Db,
 } from '../helpers/fixtures';
+import {
+  rpcSearchCaseIds,
+  rpcCasePayroll,
+  rpcPayrollBySpecialist,
+  rpcPayrollEmployeeSummary,
+  rpcPayrollEmployeeCases,
+  rpcManageUserSalaries,
+  rpcConfirmActPaid,
+} from '@/lib/db/rpc';
 
-// Интеграционные тесты поверх локального Supabase: проверяют то, что нельзя
-// проверить юнитами — RLS (права доступа), триггеры денег и воронку этапов.
-// Без поднятого Supabase набор помечается skipped.
+// Интеграционные тесты RLS / триггеров / воронки / зарплаты / актов поверх Neon
+// (цикл v4): проверяют то, что нельзя проверить юнитами — доступ по ролям (RLS
+// через шим auth.uid() ← app.user_id, выставляемый userDb), денежные триггеры
+// (paid_total/debt), строгую воронку этапов, % от оплат (payroll_rates +
+// salary_mode) и цикл Рахунок-Акта. Без DATABASE_URL_APP/DATABASE_URL_ADMIN в
+// .env.local набор помечается skipped.
 
-const suite = hasSupabaseEnv ? describe : describe.skip;
+const suite = hasDbEnv ? describe : describe.skip;
 
-if (!hasSupabaseEnv) {
-  // Видимое предупреждение, чтобы пропуск не выглядел как «всё прошло».
-  console.warn(
-    '[integration] Пропущено: нет NEXT_PUBLIC_SUPABASE_URL/ANON/SERVICE_ROLE в .env.local. ' +
-      'Подними `npx supabase start` и заполни .env.local.',
-  );
+if (!hasDbEnv) {
+  console.warn('[integration:system] Пропущено: нет DATABASE_URL_* в .env.local.');
 }
+
+type DbLike = Db | PrismaClient;
+
+// salary_mode/salary_fixed_amount — колонки users приватны (@ignore в Prisma-схеме
+// из-за column-level revoke от authenticated/anon, CLAUDE.md §5) — типизированный
+// клиент их вообще не знает. Читаем/пишем ТОЛЬКО raw SQL. Через admin-пул (auth.uid()
+// IS NULL) гард users_guard_salary_fields пропускает системным путём (как раньше
+// service_role); через userDb(actorId, ...) идёт та же RLS-сессия, что и в реальном
+// экшене — нужно, чтобы проверить сам гард.
+async function setSalaryRaw(
+  db: DbLike,
+  userId: string,
+  mode: string,
+  amount: number | null,
+): Promise<void> {
+  await db.$executeRaw`
+    update public.users
+       set salary_mode = ${mode}::text,
+           salary_fixed_amount = ${amount}::numeric
+     where id = ${userId}::uuid`;
+}
+
+async function getSalaryRaw(
+  db: DbLike,
+  userId: string,
+): Promise<{ salary_mode: string; salary_fixed_amount: number | null }> {
+  const rows = await db.$queryRaw<
+    { salary_mode: string; salary_fixed_amount: string | number | null }[]
+  >`select salary_mode, salary_fixed_amount from public.users where id = ${userId}::uuid`;
+  const row = rows[0]!;
+  return {
+    salary_mode: row.salary_mode,
+    salary_fixed_amount:
+      row.salary_fixed_amount == null ? null : Number(row.salary_fixed_amount),
+  };
+}
+
+// Обёртки payroll_employee_summary/_cases требуют p_month, но семантика «за всё
+// время» — это SQL NULL. Тип обёртки — string (не nullable), поэтому точечно
+// приводим (как fixtures.ts делает `as never` для enum-параметров mkCase).
+const noMonth = null as unknown as string;
 
 suite('Юр CRM — интеграция (RLS · триггеры · воронка · зарплата)', () => {
   let world: World;
@@ -35,82 +85,69 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
   });
 
   // ── Названия наших дел среди прочих в БД (фильтр по runId-префиксу) ──
-  const titlesOf = async (client: SupabaseClient, prefix: string) => {
-    const { data, error } = await client
-      .from('cases')
-      .select('number_title')
-      .like('number_title', `${prefix}%`);
-    expect(error).toBeNull();
-    return (data ?? []).map((r) => r.number_title).sort();
-  };
+  async function titlesOf(tx: Db, prefix: string): Promise<string[]> {
+    const rows = await tx.cases.findMany({
+      where: { number_title: { startsWith: prefix } },
+      select: { number_title: true },
+    });
+    return rows.map((r) => r.number_title).sort();
+  }
 
   // ============================================================
   describe('RLS — видимость дел', () => {
     it('юрист видит только свои дела (по lawyer_id)', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const seen = await titlesOf(lawyer1, world.prefix);
+      const seen = await userDb(world.users.lawyer1.id, (tx) => titlesOf(tx, world.prefix));
       // lawyer1 — на A и S, не на B.
       expect(seen).toEqual([`${world.prefix}A`, `${world.prefix}S`]);
       expect(seen).not.toContain(`${world.prefix}B`);
     });
 
     it('второй юрист изолирован (видит только B)', async () => {
-      const lawyer2 = await signIn(world.users.lawyer2.email);
-      const seen = await titlesOf(lawyer2, world.prefix);
+      const seen = await userDb(world.users.lawyer2.id, (tx) => titlesOf(tx, world.prefix));
       expect(seen).toEqual([`${world.prefix}B`]);
     });
 
     it('эксперт видит только свои дела (по responsible_id)', async () => {
-      const expert1 = await signIn(world.users.expert1.email);
-      const seen = await titlesOf(expert1, world.prefix);
+      const seen = await userDb(world.users.expert1.id, (tx) => titlesOf(tx, world.prefix));
       expect(seen).toEqual([`${world.prefix}A`, `${world.prefix}S`]);
     });
 
     it('второй эксперт изолирован (видит только B)', async () => {
-      const expert2 = await signIn(world.users.expert2.email);
-      const seen = await titlesOf(expert2, world.prefix);
+      const seen = await userDb(world.users.expert2.id, (tx) => titlesOf(tx, world.prefix));
       expect(seen).toEqual([`${world.prefix}B`]);
     });
 
     it('staff (admin) видит все наши дела', async () => {
-      const staff = await signIn(world.users.staffAdmin.email);
-      const seen = await titlesOf(staff, world.prefix);
-      expect(seen).toEqual([
-        `${world.prefix}A`,
-        `${world.prefix}B`,
-        `${world.prefix}S`,
-      ]);
+      const seen = await userDb(world.users.staffAdmin.id, (tx) => titlesOf(tx, world.prefix));
+      expect(seen).toEqual([`${world.prefix}A`, `${world.prefix}B`, `${world.prefix}S`]);
     });
 
     it('юрист не может изменить чужое дело (RLS режет апдейт)', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
       // Пытаемся сделать чужое дело B срочным — RLS не даст (0 строк, без ошибки).
-      await lawyer1.from('cases').update({ priority: 'urgent' }).eq('id', world.caseB);
-      const { data } = await world.admin
-        .from('cases')
-        .select('priority')
-        .eq('id', world.caseB)
-        .single();
-      expect(data?.priority).toBe('normal');
+      const result = await userDb(world.users.lawyer1.id, (tx) =>
+        tx.cases.updateMany({ where: { id: world.caseB }, data: { priority: 'urgent' } }),
+      );
+      expect(result.count).toBe(0);
+      const after = await world.admin.cases.findFirst({
+        where: { id: world.caseB },
+        select: { priority: true },
+      });
+      expect(after?.priority).toBe('normal');
     });
   });
 
   // ============================================================
   describe('RLS — видимость платежей', () => {
     it('эксперт своего дела видит платёж, чужой — нет', async () => {
-      const expert1 = await signIn(world.users.expert1.email);
-      const expert2 = await signIn(world.users.expert2.email);
-      const { data: e1 } = await expert1
-        .from('payments')
-        .select('amount')
-        .eq('case_id', world.caseA);
-      const { data: e2 } = await expert2
-        .from('payments')
-        .select('amount')
-        .eq('case_id', world.caseA);
-      expect(e1?.length).toBe(1);
-      expect(Number(e1?.[0]?.amount)).toBe(10000);
-      expect(e2?.length).toBe(0); // expert2 не на деле A → платежа не видит
+      const e1 = await userDb(world.users.expert1.id, (tx) =>
+        tx.payments.findMany({ where: { case_id: world.caseA }, select: { amount: true } }),
+      );
+      const e2 = await userDb(world.users.expert2.id, (tx) =>
+        tx.payments.findMany({ where: { case_id: world.caseA }, select: { amount: true } }),
+      );
+      expect(e1.length).toBe(1);
+      expect(Number(e1[0]?.amount)).toBe(10000);
+      expect(e2.length).toBe(0); // expert2 не на деле A → платежа не видит
     });
   });
 
@@ -126,109 +163,114 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
   //     all/NULL-dept → {A, B, S}
   // ============================================================
   describe('RLS — видимость по подразделениям', () => {
+    // Ad hoc пользователь для тестов эскалации — ТОЧНО такой же паттерн, что и
+    // mkUser в fixtures.ts (randomUUID + $transaction[auth_users, public_users]).
+    // Не добавлен в world.users → удаляем сами в finally каждого теста.
+    async function mkAdhocUser(
+      slug: string,
+      opts: { departmentId?: string | null; permOverrides?: Record<string, boolean> } = {},
+    ): Promise<{ id: string; email: string }> {
+      const id = randomUUID();
+      const email = `it-${world.runId}-${slug}@yur.test`;
+      await world.admin.$transaction([
+        world.admin.auth_users.create({ data: { id, email } }),
+        world.admin.public_users.create({
+          data: {
+            id,
+            full_name: `IT ${slug} ${world.runId}`,
+            email,
+            role: 'lawyer',
+            is_active: true,
+            department_id: opts.departmentId ?? null,
+            visibility_scope: 'department',
+            perm_overrides: opts.permOverrides ?? {},
+          },
+        }),
+      ]);
+      return { id, email };
+    }
+
+    async function destroyAdhocUser(id: string): Promise<void> {
+      await world.admin.public_users.deleteMany({ where: { id } });
+      await world.admin.auth_users.deleteMany({ where: { id } });
+    }
+
     it('руководитель Києва видит дела своего подразделения (A, S), не B', async () => {
-      const c = await signIn(world.users.kyivAdmin.email);
-      const seen = await titlesOf(c, world.prefix);
+      const seen = await userDb(world.users.kyivAdmin.id, (tx) => titlesOf(tx, world.prefix));
       expect(seen).toEqual([`${world.prefix}A`, `${world.prefix}S`]);
       expect(seen).not.toContain(`${world.prefix}B`);
     });
 
     it('кросс-дело A (Київ продав / Дніпро веде) видно обоим руководителям', async () => {
-      const kyiv = await signIn(world.users.kyivAdmin.email);
-      const dnipro = await signIn(world.users.dniproAdmin.email);
-      const kyivSeen = await titlesOf(kyiv, world.prefix);
-      const dniproSeen = await titlesOf(dnipro, world.prefix);
+      const kyivSeen = await userDb(world.users.kyivAdmin.id, (tx) => titlesOf(tx, world.prefix));
+      const dniproSeen = await userDb(world.users.dniproAdmin.id, (tx) =>
+        titlesOf(tx, world.prefix),
+      );
       expect(kyivSeen).toContain(`${world.prefix}A`);
       expect(dniproSeen).toContain(`${world.prefix}A`);
     });
 
     it('руководитель Дніпра видит все три (Дніпро есть на A, B, S)', async () => {
-      const c = await signIn(world.users.dniproAdmin.email);
-      const seen = await titlesOf(c, world.prefix);
-      expect(seen).toEqual([
-        `${world.prefix}A`,
-        `${world.prefix}B`,
-        `${world.prefix}S`,
-      ]);
+      const seen = await userDb(world.users.dniproAdmin.id, (tx) => titlesOf(tx, world.prefix));
+      expect(seen).toEqual([`${world.prefix}A`, `${world.prefix}B`, `${world.prefix}S`]);
     });
 
     it('руководитель Львова видит только B и НЕ видит A/S', async () => {
-      const c = await signIn(world.users.lvivAdmin.email);
-      const seen = await titlesOf(c, world.prefix);
+      const seen = await userDb(world.users.lvivAdmin.id, (tx) => titlesOf(tx, world.prefix));
       expect(seen).toEqual([`${world.prefix}B`]);
       expect(seen).not.toContain(`${world.prefix}A`);
       expect(seen).not.toContain(`${world.prefix}S`);
     });
 
     it('admin со scope=all видит всё (подразделение перекрыто)', async () => {
-      const c = await signIn(world.users.allAdmin.email);
-      const seen = await titlesOf(c, world.prefix);
-      expect(seen).toEqual([
-        `${world.prefix}A`,
-        `${world.prefix}B`,
-        `${world.prefix}S`,
-      ]);
+      const seen = await userDb(world.users.allAdmin.id, (tx) => titlesOf(tx, world.prefix));
+      expect(seen).toEqual([`${world.prefix}A`, `${world.prefix}B`, `${world.prefix}S`]);
     });
 
     it('переходное правило: admin без подразделения (NULL) видит всё', async () => {
-      const c = await signIn(world.users.staffAdmin.email);
-      const seen = await titlesOf(c, world.prefix);
-      expect(seen).toEqual([
-        `${world.prefix}A`,
-        `${world.prefix}B`,
-        `${world.prefix}S`,
-      ]);
+      const seen = await userDb(world.users.staffAdmin.id, (tx) => titlesOf(tx, world.prefix));
+      expect(seen).toEqual([`${world.prefix}A`, `${world.prefix}B`, `${world.prefix}S`]);
     });
 
     it('юрист/Експерт не меняются: видят только свои дела', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const expert2 = await signIn(world.users.expert2.email);
-      expect(await titlesOf(lawyer1, world.prefix)).toEqual([
+      expect(await userDb(world.users.lawyer1.id, (tx) => titlesOf(tx, world.prefix))).toEqual([
         `${world.prefix}A`,
         `${world.prefix}S`,
       ]);
-      expect(await titlesOf(expert2, world.prefix)).toEqual([`${world.prefix}B`]);
+      expect(await userDb(world.users.expert2.id, (tx) => titlesOf(tx, world.prefix))).toEqual([
+        `${world.prefix}B`,
+      ]);
     });
 
     it('наследование: платёж дела A виден Києву, не Львову', async () => {
-      const kyiv = await signIn(world.users.kyivAdmin.email);
-      const lviv = await signIn(world.users.lvivAdmin.email);
-      const { data: k } = await kyiv
-        .from('payments')
-        .select('amount')
-        .eq('case_id', world.caseA);
-      const { data: l } = await lviv
-        .from('payments')
-        .select('amount')
-        .eq('case_id', world.caseA);
-      expect(k?.length).toBe(1);
-      expect(Number(k?.[0]?.amount)).toBe(10000);
-      expect(l?.length).toBe(0); // дело A не касается Львова → платёж скрыт
+      const k = await userDb(world.users.kyivAdmin.id, (tx) =>
+        tx.payments.findMany({ where: { case_id: world.caseA }, select: { amount: true } }),
+      );
+      const l = await userDb(world.users.lvivAdmin.id, (tx) =>
+        tx.payments.findMany({ where: { case_id: world.caseA }, select: { amount: true } }),
+      );
+      expect(k.length).toBe(1);
+      expect(Number(k[0]?.amount)).toBe(10000);
+      expect(l.length).toBe(0); // дело A не касается Львова → платёж скрыт
     });
 
     it('клиент виден Києву (есть дело подразделения)', async () => {
-      const kyiv = await signIn(world.users.kyivAdmin.email);
-      const { data } = await kyiv
-        .from('clients')
-        .select('id')
-        .eq('id', world.clientId);
-      expect(data?.length).toBe(1);
+      const rows = await userDb(world.users.kyivAdmin.id, (tx) =>
+        tx.clients.findMany({ where: { id: world.clientId }, select: { id: true } }),
+      );
+      expect(rows.length).toBe(1);
     });
 
     it('ЗП-сводка скоупится: Київ видит lawyer1, не expert1 (Дніпро)', async () => {
-      const kyiv = await signIn(world.users.kyivAdmin.email);
-      const { data, error } = await kyiv.rpc('payroll_by_specialist');
-      expect(error).toBeNull();
-      const ids = (data ?? []).map((r: { user_id: string }) => r.user_id);
+      const rows = await userDb(world.users.kyivAdmin.id, (tx) => rpcPayrollBySpecialist(tx));
+      const ids = rows.map((r) => r.user_id);
       expect(ids).toContain(world.users.lawyer1.id); // Київ — в зоне видимости
       expect(ids).not.toContain(world.users.expert1.id); // Дніпро — вне зоны
     });
 
     it('ЗП-сводка для scope=all включает и Дніпро, и Львів', async () => {
-      const all = await signIn(world.users.allAdmin.email);
-      const { data, error } = await all.rpc('payroll_by_specialist');
-      expect(error).toBeNull();
-      const ids = (data ?? []).map((r: { user_id: string }) => r.user_id);
+      const rows = await userDb(world.users.allAdmin.id, (tx) => rpcPayrollBySpecialist(tx));
+      const ids = rows.map((r) => r.user_id);
       expect(ids).toContain(world.users.lawyer1.id);
       expect(ids).toContain(world.users.expert1.id);
       expect(ids).toContain(world.users.expert2.id);
@@ -236,25 +278,22 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
 
     // v2 Этап 3 — фильтр «Подразделение» в поиске дел (search_case_ids
     // p_department_id): дело видно подразделению юриста ЛИБО эксперта.
-    //   Львів → только B; Київ → A и S (не B). p_q=prefix изолирует от seed-дел.
+    //   Львів → только B; Київ → A и S (не B). q=prefix изолирует от seed-дел.
     it('search_case_ids: p_department_id сужает до дел подразделения', async () => {
-      const all = await signIn(world.users.allAdmin.email);
-      const deptId = async (name: string) => {
-        const { data } = await all
-          .from('departments')
-          .select('id')
-          .eq('name', name)
-          .single();
-        return (data as { id: string }).id;
-      };
-      const idsFor = async (department: string) => {
-        const { data, error } = await all.rpc('search_case_ids', {
-          p_q: world.prefix,
-          p_department_id: await deptId(department),
-          p_limit: 50,
+      const deptId = async (name: string): Promise<string> => {
+        const dep = await world.admin.departments.findFirst({
+          where: { name },
+          select: { id: true },
         });
-        expect(error).toBeNull();
-        return (data ?? []).map((r: { id: string }) => r.id);
+        if (!dep) throw new Error(`department ${name} not found`);
+        return dep.id;
+      };
+      const idsFor = async (department: string): Promise<string[]> => {
+        const departmentId = await deptId(department);
+        const rows = await userDb(world.users.allAdmin.id, (tx) =>
+          rpcSearchCaseIds(tx, { q: world.prefix, departmentId, limit: 50, offset: 0 }),
+        );
+        return rows.map((r) => r.id);
       };
 
       const lviv = await idsFor('Львівський');
@@ -263,9 +302,7 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
       expect(lviv).not.toContain(world.caseS);
 
       const kyiv = await idsFor('Київський');
-      expect(kyiv).toEqual(
-        expect.arrayContaining([world.caseA, world.caseS]),
-      );
+      expect(kyiv).toEqual(expect.arrayContaining([world.caseA, world.caseS]));
       expect(kyiv).not.toContain(world.caseB);
     });
 
@@ -274,38 +311,13 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
     // для lawyer/expert. Иначе admin, выдав юристу право view_all_cases, эскалировал
     // бы его до видимости всей компании (у юриста department_id=NULL по умолчанию).
     it('эскалация заблокирована: lawyer+view_all_cases БЕЗ подразделения видит только своё', async () => {
-      const email = `it-${world.runId}-esc-null@yur.test`;
-      const { data: au, error: aErr } = await world.admin.auth.admin.createUser({
-        email,
-        password: PASSWORD,
-        email_confirm: true,
-      });
-      expect(aErr).toBeNull();
-      const id = au!.user!.id;
+      const { id } = await mkAdhocUser('esc-null', { permOverrides: { view_all_cases: true } });
       try {
-        // service_role → guard_user_visibility_fields/perm_overrides в обход.
-        const { error: uErr } = await world.admin.from('users').upsert(
-          {
-            id,
-            full_name: `IT esc-null ${world.runId}`,
-            email,
-            role: 'lawyer',
-            is_active: true,
-            department_id: null,
-            visibility_scope: 'department',
-            perm_overrides: { view_all_cases: true },
-          },
-          { onConflict: 'id' },
-        );
-        expect(uErr).toBeNull();
-
-        const c = await signIn(email);
-        const seen = await titlesOf(c, world.prefix);
+        const seen = await userDb(id, (tx) => titlesOf(tx, world.prefix));
         // НЕ на одном из наших дел и БЕЗ подразделения → пусто, а не {A, B, S}.
         expect(seen).toEqual([]);
       } finally {
-        await world.admin.from('users').delete().eq('id', id);
-        await world.admin.auth.admin.deleteUser(id);
+        await destroyAdhocUser(id);
       }
     });
 
@@ -313,42 +325,19 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
     // lawyer+view_all_cases с подразделением Дніпро видит дела своего филиала (A,B,S),
     // а не только свои назначенные.
     it('granted-cap скоупится: lawyer+view_all_cases с Дніпро видит дела филиала', async () => {
-      const { data: dep } = await world.admin
-        .from('departments')
-        .select('id')
-        .eq('name', 'Дніпровський')
-        .single();
-      const email = `it-${world.runId}-esc-dep@yur.test`;
-      const { data: au } = await world.admin.auth.admin.createUser({
-        email,
-        password: PASSWORD,
-        email_confirm: true,
+      const dep = await world.admin.departments.findFirst({
+        where: { name: 'Дніпровський' },
+        select: { id: true },
       });
-      const id = au!.user!.id;
+      const { id } = await mkAdhocUser('esc-dep', {
+        departmentId: dep!.id,
+        permOverrides: { view_all_cases: true },
+      });
       try {
-        await world.admin.from('users').upsert(
-          {
-            id,
-            full_name: `IT esc-dep ${world.runId}`,
-            email,
-            role: 'lawyer',
-            is_active: true,
-            department_id: dep!.id,
-            visibility_scope: 'department',
-            perm_overrides: { view_all_cases: true },
-          },
-          { onConflict: 'id' },
-        );
-        const c = await signIn(email);
-        const seen = await titlesOf(c, world.prefix);
-        expect(seen).toEqual([
-          `${world.prefix}A`,
-          `${world.prefix}B`,
-          `${world.prefix}S`,
-        ]);
+        const seen = await userDb(id, (tx) => titlesOf(tx, world.prefix));
+        expect(seen).toEqual([`${world.prefix}A`, `${world.prefix}B`, `${world.prefix}S`]);
       } finally {
-        await world.admin.from('users').delete().eq('id', id);
-        await world.admin.auth.admin.deleteUser(id);
+        await destroyAdhocUser(id);
       }
     });
   });
@@ -356,70 +345,63 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
   // ============================================================
   describe('Триггеры — paid_total и debt', () => {
     it('после сид-платежа A: paid_total=10000, debt=20000', async () => {
-      const { data } = await world.admin
-        .from('cases')
-        .select('paid_total, debt, contract_sum')
-        .eq('id', world.caseA)
-        .single();
+      const data = await world.admin.cases.findFirst({
+        where: { id: world.caseA },
+        select: { paid_total: true, debt: true, contract_sum: true },
+      });
       expect(Number(data?.contract_sum)).toBe(30000);
       expect(Number(data?.paid_total)).toBe(10000);
       expect(Number(data?.debt)).toBe(20000);
     });
 
     it('дело без оплат B: paid_total=0, debt=120000', async () => {
-      const { data } = await world.admin
-        .from('cases')
-        .select('paid_total, debt')
-        .eq('id', world.caseB)
-        .single();
+      const data = await world.admin.cases.findFirst({
+        where: { id: world.caseB },
+        select: { paid_total: true, debt: true },
+      });
       expect(Number(data?.paid_total)).toBe(0);
       expect(Number(data?.debt)).toBe(120000);
     });
 
     it('новый платёж пересчитывает paid_total/debt, удаление — откатывает', async () => {
-      const { data: ins, error: insErr } = await world.admin
-        .from('payments')
-        .insert({
+      const ins = await world.admin.payments.create({
+        data: {
           case_id: world.caseB,
           amount: 50000,
-          paid_at: '2026-05-20',
+          paid_at: new Date('2026-05-20'),
           method: 'bank',
           note: 'IT extra',
           created_by: world.users.staffAdmin.id,
-        })
-        .select('id')
-        .single();
-      expect(insErr).toBeNull();
+        },
+        select: { id: true },
+      });
 
-      const after = await world.admin
-        .from('cases')
-        .select('paid_total, debt')
-        .eq('id', world.caseB)
-        .single();
-      expect(Number(after.data?.paid_total)).toBe(50000);
-      expect(Number(after.data?.debt)).toBe(70000);
+      const after = await world.admin.cases.findFirst({
+        where: { id: world.caseB },
+        select: { paid_total: true, debt: true },
+      });
+      expect(Number(after?.paid_total)).toBe(50000);
+      expect(Number(after?.debt)).toBe(70000);
 
-      // Откат: удаляем платёж — триггер должен вернуть исходные значения.
-      await world.admin.from('payments').delete().eq('id', ins!.id);
-      const restored = await world.admin
-        .from('cases')
-        .select('paid_total, debt')
-        .eq('id', world.caseB)
-        .single();
-      expect(Number(restored.data?.paid_total)).toBe(0);
-      expect(Number(restored.data?.debt)).toBe(120000);
+      // Откат: удаляем платёж — триггер должен вернуть исходные значения
+      // (заодно каскадом снимет авто-строку кассы, если она успела создаться).
+      await world.admin.payments.delete({ where: { id: ins.id } });
+      const restored = await world.admin.cases.findFirst({
+        where: { id: world.caseB },
+        select: { paid_total: true, debt: true },
+      });
+      expect(Number(restored?.paid_total)).toBe(0);
+      expect(Number(restored?.debt)).toBe(120000);
     });
   });
 
   // ============================================================
   describe('Зарплата — ставки и расчёт (% от оплат)', () => {
     it('ставки по умолчанию: document 7%, claim 10%, representation 25%', async () => {
-      const { data } = await world.admin
-        .from('payroll_rates')
-        .select('category, lawyer_percent, expert_percent');
-      const byCat = new Map(
-        (data ?? []).map((r) => [r.category, r]),
-      );
+      const rows = await world.admin.payroll_rates.findMany({
+        select: { category: true, lawyer_percent: true, expert_percent: true },
+      });
+      const byCat = new Map(rows.map((r) => [r.category, r]));
       expect(Number(byCat.get('document')?.lawyer_percent)).toBe(7);
       expect(Number(byCat.get('claim')?.lawyer_percent)).toBe(10);
       expect(Number(byCat.get('representation')?.lawyer_percent)).toBe(25);
@@ -428,34 +410,26 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
     });
 
     it('case_payroll(A): representation 25% от 10000 = 2500 каждому, итого 5000', async () => {
-      const staff = await signIn(world.users.staffAdmin.email);
-      const { data, error } = await staff.rpc('case_payroll', {
-        p_case_id: world.caseA,
-      });
-      expect(error).toBeNull();
-      const r = (data ?? [])[0];
+      const rows = await userDb(world.users.staffAdmin.id, (tx) =>
+        rpcCasePayroll(tx, { caseId: world.caseA }),
+      );
+      const r = rows[0];
       expect(r).toBeTruthy();
-      expect(r.category).toBe('representation');
-      expect(Number(r.lawyer_percent)).toBe(25);
-      expect(Number(r.expert_percent)).toBe(25);
-      expect(Number(r.lawyer_amount)).toBe(2500);
-      expect(Number(r.expert_amount)).toBe(2500);
-      expect(Number(r.total)).toBe(5000);
+      expect(r!.category).toBe('representation');
+      expect(r!.lawyer_percent).toBe(25);
+      expect(r!.expert_percent).toBe(25);
+      expect(r!.lawyer_amount).toBe(2500);
+      expect(r!.expert_amount).toBe(2500);
+      expect(r!.total).toBe(5000);
     });
 
     it('payroll_by_specialist: юрист видит своё начисление, эксперт — не чужое', async () => {
-      const lawyer1Session = await signIn(world.users.lawyer1.email);
-      const { data, error } = await lawyer1Session.rpc('payroll_by_specialist');
-      expect(error).toBeNull();
-      const mine = (data ?? []).find(
-        (r: { user_id: string }) => r.user_id === world.users.lawyer1.id,
-      );
+      const rows = await userDb(world.users.lawyer1.id, (tx) => rpcPayrollBySpecialist(tx));
+      const mine = rows.find((r) => r.user_id === world.users.lawyer1.id);
       expect(mine).toBeTruthy();
-      expect(Number(mine.earned)).toBeGreaterThanOrEqual(2500);
+      expect(mine!.earned).toBeGreaterThanOrEqual(2500);
       // Юрист не должен видеть строку чужого эксперта (expert2 на деле B).
-      const foreign = (data ?? []).find(
-        (r: { user_id: string }) => r.user_id === world.users.expert2.id,
-      );
+      const foreign = rows.find((r) => r.user_id === world.users.expert2.id);
       expect(foreign).toBeUndefined();
     });
   });
@@ -463,179 +437,155 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
   // ============================================================
   describe('Зарплата — режимы (v2 Этап 4)', () => {
     // Сброс к проценту (по умолчанию) — оба поля вместе из-за check-консистентности.
-    const resetSalary = async (userId: string) => {
-      await world.admin
-        .from('users')
-        .update({ salary_mode: 'percent', salary_fixed_amount: null })
-        .eq('id', userId);
-    };
+    const resetSalary = (userId: string) => setSalaryRaw(world.admin, userId, 'percent', null);
 
     it("режим 'fixed' зануляет процент в case_payroll / by_specialist / summary / cases", async () => {
-      // lawyer1 (Київ) на деле A: representation 25% от 10000. Ставим оклад.
-      await world.admin
-        .from('users')
-        .update({ salary_mode: 'fixed', salary_fixed_amount: 20000 })
-        .eq('id', world.users.lawyer1.id);
+      // lawyer1 (Київ) на деле A: representation 25% от 10000. Ставим оклад
+      // (admin-пул: auth.uid() IS NULL → гард проходит системным путём, как раньше
+      // service_role).
+      await setSalaryRaw(world.admin, world.users.lawyer1.id, 'fixed', 20000);
       try {
-        const staff = await signIn(world.users.staffAdmin.email);
+        const { cpr, lawyerRow, sRow, caseRow } = await userDb(
+          world.users.staffAdmin.id,
+          async (tx) => {
+            const cp = await rpcCasePayroll(tx, { caseId: world.caseA });
+            const bs = await rpcPayrollBySpecialist(tx);
+            const sum = await rpcPayrollEmployeeSummary(tx, { month: noMonth });
+            const ec = await rpcPayrollEmployeeCases(tx, {
+              userId: world.users.lawyer1.id,
+              month: noMonth,
+            });
+            return {
+              cpr: cp[0],
+              lawyerRow: bs.find(
+                (r) => r.user_id === world.users.lawyer1.id && r.role_in_case === 'lawyer',
+              ),
+              sRow: sum.find((r) => r.user_id === world.users.lawyer1.id),
+              caseRow: ec.find(
+                (r) => r.case_id === world.caseA && r.role_in_case === 'lawyer',
+              ),
+            };
+          },
+        );
 
-        const cp = await staff.rpc('case_payroll', { p_case_id: world.caseA });
-        expect(cp.error).toBeNull();
-        const cpr = (cp.data ?? [])[0];
-        expect(Number(cpr.lawyer_percent)).toBe(0);
-        expect(Number(cpr.lawyer_amount)).toBe(0);
+        expect(cpr).toBeTruthy();
+        expect(cpr!.lawyer_percent).toBe(0);
+        expect(cpr!.lawyer_amount).toBe(0);
         // Эксперт1 — без изменений (процент): 25% от 10000 = 2500.
-        expect(Number(cpr.expert_amount)).toBe(2500);
-        expect(Number(cpr.total)).toBe(2500);
+        expect(cpr!.expert_amount).toBe(2500);
+        expect(cpr!.total).toBe(2500);
 
-        const bs = await staff.rpc('payroll_by_specialist');
-        const lawyerRow = (bs.data ?? []).find(
-          (r: { user_id: string; role_in_case: string }) =>
-            r.user_id === world.users.lawyer1.id && r.role_in_case === 'lawyer',
-        );
-        expect(Number(lawyerRow.earned)).toBe(0);
+        expect(lawyerRow?.earned).toBe(0);
 
-        const sum = await staff.rpc('payroll_employee_summary', { p_month: null });
-        const sRow = (sum.data ?? []).find(
-          (r: { user_id: string }) => r.user_id === world.users.lawyer1.id,
-        );
         expect(sRow).toBeTruthy();
-        expect(sRow.salary_mode).toBe('fixed');
-        expect(Number(sRow.earned)).toBe(0);
-        expect(Number(sRow.fixed)).toBe(20000);
+        expect(sRow!.salary_mode).toBe('fixed');
+        expect(sRow!.earned).toBe(0);
+        expect(sRow!.fixed).toBe(20000);
         // balance (накопленный остаток) не включает оклад → 0 (нет премий/выплат).
-        expect(Number(sRow.balance)).toBe(0);
+        expect(sRow!.balance).toBe(0);
 
-        const ec = await staff.rpc('payroll_employee_cases', {
-          p_user_id: world.users.lawyer1.id,
-          p_month: null,
-        });
-        const caseRow = (ec.data ?? []).find(
-          (r: { case_id: string; role_in_case: string }) =>
-            r.case_id === world.caseA && r.role_in_case === 'lawyer',
-        );
-        expect(Number(caseRow.percent)).toBe(0);
-        expect(Number(caseRow.earned)).toBe(0);
+        expect(caseRow?.percent).toBe(0);
+        expect(caseRow?.earned).toBe(0);
       } finally {
         await resetSalary(world.users.lawyer1.id);
       }
     });
 
     it("режим 'fixed_percent' = оклад + процент (процент сохраняется)", async () => {
-      await world.admin
-        .from('users')
-        .update({ salary_mode: 'fixed_percent', salary_fixed_amount: 15000 })
-        .eq('id', world.users.lawyer1.id);
+      await setSalaryRaw(world.admin, world.users.lawyer1.id, 'fixed_percent', 15000);
       try {
-        const staff = await signIn(world.users.staffAdmin.email);
+        const { cpr, sRow } = await userDb(world.users.staffAdmin.id, async (tx) => {
+          const cp = await rpcCasePayroll(tx, { caseId: world.caseA });
+          const sum = await rpcPayrollEmployeeSummary(tx, { month: noMonth });
+          return {
+            cpr: cp[0],
+            sRow: sum.find((r) => r.user_id === world.users.lawyer1.id),
+          };
+        });
 
-        const cp = await staff.rpc('case_payroll', { p_case_id: world.caseA });
-        const cpr = (cp.data ?? [])[0];
-        expect(Number(cpr.lawyer_percent)).toBe(25);
-        expect(Number(cpr.lawyer_amount)).toBe(2500); // процент сохранён
+        expect(cpr!.lawyer_percent).toBe(25);
+        expect(cpr!.lawyer_amount).toBe(2500); // процент сохранён
 
-        const sum = await staff.rpc('payroll_employee_summary', { p_month: null });
-        const sRow = (sum.data ?? []).find(
-          (r: { user_id: string }) => r.user_id === world.users.lawyer1.id,
-        );
-        expect(sRow.salary_mode).toBe('fixed_percent');
-        expect(Number(sRow.earned)).toBe(2500);
-        expect(Number(sRow.fixed)).toBe(15000);
+        expect(sRow!.salary_mode).toBe('fixed_percent');
+        expect(sRow!.earned).toBe(2500);
+        expect(sRow!.fixed).toBe(15000);
         // balance = процент (2500), оклад не входит.
-        expect(Number(sRow.balance)).toBe(2500);
+        expect(sRow!.balance).toBe(2500);
       } finally {
         await resetSalary(world.users.lawyer1.id);
       }
     });
 
     it('сотрудник на окладе без дел попадает в summary (kyivAdmin без дел)', async () => {
-      await world.admin
-        .from('users')
-        .update({ salary_mode: 'fixed', salary_fixed_amount: 30000 })
-        .eq('id', world.users.kyivAdmin.id);
+      await setSalaryRaw(world.admin, world.users.kyivAdmin.id, 'fixed', 30000);
       try {
-        const staff = await signIn(world.users.staffAdmin.email);
-        const sum = await staff.rpc('payroll_employee_summary', { p_month: null });
-        const row = (sum.data ?? []).find(
-          (r: { user_id: string }) => r.user_id === world.users.kyivAdmin.id,
-        );
+        const row = await userDb(world.users.staffAdmin.id, async (tx) => {
+          const sum = await rpcPayrollEmployeeSummary(tx, { month: noMonth });
+          return sum.find((r) => r.user_id === world.users.kyivAdmin.id);
+        });
         expect(row).toBeTruthy(); // без оклада admin без дел не появился бы
-        expect(Number(row.fixed)).toBe(30000);
-        expect(Number(row.earned)).toBe(0);
+        expect(row!.fixed).toBe(30000);
+        expect(row!.earned).toBe(0);
       } finally {
         await resetSalary(world.users.kyivAdmin.id);
       }
     });
 
     it('admin меняет оклад сотрудника СВОЕГО подразделения (kyivAdmin → lawyer1/Київ)', async () => {
-      const kyiv = await signIn(world.users.kyivAdmin.email);
-      const { error } = await kyiv
-        .from('users')
-        .update({ salary_mode: 'fixed', salary_fixed_amount: 11000 })
-        .eq('id', world.users.lawyer1.id);
-      expect(error).toBeNull();
-      // Проверяем через service_role (сессия колонки salary_* не видит — column revoke).
-      const { data } = await world.admin
-        .from('users')
-        .select('salary_mode, salary_fixed_amount')
-        .eq('id', world.users.lawyer1.id)
-        .single();
-      expect(data?.salary_mode).toBe('fixed');
-      expect(Number(data?.salary_fixed_amount)).toBe(11000);
+      await userDb(world.users.kyivAdmin.id, (tx) =>
+        setSalaryRaw(tx, world.users.lawyer1.id, 'fixed', 11000),
+      );
+      // Проверяем через admin-пул (сессия колонки salary_* не видит — column revoke).
+      const data = await getSalaryRaw(world.admin, world.users.lawyer1.id);
+      expect(data.salary_mode).toBe('fixed');
+      expect(data.salary_fixed_amount).toBe(11000);
       await resetSalary(world.users.lawyer1.id);
     });
 
     it('admin НЕ может менять оклад ЧУЖОГО подразделения (kyivAdmin → lawyer2/Дніпро)', async () => {
-      const kyiv = await signIn(world.users.kyivAdmin.email);
-      const { error } = await kyiv
-        .from('users')
-        .update({ salary_mode: 'fixed', salary_fixed_amount: 9000 })
-        .eq('id', world.users.lawyer2.id);
-      expect(error).not.toBeNull(); // гард users_guard_salary_fields
-      expect(error?.message ?? '').toContain('salary fields');
+      await expect(
+        userDb(world.users.kyivAdmin.id, (tx) =>
+          setSalaryRaw(tx, world.users.lawyer2.id, 'fixed', 9000),
+        ),
+      ).rejects.toThrow(/salary fields/); // гард users_guard_salary_fields
     });
 
     it('admin без подразделения (NULL) не меняет ничью зарплату (staffAdmin → lawyer1)', async () => {
-      const staff = await signIn(world.users.staffAdmin.email);
-      const { error } = await staff
-        .from('users')
-        .update({ salary_mode: 'fixed', salary_fixed_amount: 5000 })
-        .eq('id', world.users.lawyer1.id);
-      expect(error).not.toBeNull(); // NULL-подразделение → can_manage_user_salary=false
-      expect(error?.message ?? '').toContain('salary fields');
+      await expect(
+        userDb(world.users.staffAdmin.id, (tx) =>
+          setSalaryRaw(tx, world.users.lawyer1.id, 'fixed', 5000),
+        ),
+      ).rejects.toThrow(/salary fields/); // NULL-подразделение → can_manage_user_salary=false
     });
 
     it('приватность: обычный сотрудник не читает salary_* прямым select', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
       // Колонка оклада защищена column-level привилегиями → permission denied.
-      const denied = await lawyer1
-        .from('users')
-        .select('salary_fixed_amount')
-        .eq('id', world.users.lawyer2.id);
-      expect(denied.error).not.toBeNull();
+      await expect(
+        userDb(world.users.lawyer1.id, (tx) =>
+          tx.$queryRaw`select salary_fixed_amount from public.users where id = ${world.users.lawyer2.id}::uuid`,
+        ),
+      ).rejects.toThrow();
+
       // Безопасные колонки (имя) по-прежнему читаются.
-      const ok = await lawyer1
-        .from('users')
-        .select('full_name')
-        .eq('id', world.users.lawyer2.id);
-      expect(ok.error).toBeNull();
+      const ok = await userDb(world.users.lawyer1.id, (tx) =>
+        tx.public_users.findFirst({
+          where: { id: world.users.lawyer2.id },
+          select: { full_name: true },
+        }),
+      );
+      expect(ok?.full_name).toBeTruthy();
     });
 
     it('оклад читается через manage_user_salaries с can_edit (kyivAdmin → lawyer1)', async () => {
-      await world.admin
-        .from('users')
-        .update({ salary_mode: 'fixed', salary_fixed_amount: 12345 })
-        .eq('id', world.users.lawyer1.id);
+      await setSalaryRaw(world.admin, world.users.lawyer1.id, 'fixed', 12345);
       try {
-        const kyiv = await signIn(world.users.kyivAdmin.email);
-        const { data, error } = await kyiv.rpc('manage_user_salaries');
-        expect(error).toBeNull();
-        const row = (data ?? []).find(
-          (r: { user_id: string }) => r.user_id === world.users.lawyer1.id,
-        );
+        const row = await userDb(world.users.kyivAdmin.id, async (tx) => {
+          const rows = await rpcManageUserSalaries(tx);
+          return rows.find((r) => r.user_id === world.users.lawyer1.id);
+        });
         expect(row).toBeTruthy();
-        expect(Number(row.salary_fixed_amount)).toBe(12345);
-        expect(row.can_edit).toBe(true); // свой подразделение → можно править
+        expect(row!.salary_fixed_amount).toBe(12345);
+        expect(row!.can_edit).toBe(true); // своё подразделение → можно править
       } finally {
         await resetSalary(world.users.lawyer1.id);
       }
@@ -645,189 +595,164 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
   // ============================================================
   describe('Воронка — движение только вперёд', () => {
     it('юрист двигает своё дело на +1 этап (new_request → consultation)', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const { error } = await lawyer1
-        .from('cases')
-        .update({ stage: 'consultation' })
-        .eq('id', world.caseS);
-      expect(error).toBeNull();
-      const { data } = await world.admin
-        .from('cases')
-        .select('stage')
-        .eq('id', world.caseS)
-        .single();
-      expect(data?.stage).toBe('consultation');
+      const updated = await userDb(world.users.lawyer1.id, (tx) =>
+        tx.cases.update({ where: { id: world.caseS }, data: { stage: 'consultation' } }),
+      );
+      expect(updated.stage).toBe('consultation');
     });
 
     it('перескок через этап запрещён (stage_skip_forbidden)', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
       // consultation → closed: пропускает in_progress и awaiting_decision.
-      const { error } = await lawyer1
-        .from('cases')
-        .update({ stage: 'closed' })
-        .eq('id', world.caseS);
-      expect(error?.message ?? '').toContain('stage_skip_forbidden');
+      await expect(
+        userDb(world.users.lawyer1.id, (tx) =>
+          tx.cases.update({ where: { id: world.caseS }, data: { stage: 'closed' } }),
+        ),
+      ).rejects.toThrow(/stage_skip_forbidden/);
     });
 
     it('откат назад запрещён для не-staff (stage_backward_forbidden)', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const { error } = await lawyer1
-        .from('cases')
-        .update({ stage: 'new_request' })
-        .eq('id', world.caseS);
-      expect(error?.message ?? '').toContain('stage_backward_forbidden');
+      await expect(
+        userDb(world.users.lawyer1.id, (tx) =>
+          tx.cases.update({ where: { id: world.caseS }, data: { stage: 'new_request' } }),
+        ),
+      ).rejects.toThrow(/stage_backward_forbidden/);
     });
 
     it('staff может исправить этап назад (stage_corrected)', async () => {
-      const staff = await signIn(world.users.staffAdmin.email);
-      const { error } = await staff
-        .from('cases')
-        .update({ stage: 'new_request' })
-        .eq('id', world.caseS);
-      expect(error).toBeNull();
-      const { data } = await world.admin
-        .from('cases')
-        .select('stage')
-        .eq('id', world.caseS)
-        .single();
-      expect(data?.stage).toBe('new_request');
+      const updated = await userDb(world.users.staffAdmin.id, (tx) =>
+        tx.cases.update({ where: { id: world.caseS }, data: { stage: 'new_request' } }),
+      );
+      expect(updated.stage).toBe('new_request');
     });
   });
 
   // ============================================================
   describe('RLS — справочник подразделений (v2 Этап 1)', () => {
     it('активный сотрудник (юрист) читает справочник', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const { data, error } = await lawyer1.from('departments').select('id, name');
-      expect(error).toBeNull();
-      expect((data ?? []).length).toBeGreaterThanOrEqual(10); // 10 засеяны миграцией
+      const rows = await userDb(world.users.lawyer1.id, (tx) =>
+        tx.departments.findMany({ select: { id: true, name: true } }),
+      );
+      expect(rows.length).toBeGreaterThanOrEqual(10); // 10 засеяны миграцией
     });
 
     it('не-owner (admin) не может создать подразделение', async () => {
-      const staff = await signIn(world.users.staffAdmin.email);
-      const { error } = await staff
-        .from('departments')
-        .insert({ name: `${world.prefix}Філія` });
-      expect(error).not.toBeNull(); // with check (is_owner) → 42501
+      await expect(
+        userDb(world.users.staffAdmin.id, (tx) =>
+          tx.departments.create({ data: { name: `${world.prefix}Філія` } }),
+        ),
+      ).rejects.toThrow(); // with check (is_owner) → 42501
     });
 
     it('не-owner (admin) не может переименовать (RLS режет апдейт молча)', async () => {
-      const staff = await signIn(world.users.staffAdmin.email);
-      const { data: dep } = await world.admin
-        .from('departments')
-        .select('id, name')
-        .eq('name', 'Київський')
-        .single();
-      await staff
-        .from('departments')
-        .update({ name: `${world.prefix}X` })
-        .eq('id', dep!.id);
-      const { data: after } = await world.admin
-        .from('departments')
-        .select('name')
-        .eq('id', dep!.id)
-        .single();
+      const dep = await world.admin.departments.findFirst({
+        where: { name: 'Київський' },
+        select: { id: true, name: true },
+      });
+      const result = await userDb(world.users.staffAdmin.id, (tx) =>
+        tx.departments.updateMany({
+          where: { id: dep!.id },
+          data: { name: `${world.prefix}X` },
+        }),
+      );
+      expect(result.count).toBe(0);
+      const after = await world.admin.departments.findFirst({
+        where: { id: dep!.id },
+        select: { name: true },
+      });
       expect(after?.name).toBe('Київський');
     });
 
     it('гард: admin не может выдать юристу visibility_scope/department_id', async () => {
-      const staff = await signIn(world.users.staffAdmin.email);
       // Снимок «до»: фикстуры Этапа 2 назначают юристу подразделение, поэтому
       // тест не закладывается на конкретные значения, а проверяет неизменность.
-      const { data: before } = await world.admin
-        .from('users')
-        .select('visibility_scope, department_id')
-        .eq('id', world.users.lawyer1.id)
-        .single();
+      const before = await world.admin.public_users.findFirst({
+        where: { id: world.users.lawyer1.id },
+        select: { visibility_scope: true, department_id: true },
+      });
 
       // RLS пропускает (users_update_managed_roles: admin правит lawyer),
       // но триггер users_guard_visibility_fields обязан отбить не-owner'а.
       // scope: текущий 'department' → пробуем 'all' (заведомо иное значение).
-      const { error: scopeErr } = await staff
-        .from('users')
-        .update({ visibility_scope: 'all' })
-        .eq('id', world.users.lawyer1.id);
-      expect(scopeErr?.message ?? '').toContain('only owner');
+      await expect(
+        userDb(world.users.staffAdmin.id, (tx) =>
+          tx.public_users.update({
+            where: { id: world.users.lawyer1.id },
+            data: { visibility_scope: 'all' },
+          }),
+        ),
+      ).rejects.toThrow(/only owner/);
 
       // department_id: берём ДРУГОЕ подразделение, чем у юриста сейчас — иначе
       // "new is not distinct from old" (изменения нет) и гард промолчит.
-      const { data: deps } = await world.admin
-        .from('departments')
-        .select('id')
-        .neq('id', before?.department_id ?? '00000000-0000-0000-0000-000000000000')
-        .limit(1);
-      const otherDep = deps?.[0];
-      const { error: depErr } = await staff
-        .from('users')
-        .update({ department_id: otherDep!.id })
-        .eq('id', world.users.lawyer1.id);
-      expect(depErr?.message ?? '').toContain('only owner');
+      const otherDep = await world.admin.departments.findFirst({
+        where: { id: { not: before?.department_id ?? '00000000-0000-0000-0000-000000000000' } },
+        select: { id: true },
+      });
+      await expect(
+        userDb(world.users.staffAdmin.id, (tx) =>
+          tx.public_users.update({
+            where: { id: world.users.lawyer1.id },
+            data: { department_id: otherDep!.id },
+          }),
+        ),
+      ).rejects.toThrow(/only owner/);
 
       // Гард откатил обе попытки — значения не изменились.
-      const { data: after } = await world.admin
-        .from('users')
-        .select('visibility_scope, department_id')
-        .eq('id', world.users.lawyer1.id)
-        .single();
+      const after = await world.admin.public_users.findFirst({
+        where: { id: world.users.lawyer1.id },
+        select: { visibility_scope: true, department_id: true },
+      });
       expect(after?.visibility_scope).toBe(before?.visibility_scope);
       expect(after?.department_id).toBe(before?.department_id);
     });
 
     it('owner: CRUD подразделения, назначение полей, FK держит удаление', async () => {
-      // owner есть в фикстурах (с Этапа 6) — используем его (раньше тест заводил
-      // собственного IT-owner; теперь это давало бы коллизию email).
-      const owner = await signIn(world.users.owner.email);
-
-      // owner создаёт подразделение
-      const { data: created, error: insErr } = await owner
-        .from('departments')
-        .insert({ name: `${world.prefix}Філія` })
-        .select('id')
-        .single();
-      expect(insErr).toBeNull();
-
-      // owner назначает юристу подразделение и scope (гард пропускает owner'а)
-      const { error: assignErr } = await owner
-        .from('users')
-        .update({ department_id: created!.id, visibility_scope: 'all' })
-        .eq('id', world.users.lawyer1.id);
-      expect(assignErr).toBeNull();
+      // owner есть в фикстурах (с Этапа 6) — используем его.
+      const createdId = await userDb(world.users.owner.id, async (tx) => {
+        // owner создаёт подразделение
+        const created = await tx.departments.create({
+          data: { name: `${world.prefix}Філія` },
+          select: { id: true },
+        });
+        // owner назначает юристу подразделение и scope (гард пропускает owner'а)
+        await tx.public_users.update({
+          where: { id: world.users.lawyer1.id },
+          data: { department_id: created.id, visibility_scope: 'all' },
+        });
+        return created.id;
+      });
 
       // FK без on delete: удалить подразделение с сотрудником нельзя (23503)
-      const { error: delBlocked } = await owner
-        .from('departments')
-        .delete()
-        .eq('id', created!.id);
-      expect(delBlocked).not.toBeNull();
+      await expect(
+        userDb(world.users.owner.id, (tx) => tx.departments.delete({ where: { id: createdId } })),
+      ).rejects.toThrow();
 
-      // откатываем назначение → теперь удаление проходит. (Сброс в NULL — как было
+      // Откатываем назначение → теперь удаление проходит. (Сброс в NULL — как было
       // в исходном тесте; зависящие от lawyer1∈Київ проверки идут раньше по файлу.)
-      const { error: resetErr } = await owner
-        .from('users')
-        .update({ department_id: null, visibility_scope: 'department' })
-        .eq('id', world.users.lawyer1.id);
-      expect(resetErr).toBeNull();
-      const { error: delErr } = await owner
-        .from('departments')
-        .delete()
-        .eq('id', created!.id);
-      expect(delErr).toBeNull();
+      await userDb(world.users.owner.id, async (tx) => {
+        await tx.public_users.update({
+          where: { id: world.users.lawyer1.id },
+          data: { department_id: null, visibility_scope: 'department' },
+        });
+        await tx.departments.delete({ where: { id: createdId } });
+      });
     });
 
     it('деактивированный сотрудник с живым токеном не читает справочник', async () => {
-      const lawyer2 = await signIn(world.users.lawyer2.email); // токен получен ДО деактивации
       try {
-        await world.admin
-          .from('users')
-          .update({ is_active: false })
-          .eq('id', world.users.lawyer2.id);
-        const { data } = await lawyer2.from('departments').select('id');
-        expect(data ?? []).toHaveLength(0); // active_uid() → null → select-политика не пускает
+        await world.admin.public_users.update({
+          where: { id: world.users.lawyer2.id },
+          data: { is_active: false },
+        });
+        const rows = await userDb(world.users.lawyer2.id, (tx) =>
+          tx.departments.findMany({ select: { id: true } }),
+        );
+        expect(rows).toHaveLength(0); // active_uid() → null → select-политика не пускает
       } finally {
-        await world.admin
-          .from('users')
-          .update({ is_active: true })
-          .eq('id', world.users.lawyer2.id);
+        await world.admin.public_users.update({
+          where: { id: world.users.lawyer2.id },
+          data: { is_active: true },
+        });
       }
     });
   });
@@ -843,31 +768,29 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
     let actCase2 = '';
 
     const mkActCase = async (suffix: string, contract: number): Promise<string> => {
-      const { data, error } = await world.admin
-        .from('cases')
-        .insert({
+      const row = await world.admin.cases.create({
+        data: {
           number_title: `${world.prefix}${suffix}`,
           client_id: world.clientId,
           lawyer_id: world.users.lawyer1.id,
           responsible_id: world.users.expert1.id,
-          opened_at: '2026-05-01',
+          opened_at: new Date('2026-05-01'),
           case_type: 'civil',
           category: 'document',
           stage: 'in_progress',
           priority: 'normal',
           contract_sum: contract,
-        })
-        .select('id')
-        .single();
-      if (error || !data) throw new Error(`mkActCase ${suffix}: ${error?.message}`);
-      return data.id as string;
+        },
+        select: { id: true },
+      });
+      return row.id;
     };
 
-    // Скан передаётся в RPL как storage_key + file_name; documents-строку создаёт
+    // Скан передаётся в RPC как storageKey + fileName; documents-строку создаёт
     // сама confirm_act_paid (атомарно). Для интеграции реальный файл не нужен.
     const scanArgs = (caseId: string) => ({
-      p_storage_key: `cases/${caseId}/it-scan-${Math.random().toString(36).slice(2)}.pdf`,
-      p_file_name: 'scan.pdf',
+      storageKey: `cases/${caseId}/it-scan-${Math.random().toString(36).slice(2)}.pdf`,
+      fileName: 'scan.pdf',
     });
 
     beforeAll(async () => {
@@ -877,197 +800,206 @@ suite('Юр CRM — интеграция (RLS · триггеры · ворон�
 
     afterAll(async () => {
       const ids = [actCase, actCase2].filter(Boolean);
-      await world.admin.from('case_acts').delete().in('case_id', ids);
-      await world.admin.from('payments').delete().in('case_id', ids);
-      await world.admin.from('documents').delete().in('case_id', ids);
-      await world.admin.from('cases').delete().in('id', ids);
+      if (ids.length === 0) return;
+      // Реверт ещё оплаченных актов ПЕРЕД их удалением: если оставить paid-акт со
+      // связанным платежом, FK payments.act_id→case_acts (ON DELETE SET NULL)
+      // попытался бы обнулить act_id этого платежа при удалении акта — а это
+      // запрещает payments_guard_act_payment (v3 s1, «act-linked payment is
+      // immutable»). Поэтому сначала удаляем ЛЮБОЙ ещё оставшийся act-связанный
+      // платёж (запускает case_acts_revert_on_payment_delete → акт issued), и
+      // только потом — сами акты.
+      await world.admin.payments.deleteMany({
+        where: { case_id: { in: ids }, act_id: { not: null } },
+      });
+      await world.admin.case_acts.deleteMany({ where: { case_id: { in: ids } } });
+      await world.admin.payments.deleteMany({ where: { case_id: { in: ids } } });
+      await world.admin.documents.deleteMany({ where: { case_id: { in: ids } } });
+      await world.admin.cases.deleteMany({ where: { id: { in: ids } } });
     });
 
     it('юрист-продажник НЕ может выписать акт (RLS: только Експерт/staff)', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const { error } = await lawyer1.from('case_acts').insert({
-        case_id: actCase,
-        service_name: 'Юридичні послуги',
-        amount: 19000,
-        created_by: world.users.lawyer1.id,
-      });
-      expect(error).not.toBeNull(); // нарушение WITH CHECK
-      const { count } = await world.admin
-        .from('case_acts')
-        .select('id', { count: 'exact', head: true })
-        .eq('case_id', actCase);
-      expect(count ?? 0).toBe(0);
+      await expect(
+        userDb(world.users.lawyer1.id, (tx) =>
+          tx.case_acts.create({
+            data: {
+              case_id: actCase,
+              service_name: 'Юридичні послуги',
+              amount: 19000,
+              created_by: world.users.lawyer1.id,
+            },
+          }),
+        ),
+      ).rejects.toThrow(); // нарушение WITH CHECK
+      const count = await world.admin.case_acts.count({ where: { case_id: actCase } });
+      expect(count).toBe(0);
     });
 
     it('Експерт своего дела выписывает акт (issued)', async () => {
-      const expert1 = await signIn(world.users.expert1.email);
-      const { data, error } = await expert1
-        .from('case_acts')
-        .insert({
-          case_id: actCase,
-          service_name: 'Юридичні послуги',
-          amount: 19000,
-          created_by: world.users.expert1.id,
-        })
-        .select('id, status, number')
-        .single();
-      expect(error).toBeNull();
-      expect(data?.status).toBe('issued');
-      expect(typeof data?.number).toBe('number');
+      const created = await userDb(world.users.expert1.id, (tx) =>
+        tx.case_acts.create({
+          data: {
+            case_id: actCase,
+            service_name: 'Юридичні послуги',
+            amount: 19000,
+            created_by: world.users.expert1.id,
+          },
+          select: { id: true, status: true, number: true },
+        }),
+      );
+      expect(created.status).toBe('issued');
+      expect(typeof created.number).toBe('number');
     });
 
     it('Експерт (не юрист/owner/admin) НЕ может подтвердить оплату', async () => {
-      const expert1 = await signIn(world.users.expert1.email);
-      const { data: act } = await world.admin
-        .from('case_acts')
-        .select('id')
-        .eq('case_id', actCase)
-        .single();
-      const { error } = await expert1.rpc('confirm_act_paid', {
-        p_act_id: act!.id,
-        p_confirmed_amount: 19000,
-        p_paid_at: '2026-05-20',
-        ...scanArgs(actCase),
-        p_method: 'act',
-        p_note: null,
+      const act = await world.admin.case_acts.findFirst({
+        where: { case_id: actCase },
+        select: { id: true },
       });
-      expect(error).not.toBeNull(); // insufficient privilege
+      await expect(
+        userDb(world.users.expert1.id, (tx) =>
+          rpcConfirmActPaid(tx, {
+            actId: act!.id,
+            confirmedAmount: 19000,
+            paidAt: '2026-05-20',
+            ...scanArgs(actCase),
+            method: 'act',
+            note: null,
+          }),
+        ),
+      ).rejects.toThrow(/insufficient privilege/); // insufficient privilege to confirm act
       // акт остаётся issued (RPC атомарна → документ/платёж не создались)
-      const { data: after } = await world.admin
-        .from('case_acts')
-        .select('status')
-        .eq('id', act!.id)
-        .single();
+      const after = await world.admin.case_acts.findFirst({
+        where: { id: act!.id },
+        select: { status: true },
+      });
       expect(after?.status).toBe('issued');
     });
 
     it('юрист дела подтверждает оплату → платёж, completion=full, долг 0', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const { data: act } = await world.admin
-        .from('case_acts')
-        .select('id')
-        .eq('case_id', actCase)
-        .single();
-      const { error } = await lawyer1.rpc('confirm_act_paid', {
-        p_act_id: act!.id,
-        p_confirmed_amount: 19000,
-        p_paid_at: '2026-05-20',
-        ...scanArgs(actCase),
-        p_method: 'act',
-        p_note: null,
+      const act = await world.admin.case_acts.findFirst({
+        where: { case_id: actCase },
+        select: { id: true },
       });
-      expect(error).toBeNull();
+      const paymentId = await userDb(world.users.lawyer1.id, (tx) =>
+        rpcConfirmActPaid(tx, {
+          actId: act!.id,
+          confirmedAmount: 19000,
+          paidAt: '2026-05-20',
+          ...scanArgs(actCase),
+          method: 'act',
+          note: null,
+        }),
+      );
 
-      const { data: paidAct } = await world.admin
-        .from('case_acts')
-        .select('status, completion, confirmed_amount, scan_document_id')
-        .eq('id', act!.id)
-        .single();
+      const paidAct = await world.admin.case_acts.findFirst({
+        where: { id: act!.id },
+        select: {
+          status: true,
+          completion: true,
+          confirmed_amount: true,
+          scan_document_id: true,
+        },
+      });
       expect(paidAct?.status).toBe('paid');
       expect(paidAct?.completion).toBe('full'); // 19000 ≥ 19000
       expect(Number(paidAct?.confirmed_amount)).toBe(19000);
       expect(paidAct?.scan_document_id).not.toBeNull(); // documents-строка создана RPC
 
       // Скан-документ создан внутри RPC (doc_type='act').
-      const { data: scanDoc } = await world.admin
-        .from('documents')
-        .select('id, doc_type')
-        .eq('id', paidAct!.scan_document_id);
-      expect(scanDoc?.length).toBe(1);
-      expect(scanDoc?.[0]?.doc_type).toBe('act');
+      const scanDoc = await world.admin.documents.findFirst({
+        where: { id: paidAct!.scan_document_id! },
+        select: { id: true, doc_type: true },
+      });
+      expect(scanDoc).not.toBeNull();
+      expect(scanDoc?.doc_type).toBe('act');
 
       // Автоплатёж создан и связан с актом.
-      const { data: pay } = await world.admin
-        .from('payments')
-        .select('amount, act_id')
-        .eq('case_id', actCase);
-      expect(pay?.length).toBe(1);
-      expect(Number(pay?.[0]?.amount)).toBe(19000);
-      expect(pay?.[0]?.act_id).toBe(act!.id);
+      const pay = await world.admin.payments.findFirst({
+        where: { case_id: actCase },
+        select: { id: true, amount: true, act_id: true },
+      });
+      expect(pay?.id).toBe(paymentId);
+      expect(Number(pay?.amount)).toBe(19000);
+      expect(pay?.act_id).toBe(act!.id);
 
       // Триггеры пересчитали деньги дела.
-      const { data: cse } = await world.admin
-        .from('cases')
-        .select('paid_total, debt')
-        .eq('id', actCase)
-        .single();
+      const cse = await world.admin.cases.findFirst({
+        where: { id: actCase },
+        select: { paid_total: true, debt: true },
+      });
       expect(Number(cse?.paid_total)).toBe(19000);
       expect(Number(cse?.debt)).toBe(0);
     });
 
     it('повторное подтверждение оплаченного акта отвергается', async () => {
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const { data: act } = await world.admin
-        .from('case_acts')
-        .select('id')
-        .eq('case_id', actCase)
-        .single();
-      const { error } = await lawyer1.rpc('confirm_act_paid', {
-        p_act_id: act!.id,
-        p_confirmed_amount: 1000,
-        p_paid_at: '2026-05-21',
-        ...scanArgs(actCase),
-        p_method: 'act',
-        p_note: null,
+      const act = await world.admin.case_acts.findFirst({
+        where: { case_id: actCase },
+        select: { id: true },
       });
-      expect(error).not.toBeNull(); // act is not in issued status
+      await expect(
+        userDb(world.users.lawyer1.id, (tx) =>
+          rpcConfirmActPaid(tx, {
+            actId: act!.id,
+            confirmedAmount: 1000,
+            paidAt: '2026-05-21',
+            ...scanArgs(actCase),
+            method: 'act',
+            note: null,
+          }),
+        ),
+      ).rejects.toThrow(/is not in issued status/);
     });
 
     it('частичная оплата → completion=partial, долг остаётся', async () => {
       // staff (admin без подразделения) выписывает акт на actCase2 (contract 30000).
-      const staff = await signIn(world.users.staffAdmin.email);
-      const { data: act, error: insErr } = await staff
-        .from('case_acts')
-        .insert({
-          case_id: actCase2,
-          service_name: 'Юридичні послуги',
-          amount: 10000,
-          created_by: world.users.staffAdmin.id,
-        })
-        .select('id')
-        .single();
-      expect(insErr).toBeNull();
+      const act = await userDb(world.users.staffAdmin.id, (tx) =>
+        tx.case_acts.create({
+          data: {
+            case_id: actCase2,
+            service_name: 'Юридичні послуги',
+            amount: 10000,
+            created_by: world.users.staffAdmin.id,
+          },
+          select: { id: true },
+        }),
+      );
 
-      const lawyer1 = await signIn(world.users.lawyer1.email);
-      const { error } = await lawyer1.rpc('confirm_act_paid', {
-        p_act_id: act!.id,
-        p_confirmed_amount: 10000,
-        p_paid_at: '2026-05-22',
-        ...scanArgs(actCase2),
-        p_method: 'act',
-        p_note: null,
+      await userDb(world.users.lawyer1.id, (tx) =>
+        rpcConfirmActPaid(tx, {
+          actId: act.id,
+          confirmedAmount: 10000,
+          paidAt: '2026-05-22',
+          ...scanArgs(actCase2),
+          method: 'act',
+          note: null,
+        }),
+      );
+
+      const paidAct = await world.admin.case_acts.findFirst({
+        where: { id: act.id },
+        select: { completion: true },
       });
-      expect(error).toBeNull();
-
-      const { data: paidAct } = await world.admin
-        .from('case_acts')
-        .select('completion')
-        .eq('id', act!.id)
-        .single();
       expect(paidAct?.completion).toBe('partial'); // 10000 < 30000
 
-      const { data: cse } = await world.admin
-        .from('cases')
-        .select('paid_total, debt')
-        .eq('id', actCase2)
-        .single();
+      const cse = await world.admin.cases.findFirst({
+        where: { id: actCase2 },
+        select: { paid_total: true, debt: true },
+      });
       expect(Number(cse?.paid_total)).toBe(10000);
       expect(Number(cse?.debt)).toBe(20000);
     });
 
     it('удаление платежа возвращает акт в issued (целостность)', async () => {
-      const { data: act } = await world.admin
-        .from('case_acts')
-        .select('id')
-        .eq('case_id', actCase)
-        .single();
+      const act = await world.admin.case_acts.findFirst({
+        where: { case_id: actCase },
+        select: { id: true },
+      });
       // Удаляем автоплатёж акта → триггер реверта возвращает акт в issued.
-      await world.admin.from('payments').delete().eq('act_id', act!.id);
-      const { data: reverted } = await world.admin
-        .from('case_acts')
-        .select('status, completion, confirmed_amount, paid_at')
-        .eq('id', act!.id)
-        .single();
+      await world.admin.payments.deleteMany({ where: { act_id: act!.id } });
+      const reverted = await world.admin.case_acts.findFirst({
+        where: { id: act!.id },
+        select: { status: true, completion: true, confirmed_amount: true, paid_at: true },
+      });
       expect(reverted?.status).toBe('issued');
       expect(reverted?.completion).toBeNull();
       expect(reverted?.confirmed_amount).toBeNull();

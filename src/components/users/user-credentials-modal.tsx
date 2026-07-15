@@ -10,7 +10,6 @@ import {
   KeyRound,
   Mail,
   RefreshCw,
-  Send,
   Trash2,
 } from 'lucide-react';
 
@@ -26,7 +25,6 @@ import {
   deleteUserAction,
   getUserCredentialsAction,
   reissueUserPasswordAction,
-  sendUserInviteAction,
   setUserPasswordAction,
   type DeleteBlockers,
   type UserCredentials,
@@ -34,7 +32,9 @@ import {
 
 // Триггер (строка сотрудника) + модалка управления доступом. Только для
 // владельца (рендерится из page.tsx под actorIsOwner && !isSelf). Логин, пароль
-// (зеркало последнего выданного), смена логина, приглашение и удаление.
+// (зеркало последнего выданного), смена логина и удаление.
+// Приглашение на email удалено вместе с почтой Supabase (цикл v4) — своя
+// отправка вернётся в сессии 8; до неё доступы выдаются копи-блоком.
 export function UserCredentialsButton({
   userId,
   fullName,
@@ -160,7 +160,6 @@ function CredentialsModal({
               )
             }
           />
-          <InviteSection userId={userId} email={email} />
           <DangerSection userId={userId} onDeleted={onClose} />
         </div>
       )}
@@ -445,44 +444,6 @@ function PasswordSection({
           </Button>
         </div>
       )}
-    </section>
-  );
-}
-
-// ── Приглашение на email ─────────────────────────────────────────────────────
-function InviteSection({ userId, email }: { userId: string; email: string }) {
-  const { t } = useI18n();
-  const toast = useToast();
-  const [pending, start] = useTransition();
-
-  function invite() {
-    start(async () => {
-      const res = await sendUserInviteAction(userId);
-      if (res.ok) {
-        toast.success(t.users.credentials.invited.replace('{email}', res.email));
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  return (
-    <section className="flex flex-col gap-2">
-      <SectionLabel icon={<Send size={14} strokeWidth={1.75} />}>
-        {t.users.credentials.inviteSection}
-      </SectionLabel>
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        onClick={invite}
-        disabled={pending || !email}
-        className="self-start"
-      >
-        <Mail size={14} strokeWidth={1.75} />
-        {pending ? t.users.credentials.inviting : t.users.credentials.invite}
-      </Button>
-      <p className="text-[12px] text-text-subtle">{t.users.credentials.inviteHint}</p>
     </section>
   );
 }

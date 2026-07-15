@@ -486,6 +486,10 @@ model public_users {
   department_id                                               String?                @db.Uuid
   position                                                    String?
   visibility_scope                                            String                 @default("department")
+  /// ⚠ РУЧНАЯ ПРАВКА (миграция 0003, цикл v4 с2): версия пароля — клейм JWT;
+  /// расхождение клейма с колонкой = сессия отозвана (getCurrentUser).
+  /// Пишется только admin-пулом (RLS-путь UPDATE не расширялся).
+  pwd_version                                                 Int                    @default(1)
   /// ⚠ РУЧНАЯ ПРАВКА (ревью A3, НЕ стирать повторным db pull): колонки
   /// salary_* закрыты column-level привилегиями БД — без @ignore каждый
   /// users-запрос под app_user падал бы «permission denied». Чтение/запись
