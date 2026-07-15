@@ -49,6 +49,9 @@ yarn-error.log*
 # database dumps (client personal data — never commit)
 /backups/
 
+# local storage provider files (dev only — STORAGE_PROVIDER=local, цикл v4 с5)
+/.storage/
+
 # vercel
 .vercel
 

@@ -7,10 +7,13 @@ import { redirect } from 'next/navigation';
 
 import { requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dbActionError } from '@/lib/db/errors';
+import { dec } from '@/lib/db/convert';
+import { rpcConfirmActPaid, rpcSetActCompletion } from '@/lib/db/rpc';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { ACT_COMPLETIONS, MANAGER_ROLES, STAFF_ROLES, type ActCompletion } from '@/lib/types/db';
+import { storage } from '@/lib/storage';
+import { ACT_COMPLETIONS, MANAGER_ROLES, STAFF_ROLES } from '@/lib/types/db';
 import { UUID_RE, parseAmount, isValidDate } from '@/lib/validation';
 
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -75,50 +78,53 @@ export async function createActAction(
     return { ok: false, fieldErrors, message: t.acts.actions.checkForm };
   }
 
-  const supabase = await createSupabaseServerClient();
+  const amount = parseAmount(amount_raw)!;
+  const isStaff = STAFF_ROLES.includes(user.profile.role);
 
   // Право (зеркало RLS case_acts_insert): staff ИЛИ Експерт-исполнитель дела.
-  const { data: caseRow } = await supabase
-    .from('cases')
-    .select('responsible_id')
-    .eq('id', case_id)
-    .maybeSingle();
-  if (!caseRow) {
-    return { ok: false, message: t.acts.actions.caseInvalid };
-  }
-  const isStaff = STAFF_ROLES.includes(user.profile.role);
-  const isExpertOfCase = (caseRow as { responsible_id: string }).responsible_id === user.profile.id;
-  if (!isStaff && !isExpertOfCase) {
-    return { ok: false, message: t.acts.actions.noCreatePermission };
-  }
+  // Read + insert в одной tx: RLS всё равно вторая линия (WITH CHECK на insert).
+  let result:
+    | { kind: 'ok'; id: string; number: number }
+    | { kind: 'caseInvalid' }
+    | { kind: 'noPermission' };
+  try {
+    result = await userDb(user.profile.id, async (tx) => {
+      const caseRow = await tx.cases.findUnique({
+        where: { id: case_id },
+        select: { responsible_id: true },
+      });
+      if (!caseRow) return { kind: 'caseInvalid' as const };
+      const isExpertOfCase = caseRow.responsible_id === user.profile.id;
+      if (!isStaff && !isExpertOfCase) return { kind: 'noPermission' as const };
 
-  const amount = parseAmount(amount_raw)!;
-
-  const { data: inserted, error } = await supabase
-    .from('case_acts')
-    .insert({
-      case_id,
-      service_name,
-      amount,
-      service_period: service_period || null,
-      note: note || null,
-      created_by: user.profile.id,
-    })
-    .select('id, number')
-    .single();
-
-  if (error || !inserted) {
+      const inserted = await tx.case_acts.create({
+        data: {
+          case_id,
+          service_name,
+          amount,
+          service_period: service_period || null,
+          note: note || null,
+          created_by: user.profile.id,
+        },
+        select: { id: true, number: true },
+      });
+      return { kind: 'ok' as const, id: inserted.id, number: inserted.number };
+    });
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage('createActAction', error, t.acts.actions.createFailed, t.errors.db),
+      message: dbActionError('createActAction', err, t.acts.actions.createFailed, t.errors.db),
     };
   }
+
+  if (result.kind === 'caseInvalid') return { ok: false, message: t.acts.actions.caseInvalid };
+  if (result.kind === 'noPermission') return { ok: false, message: t.acts.actions.noCreatePermission };
 
   await logActivity({
     entity_type: 'case',
     entity_id: case_id,
     action: 'act_created',
-    changes: { act_id: inserted.id, number: inserted.number, amount },
+    changes: { act_id: result.id, number: result.number, amount },
   });
 
   revalidatePath(`/cases/${case_id}`);
@@ -173,70 +179,67 @@ export async function confirmActPaidAction(
     return { ok: false, fieldErrors, message: t.acts.actions.checkForm };
   }
 
-  const supabase = await createSupabaseServerClient();
-
   // Право + состояние акта (зеркало RPC): подтверждает lawyer дела / owner / admin;
   // акт должен быть issued.
-  const { data: actRow } = await supabase
-    .from('case_acts')
-    .select('status, case_id, case:case_id(lawyer_id)')
-    .eq('id', act_id)
-    .maybeSingle();
+  const actRow = await userDb(user.profile.id, (tx) =>
+    tx.case_acts.findUnique({
+      where: { id: act_id },
+      select: { status: true, case_id: true, cases: { select: { lawyer_id: true } } },
+    }),
+  );
   if (!actRow) {
     return { ok: false, message: t.acts.actions.actInvalid };
   }
-  type ActJoin = { status: string; case_id: string; case: { lawyer_id: string } | { lawyer_id: string }[] | null };
-  const ar = actRow as unknown as ActJoin;
-  const caseJoin = Array.isArray(ar.case) ? (ar.case[0] ?? null) : ar.case;
   // Подтверждает lawyer дела ИЛИ owner/admin (по роли — зеркало confirm_act_paid,
   // которая гейтит role-only can_manage_users(); НЕ caps.manage_users-оверрайд).
   const isManager = MANAGER_ROLES.includes(user.profile.role);
-  const isLawyerOfCase = caseJoin?.lawyer_id === user.profile.id;
+  const isLawyerOfCase = actRow.cases?.lawyer_id === user.profile.id;
   if (!isManager && !isLawyerOfCase) {
     return { ok: false, message: t.acts.actions.noConfirmPermission };
   }
-  if (ar.status !== 'issued') {
+  if (actRow.status !== 'issued') {
     return { ok: false, message: t.acts.actions.alreadyPaid };
   }
 
   const amount = parseAmount(amount_raw)!;
   const file = fileEntry as File;
 
-  // 1) Загружаем скан в Storage. Строку documents создаёт сама RPC (атомарно с
-  //    платежом), поэтому при ошибке RPC откатываем только Storage-файл — осиротевшей
+  // 1) Загружаем скан в хранилище. Строку documents создаёт сама RPC (атомарно
+  //    с платежом), поэтому при ошибке RPC откатываем только файл — осиротевшей
   //    documents-записи не остаётся (юрист и так не имеет права DELETE на documents).
   const storageKey = `cases/${case_id}/${randomUUID()}--${slugifyFilename(file.name)}`;
   const contentType = file.type || 'application/octet-stream';
-  const buffer = await file.arrayBuffer();
+  const buffer = Buffer.from(await file.arrayBuffer());
 
-  const { error: uploadErr } = await supabase.storage
-    .from('case-documents')
-    .upload(storageKey, buffer, { contentType, upsert: false });
-  if (uploadErr) {
+  try {
+    await storage().upload(storageKey, buffer, { contentType });
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage('confirmActPaidAction.storage', uploadErr, t.acts.actions.scanUploadFailed, t.errors.db),
+      message: dbActionError('confirmActPaidAction.storage', err, t.acts.actions.scanUploadFailed, t.errors.db),
     };
   }
 
   // 2) Атомарное подтверждение: documents(скан) + платёж (act_id) + completion +
   //    акт paid + журнал — всё в одной транзакции внутри SECURITY DEFINER RPC.
-  const { error: rpcErr } = await supabase.rpc('confirm_act_paid', {
-    p_act_id: act_id,
-    p_confirmed_amount: amount,
-    p_paid_at: paid_at,
-    p_storage_key: storageKey,
-    p_file_name: file.name,
-    p_method: 'act',
-    p_note: null,
-  });
-
-  if (rpcErr) {
-    // Подтверждение не состоялось → чистим только загруженный Storage-файл.
-    await supabase.storage.from('case-documents').remove([storageKey]).catch(() => {});
+  try {
+    await userDb(user.profile.id, (tx) =>
+      rpcConfirmActPaid(tx, {
+        actId: act_id,
+        confirmedAmount: amount,
+        paidAt: paid_at,
+        storageKey,
+        fileName: file.name,
+        method: 'act',
+        note: null,
+      }),
+    );
+  } catch (err) {
+    // Подтверждение не состоялось → чистим только загруженный файл.
+    await storage().remove(storageKey).catch(() => {});
     return {
       ok: false,
-      message: dbErrorMessage('confirmActPaidAction.rpc', rpcErr, t.acts.actions.confirmFailed, t.errors.db),
+      message: dbActionError('confirmActPaidAction.rpc', err, t.acts.actions.confirmFailed, t.errors.db),
     };
   }
 
@@ -248,31 +251,36 @@ export async function confirmActPaidAction(
 // Удаление неоплаченного (issued) акта. RLS: owner/admin или автор; только issued.
 // ============================================================================
 export async function deleteActAction(formData: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const act_id = String(formData.get('act_id') ?? '').trim();
   const case_id = String(formData.get('case_id') ?? '').trim();
   if (!act_id || !UUID_RE.test(act_id)) return;
 
-  const supabase = await createSupabaseServerClient();
-
   // Читаем акт ДО удаления — для журнала. case_id берём из БД (не из formData),
   // чтобы запись лога не приписали к чужому делу (паттерн «CSO #2»).
-  const { data: actRow } = await supabase
-    .from('case_acts')
-    .select('case_id, number, amount')
-    .eq('id', act_id)
-    .maybeSingle<{ case_id: string; number: number; amount: number }>();
+  const actRow = await userDb(user.profile.id, (tx) =>
+    tx.case_acts.findUnique({
+      where: { id: act_id },
+      select: { case_id: true, number: true, amount: true },
+    }),
+  );
 
-  const { data: deleted, error } = await supabase
-    .from('case_acts')
-    .delete()
-    .eq('id', act_id)
-    .eq('status', 'issued')
-    .select('id')
-    .maybeSingle<{ id: string }>();
-  if (error) {
-    // Не молчим: показываем ошибку на карточке дела (зеркало deleteCaseAction).
-    console.error('deleteActAction failed:', error.message);
+  // deleteMany с фильтром status=issued: удалит только неоплаченный и только
+  // видимый под RLS (count=0 = тихий no-op, не исключение).
+  let deletedCount = 0;
+  let failed = false;
+  try {
+    const res = await userDb(user.profile.id, (tx) =>
+      tx.case_acts.deleteMany({ where: { id: act_id, status: 'issued' } }),
+    );
+    deletedCount = res.count;
+  } catch (err) {
+    console.error('deleteActAction failed:', err);
+    failed = true;
+  }
+
+  // redirect — ВНЕ try/catch (NEXT_REDIRECT пробрасывается как исключение).
+  if (failed) {
     if (case_id && UUID_RE.test(case_id)) {
       redirect(`/cases/${case_id}?error=act_delete_failed`);
     }
@@ -280,12 +288,12 @@ export async function deleteActAction(formData: FormData): Promise<void> {
   }
 
   // Журналируем только если строка реально удалена (issued + RLS пропустила).
-  if (deleted && actRow) {
+  if (deletedCount > 0 && actRow) {
     await logActivity({
       entity_type: 'case',
       entity_id: actRow.case_id,
       action: 'act_deleted',
-      changes: { number: actRow.number, amount: actRow.amount },
+      changes: { number: actRow.number, amount: dec(actRow.amount) },
     });
     revalidatePath(`/cases/${actRow.case_id}`);
   }
@@ -295,21 +303,24 @@ export async function deleteActAction(formData: FormData): Promise<void> {
 // Переопределение отметки выполнения (staff) для оплаченного акта.
 // ============================================================================
 export async function setActCompletionAction(formData: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const act_id = String(formData.get('act_id') ?? '').trim();
   const case_id = String(formData.get('case_id') ?? '').trim();
   const completion = String(formData.get('completion') ?? '').trim();
   if (!act_id || !UUID_RE.test(act_id)) return;
   if (!(ACT_COMPLETIONS as readonly string[]).includes(completion)) return;
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc('set_act_completion', {
-    p_act_id: act_id,
-    p_completion: completion as ActCompletion,
-  });
-  if (error) {
-    // Не молчим: показываем ошибку на карточке дела (зеркало deleteCaseAction).
-    console.error('setActCompletionAction failed:', error.message);
+  let failed = false;
+  try {
+    await userDb(user.profile.id, (tx) =>
+      rpcSetActCompletion(tx, { actId: act_id, completion }),
+    );
+  } catch (err) {
+    console.error('setActCompletionAction failed:', err);
+    failed = true;
+  }
+
+  if (failed) {
     if (case_id && UUID_RE.test(case_id)) {
       redirect(`/cases/${case_id}?error=act_update_failed`);
     }

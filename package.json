@@ -13,6 +13,7 @@
     "db:seed": "node --env-file=.env.local --import tsx scripts/seed.ts",
     "db:seed:demo": "node --env-file=.env.local --import tsx scripts/seed-demo.ts",
     "db:seed:more": "node --env-file=.env.local --import tsx scripts/seed-more.ts",
+    "migrate:files": "node --env-file=.env.local --import tsx scripts/migrate-files.ts",
     "smoke:rls": "node --env-file=.env.local --import tsx scripts/smoke-rls.ts",
     "smoke:rls:v4": "node --env-file=.env.local --import tsx scripts/smoke-rls-v4.ts",
     "test": "vitest run tests/unit",
@@ -22,6 +23,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1087.0",
+    "@aws-sdk/s3-request-presigner": "^3.1087.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@radix-ui/react-label": "^2.1.8",

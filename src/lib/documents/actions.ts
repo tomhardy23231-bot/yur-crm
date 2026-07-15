@@ -6,9 +6,10 @@ import { revalidatePath } from 'next/cache';
 
 import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
-import { dbErrorMessage } from '@/lib/errors';
+import { userDb } from '@/lib/db';
+import { dbActionError } from '@/lib/db/errors';
 import { getT } from '@/lib/i18n/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { storage } from '@/lib/storage';
 import { DOC_TYPES, type DocType } from '@/lib/types/db';
 import { UUID_RE } from '@/lib/validation';
 
@@ -38,12 +39,13 @@ function isDocType(v: string): v is DocType {
   return (DOC_TYPES as readonly string[]).includes(v);
 }
 
-// Делает ASCII-безопасный slug для storage_key. Supabase Storage отклоняет
-// ключи с не-ASCII символами (кириллица → ошибка "Invalid key"), поэтому в
-// КЛЮЧЕ оставляем только [A-Za-z0-9._-]; всё прочее (кириллица, пробелы,
-// спецсимволы) → дефис. Уникальность гарантирует префикс randomUUID, поэтому
-// даже полностью «съеденное» имя (→ 'file') безопасно. Оригинальное имя
-// всегда хранится в documents.file_name и отдаётся при скачивании.
+// Делает ASCII-безопасный slug для storage_key. S3/R2-совместимые ключи и так
+// принимают юникод, но исторически хранилище (Supabase Storage) отклоняло
+// не-ASCII символы (кириллица → «Invalid key»), поэтому в КЛЮЧЕ оставляем
+// только [A-Za-z0-9._-]; всё прочее (кириллица, пробелы, спецсимволы) → дефис.
+// Уникальность гарантирует префикс randomUUID, поэтому даже полностью
+// «съеденное» имя (→ 'file') безопасно. Оригинальное имя всегда хранится в
+// documents.file_name и отдаётся при скачивании.
 function slugifyFilename(name: string): string {
   return name
     .normalize('NFC')
@@ -110,56 +112,50 @@ export async function uploadDocumentAction(
   const doc_type = doc_type_raw as DocType;
   const storageKey = `cases/${case_id}/${randomUUID()}--${slugifyFilename(file.name)}`;
   const contentType = file.type || 'application/octet-stream';
-
-  const supabase = await createSupabaseServerClient();
-
-  const buffer = await file.arrayBuffer();
+  const buffer = Buffer.from(await file.arrayBuffer());
 
   // 1) upload first — получаем storage_key.
-  const { error: uploadErr } = await supabase.storage
-    .from('case-documents')
-    .upload(storageKey, buffer, {
-      contentType,
-      upsert: false,
-    });
-  if (uploadErr) {
+  try {
+    await storage().upload(storageKey, buffer, { contentType });
+  } catch (err) {
     return {
       ok: false,
-      message: dbErrorMessage(
+      message: dbActionError(
         'uploadDocumentAction.storage',
-        uploadErr,
+        err,
         t.documents.actions.uploadFailed,
         t.errors.db,
       ),
     };
   }
 
-  // 2) INSERT documents row.
-  const { data: insertedRow, error: insertErr } = await supabase
-    .from('documents')
-    .insert({
-      case_id,
-      file_name: file.name,
-      storage_key: storageKey,
-      doc_type,
-      uploaded_by: user.profile.id,
-    })
-    .select('id')
-    .single();
-
-  // 3) rollback storage object если INSERT упал.
-  if (insertErr || !insertedRow) {
-    await supabase.storage
-      .from('case-documents')
-      .remove([storageKey])
-      .catch((e) => {
-        console.error('rollback remove failed:', e);
-      });
+  // 2) INSERT documents row (RLS WITH CHECK: доступ к делу + uploaded_by = uid).
+  let insertedId: string;
+  try {
+    const inserted = await userDb(user.profile.id, (tx) =>
+      tx.documents.create({
+        data: {
+          case_id,
+          file_name: file.name,
+          storage_key: storageKey,
+          doc_type,
+          uploaded_by: user.profile.id,
+        },
+        select: { id: true },
+      }),
+    );
+    insertedId = inserted.id;
+  } catch (err) {
+    // 3) rollback storage-объекта, если INSERT упал (в т.ч. отказ RLS) —
+    //    осиротевшего файла в хранилище не остаётся.
+    await storage()
+      .remove(storageKey)
+      .catch((e) => console.error('rollback remove failed:', e));
     return {
       ok: false,
-      message: dbErrorMessage(
+      message: dbActionError(
         'uploadDocumentAction.insert',
-        insertErr,
+        err,
         t.documents.actions.saveFailed,
         t.errors.db,
       ),
@@ -171,7 +167,7 @@ export async function uploadDocumentAction(
     entity_id: case_id,
     action: 'document_uploaded',
     changes: {
-      document_id: insertedRow.id,
+      document_id: insertedId,
       file_name: file.name,
       doc_type,
     },
@@ -184,44 +180,48 @@ export async function uploadDocumentAction(
 // Bare action: удаление документа. RLS DELETE = private.can('delete_documents').
 // requireCap — первая линия защиты: иначе пользователь без права, форсящий POST
 // вручную, прошёл бы мимо silent-RLS-deny и записал фейковый `document_deleted`
-// на видимое ему дело (storage.remove тоже silent-fails, файл остаётся жив).
+// на видимое ему дело (storage.remove тоже промолчал бы, файл остался бы жив).
 export async function deleteDocumentAction(formData: FormData): Promise<void> {
-  await requireCap('delete_documents');
+  const user = await requireCap('delete_documents');
   const doc_id = String(formData.get('doc_id') ?? '').trim();
   const case_id = String(formData.get('case_id') ?? '').trim();
 
   if (!doc_id || !UUID_RE.test(doc_id)) return;
 
-  const supabase = await createSupabaseServerClient();
+  // Читаем storage_key + метаданные до удаления — после DELETE row знать их
+  // неоткуда, а лог хочет file_name/doc_type для человекочитаемой записи.
+  // findUnique под RLS вернёт null, если строка не видна.
+  const row = await userDb(user.profile.id, (tx) =>
+    tx.documents.findUnique({
+      where: { id: doc_id },
+      select: {
+        storage_key: true,
+        case_id: true,
+        file_name: true,
+        doc_type: true,
+      },
+    }),
+  );
 
-  // Читаем storage_key + метаданные до удаления — после DELETE row знать их неоткуда,
-  // а лог хочет file_name/doc_type для человекочитаемой записи.
-  const { data: row } = await supabase
-    .from('documents')
-    .select('storage_key, case_id, file_name, doc_type')
-    .eq('id', doc_id)
-    .maybeSingle();
-
-  const { error: rowErr } = await supabase
-    .from('documents')
-    .delete()
-    .eq('id', doc_id);
-
-  if (rowErr) {
-    console.error('deleteDocumentAction row delete failed:', rowErr.message);
+  try {
+    // deleteMany — тихий no-op под RLS (0 строк), не исключение невидимой строки.
+    await userDb(user.profile.id, (tx) =>
+      tx.documents.deleteMany({ where: { id: doc_id } }),
+    );
+  } catch (err) {
+    console.error('deleteDocumentAction row delete failed:', err);
     return;
   }
 
   if (row?.storage_key) {
-    const { error: storErr } = await supabase.storage
-      .from('case-documents')
-      .remove([row.storage_key]);
-    if (storErr) {
-      console.error(
-        'deleteDocumentAction storage remove failed (row already gone):',
-        storErr.message,
+    await storage()
+      .remove(row.storage_key)
+      .catch((err) =>
+        console.error(
+          'deleteDocumentAction storage remove failed (row already gone):',
+          err,
+        ),
       );
-    }
   }
 
   // CSO #2: case_id для лога берём из row (DB-truth), не из user-controlled formData.

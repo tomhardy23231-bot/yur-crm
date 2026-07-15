@@ -1,149 +1,131 @@
 import 'server-only';
 import { cache } from 'react';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { ts } from '@/lib/db/convert';
+import { storage } from '@/lib/storage';
 import type {
   DocType,
   DocumentRow,
   DocumentWithUploader,
 } from '@/lib/types/db';
 
+// Резолв текущего под RLS (cache-per-render). null → fail-closed (пусто), как в
+// остальных query-функциях цикла v4.
+
 // =====================================================================
 // listDocumentsByCase — список документов на карточке дела.
-// Сортировка: uploaded_at desc.
+// Сортировка: uploaded_at desc. Доступ — RLS (наследует от дела).
 // =====================================================================
 export const listDocumentsByCase = cache(async (
   caseId: string,
 ): Promise<DocumentWithUploader[]> => {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('documents')
-    .select(
-      'id, case_id, file_name, storage_key, doc_type, uploaded_by, uploaded_at, ' +
-        'uploader:uploaded_by(id, full_name)',
-    )
-    .eq('case_id', caseId)
-    .order('uploaded_at', { ascending: false });
+  const user = await getCurrentUser();
+  if (!user) return [];
 
-  if (error) {
-    throw new Error(`listDocumentsByCase failed: ${error.message}`);
-  }
-  return normalizeDocuments(data ?? []);
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.documents.findMany({
+      where: { case_id: caseId },
+      select: {
+        id: true,
+        case_id: true,
+        file_name: true,
+        storage_key: true,
+        doc_type: true,
+        uploaded_by: true,
+        uploaded_at: true,
+        users: { select: { id: true, full_name: true } },
+      },
+      orderBy: { uploaded_at: 'desc' },
+    }),
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    case_id: r.case_id,
+    file_name: r.file_name,
+    storage_key: r.storage_key,
+    doc_type: r.doc_type,
+    uploaded_by: r.uploaded_by,
+    uploaded_at: ts(r.uploaded_at),
+    uploader: r.users
+      ? { id: r.users.id, full_name: r.users.full_name }
+      : null,
+  }));
 });
 
 // =====================================================================
 // caseHasDocOfType — есть ли у дела документ заданного типа.
-// Используется для мягкого предупреждения «закрыто без акта» (acт = act).
+// Используется для мягкого предупреждения «закрыто без акта» (акт = act).
 // =====================================================================
 export async function caseHasDocOfType(
   caseId: string,
   docType: DocType,
 ): Promise<boolean> {
-  const supabase = await createSupabaseServerClient();
-  const { count, error } = await supabase
-    .from('documents')
-    .select('id', { count: 'exact', head: true })
-    .eq('case_id', caseId)
-    .eq('doc_type', docType);
+  const user = await getCurrentUser();
+  if (!user) return false;
 
-  if (error) {
-    throw new Error(`caseHasDocOfType failed: ${error.message}`);
-  }
-  return (count ?? 0) > 0;
+  const n = await userDb(user.profile.id, (tx) =>
+    tx.documents.count({ where: { case_id: caseId, doc_type: docType } }),
+  );
+  return n > 0;
 }
 
 // =====================================================================
-// getDocument — одна запись (для download-роута).
+// getDocument — одна запись (для download/preview-роутов).
 // =====================================================================
-export async function getDocument(
-  id: string,
-): Promise<DocumentRow | null> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('documents')
-    .select(
-      'id, case_id, file_name, storage_key, doc_type, uploaded_by, uploaded_at, updated_at',
-    )
-    .eq('id', id)
-    .maybeSingle();
+export async function getDocument(id: string): Promise<DocumentRow | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
 
-  if (error) {
-    throw new Error(`getDocument failed: ${error.message}`);
-  }
-  return (data as DocumentRow | null) ?? null;
+  const row = await userDb(user.profile.id, (tx) =>
+    tx.documents.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        case_id: true,
+        file_name: true,
+        storage_key: true,
+        doc_type: true,
+        uploaded_by: true,
+        uploaded_at: true,
+        updated_at: true,
+      },
+    }),
+  );
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    case_id: row.case_id,
+    file_name: row.file_name,
+    storage_key: row.storage_key,
+    doc_type: row.doc_type,
+    uploaded_by: row.uploaded_by,
+    uploaded_at: ts(row.uploaded_at),
+    updated_at: ts(row.updated_at),
+  };
 }
 
 // =====================================================================
-// createSignedDownloadUrl — короткий signed URL для скачивания.
-// TTL 600 сек (10 мин). Параметр `download` заставляет браузер скачивать,
-// а не открывать inline; имя файла берётся из БД (file_name, оригинал).
+// createSignedDownloadUrl — короткая ссылка для СКАЧИВАНИЯ (TTL 600 с).
+// download-флаг заставляет браузер скачать файл под оригинальным именем из БД.
+// Storage-провайдер: S3/R2 (presigned прямо в облако) или локальный стрим-роут.
 // =====================================================================
 export async function createSignedDownloadUrl(
   storageKey: string,
   fileName: string,
 ): Promise<string> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.storage
-    .from('case-documents')
-    .createSignedUrl(storageKey, 600, { download: fileName });
-
-  if (error || !data?.signedUrl) {
-    throw new Error(
-      `createSignedDownloadUrl failed: ${error?.message ?? 'no signed url'}`,
-    );
-  }
-  return data.signedUrl;
+  return storage().signedUrl(storageKey, { download: fileName });
 }
 
 // =====================================================================
-// createSignedPreviewUrl — короткий signed URL БЕЗ флага download, чтобы
-// браузер открыл файл inline (в iframe/img), а не скачивал. TTL 600 сек.
+// createSignedPreviewUrl — короткая ссылка БЕЗ флага download, чтобы браузер
+// открыл файл inline (в iframe/img), а не скачивал. TTL 600 с.
 // =====================================================================
 export async function createSignedPreviewUrl(
   storageKey: string,
 ): Promise<string> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.storage
-    .from('case-documents')
-    .createSignedUrl(storageKey, 600);
-
-  if (error || !data?.signedUrl) {
-    throw new Error(
-      `createSignedPreviewUrl failed: ${error?.message ?? 'no signed url'}`,
-    );
-  }
-  return data.signedUrl;
-}
-
-// =====================================================================
-// helpers
-// =====================================================================
-
-type RawDocumentRow = Omit<DocumentRow, 'doc_type'> & {
-  doc_type: DocType;
-  uploader:
-    | ReadonlyArray<{ id: string; full_name: string }>
-    | { id: string; full_name: string }
-    | null;
-};
-
-function normalizeDocuments(
-  rows: ReadonlyArray<unknown>,
-): DocumentWithUploader[] {
-  return rows.map((row) => {
-    const r = row as RawDocumentRow;
-    const uploader = Array.isArray(r.uploader)
-      ? (r.uploader[0] ?? null)
-      : r.uploader;
-    return {
-      id: r.id,
-      case_id: r.case_id,
-      file_name: r.file_name,
-      storage_key: r.storage_key,
-      doc_type: r.doc_type,
-      uploaded_by: r.uploaded_by,
-      uploaded_at: r.uploaded_at,
-      uploader,
-    };
-  });
+  return storage().signedUrl(storageKey);
 }

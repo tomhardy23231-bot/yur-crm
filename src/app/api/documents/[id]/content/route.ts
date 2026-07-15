@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { adminDb } from '@/lib/db/admin';
+import { storage } from '@/lib/storage';
 import { verifyHs256 } from '@/lib/onlyoffice/jwt';
 import { UUID_RE } from '@/lib/validation';
 
@@ -8,7 +9,7 @@ import { UUID_RE } from '@/lib/validation';
 // Эндпоинт, с которого OnlyOffice Document Server СКАЧИВАЕТ файл. Сессии
 // пользователя тут нет — авторизация по краткоживущему JWT (content-токен),
 // который мы выдали в oo-config только пользователю, прошедшему RLS. Поэтому
-// читаем storage service-ролью (обход RLS) — это безопасно: токен и есть
+// читаем хранилище admin-пулом (обход RLS) — это безопасно: токен и есть
 // авторизация, привязан к конкретному doc_id и истекает за 10 минут.
 export async function GET(
   req: Request,
@@ -27,26 +28,23 @@ export async function GET(
     return new NextResponse('Forbidden', { status: 403 });
   }
 
-  const admin = createSupabaseAdminClient();
-  const { data: row } = await admin
-    .from('documents')
-    .select('storage_key, file_name')
-    .eq('id', id)
-    .maybeSingle();
+  const row = await adminDb().documents.findUnique({
+    where: { id },
+    select: { storage_key: true },
+  });
   if (!row) {
     return new NextResponse('Not found', { status: 404 });
   }
 
-  const { data: blob, error } = await admin.storage
-    .from('case-documents')
-    .download(row.storage_key);
-  if (error || !blob) {
-    console.error('content route download failed:', error?.message);
+  let buf: Buffer;
+  try {
+    buf = await storage().download(row.storage_key);
+  } catch (err) {
+    console.error('content route download failed:', err);
     return new NextResponse('Failed to read file', { status: 500 });
   }
 
-  const buf = Buffer.from(await blob.arrayBuffer());
-  return new NextResponse(buf, {
+  return new NextResponse(new Uint8Array(buf), {
     status: 200,
     headers: {
       'Content-Type': 'application/octet-stream',

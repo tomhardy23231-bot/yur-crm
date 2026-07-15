@@ -35,6 +35,91 @@
 
 ---
 
+## Сессия 2026-07-15 — Цикл v4, Сессия 5: Файлы (storage-слой + перенос) ✅
+
+_Пятая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Интерфейс `lib/storage`
+(S3-совместимый R2/MinIO + локальный провайдер для dev), перевод 6
+storage-переплетённых файлов с Supabase Storage на него + скрипт переноса файлов.
+Владелец выбрал вариант ① «код сейчас, R2 позже» — весь storage-слой пишется и
+проверяется на локальном провайдере; R2-аккаунт заводит владелец перед сессией 7.
+Прод не трогался; push не делался (запрет до сессии 7 в силе)._
+
+**Модель:** Claude Opus 4.8
+
+### Сделано
+- **`src/lib/storage/` — интерфейс из 4 операций** (`upload/download/signedUrl/remove`,
+  план §4.4), выбор провайдера по `STORAGE_PROVIDER` (`local` дефолт | `s3`):
+  - `types.ts` — интерфейс `StorageProvider`; `util.ts` — `guessContentType` (mime
+    по расширению для локального превью) + `contentDisposition` (RFC 6266/5987,
+    кириллица в именах); `index.ts` — фабрика-синглтон `storage()`.
+  - `s3.ts` — S3-совместимый (R2 сейчас, MinIO/диск на корп-сервере потом; тот же
+    протокол, меняется только env: `S3_ENDPOINT/REGION/ACCESS_KEY_ID/SECRET/BUCKET`,
+    `S3_FORCE_PATH_STYLE` для MinIO). Presigned GET-URL через `@aws-sdk/s3-request-presigner`.
+  - `local.ts` — файлы в `.storage/` (gitignored). `signedUrl` ведёт на стрим-роут
+    `/api/storage/local` с HMAC-подписью (секрет `AUTH_SECRET`, timing-safe verify,
+    TTL) — зеркало presigned-семантики S3 (отдача без сессии). Защита от path-traversal.
+  - `src/app/api/storage/local/route.ts` — стрим-роут (verify подписи → отдача файла
+    с Content-Type/Disposition); публичный путь в `proxy.ts` (как OO-роуты). На проде
+    (`s3`) не задействован.
+- **6 storage-файлов → userDb/adminDb + storage + rpc** (граница из с4):
+  - `documents/queries.ts` — list/getDocument/caseHasDocOfType на userDb; signed-URL
+    через `storage()`. `documents/actions.ts` — upload (storage.upload→documents.create,
+    rollback storage.remove при отказе), delete (userDb deleteMany + storage.remove).
+  - `acts/queries.ts` — listActsByCase/getActPrintData на userDb (include scan/case/client).
+    `acts/actions.ts` — create (read+insert в 1 tx), confirmActPaid (storage.upload +
+    `rpcConfirmActPaid` в userDb-tx, rollback файла при ошибке RPC), delete/completion.
+  - `documents/[id]/content` + `oo-callback` роуты — adminDb (allowlist) +
+    `storage.download`/`upload` (OnlyOffice; сессии нет, авторизация по OO-JWT).
+- **`scripts/migrate-files.ts`** (`npm run migrate:files`) — перенос Supabase Storage →
+  целевой storage: список из `adminDb.documents`, download из Supabase, upload в
+  `storage()`; идемпотентен (манифест `backups/`, докачка), сводка + стоп-код на
+  «нет в Supabase». Боевой прогон Supabase→R2 — когда владелец заведёт R2 (до с7).
+- **Unit-тест** `tests/unit/storage-local.test.ts` (7 кейсов: roundtrip, идемпотентность
+  remove, подпись signedUrl valid/подделка/срок, path-traversal).
+
+### Проверки
+- `tsc --noEmit` ✓, `eslint` ✓, unit **148/148** (141 + 7 storage) ✓,
+  integration **114/114** на Neon dev ✓ (прогон после переписывания 6 файлов).
+- **Runtime-смок на Neon** (dev :3001, вход owner, `STORAGE_PROVIDER=local`): полный
+  цикл документа на карточке дела — **список** (userDb, документ с типом/датой/автором),
+  **превью** (`/preview`→200, inline, содержимое файла, кириллица), **скачивание**
+  (`/download`→200, attachment + RFC5987-имя), **удаление** (документ ушёл из БД —
+  счётчик вкладки обнулился, файл удалён с диска `storage.remove`). Списки дел/актов
+  рендерятся на новом слое.
+- `migrate:files --dry-run` запускается в tsx, отрабатывает пустой список + сводку.
+
+### Грабли / критичное для следующих сессий
+- **`NextResponse.redirect` требует АБСОЛЮТНЫЙ URL.** Локальный `signedUrl` относителен
+  (`/api/storage/local?…`) → роуты download/preview падали 500 «malformed URL». Фикс:
+  `new URL(url, req.url)` — резолв по origin запроса; presigned S3-URL абсолютен и
+  проходит насквозь (правило: signed-URL из провайдера всегда резолвить по req.url).
+- **`import 'server-only'` РОНЯЕТ tsx-скрипты**, тянущие CJS-пакеты (@aws-sdk): server-only
+  грузится require-путём → `default` (throw), а не `react-server` (empty). Поэтому весь
+  `lib/db` использует guard `if (typeof window !== 'undefined') throw`, НЕ `server-only`.
+  Storage-слой приведён к той же конвенции (guard в `index.ts`-фабрике). **Правило: серверные
+  модули, которые могут импортироваться скриптами (`scripts/`), — только typeof-window guard.**
+- **vitest unit-пул роняет `server-only`** (дефолтный пул тянет `index.js`-throw, в отличие
+  от integration-forks с react-server). Добавлен alias `server-only`→`tests/helpers/empty-module.ts`
+  в `vitest.config.ts` — серверные модули теперь тестируемы в unit.
+- **file-picker недоступен браузерному агенту** → `uploadDocumentAction`/`confirmActPaid`/
+  OnlyOffice через UI не гонялись живьём (upload покрыт unit-провайдером + идентичен
+  проверенному payments-паттерну; для полного e2e — Playwright с фикстурой файла или ручная
+  проверка владельцем). Смок-документ вносился скриптом (те же `storage.upload`+`documents.create`).
+- **git:** master впереди origin (+ коммит c5). **push запрещён до с7.**
+
+### Дальше
+- **Сессия 6 «Чистка, сиды, CI, доки + ГЕНЕРАЛЬНАЯ РЕПЕТИЦИЯ переезда»:** удалить
+  `@supabase/*`, `src/lib/supabase/`, каталог `supabase/`; env-чистка; переписать
+  CLAUDE.md §2/§3, README, CI; smoke-rls порт, e2e сид-инфра; `/cso`+`/review` на
+  права доступа. Генеральная репетиция переноса данных на dev-ветке (T7, замер окна).
+- **R2 (перед с7, на владельце):** завести аккаунт Cloudflare R2 (карта), bucket
+  `case-documents`, API-token → заполнить `S3_*` env; `STORAGE_PROVIDER=s3`; прогнать
+  `npm run migrate:files` (Supabase-прод → R2), сверка количества/размеров.
+- ⚠ `src/lib/supabase/*` (3 файла) + `@supabase/supabase-js` в `migrate-files.ts` пока
+  ЖИВЫ намеренно (источник переноса) — удаляются в с6/после переноса файлов.
+
+---
+
 ## Сессия 2026-07-15 — Цикл v4, Сессия 4: Данные, часть 2 (11 доменов + machine-роуты) ✅
 
 _Четвёртая сессия цикла v4 по `docs/PLAN-V4-POSTGRES.md`. Механическое переписывание

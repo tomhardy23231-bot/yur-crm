@@ -38,6 +38,12 @@ const OO_MACHINE_PATH =
 const NOTIFY_MACHINE_PATH =
   /^\/api\/(telegram\/webhook|cron\/reminders|calendar\/[^/]+)$/i;
 
+// Цикл v4 сессия 5: стрим-роут ЛОКАЛЬНОГО storage-провайдера (dev). Авторизуется
+// HMAC-подписью в query, а не сессией — зеркало presigned URL S3/R2 (файл
+// отдаётся по краткоживущей подписанной ссылке без нашей куки). На проде
+// (STORAGE_PROVIDER=s3) роут не используется — редирект идёт прямо в R2.
+const LOCAL_STORAGE_PATH = '/api/storage/local';
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const path = request.nextUrl.pathname;
 
@@ -45,6 +51,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // безобидная работа с request на POST /login роняла FormData экшена).
   if (
     PUBLIC_PATHS.has(path) ||
+    path === LOCAL_STORAGE_PATH ||
     OO_MACHINE_PATH.test(path) ||
     NOTIFY_MACHINE_PATH.test(path)
   ) {

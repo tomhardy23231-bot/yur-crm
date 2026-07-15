@@ -15,7 +15,7 @@ import { UUID_RE } from '@/lib/validation';
 // не-UUID давал бы Postgres 22P02 → 500, выдавая разницу 500/404 как
 // инфо-канал «id похож на UUID, но недоступен» vs «id мусор».
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   await requireUser();
@@ -31,7 +31,10 @@ export async function GET(
 
   try {
     const url = await createSignedDownloadUrl(doc.storage_key, doc.file_name);
-    return NextResponse.redirect(url, { status: 307 });
+    // signedUrl локального провайдера относителен (/api/storage/local?…) —
+    // резолвим по origin запроса; presigned URL S3/R2 уже абсолютен и проходит
+    // насквозь (base игнорируется для абсолютных URL).
+    return NextResponse.redirect(new URL(url, req.url), { status: 307 });
   } catch (err) {
     console.error('download route failed:', err);
     return new NextResponse('Failed to create download link', { status: 500 });

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { adminDb } from '@/lib/db/admin';
+import { storage } from '@/lib/storage';
 import { verifyHs256 } from '@/lib/onlyoffice/jwt';
 import { UUID_RE } from '@/lib/validation';
 
@@ -35,7 +36,7 @@ function rewriteToInternal(dsUrl: string): string {
 // POST /api/documents/<id>/oo-callback
 // Document Server зовёт этот URL при сохранении. Тело подписано JWT (в body.token
 // или в заголовке Authorization: Bearer). На статус 2/6 — скачиваем изменённый
-// файл с DS и перезаписываем объект в Storage (service-роль), бампим updated_at.
+// файл с DS и перезаписываем объект в хранилище (admin-пул), бампим updated_at.
 // Ответ строго { error: 0 } при успехе — иначе DS считает сохранение неудачным.
 export async function POST(
   req: Request,
@@ -88,26 +89,19 @@ export async function POST(
       }
       const buf = Buffer.from(await res.arrayBuffer());
 
-      const admin = createSupabaseAdminClient();
-      const { data: row } = await admin
-        .from('documents')
-        .select('storage_key')
-        .eq('id', id)
-        .maybeSingle();
+      const row = await adminDb().documents.findUnique({
+        where: { id },
+        select: { storage_key: true },
+      });
       if (!row) return NextResponse.json({ error: 1 });
 
-      const { error: upErr } = await admin.storage
-        .from('case-documents')
-        .upload(row.storage_key, buf, { upsert: true });
-      if (upErr) {
-        console.error('oo-callback: storage upload failed', upErr.message);
-        return NextResponse.json({ error: 1 });
-      }
+      // upload перезаписывает объект по тому же ключу (правка через OnlyOffice).
+      await storage().upload(row.storage_key, buf);
 
-      await admin
-        .from('documents')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', id);
+      await adminDb().documents.update({
+        where: { id },
+        data: { updated_at: new Date() },
+      });
     } catch (e) {
       console.error('oo-callback failed:', e);
       return NextResponse.json({ error: 1 });

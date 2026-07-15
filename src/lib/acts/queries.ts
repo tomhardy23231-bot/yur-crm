@@ -1,7 +1,9 @@
 import 'server-only';
 import { cache } from 'react';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { userDb } from '@/lib/db';
+import { dec, decOrNull, dateOnly, dateOnlyOrNull, ts } from '@/lib/db/convert';
 import { getOrgRequisites } from '@/lib/org/queries';
 import type {
   ActCompletion,
@@ -12,69 +14,90 @@ import type {
   OrgRequisites,
 } from '@/lib/types/db';
 
-const ACT_SELECT =
-  'id, case_id, number, service_name, service_period, amount, confirmed_amount, ' +
-  'completion, status, issued_at, paid_at, scan_document_id, note, created_by, created_at';
+// Поля акта для выборки (общие для списка и печатной формы).
+const ACT_FIELDS = {
+  id: true,
+  case_id: true,
+  number: true,
+  service_name: true,
+  service_period: true,
+  amount: true,
+  confirmed_amount: true,
+  completion: true,
+  status: true,
+  issued_at: true,
+  paid_at: true,
+  scan_document_id: true,
+  note: true,
+  created_by: true,
+  created_at: true,
+} as const;
 
+// Структурный тип выбранных полей акта — конвертеры (dec/dateOnly/ts) берут
+// unknown, поэтому нативные Prisma-типы (Decimal, Date) сюда ложатся как есть.
 type RawAct = {
   id: string;
   case_id: string;
   number: number;
   service_name: string;
   service_period: string | null;
-  amount: number | string;
-  confirmed_amount: number | string | null;
-  completion: ActCompletion | null;
-  status: ActStatus;
-  issued_at: string;
-  paid_at: string | null;
+  amount: unknown;
+  confirmed_amount: unknown;
+  completion: string | null;
+  status: string;
+  issued_at: unknown;
+  paid_at: unknown;
   scan_document_id: string | null;
   note: string | null;
   created_by: string;
-  created_at: string;
+  created_at: unknown;
 };
 
-function normalizeAct(r: RawAct): CaseAct {
+function mapAct(r: RawAct): CaseAct {
   return {
     id: r.id,
     case_id: r.case_id,
     number: r.number,
     service_name: r.service_name,
     service_period: r.service_period,
-    amount: Number(r.amount),
-    confirmed_amount: r.confirmed_amount == null ? null : Number(r.confirmed_amount),
-    completion: r.completion,
-    status: r.status,
-    issued_at: r.issued_at,
-    paid_at: r.paid_at,
+    amount: dec(r.amount),
+    confirmed_amount: decOrNull(r.confirmed_amount),
+    completion: r.completion as ActCompletion | null,
+    status: r.status as ActStatus,
+    issued_at: dateOnly(r.issued_at),
+    paid_at: dateOnlyOrNull(r.paid_at),
     scan_document_id: r.scan_document_id,
     note: r.note,
     created_by: r.created_by,
-    created_at: r.created_at,
+    created_at: ts(r.created_at),
   };
 }
 
 // Акты дела (новые сверху), с краткой ссылкой на подтверждающий скан.
-export const listActsByCase = cache(async (caseId: string): Promise<CaseActWithScan[]> => {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('case_acts')
-    .select(`${ACT_SELECT}, scan:scan_document_id(id, file_name)`)
-    .eq('case_id', caseId)
-    .order('created_at', { ascending: false });
+// Доступ — RLS (SELECT наследует от дела).
+export const listActsByCase = cache(async (
+  caseId: string,
+): Promise<CaseActWithScan[]> => {
+  const user = await getCurrentUser();
+  if (!user) return [];
 
-  if (error) throw new Error(`listActsByCase failed: ${error.message}`);
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.case_acts.findMany({
+      where: { case_id: caseId },
+      select: {
+        ...ACT_FIELDS,
+        documents: { select: { id: true, file_name: true } },
+      },
+      orderBy: { created_at: 'desc' },
+    }),
+  );
 
-  return (data ?? []).map((row) => {
-    const r = row as unknown as RawAct & {
-      scan:
-        | ReadonlyArray<{ id: string; file_name: string }>
-        | { id: string; file_name: string }
-        | null;
-    };
-    const scan = Array.isArray(r.scan) ? (r.scan[0] ?? null) : r.scan;
-    return { ...normalizeAct(r), scan };
-  });
+  return rows.map((r) => ({
+    ...mapAct(r),
+    scan: r.documents
+      ? { id: r.documents.id, file_name: r.documents.file_name }
+      : null,
+  }));
 });
 
 export type ActPrintData = {
@@ -86,46 +109,46 @@ export type ActPrintData = {
 };
 
 // Данные для печатной формы акта. Под RLS-сессией: вернёт null, если акт не виден.
-export async function getActPrintData(actId: string): Promise<ActPrintData | null> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('case_acts')
-    .select(
-      `${ACT_SELECT}, ` +
-        'case:case_id(number_title, subject, client:client_id(name, client_kind, inn))',
-    )
-    .eq('id', actId)
-    .maybeSingle();
+export async function getActPrintData(
+  actId: string,
+): Promise<ActPrintData | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
 
-  if (error) throw new Error(`getActPrintData failed: ${error.message}`);
-  if (!data) return null;
+  const row = await userDb(user.profile.id, (tx) =>
+    tx.case_acts.findUnique({
+      where: { id: actId },
+      select: {
+        ...ACT_FIELDS,
+        cases: {
+          select: {
+            number_title: true,
+            subject: true,
+            clients: {
+              select: { name: true, client_kind: true, inn: true },
+            },
+          },
+        },
+      },
+    }),
+  );
+  if (!row) return null;
 
-  type CaseJoin = {
-    number_title: string;
-    subject: string | null;
-    client:
-      | ReadonlyArray<{ name: string; client_kind: ClientKind; inn: string | null }>
-      | { name: string; client_kind: ClientKind; inn: string | null }
-      | null;
-  };
-  const r = data as unknown as RawAct & {
-    case: ReadonlyArray<CaseJoin> | CaseJoin | null;
-  };
-  const caseJoin = Array.isArray(r.case) ? (r.case[0] ?? null) : r.case;
-  const clientJoin = caseJoin
-    ? Array.isArray(caseJoin.client)
-      ? (caseJoin.client[0] ?? null)
-      : caseJoin.client
-    : null;
+  const caseJoin = row.cases;
+  const clientJoin = caseJoin?.clients ?? null;
 
   const org = await getOrgRequisites();
 
   return {
-    act: normalizeAct(r),
+    act: mapAct(row),
     caseTitle: caseJoin?.number_title ?? '',
     caseSubject: caseJoin?.subject ?? null,
     client: clientJoin
-      ? { name: clientJoin.name, client_kind: clientJoin.client_kind, inn: clientJoin.inn }
+      ? {
+          name: clientJoin.name,
+          client_kind: clientJoin.client_kind as ClientKind,
+          inn: clientJoin.inn,
+        }
       : null,
     org,
   };

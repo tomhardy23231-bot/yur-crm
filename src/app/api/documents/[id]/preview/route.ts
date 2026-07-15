@@ -17,7 +17,7 @@ import { UUID_RE } from '@/lib/validation';
 // html/svg не исполнился inline. Office-доки (docx/xlsx) показывает OnlyOffice,
 // сюда не приходят.
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   await requireUser();
@@ -36,7 +36,9 @@ export async function GET(
     const url = inline
       ? await createSignedPreviewUrl(doc.storage_key)
       : await createSignedDownloadUrl(doc.storage_key, doc.file_name);
-    return NextResponse.redirect(url, { status: 307 });
+    // signedUrl локального провайдера относителен — резолвим по origin запроса;
+    // presigned URL S3/R2 абсолютен и проходит насквозь.
+    return NextResponse.redirect(new URL(url, req.url), { status: 307 });
   } catch (err) {
     console.error('preview route failed:', err);
     return new NextResponse('Failed to create preview link', { status: 500 });

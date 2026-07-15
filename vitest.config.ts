@@ -10,6 +10,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // `server-only` — маркер-пакет, бросает в дефолтном unit-пуле; подменяем
+      // на no-op, чтобы серверные модули (lib/storage, lib/db) были тестируемы.
+      'server-only': fileURLToPath(
+        new URL('./tests/helpers/empty-module.ts', import.meta.url),
+      ),
     },
   },
   test: {
