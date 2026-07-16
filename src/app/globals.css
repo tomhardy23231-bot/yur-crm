@@ -18,10 +18,11 @@
   --border:         #D9DEE5;  /* line — холодный hairline */
   --border-strong:  #C3CBD4;  /* line-strong */
 
-  /* Text — глубокий зелёно-чёрный ink (каркас) */
-  --text:           #14211B;
-  --text-muted:     #4A5258;  /* text-2 */
-  --text-subtle:    #717A82;  /* text-3 — каркасный #8A929B затемнён до AA (≥4.5 на белом) */
+  /* Text — нейтральный сине-чёрный ink (ревизия 2026-07-16: зелёный подтон
+     каркасного #14211B давал «грязный» оттенок всему экрану — убран). */
+  --text:           #101828;
+  --text-muted:     #475467;  /* text-2 */
+  --text-subtle:    #646E82;  /* text-3 — AA ≥4.5 на белом (5.13) и зебре (4.61) */
 
   /* ── Brand — ОДИН синий акцент ─────────────────────────────── */
   --primary:        #2563EB;  /* blue */
@@ -47,7 +48,7 @@
   --grad-hero:   linear-gradient(120deg, #1E40AF 0%, #2563EB 52%, #5B8DEF 100%);
   --grad-indigo: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
   --grad-rose:   linear-gradient(135deg, #F43F5E 0%, #BE123C 100%);
-  --grad-amber:  linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  --grad-amber:  linear-gradient(135deg, #F97316 0%, #EA580C 100%);
   --grad-violet: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
 
   /* ── Ink — тёмный navy рейл/сайдбар (эталон) ──────────────── */
@@ -68,11 +69,12 @@
   --sidebar-accent:       #2563EB;  /* синяя полоса/счётчик активного пункта */
   --sidebar-accent-bright:#7EA6FF;  /* светлый синий — иконка/фокус активного */
 
-  /* ── Semantic (каркас: warning — янтарь, info — sky, отличим от primary) ── */
-  --success:    #16A34A;  /* money — деньги/успех/завершено */
-  --success-bg: #DCFCE7;
-  --warning:    #D97706;  /* янтарь (каркас) */
-  --warning-bg: #FEF3C7;
+  /* ── Semantic (ревизия 2026-07-16: чистые тона вместо приглушённых —
+     зелёный → изумруд, янтарь → живой оранжевый; info — sky, отличим от primary) ── */
+  --success:    #10B981;  /* money — деньги/успех/завершено (emerald) */
+  --success-bg: #D1FAE5;
+  --warning:    #F97316;  /* живой оранжевый (был горчичный янтарь) */
+  --warning-bg: #FFEDD5;
   --error:      #DC2626;  /* debt — задолженность/удаление/срочность */
   --error-bg:   #FEE2E2;
   --info:       #0EA5E9;  /* sky (каркас) — звонки, нейтральные события */
@@ -82,17 +84,17 @@
 
   /* Текстовые тона семантики (WCAG AA): тёмные варианты для ТЕКСТА —
      зелёные суммы, текст залитых бейджей. Яркие тона выше — заливки/точки/иконки. */
-  --success-text: #166534;
-  --warning-text: #B45309;
-  --error-text:   #991B1B;
+  --success-text: #047857;
+  --warning-text: #C2410C;
+  --error-text:   #B91C1C;
   --info-text:    #0369A1;
 
   /* Подложка модальных окон/шторок — единый тон затемнения (v3 s10). */
   --overlay: rgba(8, 10, 15, 0.8);
 
   /* Priority (в БД normal|urgent; mid оставлен на будущее) */
-  --prio-low:     #16A34A;
-  --prio-low-bg:  #DCFCE7;
+  --prio-low:     #10B981;
+  --prio-low-bg:  #D1FAE5;
   --prio-mid:     #C2410C;
   --prio-mid-bg:  #FFEDD5;
   --prio-high:    #DC2626;
@@ -102,26 +104,27 @@
      Тройка на этап: тон (точка/заливка), -bg (подложка чипа), -fg (ТЕКСТ на
      подложке — тёмный, WCAG AA ≥ 4.5 на своём -bg). */
   --stage-new:             #64748B; --stage-new-bg:             #F1F5F9; --stage-new-fg:             #475569;
-  --stage-consultation:    #8B5CF6; --stage-consultation-bg:    #F3EEFF; --stage-consultation-fg:    #5B21B6;
+  --stage-consultation:    #8B5CF6; --stage-consultation-bg:    #F3EEFF; --stage-consultation-fg:    #6D28D9;
   --stage-in-progress:     #2563EB; --stage-in-progress-bg:     #DBE7FE; --stage-in-progress-fg:     #1E40AF;
-  --stage-awaiting:        #F59E0B; --stage-awaiting-bg:        #FEF3C7; --stage-awaiting-fg:        #92400E;
+  --stage-awaiting:        #F97316; --stage-awaiting-bg:        #FFEDD5; --stage-awaiting-fg:        #C2410C;
   --stage-closed:          #0EA5E9; --stage-closed-bg:          #E0F2FE; --stage-closed-fg:          #0369A1;
 
   /* Категории дел (3) — несут % зарплаты (7/10/25). Шкала каркаса.
      -fg — текст на подложке (AA, как у этапов). */
   --cat-document:       #06B6D4; --cat-document-bg:       #CFFAFE; --cat-document-fg:       #0E7490;  /* cyan — Документ */
-  --cat-claim:          #EC4899; --cat-claim-bg:          #FCE7F3; --cat-claim-fg:          #9D174D;  /* pink — Иск */
-  --cat-representation: #F59E0B; --cat-representation-bg: #FEF3C7; --cat-representation-fg: #92400E;  /* amber — Представительство */
+  --cat-claim:          #EC4899; --cat-claim-bg:          #FCE7F3; --cat-claim-fg:          #BE185D;  /* pink — Иск */
+  --cat-representation: #F97316; --cat-representation-bg: #FFEDD5; --cat-representation-fg: #C2410C;  /* orange — Представительство */
 
   /* Аватары — палитра инициалов по хэшу имени (v3 s10: вынесено из avatar.tsx;
      белый текст на каждом ≥ 3.0:1 — инициалы крупные/декоративные и дублируются
-     текстом рядом). Бывшие светлые #F97316/#14B8A6 затемнены до AA-large. */
+     текстом рядом). Ревизия 2026-07-16: кирпичный/болотный/серый заменены на
+     чистые orange/teal/indigo — самые светлые оттенки, проходящие 3.0:1. */
   --avatar-1: #2563EB;  /* blue    5.17 */
   --avatar-2: #8B5CF6;  /* violet  4.23 */
   --avatar-3: #EC4899;  /* rose    3.53 */
-  --avatar-4: #C2410C;  /* amber   5.18 (был #F97316 — 2.80, fail) */
-  --avatar-5: #0F766E;  /* teal    5.47 (был #14B8A6 — 2.49, fail) */
-  --avatar-6: #64748B;  /* slate   4.76 */
+  --avatar-4: #EA580C;  /* orange  3.56 (был кирпичный #C2410C) */
+  --avatar-5: #0D9488;  /* teal    3.76 (был болотный #0F766E) */
+  --avatar-6: #6366F1;  /* indigo  4.47 (был серый #64748B) */
 
   /* Brand integrations */
   --brand-gmail:    #EA4335;
@@ -146,13 +149,13 @@
   --r-chip:  9999px;  /* чипы этапов/категорий, мелкие бейджи — пилюли */
   --r-modal:  20px;   /* модальные окна */
 
-  /* Тени — мягкое «парение» (каркас 2026-07-13): тёплый ink-подтон,
+  /* Тени — мягкое «парение» (каркас 2026-07-13): нейтральный ink-подтон,
      глубина тенью, не линией. */
-  --shadow-xs: 0 1px 2px rgba(20, 33, 27, 0.04);
-  --shadow-sm: 0 1px 3px rgba(20, 33, 27, 0.05), 0 1px 2px rgba(20, 33, 27, 0.03);
-  --shadow-md: 0 4px 16px rgba(20, 33, 27, 0.06), 0 2px 4px rgba(20, 33, 27, 0.04);
-  --shadow-lg: 0 12px 32px rgba(20, 33, 27, 0.08), 0 4px 12px rgba(20, 33, 27, 0.05);
-  --shadow-pop: 0 24px 60px rgba(20, 33, 27, 0.14), 0 8px 20px rgba(20, 33, 27, 0.08);
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.05), 0 1px 2px rgba(16, 24, 40, 0.03);
+  --shadow-md: 0 4px 16px rgba(16, 24, 40, 0.06), 0 2px 4px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.08), 0 4px 12px rgba(16, 24, 40, 0.05);
+  --shadow-pop: 0 24px 60px rgba(16, 24, 40, 0.14), 0 8px 20px rgba(16, 24, 40, 0.08);
 
   /* Hover-тени привязаны к --primary/--error через color-mix → следуют за токенами. */
   --shadow-primary-hover:     0 6px 18px color-mix(in oklab, var(--primary) 32%, transparent);
