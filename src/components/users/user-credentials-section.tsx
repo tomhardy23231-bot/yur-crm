@@ -13,11 +13,9 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
-import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import {
@@ -30,79 +28,26 @@ import {
   type UserCredentials,
 } from '@/lib/users/credentials-actions';
 
-// Триггер (строка сотрудника) + модалка управления доступом. Только для
-// владельца (рендерится из page.tsx под actorIsOwner && !isSelf). Логин, пароль
-// (зеркало последнего выданного), смена логина и удаление.
-// Приглашение на email удалено вместе с прежней почтой (цикл v4) — своя
-// отправка вернётся в сессии 8; до неё доступы выдаются копи-блоком.
-export function UserCredentialsButton({
-  userId,
-  fullName,
-  email,
-}: {
-  userId: string;
-  fullName: string;
-  email: string;
-}) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="group inline-flex items-center gap-2.5 text-left rounded-md -mx-1 px-1 py-0.5 hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        title={t.users.credentials.open}
-      >
-        <Avatar name={fullName} size="sm" />
-        <span className="flex flex-col">
-          <span className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-text group-hover:text-primary transition-colors">
-            {fullName}
-            <KeyRound
-              size={12}
-              strokeWidth={1.75}
-              className="text-text-subtle group-hover:text-primary transition-colors"
-            />
-          </span>
-          <span className="inline-flex items-center gap-1 text-[11.5px] text-text-subtle">
-            <Mail size={10} strokeWidth={2} />
-            {email}
-          </span>
-        </span>
-      </button>
-
-      {open && (
-        <CredentialsModal
-          userId={userId}
-          fullName={fullName}
-          initialEmail={email}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </>
-  );
-}
-
-function CredentialsModal({
+// Панель управления доступом сотрудника — секция карточки /settings/users/[id]
+// (бывшая owner-модалка списка, перенесена 2026-07-16). Рендерится только для
+// владельца и не для себя (гейт — страница). Логин, пароль (зеркало последнего
+// выданного), удаление. Своя отправка приглашений вернётся в сессии 8 v4.
+export function UserCredentialsPanel({
   userId,
   fullName,
   initialEmail,
-  onClose,
 }: {
   userId: string;
   fullName: string;
   initialEmail: string;
-  onClose: () => void;
 }) {
-  const { t } = useI18n();
   const router = useRouter();
 
   const [creds, setCreds] = useState<UserCredentials | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [email, setEmail] = useState(initialEmail);
 
-  // Загрузка логина + зеркала пароля при открытии.
+  // Загрузка логина + зеркала пароля при монтировании.
   const [loading, startLoad] = useTransition();
   const load = useCallback(() => {
     startLoad(async () => {
@@ -117,53 +62,44 @@ function CredentialsModal({
     });
   }, [userId]);
 
-  // Первичная загрузка при открытии модалки.
   useEffect(() => {
     load();
   }, [load]);
 
+  if (loadError) {
+    return (
+      <p className="text-[13px] text-error" role="alert">
+        {loadError}
+      </p>
+    );
+  }
+
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title={t.users.credentials.title}
-      subtitle={fullName}
-      closeLabel={t.common.close}
-    >
-      {loadError ? (
-        <p className="text-[13px] text-error" role="alert">
-          {loadError}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-5">
-          {creds?.password && (
-            <CredentialsCard email={email} password={creds.password} />
-          )}
-          <LoginSection
-            userId={userId}
-            email={email}
-            onChanged={(next) => {
-              setEmail(next);
-              router.refresh();
-            }}
-          />
-          <PasswordSection
-            userId={userId}
-            password={creds?.password ?? null}
-            updatedAt={creds?.passwordUpdatedAt ?? null}
-            loading={loading && !creds}
-            onIssued={(pw) =>
-              setCreds((c) =>
-                c
-                  ? { ...c, password: pw, passwordUpdatedAt: new Date().toISOString() }
-                  : { email, fullName, password: pw, passwordUpdatedAt: null },
-              )
-            }
-          />
-          <DangerSection userId={userId} onDeleted={onClose} />
-        </div>
-      )}
-    </Modal>
+    <div className="flex flex-col gap-5">
+      {creds?.password && <CredentialsCard email={email} password={creds.password} />}
+      <LoginSection
+        userId={userId}
+        email={email}
+        onChanged={(next) => {
+          setEmail(next);
+          router.refresh();
+        }}
+      />
+      <PasswordSection
+        userId={userId}
+        password={creds?.password ?? null}
+        updatedAt={creds?.passwordUpdatedAt ?? null}
+        loading={loading && !creds}
+        onIssued={(pw) =>
+          setCreds((c) =>
+            c
+              ? { ...c, password: pw, passwordUpdatedAt: new Date().toISOString() }
+              : { email, fullName, password: pw, passwordUpdatedAt: null },
+          )
+        }
+      />
+      <DangerSection userId={userId} />
+    </div>
   );
 }
 
@@ -415,7 +351,13 @@ function PasswordSection({
       )}
 
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        <Button type="button" variant="secondary" size="sm" onClick={reissue} disabled={reissuePending}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={reissue}
+          disabled={reissuePending}
+        >
           <RefreshCw size={14} strokeWidth={1.75} />
           {reissuePending ? t.users.credentials.issuing : t.users.credentials.reissue}
         </Button>
@@ -449,13 +391,8 @@ function PasswordSection({
 }
 
 // ── Опасная зона: удаление ───────────────────────────────────────────────────
-function DangerSection({
-  userId,
-  onDeleted,
-}: {
-  userId: string;
-  onDeleted: () => void;
-}) {
+// После удаления возвращаемся к списку сотрудников (карточки больше нет).
+function DangerSection({ userId }: { userId: string }) {
   const { t } = useI18n();
   const toast = useToast();
   const router = useRouter();
@@ -469,7 +406,7 @@ function DangerSection({
       if (res.ok) {
         toast.success(t.users.credentials.deleted);
         setConfirmOpen(false);
-        onDeleted();
+        router.push('/settings/users');
         router.refresh();
       } else if (res.blockers) {
         setBlockers(res.blockers);

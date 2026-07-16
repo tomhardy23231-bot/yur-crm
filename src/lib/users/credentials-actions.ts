@@ -199,6 +199,7 @@ export async function reissueUserPasswordAction(
     changes: {},
   });
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
   return { ok: true, password };
 }
 
@@ -243,6 +244,7 @@ export async function setUserPasswordAction(
     changes: {},
   });
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
   return { ok: true, password: pw };
 }
 
@@ -304,6 +306,7 @@ export async function changeUserEmailAction(
     changes: { email },
   });
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
   return { ok: true, email };
 }
 
@@ -364,5 +367,6 @@ export async function deleteUserAction(
     changes: { email: target.email, role: target.role, full_name: target.full_name },
   });
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
   return { ok: true };
 }

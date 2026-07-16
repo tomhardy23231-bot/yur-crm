@@ -25,31 +25,38 @@ function normalizeOverrides(v: unknown): PermOverrides {
 // v2 Этап 3: + department_id/position/visibility_scope и имя подразделения (join).
 //
 // Сортировка: активные сверху, затем имя (salary_* НЕ читаем — @ignore/приватны).
-export async function listManagedUsers(): Promise<ManagedUser[]> {
-  const user = await getCurrentUser();
-  if (!user) return [];
+const MANAGED_USER_SELECT = {
+  id: true,
+  full_name: true,
+  email: true,
+  role: true,
+  is_active: true,
+  created_at: true,
+  perm_overrides: true,
+  language: true,
+  department_id: true,
+  position: true,
+  visibility_scope: true,
+  departments: { select: { name: true } },
+} as const;
 
-  const rows = await userDb(user.profile.id, (tx) =>
-    tx.public_users.findMany({
-      orderBy: [{ is_active: 'desc' }, { full_name: 'asc' }],
-      select: {
-        id: true,
-        full_name: true,
-        email: true,
-        role: true,
-        is_active: true,
-        created_at: true,
-        perm_overrides: true,
-        language: true,
-        department_id: true,
-        position: true,
-        visibility_scope: true,
-        departments: { select: { name: true } },
-      },
-    }),
-  );
+type ManagedUserRow = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  created_at: Date;
+  perm_overrides: unknown;
+  language: string | null;
+  department_id: string | null;
+  position: string | null;
+  visibility_scope: string | null;
+  departments: { name: string } | null;
+};
 
-  return rows.map((r) => ({
+function mapManagedUser(r: ManagedUserRow): ManagedUser {
+  return {
     id: r.id,
     full_name: r.full_name,
     email: r.email,
@@ -64,5 +71,34 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
       ? 'all'
       : 'department') as VisibilityScope,
     department_name: r.departments?.name ?? null,
-  }));
+  };
+}
+
+export async function listManagedUsers(): Promise<ManagedUser[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const rows = await userDb(user.profile.id, (tx) =>
+    tx.public_users.findMany({
+      orderBy: [{ is_active: 'desc' }, { full_name: 'asc' }],
+      select: MANAGED_USER_SELECT,
+    }),
+  );
+
+  return rows.map(mapManagedUser);
+}
+
+// Один сотрудник для карточки /settings/users/[id] — те же поля, что в списке.
+export async function getManagedUser(id: string): Promise<ManagedUser | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const row = await userDb(user.profile.id, (tx) =>
+    tx.public_users.findUnique({
+      where: { id },
+      select: MANAGED_USER_SELECT,
+    }),
+  );
+
+  return row ? mapManagedUser(row) : null;
 }
