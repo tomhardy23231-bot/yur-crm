@@ -11,7 +11,8 @@
 // «история». Перед сидом доменные таблицы ОЧИЩАЮТСЯ (cases/clients/payments/
 // tasks/documents/…); пользователи-логины пересоздаются (upsert).
 //
-// ⚠ payroll_ledger в v4 ЗАМОРОЖЕН (v3 с12): accrual_mode — поле-призрак,
+// ⚠ payroll_ledger в v4 ЗАМОРОЖЕН (v3 с12): accrual_mode — колонка-призрак
+//   (убрана из UI/кода уборкой 2026-07-16, осталась в БД с DEFAULT до Phase 2),
 //   accrued-строки не создаются, «выплаты» из демо убраны. ЗП догфудится
 //   live-отчётом /reports/payroll (payroll_employee_summary), не леджером.
 

@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+import { cn, formatMoney } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   createBonusAction,
@@ -21,12 +21,6 @@ import { type RoleInCase } from '@/lib/types/db';
 import { todayIso } from '@/lib/validation';
 
 const PAYROLL_INITIAL: PayrollMutationState = { ok: false };
-
-const MONEY = new Intl.NumberFormat('ru-RU', {
-  style: 'decimal',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
 
 export type PayoutBucket = {
   case_id: string;
@@ -304,7 +298,7 @@ function PayoutModal({
                               </span>
                             </span>
                             <span className="tabular-nums text-[13px] font-semibold text-success whitespace-nowrap">
-                              {MONEY.format(b.outstanding)} ₴
+                              {formatMoney(b.outstanding)} ₴
                             </span>
                           </label>
                         </li>
@@ -342,7 +336,7 @@ function PayoutModal({
                       </span>
                     </span>
                     <span className="whitespace-nowrap text-[13px] font-semibold tabular-nums text-warning">
-                      {MONEY.format(bonusOutstanding)} ₴
+                      {formatMoney(bonusOutstanding)} ₴
                     </span>
                   </label>
                 </>
@@ -399,7 +393,7 @@ function PayoutModal({
           <span className="text-[13px] text-text-muted">
             {t.payroll.actions.toPay}{' '}
             <span className="tabular-nums text-[15px] font-bold text-text">
-              {MONEY.format(total)} ₴
+              {formatMoney(total)} ₴
             </span>
           </span>
           <div className="flex items-center gap-2">

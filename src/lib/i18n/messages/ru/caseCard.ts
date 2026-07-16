@@ -243,7 +243,6 @@ export const caseCard = {
     lawyerRate: '% юриста',
     expertRate: '% эксперта',
     rateByCategoryPlaceholder: 'по категории',
-    accrualMode: 'Начисление зарплаты',
     billingTypes: 'Тип оплаты',
 
     opponent: 'Оппонент',

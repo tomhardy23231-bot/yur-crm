@@ -112,11 +112,6 @@ export const enums: EnumsMessages = {
     paid: 'Виплачено',
   },
 
-  accrualMode: {
-    on_completion: 'При завершенні справи',
-    per_payment: 'У міру оплат',
-  },
-
   payrollTxKind: {
     payout: 'Виплата',
     bonus: 'Премія',

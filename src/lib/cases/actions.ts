@@ -15,14 +15,12 @@ import { getT } from '@/lib/i18n/server';
 import type { Messages } from '@/lib/i18n/messages';
 import { UUID_RE, todayIso } from '@/lib/validation';
 import {
-  ACCRUAL_MODES,
   BILLING_TYPES,
   CASE_CATEGORIES,
   CASE_PRIORITIES,
   CASE_STAGES,
   CASE_TYPES,
   STAFF_ROLES,
-  type AccrualMode,
   type BillingType,
   type CaseCategory,
   type CasePriority,
@@ -45,7 +43,6 @@ export type CaseFormFields =
   | 'billing_types'
   | 'lawyer_rate_override'
   | 'expert_rate_override'
-  | 'accrual_mode'
   | 'opponent'
   | 'court_case_number'
   | 'court'
@@ -101,17 +98,12 @@ type Validated = {
   priority: CasePriority;
   contract_sum: number;
   billing_types: BillingType[];
-  accrual_mode: AccrualMode;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;
   tags: string[];
   closed_at: string | null;
 };
-
-function isAccrualMode(value: string): value is AccrualMode {
-  return (ACCRUAL_MODES as readonly string[]).includes(value);
-}
 
 function validate(
   formData: FormData,
@@ -142,7 +134,6 @@ function validate(
   const tags_raw = getString(formData, 'tags');
   const lawyer_rate_override_raw = getString(formData, 'lawyer_rate_override');
   const expert_rate_override_raw = getString(formData, 'expert_rate_override');
-  const accrual_mode_raw = getString(formData, 'accrual_mode');
 
   const billing_types_raw = formData
     .getAll('billing_types')
@@ -164,7 +155,6 @@ function validate(
     billing_types: billing_types.join(','),
     lawyer_rate_override: lawyer_rate_override_raw,
     expert_rate_override: expert_rate_override_raw,
-    accrual_mode: accrual_mode_raw,
     opponent,
     court_case_number,
     court,
@@ -286,9 +276,6 @@ function validate(
       priority: priority_raw as CasePriority,
       contract_sum,
       billing_types,
-      accrual_mode: isAccrualMode(accrual_mode_raw)
-        ? accrual_mode_raw
-        : 'on_completion',
       opponent: opponent || null,
       court_case_number: court_case_number || null,
       court: court || null,
@@ -320,7 +307,6 @@ function caseCreateData(
     priority: d.priority,
     contract_sum: d.contract_sum,
     billing_types: d.billing_types,
-    accrual_mode: d.accrual_mode,
     opponent: d.opponent,
     court_case_number: d.court_case_number,
     court: d.court,
@@ -409,7 +395,6 @@ const CASE_DIFF_FIELDS = [
   'billing_types',
   'lawyer_rate_override',
   'expert_rate_override',
-  'accrual_mode',
   'opponent',
   'court_case_number',
   'court',
@@ -431,7 +416,6 @@ type CaseDiffShape = {
   billing_types: BillingType[];
   lawyer_rate_override: number | null;
   expert_rate_override: number | null;
-  accrual_mode: AccrualMode;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;
@@ -476,7 +460,6 @@ export async function updateCaseAction(
           billing_types: true,
           lawyer_rate_override: true,
           expert_rate_override: true,
-          accrual_mode: true,
           opponent: true,
           court_case_number: true,
           court: true,
@@ -554,7 +537,6 @@ export async function updateCaseAction(
     stage: result.data.stage,
     priority: result.data.priority,
     billing_types: result.data.billing_types,
-    accrual_mode: result.data.accrual_mode,
     opponent: result.data.opponent,
     court_case_number: result.data.court_case_number,
     court: result.data.court,
@@ -659,7 +641,6 @@ export async function updateCaseAction(
       billing_types: before.billing_types as BillingType[],
       lawyer_rate_override: decOrNull(before.lawyer_rate_override),
       expert_rate_override: decOrNull(before.expert_rate_override),
-      accrual_mode: before.accrual_mode,
       opponent: before.opponent,
       court_case_number: before.court_case_number,
       court: before.court,
@@ -685,7 +666,6 @@ export async function updateCaseAction(
       expert_rate_override: canEditRates
         ? result.overrides.expert_rate_override
         : beforeShape.expert_rate_override,
-      accrual_mode: result.data.accrual_mode,
       opponent: result.data.opponent,
       court_case_number: result.data.court_case_number,
       court: result.data.court,

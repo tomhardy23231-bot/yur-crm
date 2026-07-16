@@ -113,11 +113,6 @@ export const enums = {
     paid: 'Выплачено',
   },
 
-  accrualMode: {
-    on_completion: 'При завершении дела',
-    per_payment: 'По мере оплат',
-  },
-
   payrollTxKind: {
     payout: 'Выплата',
     bonus: 'Премия',

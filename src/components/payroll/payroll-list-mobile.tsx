@@ -6,12 +6,7 @@ import { getCurrentUser } from '@/lib/auth/current-user';
 import { userDb } from '@/lib/db';
 import { getT } from '@/lib/i18n/server';
 import type { PayrollEmployeeSummary } from '@/lib/types/db';
-
-const MONEY = new Intl.NumberFormat('ru-RU', {
-  style: 'decimal',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
+import { formatMoney } from '@/lib/utils';
 
 // Мобильное представление отчёта /reports/payroll (v3 Сессия 6): вместо широкой
 // таблицы — карточки сотрудников (тап → карточка сотрудника). Видно на < md;
@@ -76,16 +71,16 @@ export async function PayrollListMobile({
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <MoneyCell
                   label={t.payroll.report.colEarnedMonth}
-                  value={`${MONEY.format(r.earned + r.bonus)} ₴`}
+                  value={`${formatMoney(r.earned + r.bonus)} ₴`}
                 />
                 <MoneyCell
                   label={t.payroll.report.colPaidMonth}
-                  value={`${MONEY.format(r.payout)} ₴`}
+                  value={`${formatMoney(r.payout)} ₴`}
                   tone="text-success-text"
                 />
                 <MoneyCell
                   label={t.payroll.report.colBalanceTotal}
-                  value={`${MONEY.format(r.balance)} ₴`}
+                  value={`${formatMoney(r.balance)} ₴`}
                   tone="text-warning-text"
                 />
               </div>
@@ -94,7 +89,7 @@ export async function PayrollListMobile({
                 <p className="mt-2.5 text-[12px] tabular-nums text-text-muted">
                   {t.payroll.report.colFixedMonth}:{' '}
                   <span className="font-mono font-semibold text-text">
-                    {MONEY.format(r.fixed)} ₴
+                    {formatMoney(r.fixed)} ₴
                   </span>
                 </p>
               )}

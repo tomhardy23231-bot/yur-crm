@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
+import { cn, formatMoney, formatPercent } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -41,12 +41,6 @@ import {
   monthParam as toMonthParam,
 } from '@/lib/payroll/month';
 import { UUID_RE } from '@/lib/validation';
-
-const MONEY = new Intl.NumberFormat('ru-RU', {
-  style: 'decimal',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
 
 export default async function PayrollReportPage({
   searchParams,
@@ -134,7 +128,7 @@ export default async function PayrollReportPage({
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <KpiTile
           label={t.payroll.report.kpiBalance}
-          value={`${MONEY.format(totals.balance)} ₴`}
+          value={`${formatMoney(totals.balance)} ₴`}
           icon={Wallet}
           iconClass="bg-primary-subtle text-primary"
           valueClass="text-primary-pressed"
@@ -142,7 +136,7 @@ export default async function PayrollReportPage({
         {showFixed && (
           <KpiTile
             label={t.payroll.report.kpiFixed}
-            value={`${MONEY.format(totals.fixed)} ₴`}
+            value={`${formatMoney(totals.fixed)} ₴`}
             icon={Coins}
             iconClass="bg-info-bg text-info"
             valueClass="text-text"
@@ -150,14 +144,14 @@ export default async function PayrollReportPage({
         )}
         <KpiTile
           label={t.payroll.report.kpiEarned}
-          value={`${MONEY.format(totals.earned)} ₴`}
+          value={`${formatMoney(totals.earned)} ₴`}
           icon={TrendingUp}
           iconClass="bg-success-bg text-success"
           valueClass="text-success-text"
         />
         <KpiTile
           label={t.payroll.report.kpiBonus}
-          value={`${MONEY.format(totals.bonus)} ₴`}
+          value={`${formatMoney(totals.bonus)} ₴`}
           icon={Gift}
           iconClass="bg-warning-bg text-warning"
           valueClass="text-warning-text"
@@ -203,7 +197,7 @@ export default async function PayrollReportPage({
                               CAT_FG[r.category],
                             )}
                           >
-                            {MONEY.format(r.lawyer_percent)}%
+                            {formatPercent(r.lawyer_percent)}%
                           </span>
                         </span>
                       )}
@@ -218,7 +212,7 @@ export default async function PayrollReportPage({
                               CAT_FG[r.category],
                             )}
                           >
-                            {MONEY.format(r.expert_percent)}%
+                            {formatPercent(r.expert_percent)}%
                           </span>
                         </span>
                       )}
@@ -304,7 +298,7 @@ export default async function PayrollReportPage({
                     </span>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right font-mono text-[13px] tabular-nums text-success-text">
-                    {MONEY.format(r.earned)} ₴
+                    {formatMoney(r.earned)} ₴
                   </TableCell>
                   {showFixed && (
                     <TableCell
@@ -313,7 +307,7 @@ export default async function PayrollReportPage({
                         r.salary_mode !== 'percent' ? 'text-text' : 'text-text-subtle',
                       )}
                     >
-                      {r.salary_mode !== 'percent' ? `${MONEY.format(r.fixed)} ₴` : '—'}
+                      {r.salary_mode !== 'percent' ? `${formatMoney(r.fixed)} ₴` : '—'}
                     </TableCell>
                   )}
                   <TableCell
@@ -322,13 +316,13 @@ export default async function PayrollReportPage({
                       r.bonus > 0 ? 'text-warning-text' : 'text-text-subtle',
                     )}
                   >
-                    {r.bonus > 0 ? `+${MONEY.format(r.bonus)} ₴` : '—'}
+                    {r.bonus > 0 ? `+${formatMoney(r.bonus)} ₴` : '—'}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right font-mono text-[13px] tabular-nums text-success-text">
-                    {MONEY.format(r.payout)} ₴
+                    {formatMoney(r.payout)} ₴
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right font-mono text-[14px] font-bold tabular-nums text-primary-pressed">
-                    {MONEY.format(r.balance)} ₴
+                    {formatMoney(r.balance)} ₴
                   </TableCell>
                   <TableCell className="text-right text-text-subtle">
                     <ChevronRight size={16} strokeWidth={1.75} />
@@ -341,21 +335,21 @@ export default async function PayrollReportPage({
                   {t.payroll.report.totalLabel}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-success-text">
-                  {MONEY.format(totals.earned)} ₴
+                  {formatMoney(totals.earned)} ₴
                 </TableCell>
                 {showFixed && (
                   <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-text">
-                    {MONEY.format(totals.fixed)} ₴
+                    {formatMoney(totals.fixed)} ₴
                   </TableCell>
                 )}
                 <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-warning-text">
-                  {MONEY.format(totals.bonus)} ₴
+                  {formatMoney(totals.bonus)} ₴
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-success-text">
-                  {MONEY.format(totals.payout)} ₴
+                  {formatMoney(totals.payout)} ₴
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right font-mono text-[14px] font-bold tabular-nums text-primary-pressed">
-                  {MONEY.format(totals.balance)} ₴
+                  {formatMoney(totals.balance)} ₴
                 </TableCell>
                 <TableCell />
               </TableRow>

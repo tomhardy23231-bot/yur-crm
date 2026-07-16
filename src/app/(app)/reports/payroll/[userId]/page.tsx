@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/table';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
-import { cn } from '@/lib/utils';
+import { cn, formatMoney, formatPercent } from '@/lib/utils';
 import { userDb } from '@/lib/db';
 import {
   getPayrollEmployeeCases,
@@ -42,12 +42,6 @@ import { listAbsencesByUser } from '@/lib/absences/queries';
 import { canManageAbsencesOf } from '@/lib/absences/access';
 import { AbsencesBlock } from '@/components/absences/absences-block';
 import { MANAGER_ROLES } from '@/lib/types/db';
-
-const MONEY = new Intl.NumberFormat('ru-RU', {
-  style: 'decimal',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
 
 // occurred_on приходит как 'YYYY-MM-DD' — форматируем без таймзонных сдвигов.
 function formatDate(s: string): string {
@@ -240,7 +234,7 @@ export default async function PayrollEmployeePage({
             <Wallet size={15} strokeWidth={1.75} className="text-text-muted" />
             {t.payroll.employee.salaryTitle}:{' '}
             <span className="font-mono tabular-nums">
-              {fmt(t.payroll.employee.salaryPerMonth, { amount: MONEY.format(fixedMonthly) })}
+              {fmt(t.payroll.employee.salaryPerMonth, { amount: formatMoney(fixedMonthly) })}
             </span>
           </span>
           <span className="text-[12.5px] text-text-muted">
@@ -260,33 +254,33 @@ export default async function PayrollEmployeePage({
             <Wallet size={13} strokeWidth={2} />{t.payroll.employee.toPayNow}
           </span>
           <span className="font-mono text-[30px] font-extrabold leading-none tracking-tight tabular-nums text-warning">
-            {MONEY.format(balance)} ₴
+            {formatMoney(balance)} ₴
           </span>
           <span className="text-[12px] text-text-muted">
             {fmt(t.payroll.employee.toPayBreakdown, {
-              cases: MONEY.format(casesOutstandingAll),
-              bonus: MONEY.format(bonusOutstandingAll),
+              cases: formatMoney(casesOutstandingAll),
+              bonus: formatMoney(bonusOutstandingAll),
             })}
           </span>
         </div>
         <div className="grid flex-1 grid-cols-3 divide-x divide-border">
           <SummaryCell
             label={t.payroll.employee.earnedMonth}
-            value={`${MONEY.format(earnedMonth)} ₴`}
+            value={`${formatMoney(earnedMonth)} ₴`}
             tone="text"
           />
           <SummaryCell
             label={t.payroll.employee.bonusMonth}
-            value={`${bonusMonth > 0 ? '+' : ''}${MONEY.format(bonusMonth)} ₴`}
+            value={`${bonusMonth > 0 ? '+' : ''}${formatMoney(bonusMonth)} ₴`}
             tone="muted"
           />
           <SummaryCell
             label={t.payroll.employee.paidMonth}
-            value={`${MONEY.format(payoutMonth)} ₴`}
+            value={`${formatMoney(payoutMonth)} ₴`}
             tone="success"
             caption={fmt(t.payroll.employee.paidMonthCaption, {
-              cases: MONEY.format(monthCaseAllocated),
-              bonus: MONEY.format(monthBonusPaid),
+              cases: formatMoney(monthCaseAllocated),
+              bonus: formatMoney(monthBonusPaid),
             })}
           />
         </div>
@@ -340,16 +334,16 @@ export default async function PayrollEmployeePage({
                         <StageBadge stage={c.stage} />
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-[12.5px] text-text-muted">
-                        {t.enums.roleInCase[c.role_in_case]} · {MONEY.format(c.percent)}%
+                        {t.enums.roleInCase[c.role_in_case]} · {formatPercent(c.percent)}%
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="font-mono text-[13px] font-semibold tabular-nums text-text">
-                          {MONEY.format(c.earned)} ₴
+                          {formatMoney(c.earned)} ₴
                         </div>
                         <div className="text-[11px] text-text-subtle">
                           {fmt(t.payroll.employee.earnedFrom, {
-                            percent: MONEY.format(c.percent),
-                            paid: MONEY.format(c.paid_total),
+                            percent: formatPercent(c.percent),
+                            paid: formatMoney(c.paid_total),
                           })}
                         </div>
                       </TableCell>
@@ -366,7 +360,7 @@ export default async function PayrollEmployeePage({
                                 {t.payroll.employee.statusPaid}
                               </span>
                             ) : partially ? (
-                              <>{fmt(t.payroll.employee.statusPartial, { amount: MONEY.format(c.paid) })}</>
+                              <>{fmt(t.payroll.employee.statusPartial, { amount: formatMoney(c.paid) })}</>
                             ) : c.earned > 0 ? (
                               t.payroll.employee.statusUnpaid
                             ) : (
@@ -381,7 +375,7 @@ export default async function PayrollEmployeePage({
                           c.outstanding > 0.001 ? 'text-warning' : 'text-text-subtle',
                         )}
                       >
-                        {MONEY.format(Math.max(0, c.outstanding))} ₴
+                        {formatMoney(Math.max(0, c.outstanding))} ₴
                       </TableCell>
                     </TableRow>
                   );
@@ -406,19 +400,19 @@ export default async function PayrollEmployeePage({
               <span className="text-text-muted">
                 {t.payroll.employee.bonusAccrued}{' '}
                 <span className="font-semibold text-text">
-                  {MONEY.format(bonusMonth)} ₴
+                  {formatMoney(bonusMonth)} ₴
                 </span>
               </span>
               <span className="text-text-muted">
                 {t.payroll.employee.bonusPaid}{' '}
                 <span className="font-semibold text-success">
-                  {MONEY.format(bonusMonthPaid)} ₴
+                  {formatMoney(bonusMonthPaid)} ₴
                 </span>
               </span>
               <span className="text-text-muted">
                 {t.payroll.employee.bonusRemaining}{' '}
                 <span className="font-semibold text-warning">
-                  {MONEY.format(bonusMonthOutstanding)} ₴
+                  {formatMoney(bonusMonthOutstanding)} ₴
                 </span>
               </span>
             </div>
@@ -446,7 +440,7 @@ export default async function PayrollEmployeePage({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="font-mono text-[14px] font-bold tabular-nums text-text">
-                      +{MONEY.format(b.amount)} ₴
+                      +{formatMoney(b.amount)} ₴
                     </span>
                     <span className="text-[12px] text-text-muted">
                       {formatDate(b.occurred_on)}
@@ -456,8 +450,8 @@ export default async function PayrollEmployeePage({
                     ) : b.paid > 0 ? (
                       <Badge tone="warning">
                         {fmt(t.payroll.employee.badgePartial, {
-                          paid: MONEY.format(b.paid),
-                          amount: MONEY.format(b.amount),
+                          paid: formatMoney(b.paid),
+                          amount: formatMoney(b.amount),
                         })}
                       </Badge>
                     ) : (
@@ -471,7 +465,7 @@ export default async function PayrollEmployeePage({
                 {canManage && (
                   <DeleteTransactionButton
                     transactionId={b.id}
-                    label={fmt(t.payroll.employee.bonusLabel, { amount: MONEY.format(b.amount) })}
+                    label={fmt(t.payroll.employee.bonusLabel, { amount: formatMoney(b.amount) })}
                   />
                 )}
               </li>
@@ -513,7 +507,7 @@ export default async function PayrollEmployeePage({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-2">
                       <span className="font-mono text-[14px] font-bold tabular-nums text-text">
-                        −{MONEY.format(tx.amount)} ₴
+                        −{formatMoney(tx.amount)} ₴
                       </span>
                       <span className="text-[12px] text-text-muted">
                         {formatDate(tx.occurred_on)}
@@ -532,7 +526,7 @@ export default async function PayrollEmployeePage({
                           >
                             {a.number_title}
                             <span className="tabular-nums">
-                              {MONEY.format(a.amount)} ₴
+                              {formatMoney(a.amount)} ₴
                             </span>
                           </Link>
                         ))}
@@ -541,7 +535,7 @@ export default async function PayrollEmployeePage({
                             <Gift size={11} strokeWidth={2} />
                             {t.payroll.employee.payoutBonusChip}
                             <span className="tabular-nums">
-                              {MONEY.format(bonusPortion)} ₴
+                              {formatMoney(bonusPortion)} ₴
                             </span>
                           </span>
                         )}
@@ -551,7 +545,7 @@ export default async function PayrollEmployeePage({
                   {canManage && (
                     <DeleteTransactionButton
                       transactionId={tx.id}
-                      label={fmt(t.payroll.employee.payoutLabel, { amount: MONEY.format(tx.amount) })}
+                      label={fmt(t.payroll.employee.payoutLabel, { amount: formatMoney(tx.amount) })}
                     />
                   )}
                 </li>

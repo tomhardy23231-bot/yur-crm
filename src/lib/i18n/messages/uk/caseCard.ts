@@ -227,7 +227,6 @@ export const caseCard: CaseCardMessages = {
     lawyerRate: '% юриста',
     expertRate: '% експерта',
     rateByCategoryPlaceholder: 'за категорією',
-    accrualMode: 'Нарахування зарплати',
     billingTypes: 'Тип оплати',
 
     opponent: 'Опонент',

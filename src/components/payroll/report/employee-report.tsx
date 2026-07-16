@@ -5,12 +5,7 @@ import Link from 'next/link';
 import type { EmployeeReport } from '@/lib/payroll/report';
 import { DOC } from '@/components/payroll/report/report-document';
 import { useI18n } from '@/lib/i18n/provider';
-
-const MONEY = new Intl.NumberFormat('ru-RU', {
-  style: 'decimal',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
+import { formatMoney } from '@/lib/utils';
 
 function fmtDate(s: string): string {
   const [y, m, d] = s.split('-');
@@ -49,16 +44,16 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
             borderTop: `2px solid ${DOC.accent}`,
           }}
         >
-          <Kpi label={t.payrollPrint.employee.kpiEarnedMonth} value={`${MONEY.format(earnedMonth)} ₴`} />
-          <Kpi label={t.payrollPrint.employee.kpiBonusMonth} value={`${bonusMonth > 0 ? '+' : ''}${MONEY.format(bonusMonth)} ₴`} />
-          <Kpi label={t.payrollPrint.employee.kpiPayoutMonth} value={`${MONEY.format(payoutMonth)} ₴`} valueColor={DOC.green} />
+          <Kpi label={t.payrollPrint.employee.kpiEarnedMonth} value={`${formatMoney(earnedMonth)} ₴`} />
+          <Kpi label={t.payrollPrint.employee.kpiBonusMonth} value={`${bonusMonth > 0 ? '+' : ''}${formatMoney(bonusMonth)} ₴`} />
+          <Kpi label={t.payrollPrint.employee.kpiPayoutMonth} value={`${formatMoney(payoutMonth)} ₴`} valueColor={DOC.green} />
           <Kpi
             label={t.payrollPrint.employee.kpiBalance}
-            value={`${MONEY.format(balance)} ₴`}
+            value={`${formatMoney(balance)} ₴`}
             valueColor={DOC.amber}
             caption={fmt(t.payrollPrint.employee.kpiBalanceCaption, {
-              cases: MONEY.format(casesOutstandingAll),
-              bonus: MONEY.format(bonusOutstandingAll),
+              cases: formatMoney(casesOutstandingAll),
+              bonus: formatMoney(bonusOutstandingAll),
             })}
           />
         </div>
@@ -68,10 +63,10 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
           style={{ color: DOC.muted }}
         >
           <Metric label={t.payrollPrint.employee.metricCasesMonth} value={String(casesCount)} />
-          <Metric label={t.payrollPrint.employee.metricClientPaid} value={`${MONEY.format(clientPaidTotal)} ₴`} />
-          <Metric label={t.payrollPrint.employee.metricContractSum} value={`${MONEY.format(contractSumTotal)} ₴`} />
-          {lawyerEarned > 0 && <Metric label={t.payrollPrint.employee.metricLawyerEarned} value={`${MONEY.format(lawyerEarned)} ₴`} />}
-          {expertEarned > 0 && <Metric label={t.payrollPrint.employee.metricExpertEarned} value={`${MONEY.format(expertEarned)} ₴`} />}
+          <Metric label={t.payrollPrint.employee.metricClientPaid} value={`${formatMoney(clientPaidTotal)} ₴`} />
+          <Metric label={t.payrollPrint.employee.metricContractSum} value={`${formatMoney(contractSumTotal)} ₴`} />
+          {lawyerEarned > 0 && <Metric label={t.payrollPrint.employee.metricLawyerEarned} value={`${formatMoney(lawyerEarned)} ₴`} />}
+          {expertEarned > 0 && <Metric label={t.payrollPrint.employee.metricExpertEarned} value={`${formatMoney(expertEarned)} ₴`} />}
         </div>
       </section>
 
@@ -118,22 +113,22 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                   <Td color={DOC.muted}>
                     {t.enums.roleInCase[c.role_in_case]}
                     <div className="text-[11px]" style={{ color: DOC.subtle }}>
-                      {MONEY.format(c.percent)}%
+                      {formatMoney(c.percent)}%
                     </div>
                   </Td>
                   <Td align="right" mono color={DOC.muted}>
-                    {MONEY.format(c.paid_total)} ₴
+                    {formatMoney(c.paid_total)} ₴
                   </Td>
                   <Td align="right" mono>
                     <span className="font-semibold" style={{ color: DOC.ink }}>
-                      {MONEY.format(c.earned)} ₴
+                      {formatMoney(c.earned)} ₴
                     </span>
                   </Td>
                   <Td align="right" mono color={DOC.green}>
-                    {MONEY.format(c.paid)} ₴
+                    {formatMoney(c.paid)} ₴
                   </Td>
                   <Td align="right" mono color={c.outstanding > 0.001 ? DOC.amber : DOC.subtle}>
-                    {MONEY.format(Math.max(0, c.outstanding))} ₴
+                    {formatMoney(Math.max(0, c.outstanding))} ₴
                   </Td>
                 </Tr>
               ))}
@@ -144,18 +139,18 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                   </span>
                 </Td>
                 <Td align="right" mono color={DOC.muted}>
-                  {MONEY.format(cases.reduce((s, c) => s + c.paid_total, 0))} ₴
+                  {formatMoney(cases.reduce((s, c) => s + c.paid_total, 0))} ₴
                 </Td>
                 <Td align="right" mono>
                   <span className="font-bold" style={{ color: DOC.ink }}>
-                    {MONEY.format(cases.reduce((s, c) => s + c.earned, 0))} ₴
+                    {formatMoney(cases.reduce((s, c) => s + c.earned, 0))} ₴
                   </span>
                 </Td>
                 <Td align="right" mono color={DOC.green}>
-                  {MONEY.format(cases.reduce((s, c) => s + c.paid, 0))} ₴
+                  {formatMoney(cases.reduce((s, c) => s + c.paid, 0))} ₴
                 </Td>
                 <Td align="right" mono color={DOC.amber}>
-                  {MONEY.format(cases.reduce((s, c) => s + Math.max(0, c.outstanding), 0))} ₴
+                  {formatMoney(cases.reduce((s, c) => s + Math.max(0, c.outstanding), 0))} ₴
                 </Td>
               </Tr>
             </tbody>
@@ -191,7 +186,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                   <Td color={DOC.muted}>{p.method ? (payMethod[p.method] ?? p.method) : t.common.dash}</Td>
                   <Td align="right" mono>
                     <span className="font-semibold" style={{ color: DOC.ink }}>
-                      {MONEY.format(p.amount)} ₴
+                      {formatMoney(p.amount)} ₴
                     </span>
                   </Td>
                 </Tr>
@@ -204,7 +199,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                 </Td>
                 <Td align="right" mono>
                   <span className="font-bold" style={{ color: DOC.ink }}>
-                    {MONEY.format(clientPaidTotal)} ₴
+                    {formatMoney(clientPaidTotal)} ₴
                   </span>
                 </Td>
               </Tr>
@@ -239,7 +234,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                           <span key={`${a.case_id}-${a.role_in_case}`} style={{ color: DOC.body }}>
                             {a.number_title}{' '}
                             <span className="tabular-nums" style={{ color: DOC.muted }}>
-                              {MONEY.format(a.amount)} ₴
+                              {formatMoney(a.amount)} ₴
                             </span>
                           </span>
                         ))}
@@ -247,7 +242,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                           <span style={{ color: DOC.body }}>
                             {t.payrollPrint.employee.bonusLabel}{' '}
                             <span className="tabular-nums" style={{ color: DOC.muted }}>
-                              {MONEY.format(p.bonusPortion)} ₴
+                              {formatMoney(p.bonusPortion)} ₴
                             </span>
                           </span>
                         )}
@@ -261,7 +256,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                   </Td>
                   <Td align="right" mono>
                     <span className="font-semibold" style={{ color: DOC.green }}>
-                      {MONEY.format(p.amount)} ₴
+                      {formatMoney(p.amount)} ₴
                     </span>
                   </Td>
                 </Tr>
@@ -274,7 +269,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                 </Td>
                 <Td align="right" mono>
                   <span className="font-bold" style={{ color: DOC.green }}>
-                    {MONEY.format(payouts.reduce((s, p) => s + p.amount, 0))} ₴
+                    {formatMoney(payouts.reduce((s, p) => s + p.amount, 0))} ₴
                   </span>
                 </Td>
               </Tr>
@@ -301,7 +296,7 @@ export function EmployeeReportBody({ report }: { report: EmployeeReport }) {
                   <Td color={DOC.body}>{b.comment ?? t.common.dash}</Td>
                   <Td align="right" mono>
                     <span className="font-semibold" style={{ color: DOC.ink }}>
-                      +{MONEY.format(b.amount)} ₴
+                      +{formatMoney(b.amount)} ₴
                     </span>
                   </Td>
                 </Tr>

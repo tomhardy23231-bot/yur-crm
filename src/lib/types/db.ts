@@ -459,14 +459,6 @@ export const BILLING_TYPES: ReadonlyArray<BillingType> = [
   'success_fee',
 ];
 
-// Когда зарплата фиксируется в леджере (P2.1).
-export type AccrualMode = 'on_completion' | 'per_payment';
-
-export const ACCRUAL_MODES: ReadonlyArray<AccrualMode> = [
-  'on_completion',
-  'per_payment',
-];
-
 // Используется в /clients/[id] для compact-таблицы дел клиента.
 export type CaseSummary = {
   id: string;
@@ -507,7 +499,6 @@ export type Case = {
   // Индивидуальные % по делу (null → ставка категории). Меняет только owner/admin.
   lawyer_rate_override: number | null;
   expert_rate_override: number | null;
-  accrual_mode: AccrualMode;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;

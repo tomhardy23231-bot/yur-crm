@@ -3,12 +3,7 @@
 import type { SummaryReport } from '@/lib/payroll/report';
 import { DOC } from '@/components/payroll/report/report-document';
 import { useI18n } from '@/lib/i18n/provider';
-
-const MONEY = new Intl.NumberFormat('ru-RU', {
-  style: 'decimal',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
+import { formatMoney } from '@/lib/utils';
 
 export function SummaryReportBody({ report }: { report: SummaryReport }) {
   const { t, fmt } = useI18n();
@@ -23,10 +18,10 @@ export function SummaryReportBody({ report }: { report: SummaryReport }) {
           style={{ border: `1px solid ${DOC.hair}`, borderTop: `2px solid ${DOC.accent}` }}
         >
           <Kpi label={t.payrollPrint.summary.kpiEmployees} value={String(rows.length)} />
-          <Kpi label={t.payrollPrint.summary.kpiEarnedMonth} value={`${MONEY.format(totals.earned)} ₴`} />
-          <Kpi label={t.payrollPrint.summary.kpiBonusMonth} value={`${totals.bonus > 0 ? '+' : ''}${MONEY.format(totals.bonus)} ₴`} />
-          <Kpi label={t.payrollPrint.summary.kpiPayoutMonth} value={`${MONEY.format(totals.payout)} ₴`} valueColor={DOC.green} />
-          <Kpi label={t.payrollPrint.summary.kpiBalance} value={`${MONEY.format(totals.balance)} ₴`} valueColor={DOC.amber} />
+          <Kpi label={t.payrollPrint.summary.kpiEarnedMonth} value={`${formatMoney(totals.earned)} ₴`} />
+          <Kpi label={t.payrollPrint.summary.kpiBonusMonth} value={`${totals.bonus > 0 ? '+' : ''}${formatMoney(totals.bonus)} ₴`} />
+          <Kpi label={t.payrollPrint.summary.kpiPayoutMonth} value={`${formatMoney(totals.payout)} ₴`} valueColor={DOC.green} />
+          <Kpi label={t.payrollPrint.summary.kpiBalance} value={`${formatMoney(totals.balance)} ₴`} valueColor={DOC.amber} />
         </div>
       </section>
 
@@ -55,16 +50,16 @@ export function SummaryReportBody({ report }: { report: SummaryReport }) {
                     </span>
                   </Td>
                   <Td align="right" mono>
-                    {MONEY.format(r.earned)} ₴
+                    {formatMoney(r.earned)} ₴
                   </Td>
                   <Td align="right" mono color={r.bonus > 0 ? DOC.body : DOC.subtle}>
-                    {r.bonus > 0 ? `+${MONEY.format(r.bonus)} ₴` : t.common.dash}
+                    {r.bonus > 0 ? `+${formatMoney(r.bonus)} ₴` : t.common.dash}
                   </Td>
                   <Td align="right" mono color={DOC.green}>
-                    {MONEY.format(r.payout)} ₴
+                    {formatMoney(r.payout)} ₴
                   </Td>
                   <Td align="right" mono color={DOC.amber}>
-                    <span className="font-semibold">{MONEY.format(r.balance)} ₴</span>
+                    <span className="font-semibold">{formatMoney(r.balance)} ₴</span>
                   </Td>
                 </Tr>
               ))}
@@ -76,20 +71,20 @@ export function SummaryReportBody({ report }: { report: SummaryReport }) {
                 </Td>
                 <Td align="right" mono>
                   <span className="font-bold" style={{ color: DOC.ink }}>
-                    {MONEY.format(totals.earned)} ₴
+                    {formatMoney(totals.earned)} ₴
                   </span>
                 </Td>
                 <Td align="right" mono color={DOC.muted}>
-                  {totals.bonus > 0 ? `+${MONEY.format(totals.bonus)} ₴` : t.common.dash}
+                  {totals.bonus > 0 ? `+${formatMoney(totals.bonus)} ₴` : t.common.dash}
                 </Td>
                 <Td align="right" mono>
                   <span className="font-bold" style={{ color: DOC.green }}>
-                    {MONEY.format(totals.payout)} ₴
+                    {formatMoney(totals.payout)} ₴
                   </span>
                 </Td>
                 <Td align="right" mono>
                   <span className="font-bold" style={{ color: DOC.amber }}>
-                    {MONEY.format(totals.balance)} ₴
+                    {formatMoney(totals.balance)} ₴
                   </span>
                 </Td>
               </Tr>

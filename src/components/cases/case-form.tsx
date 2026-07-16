@@ -26,7 +26,6 @@ import type { CaseActionState, CaseFormFields } from '@/lib/cases/actions';
 import type { AssigneeOption, ClientOption } from '@/lib/cases/queries';
 import { todayIso } from '@/lib/validation';
 import {
-  ACCRUAL_MODES,
   BILLING_TYPES,
   CASE_CATEGORIES,
   CASE_PRIORITIES,
@@ -167,7 +166,6 @@ export function CaseForm({
           return caseRow.expert_rate_override == null
             ? ''
             : String(caseRow.expert_rate_override);
-        case 'accrual_mode': return caseRow.accrual_mode;
         case 'opponent': return caseRow.opponent ?? '';
         case 'court_case_number': return caseRow.court_case_number ?? '';
         case 'court': return caseRow.court ?? '';
@@ -545,25 +543,6 @@ export function CaseForm({
               </div>
             </div>
           )}
-
-          <Field
-            label={t.caseCard.form.accrualMode}
-            htmlFor="accrual_mode"
-            error={err('accrual_mode')}
-          >
-            <Select
-              id="accrual_mode"
-              name="accrual_mode"
-              defaultValue={value('accrual_mode') || 'on_completion'}
-              aria-invalid={err('accrual_mode') ? 'true' : undefined}
-            >
-              {ACCRUAL_MODES.map((m) => (
-                <option key={m} value={m}>
-                  {t.enums.accrualMode[m]}
-                </option>
-              ))}
-            </Select>
-          </Field>
 
           <Field
             label={t.caseCard.form.billingTypes}
