@@ -56,8 +56,9 @@ const WORK_ITEMS: ReadonlyArray<NavItem> = [
   { id: 'tasks',     href: '/tasks',     icon: CheckSquare,     enabled: true, counterKey: 'tasksOpen', tourId: 'nav-tasks' },
   { id: 'calendar',  href: '/calendar',  icon: Calendar,        enabled: true, tourId: 'nav-calendar' },
   { id: 'payroll',   href: '/reports/payroll', icon: Coins,     enabled: true, tourId: 'nav-payroll'  },
-  // Касса — только обладателю права can_manage_cash (по дефолту owner). RLS дублирует.
-  { id: 'finance',   href: '/reports/cash', icon: Wallet,       enabled: true, requiredCaps: ['can_manage_cash'], tourId: 'nav-cash' },
+  // Касса — обладателю view_cash ИЛИ can_manage_cash (сплит 2026-07-16;
+  // по дефолту owner). RLS дублирует.
+  { id: 'finance',   href: '/reports/cash', icon: Wallet,       enabled: true, requiredCaps: ['view_cash', 'can_manage_cash'], tourId: 'nav-cash' },
 ];
 
 // Администрирование. Единый вход — «Настройки». Виден обладателям права
@@ -68,7 +69,7 @@ const ADMIN_ITEMS: ReadonlyArray<NavItem> = [
     href: '/settings',
     icon: Settings,
     enabled: true,
-    requiredCaps: ['manage_users', 'edit_payroll_rates'],
+    requiredCaps: ['manage_users', 'create_users', 'edit_payroll_rates'],
     tourId: 'nav-settings',
   },
 ];

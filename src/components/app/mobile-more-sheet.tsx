@@ -69,12 +69,13 @@ export function MobileMoreSheet({
 
   if (!open || typeof document === 'undefined') return null;
 
-  const canAdmin = caps.manage_users || caps.edit_payroll_rates;
+  const canAdmin =
+    caps.manage_users || caps.create_users || caps.edit_payroll_rates;
 
   const items: SheetItem[] = [
     { id: 'calendar', href: '/calendar', icon: Calendar, label: t.nav.calendar },
     { id: 'payroll', href: '/reports/payroll', icon: Coins, label: t.nav.payroll },
-    ...(caps.can_manage_cash
+    ...(caps.view_cash || caps.can_manage_cash
       ? [{ id: 'cash', href: '/reports/cash', icon: Wallet, label: t.nav.finance }]
       : []),
     ...(canAdmin

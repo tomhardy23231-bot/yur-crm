@@ -1,7 +1,7 @@
 
 import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
 
-import { requireCap } from '@/lib/auth/require-role';
+import { requireAnyCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { formatMoney } from '@/lib/utils';
 import { getCashReportData, getUnsyncedPaymentsCount } from '@/lib/cash/queries';
@@ -32,8 +32,10 @@ export default async function CashReportPage({
 }: {
   searchParams: Promise<{ month?: string }>;
 }) {
-  // Касса — только обладателю права can_manage_cash (по дефолту owner). RLS дублирует.
-  await requireCap('can_manage_cash');
+  // Касса: смотреть отчёт — view_cash ИЛИ can_manage_cash (сплит 2026-07-16);
+  // счета/операции/бэкфилл — только can_manage_cash. RLS дублирует.
+  const user = await requireAnyCap(['view_cash', 'can_manage_cash']);
+  const canManage = user.caps.can_manage_cash;
   const { t, plural } = await getT();
   const monthNames = monthNamesFrom(t.payroll);
 
@@ -114,7 +116,7 @@ export default async function CashReportPage({
         <MonthPicker month={month} />
       </div>
 
-      <CashBackfillBanner count={unsyncedCount} />
+      {canManage && <CashBackfillBanner count={unsyncedCount} />}
 
       {/* Hero-полоса «Общий баланс» (каркас cash-page 2026-07-13): градиентный
           якорь экрана с mono-балансом и стеклянными мини-статами месяца. */}
@@ -195,7 +197,7 @@ export default async function CashReportPage({
         </section>
       )}
 
-      <CashAccountsManager accounts={accounts} balances={balancesById} />
+      {canManage && <CashAccountsManager accounts={accounts} balances={balancesById} />}
 
       <CashReport
         accounts={accounts}
@@ -203,6 +205,7 @@ export default async function CashReportPage({
         totalRows={totalRows}
         journals={journals}
         truncated={truncated}
+        canManage={canManage}
       />
     </main>
   );

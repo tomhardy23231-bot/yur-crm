@@ -14,6 +14,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { generateTempPassword } from '@/lib/users/temp-password';
 import { UUID_RE } from '@/lib/validation';
 import {
+  canCreateTargetUser,
   canManageTargetUser,
   canGrantCapability,
   isRole,
@@ -90,8 +91,10 @@ export async function createUserAction(
 ): Promise<CreateUserState> {
   const actor = await requireUser();
   const { t, fmt } = await getT();
-  if (!actor.caps.manage_users) {
-    return { ok: false, message: t.users.errors.noManageUsers };
+  // Сплит 2026-07-16: создание — отдельное право create_users (роли и права
+  // остаются под manage_users).
+  if (!actor.caps.create_users) {
+    return { ok: false, message: t.users.errors.noCreateUsers };
   }
 
   const full_name = String(formData.get('full_name') ?? '').trim();
@@ -115,8 +118,8 @@ export async function createUserAction(
 
   const role = role_raw as Role;
 
-  // Ступенчатые права: owner — любой; иной обладатель manage_users — не owner/admin.
-  if (!canManageTargetUser(actor.profile.role, actor.caps.manage_users, role)) {
+  // Ступенчатые права: owner — любой; иной обладатель create_users — не owner/admin.
+  if (!canCreateTargetUser(actor.profile.role, actor.caps.create_users, role)) {
     return {
       ok: false,
       message: fmt(t.users.errors.noPermsForRole, { role: t.enums.role[role] }),
@@ -220,6 +223,7 @@ export async function createUserAction(
   }
 
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
   return {
     ok: true,
     createdEmail: email,
@@ -289,6 +293,7 @@ export async function updateUserPermsAction(formData: FormData): Promise<void> {
     changes: { before: changed.before, after: changed.next },
   });
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
 }
 
 // ============================================================================
@@ -348,6 +353,7 @@ export async function changeUserRoleAction(formData: FormData): Promise<void> {
     changes: { from: fromRole, to: newRole },
   });
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
 }
 
 // ============================================================================
@@ -411,6 +417,7 @@ export async function setUserActiveAction(formData: FormData): Promise<void> {
     changes: { is_active: nextActive },
   });
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
 }
 
 // ============================================================================
@@ -516,6 +523,7 @@ export async function assignUserDepartmentAction(formData: FormData): Promise<vo
   }
 
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
   revalidatePath('/settings/departments');
 }
 
@@ -587,5 +595,6 @@ export async function updateUserSalaryAction(formData: FormData): Promise<void> 
   });
 
   revalidatePath('/settings/users');
+  revalidatePath('/settings/users/[userId]', 'page');
   revalidatePath(`/reports/payroll/${user_id}`);
 }

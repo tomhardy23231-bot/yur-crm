@@ -282,7 +282,8 @@ async function seedCash(ids: Map<string, string>): Promise<void> {
     }
   }
 
-  // Право управления кассой — офис-менеджеру (merge поверх существующих оверрайдов).
+  // Права кассы — офис-менеджеру (merge поверх существующих оверрайдов).
+  // Сплит 2026-07-16: просмотр (view_cash) и операции (can_manage_cash) раздельно.
   const u = await db.public_users.findUnique({
     where: { id: officeId },
     select: { perm_overrides: true },
@@ -293,7 +294,7 @@ async function seedCash(ids: Map<string, string>): Promise<void> {
       : {};
   await db.public_users.update({
     where: { id: officeId },
-    data: { perm_overrides: { ...prev, can_manage_cash: true } },
+    data: { perm_overrides: { ...prev, view_cash: true, can_manage_cash: true } },
   });
 }
 

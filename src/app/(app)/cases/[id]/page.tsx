@@ -99,7 +99,9 @@ export default async function CaseDetailPage({
     c.lawyer_id === user.profile.id;
   const canDelete = user.caps.delete_cases;
   const canDeleteDoc = user.caps.delete_documents;
-  const canManagePay = user.caps.edit_payments;
+  // Кнопка-корзинка в списке платежей — право delete_payments (сплит 2026-07-16;
+  // edit_payments остаётся за правкой платежей — UI правки пока нет).
+  const canManagePay = user.caps.delete_payments;
 
   // Воронка только вперёд (CLAUDE.md §7-2, Задача 8): staff видит все 5 этапов
   // (может скорректировать), не-staff — только текущий и следующий (без прыжков).

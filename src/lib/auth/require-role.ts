@@ -36,3 +36,15 @@ export async function requireCap(cap: Capability): Promise<CurrentUser> {
   if (!user.caps[cap]) redirect('/forbidden');
   return user;
 }
+
+// `requireAnyCap(caps)` — как requireCap, но достаточно ЛЮБОГО из прав.
+// Для страниц, доступных нескольким половинкам разделённого права
+// (сплит 2026-07-16): /reports/cash — view_cash ИЛИ can_manage_cash,
+// /settings/users — manage_users ИЛИ create_users.
+export async function requireAnyCap(
+  caps: ReadonlyArray<Capability>,
+): Promise<CurrentUser> {
+  const user = await requireUser();
+  if (!caps.some((cap) => user.caps[cap])) redirect('/forbidden');
+  return user;
+}

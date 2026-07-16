@@ -50,12 +50,16 @@ export function CashReport({
   totalRows,
   journals,
   truncated = false,
+  canManage = true,
 }: {
   accounts: CashAccount[];
   views: CashAccountView[];
   totalRows: CashTotalRow[];
   journals: Record<string, CashEntryWithCase[]>;
   truncated?: boolean;
+  // Право can_manage_cash (сплит 2026-07-16): false — режим «только смотрю»
+  // (view_cash), без формы добавления и удаления ручных операций.
+  canManage?: boolean;
 }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<string>(accounts[0]?.id ?? TOTAL_TAB);
@@ -116,6 +120,7 @@ export function CashReport({
               accounts={accounts}
               view={view}
               journal={journals[tab] ?? []}
+              canManage={canManage}
             />
           );
         })()
@@ -161,11 +166,13 @@ function AccountPanel({
   accounts,
   view,
   journal,
+  canManage,
 }: {
   account: CashAccount;
   accounts: CashAccount[];
   view: CashAccountView;
   journal: CashEntryWithCase[];
+  canManage: boolean;
 }) {
   const { t } = useI18n();
 
@@ -204,6 +211,7 @@ function AccountPanel({
               key={r.date}
               row={r}
               entries={journal.filter((e) => e.entry_date === r.date)}
+              canManage={canManage}
             />
           ))}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-surface px-3.5 py-2.5 tabular-nums text-[12.5px] shadow-sm">
@@ -293,14 +301,15 @@ function AccountPanel({
         ) : (
           <div className="flex flex-col divide-y divide-border">
             {journal.map((e) => (
-              <JournalRow key={e.id} entry={e} />
+              <JournalRow key={e.id} entry={e} canManage={canManage} />
             ))}
           </div>
         )}
       </div>
 
-      {/* Добавление ручной операции (счёт активной вкладки предвыбран). */}
-      {account.is_active && (
+      {/* Добавление ручной операции (счёт активной вкладки предвыбран) —
+          только менеджеру кассы (can_manage_cash). */}
+      {canManage && account.is_active && (
         <Card className="p-0">
           <div className="border-b border-border px-5 py-4">
             <h3 className="text-[15px] font-semibold text-text">{t.cash.entry.heading}</h3>
@@ -319,9 +328,11 @@ function AccountPanel({
 function DayCardMobile({
   row,
   entries,
+  canManage,
 }: {
   row: CashDayRow;
   entries: CashEntryWithCase[];
+  canManage: boolean;
 }) {
   const { t } = useI18n();
 
@@ -352,7 +363,7 @@ function DayCardMobile({
       {entries.length > 0 && (
         <div className="flex flex-col divide-y divide-border border-t border-border">
           {entries.map((e) => (
-            <JournalRow key={e.id} entry={e} />
+            <JournalRow key={e.id} entry={e} canManage={canManage} />
           ))}
         </div>
       )}
@@ -360,7 +371,13 @@ function DayCardMobile({
   );
 }
 
-function JournalRow({ entry }: { entry: CashEntryWithCase }) {
+function JournalRow({
+  entry,
+  canManage,
+}: {
+  entry: CashEntryWithCase;
+  canManage: boolean;
+}) {
   const { t } = useI18n();
   const isAuto = entry.payment_id !== null;
   const isIn = entry.direction === 'in';
@@ -403,8 +420,9 @@ function JournalRow({ entry }: { entry: CashEntryWithCase }) {
         {sign}
         {money(entry.amount)}
       </span>
-      {/* Удалять можно только ручные операции; авто-приход правится через сам платёж. */}
-      {!isAuto ? (
+      {/* Удалять можно только ручные операции (и только менеджеру кассы);
+          авто-приход правится через сам платёж. */}
+      {canManage && !isAuto ? (
         <form action={deleteCashEntryAction}>
           <input type="hidden" name="id" value={entry.id} />
           <button

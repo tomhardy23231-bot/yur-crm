@@ -89,6 +89,20 @@ export function canManageTargetUser(
   return targetRole !== 'owner' && targetRole !== 'admin';
 }
 
+// Может ли актор СОЗДАТЬ пользователя с такой ролью (право create_users,
+// сплит 2026-07-16). Ступенчатость та же: owner — любые роли; иной обладатель
+// права — только office_manager/lawyer/expert. Создание идёт через admin-пул
+// в обход RLS, поэтому эта проверка в коде — единственный страж.
+export function canCreateTargetUser(
+  actorRole: Role,
+  actorHasCreateUsers: boolean,
+  targetRole: Role,
+): boolean {
+  if (!actorHasCreateUsers) return false;
+  if (actorRole === 'owner') return true;
+  return targetRole !== 'owner' && targetRole !== 'admin';
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Персональные права поверх ролей (per-user permission overrides).
 // Зеркало миграции 20260601100000_permission_overrides.
@@ -97,6 +111,8 @@ export function canManageTargetUser(
 // ВНИМАНИЕ: CAP_ROLE_DEFAULTS обязан совпадать с private.cap_role_default (SQL).
 // ────────────────────────────────────────────────────────────────────────
 
+// 2026-07-16: составные права разделены (запрос клиента) — edit_payments →
+// +delete_payments, manage_users → +create_users, can_manage_cash → +view_cash.
 export const CAPABILITIES = [
   'view_all_cases',
   'create_cases',
@@ -105,10 +121,13 @@ export const CAPABILITIES = [
   'delete_clients',
   'delete_documents',
   'edit_payments',
+  'delete_payments',
   'view_all_payroll',
   'edit_rate_overrides',
+  'create_users',
   'manage_users',
   'edit_payroll_rates',
+  'view_cash',
   'can_manage_cash',
 ] as const;
 
@@ -126,16 +145,21 @@ export const CAP_ROLE_DEFAULTS: Record<Capability, readonly Role[]> = {
   delete_clients: ['owner', 'admin'],
   delete_documents: ['owner', 'admin'],
   edit_payments: ['owner', 'admin'],
+  delete_payments: ['owner', 'admin'],
   view_all_payroll: ['owner', 'admin', 'office_manager'],
   edit_rate_overrides: ['owner', 'admin'],
+  create_users: ['owner', 'admin'],
   manage_users: ['owner', 'admin'],
   edit_payroll_rates: ['owner'],
+  view_cash: ['owner'],
   can_manage_cash: ['owner'],
 };
 
-// Права, которые выдаёт ТОЛЬКО владелец (системные настройки и касса).
+// Права, которые выдаёт ТОЛЬКО владелец (системные настройки и касса —
+// обе половинки: просмотр и операции).
 export const OWNER_ONLY_CAPABILITIES: readonly Capability[] = [
   'edit_payroll_rates',
+  'view_cash',
   'can_manage_cash',
 ];
 
@@ -179,7 +203,12 @@ export function canGrantCapability(
     return false; // вне зоны управления / нет manage_users
   }
   if (cap === 'edit_payroll_rates' && actorRole !== 'owner') return false; // owner-only
-  if (cap === 'can_manage_cash' && actorRole !== 'owner') return false; // owner-only (касса)
+  if (
+    (cap === 'can_manage_cash' || cap === 'view_cash') &&
+    actorRole !== 'owner'
+  ) {
+    return false; // owner-only (касса: просмотр и операции)
+  }
   if (cap === 'manage_users' && actorRole !== 'owner' && actorRole !== 'admin') {
     return false; // manage_users выдают только owner/admin по роли
   }

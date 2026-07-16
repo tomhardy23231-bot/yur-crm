@@ -147,12 +147,13 @@ export async function createPaymentAction(
   return { ok: true };
 }
 
-// Bare action: удаление платежа. RLS UPDATE/DELETE = private.can('edit_payments').
+// Bare action: удаление платежа. RLS DELETE = private.can('delete_payments')
+// (сплит 2026-07-16: правка платежей — edit_payments, удаление — delete_payments).
 // requireCap — первая линия защиты: иначе пользователь без права, форсящий POST
 // вручную, прошёл бы мимо silent-RLS-deny (rows=0) и записал бы фейковый
 // `payment_deleted` в activity_log на видимое ему дело.
 export async function deletePaymentAction(formData: FormData): Promise<void> {
-  const user = await requireCap('edit_payments');
+  const user = await requireCap('delete_payments');
   const payment_id = String(formData.get('payment_id') ?? '').trim();
   const case_id = String(formData.get('case_id') ?? '').trim();
 

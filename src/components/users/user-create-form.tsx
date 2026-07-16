@@ -164,8 +164,10 @@ export function UserCreateForm({
       </div>
 
       {/* Персональные права (опционально) — доступны после выбора роли.
-          По умолчанию все права наследуются от роли. */}
-      {selectedRole && (
+          По умолчанию все права наследуются от роли. Настройка прав при
+          создании — только обладателю manage_users (сплит 2026-07-16:
+          create_users создаёт с ролевыми правами). */}
+      {selectedRole && actorCaps.manage_users && (
         <div className="rounded-lg border border-border bg-surface-muted/30">
           <button
             type="button"

@@ -14,7 +14,8 @@ import type { Messages } from '@/lib/i18n/messages';
 export default async function SettingsPage() {
   const actor = await requireUser();
   const { t } = await getT();
-  const canManageUsers = actor.caps.manage_users;
+  // Сплит 2026-07-16: в раздел пользователей пускает и право create_users.
+  const canManageUsers = actor.caps.manage_users || actor.caps.create_users;
   const canEditRates = actor.caps.edit_payroll_rates;
   const isOwner = actor.profile.role === 'owner';
   if (!canManageUsers && !canEditRates) redirect('/forbidden');
