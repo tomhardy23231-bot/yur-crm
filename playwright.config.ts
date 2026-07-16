@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 // E2E-тесты Юр CRM (браузер). Сценарии — в tests/e2e/*.spec.ts (.spec, чтобы не
 // пересекаться с vitest *.test.ts).
 //
-// Предусловия: поднят локальный Supabase и засижены аккаунты (`npm run db:seed`).
+// Предусловия: поднят локальный Postgres/Neon dev и засижены аккаунты (`npm run db:seed`).
 // Playwright сам поднимает dev-сервер на отдельном порту (webServer ниже); если
 // сервер уже запущен на этом порту — переиспользует.
 //

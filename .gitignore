@@ -42,10 +42,6 @@ yarn-error.log*
 .env*
 !.env.example
 
-# supabase local
-/supabase/.temp/
-/supabase/.branches/
-
 # database dumps (client personal data — never commit)
 /backups/
 

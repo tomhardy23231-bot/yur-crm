@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 // Конфиг тестов Юр CRM.
 //   - tests/unit        — чистая логика, без БД (npm run test / test:unit)
-//   - tests/integration — поверх локального Supabase (npm run test:integration)
+//   - tests/integration — поверх локального Postgres/Neon dev (npm run test:integration)
 //   - tests/e2e         — браузерные сценарии вынесены в Playwright (отдельный конфиг)
 // Алиас @/ повторяет tsconfig paths, чтобы импорты из src работали в тестах.
 export default defineConfig({
