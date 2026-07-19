@@ -74,6 +74,70 @@ export default async function UserCardPage({
         ? t.users.card.inactiveNote
         : null;
 
+  const showAccess = actorIsOwner && !isSelf;
+
+  // Роль и подразделение
+  const roleCard = (
+    <SectionCard
+      icon={<Building2 size={16} strokeWidth={1.75} />}
+      title={t.users.card.sectionRole}
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-4">
+        <span className="text-[12px] text-text-muted">
+          {t.users.card.roleLabel}
+        </span>
+        <UserRoleControl
+          userId={u.id}
+          currentRole={u.role}
+          assignableRoles={assignable}
+          manageable={canEditNow}
+          isActive={u.is_active}
+        />
+      </div>
+      <UserAssignmentSection
+        userId={u.id}
+        departmentId={u.department_id}
+        departmentName={u.department_name}
+        position={u.position}
+        visibilityScope={u.visibility_scope}
+        showsScope={u.role === 'admin' || u.role === 'office_manager'}
+        departments={departments}
+        actorIsOwner={actorIsOwner}
+        canEdit={canEditNow}
+      />
+    </SectionCard>
+  );
+
+  // Зарплата
+  const salaryCard = (
+    <SectionCard
+      icon={<Wallet size={16} strokeWidth={1.75} />}
+      title={t.users.card.sectionSalary}
+    >
+      {sal ? (
+        <UserSalarySection
+          userId={u.id}
+          salaryMode={sal.salary_mode}
+          fixedAmount={sal.salary_fixed_amount}
+          canEdit={sal.can_edit && u.is_active}
+        />
+      ) : (
+        <p className="text-[13px] text-text-muted">
+          {t.users.card.salaryHidden}
+        </p>
+      )}
+      {(actor.caps.view_all_payroll || isSelf) && (
+        <Link
+          href={`/reports/payroll/${u.id}`}
+          className="mt-4 inline-flex items-center gap-1 text-[12.5px] font-medium text-primary underline-offset-2 hover:underline"
+        >
+          {t.users.card.openPayroll}
+          <ArrowRight size={13} strokeWidth={2} />
+        </Link>
+      )}
+    </SectionCard>
+  );
+
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
       <Link
@@ -125,68 +189,17 @@ export default async function UserCardPage({
         </div>
       </Card>
 
+      {/* Двухколоночная зона. Панель «Доступ и вход» заметно выше остальных,
+          поэтому с ней зарплата встаёт слева под роль (колонки ровные);
+          без неё — роль слева, зарплата справа. */}
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
-        {/* Роль и подразделение */}
-        <SectionCard
-          icon={<Building2 size={16} strokeWidth={1.75} />}
-          title={t.users.card.sectionRole}
-        >
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-4">
-            <span className="text-[12px] text-text-muted">
-              {t.users.card.roleLabel}
-            </span>
-            <UserRoleControl
-              userId={u.id}
-              currentRole={u.role}
-              assignableRoles={assignable}
-              manageable={canEditNow}
-              isActive={u.is_active}
-            />
-          </div>
-          <UserAssignmentSection
-            userId={u.id}
-            departmentId={u.department_id}
-            departmentName={u.department_name}
-            position={u.position}
-            visibilityScope={u.visibility_scope}
-            showsScope={u.role === 'admin' || u.role === 'office_manager'}
-            departments={departments}
-            actorIsOwner={actorIsOwner}
-            canEdit={canEditNow}
-          />
-        </SectionCard>
-
-        <div className="flex flex-col gap-5">
-          {/* Зарплата */}
-          <SectionCard
-            icon={<Wallet size={16} strokeWidth={1.75} />}
-            title={t.users.card.sectionSalary}
-          >
-            {sal ? (
-              <UserSalarySection
-                userId={u.id}
-                salaryMode={sal.salary_mode}
-                fixedAmount={sal.salary_fixed_amount}
-                canEdit={sal.can_edit && u.is_active}
-              />
-            ) : (
-              <p className="text-[13px] text-text-muted">
-                {t.users.card.salaryHidden}
-              </p>
-            )}
-            {(actor.caps.view_all_payroll || isSelf) && (
-              <Link
-                href={`/reports/payroll/${u.id}`}
-                className="mt-4 inline-flex items-center gap-1 text-[12.5px] font-medium text-primary underline-offset-2 hover:underline"
-              >
-                {t.users.card.openPayroll}
-                <ArrowRight size={13} strokeWidth={2} />
-              </Link>
-            )}
-          </SectionCard>
-
-          {/* Доступ и вход — только владелец, не для себя */}
-          {actorIsOwner && !isSelf && (
+        {showAccess ? (
+          <>
+            <div className="flex flex-col gap-5">
+              {roleCard}
+              {salaryCard}
+            </div>
+            {/* Доступ и вход — только владелец, не для себя */}
             <SectionCard
               icon={<KeyRound size={16} strokeWidth={1.75} />}
               title={t.users.card.sectionAccess}
@@ -197,8 +210,13 @@ export default async function UserCardPage({
                 initialEmail={u.email}
               />
             </SectionCard>
-          )}
-        </div>
+          </>
+        ) : (
+          <>
+            {roleCard}
+            {salaryCard}
+          </>
+        )}
       </div>
 
       {/* Персональные права — тумблеры с эффективными значениями */}
