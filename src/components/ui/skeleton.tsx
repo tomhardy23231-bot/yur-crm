@@ -38,51 +38,96 @@ export function TableRowSkeleton({
   );
 }
 
-// Skeleton listing-экрана. v3 Сессия 6: списки переехали на «карточки-строки»
-// (CardListShell в card-table.tsx) — скелет повторяет тот же макет: подписи
-// колонок без фона + отдельные rounded-карточки с gap-2 на фоне страницы.
+// Skeleton listing-экрана — зеркало макета «каркас 2026-07-13»: тулбар
+// (поиск-пилюли-фильтры) + ОДНА карточка-контейнер CardListShell (rounded-card,
+// шапка колонок на sunken-фоне, строки через тонкий бордер). На мобильных —
+// стопка карточек-строк (как *-list-mobile).
 export function ListingSkeleton({
   filterCount = 3,
+  chips = 0,
   columns,
   rows = 8,
 }: {
+  /** Селекты-фильтры h-8 во втором ряду тулбара. */
   filterCount?: number;
+  /** Пилюли-пресеты/типы перед селектами. */
+  chips?: number;
   columns: number;
   rows?: number;
 }) {
   const grid = { gridTemplateColumns: `repeat(${columns}, 1fr)` };
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4" aria-busy="true">
-      <div className="flex flex-wrap items-center gap-3">
-        <Skeleton className="h-9 w-64" />
-        {Array.from({ length: filterCount }).map((_, i) => (
-          <Skeleton key={i} className="h-9 w-36" />
-        ))}
-        <Skeleton className="h-9 w-36 ml-auto" />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        {/* Подписи колонок (как шапка CardListShell — вне карточек). */}
-        <div
-          style={grid}
-          className="hidden items-center gap-3 px-4 pb-0.5 md:grid"
-        >
-          {Array.from({ length: columns }).map((_, i) => (
-            <Skeleton key={i} className="h-3 w-16 max-w-full" />
-          ))}
+    <main className="flex flex-col gap-3 px-3 py-2 sm:px-4" aria-busy="true">
+      {/* Тулбар: поиск + кнопки, ниже — пилюли и селекты */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Skeleton className="h-10 w-full max-w-md rounded-control" />
+          <Skeleton className="h-9 w-9 rounded-full sm:w-32" />
+          <Skeleton className="ml-auto h-9 w-40 rounded-xl" />
         </div>
-        {Array.from({ length: rows }).map((_, i) => (
-          <div
-            key={i}
-            style={grid}
-            className="grid min-h-[64px] items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-sm"
-          >
-            {Array.from({ length: columns }).map((_, j) => (
-              <Skeleton key={j} className="h-3.5 w-[80%]" />
+        {(chips > 0 || filterCount > 0) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {Array.from({ length: chips }).map((_, i) => (
+              <Skeleton key={`c${i}`} className="h-8 w-28 rounded-chip" />
+            ))}
+            {Array.from({ length: filterCount }).map((_, i) => (
+              <Skeleton key={`f${i}`} className="h-8 w-32 rounded-control" />
             ))}
           </div>
-        ))}
+        )}
       </div>
+
+      {/* Десктоп: одна карточка-контейнер, шапка на sunken, строки с бордерами */}
+      <div className="hidden pb-1 md:block">
+        <div className="overflow-hidden rounded-card border border-border bg-surface shadow-sm">
+          <div
+            style={grid}
+            className="grid items-center gap-3 border-b border-border bg-surface-sunken px-4 py-2.5"
+          >
+            {Array.from({ length: columns }).map((_, i) => (
+              <Skeleton key={i} className="h-3 w-16 max-w-full" />
+            ))}
+          </div>
+          {Array.from({ length: rows }).map((_, i) => (
+            <div
+              key={i}
+              style={grid}
+              className="grid min-h-[60px] items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0"
+            >
+              <div className="flex flex-col gap-1.5">
+                <Skeleton className="h-3.5 w-[85%]" />
+                <Skeleton className="h-3 w-[60%]" />
+              </div>
+              {Array.from({ length: columns - 1 }).map((_, j) => (
+                <Skeleton key={j} className="h-3.5 w-[80%]" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Мобайл: стопка карточек-строк */}
+      <ul className="flex flex-col gap-2.5 md:hidden">
+        {Array.from({ length: Math.min(rows, 6) }).map((_, i) => (
+          <li
+            key={i}
+            className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-3.5 shadow-sm"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <Skeleton className="h-4 w-40 max-w-full" />
+              <Skeleton className="h-6 w-24 rounded-chip" />
+            </div>
+            <Skeleton className="h-3 w-32" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-6 w-6 rounded-md" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-3.5 w-20" />
+            </div>
+          </li>
+        ))}
+      </ul>
     </main>
   );
 }
