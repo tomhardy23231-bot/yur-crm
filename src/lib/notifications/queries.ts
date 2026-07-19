@@ -43,29 +43,38 @@ export async function getNotificationsUnseen(userId: string): Promise<boolean> {
   const dayStart = kyivTodayStartIso();
   const dayEnd = kyivTodayEndIso();
 
-  const [seenRow, evRows] = await Promise.all([
-    userDb(uid, (tx) =>
-      tx.user_notify_channels.findUnique({
-        where: { user_id: userId },
-        select: { notifications_seen_at: true },
-      }),
-    ),
-    userDb(uid, (tx) =>
-      tx.$queryRaw<Array<{ max_event: Date | null }>>`
-        select max(greatest(
-          created_at,
-          case when due_at <= now() then due_at
-               else ${dayStart}::timestamptz end
-        )) as max_event
-        from public.tasks
-        where assignee_id = ${userId}::uuid
-          and status = 'open'
-          and due_at < ${dayEnd}::timestamptz`,
-    ),
-  ]);
+  try {
+    const [seenRow, evRows] = await Promise.all([
+      userDb(uid, (tx) =>
+        tx.user_notify_channels.findUnique({
+          where: { user_id: userId },
+          select: { notifications_seen_at: true },
+        }),
+      ),
+      userDb(uid, (tx) =>
+        tx.$queryRaw<Array<{ max_event: Date | null }>>`
+          select max(greatest(
+            created_at,
+            case when due_at <= now() then due_at
+                 else ${dayStart}::timestamptz end
+          )) as max_event
+          from public.tasks
+          where assignee_id = ${userId}::uuid
+            and status = 'open'
+            and due_at < ${dayEnd}::timestamptz`,
+      ),
+    ]);
 
-  const maxEvent = evRows[0]?.max_event ?? null;
-  if (!maxEvent) return false;
-  const seenAt = seenRow?.notifications_seen_at ?? null;
-  return seenAt === null || maxEvent.getTime() > seenAt.getTime();
+    const maxEvent = evRows[0]?.max_event ?? null;
+    if (!maxEvent) return false;
+    const seenAt = seenRow?.notifications_seen_at ?? null;
+    return seenAt === null || maxEvent.getTime() > seenAt.getTime();
+  } catch (err) {
+    // Мягкая деградация (деплой раньше миграции 0005): колонки
+    // notifications_seen_at ещё нет → бейдж ведёт себя по-старому (виден,
+    // пока есть горящие задачи), layout не падает. После миграции ветка
+    // не срабатывает.
+    console.error('getNotificationsUnseen:', err);
+    return true;
+  }
 }
