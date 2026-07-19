@@ -115,6 +115,9 @@ function CredentialsCard({
   const { t } = useI18n();
   const toast = useToast();
   const [copied, setCopied] = useState(false);
+  // Пароль по умолчанию скрыт (звёздочки) — раскрывается глазом, как в секции
+  // «Пароль» ниже. «Скопировать всё» копирует настоящий пароль в любом случае.
+  const [reveal, setReveal] = useState(false);
   const c = t.users.credentials.card;
   const loginUrl =
     (typeof window !== 'undefined' ? window.location.origin : '') + '/login';
@@ -151,7 +154,21 @@ function CredentialsCard({
         <dt className="text-text-muted">{c.loginLabel}</dt>
         <dd className="truncate font-mono text-text">{email}</dd>
         <dt className="text-text-muted">{c.passwordLabel}</dt>
-        <dd className="truncate font-mono text-text">{password}</dd>
+        <dd className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate font-mono text-text">
+            {reveal ? password : '•'.repeat(Math.min(password.length, 16))}
+          </span>
+          <IconBtn
+            onClick={() => setReveal((v) => !v)}
+            label={reveal ? t.users.credentials.hide : t.users.credentials.reveal}
+          >
+            {reveal ? (
+              <EyeOff size={14} strokeWidth={1.75} />
+            ) : (
+              <Eye size={14} strokeWidth={1.75} />
+            )}
+          </IconBtn>
+        </dd>
         <dt className="text-text-muted">{c.loginUrlLabel}</dt>
         <dd className="truncate font-mono text-text">{loginUrl}</dd>
       </dl>

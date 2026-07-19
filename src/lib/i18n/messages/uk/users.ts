@@ -55,6 +55,7 @@ export const users: UsersMessages = {
     button: 'Права',
     buttonCount: 'Права ({n})',
     noneEditable: 'Для цієї ролі немає прав, які ви можете налаштувати.',
+    helpAria: 'Що робить право «{cap}»',
     inherit: 'Успадковує ({state})',
     stateAllowed: 'дозволено',
     stateDenied: 'заборонено',

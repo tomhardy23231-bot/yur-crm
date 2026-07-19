@@ -6,6 +6,7 @@ import { RotateCcw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { CapHelpButton } from '@/components/users/cap-help-button';
 import { useI18n } from '@/lib/i18n/provider';
 import { cn } from '@/lib/utils';
 import {
@@ -180,6 +181,7 @@ export function UserPermsToggles({
                         className="flex flex-wrap items-center gap-1.5 text-[13.5px] font-medium text-text"
                       >
                         {t.enums.capabilityLabel[cap]}
+                        <CapHelpButton cap={cap} />
                         {changed && (
                           <span className="rounded-full bg-primary-subtle px-2 py-px text-[10.5px] font-semibold text-primary-pressed">
                             {t.users.card.permsChanged}
