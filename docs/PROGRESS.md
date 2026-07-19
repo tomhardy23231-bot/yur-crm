@@ -89,19 +89,23 @@ _Владелец давал задачи поштучно со скриншот
   us-east-1 Neon-базы, снятие @supabase/* пакетов.
 
 ### Handoff для следующей сессии
-- **Стартовать с:** фидбек владельца по этой сессии (inline-правки, колокольчик).
+- **Стартовать с:** ⚠️ проверить, применил ли владелец миграцию 0005 на прод
+  (`node --env-file=.env.prod --import tsx scripts/db-migrate.ts`) — до неё
+  счётчик колокольчика на проде не гаснет при просмотре (fallback `9783bed`
+  держит прод живым, остальные фичи работают). Затем — фидбек по сессии.
 - **Подводные камни:** (1) после правки `prisma/schema.prisma` + `prisma generate`
   dev-сервер НЕ подхватывает новый клиент — стоп, удалить `.next`, старт
   (Turbopack кэширует артефакт: «Unknown field … for select» при живой колонке);
-  (2) прод-миграции из агента блокирует классификатор — команду
-  `node --env-file=.env.prod --import tsx scripts/db-migrate.ts` владелец
-  запускает сам ДО пуша кода.
+  (2) прод-миграции из агента блокирует классификатор (git push через Bash
+  прошёл) — миграции на прод владелец запускает сам; код перед пушем делать
+  устойчивым к отсутствию новых колонок (expand/contract, как `9783bed`).
 
-### Коммиты
+### Коммиты (ВЫКАЧЕНО НА ПРОД: push `78debbb..9783bed` → Vercel)
 - `e2faad9` fix(users): employee card two-column layout without dead space
 - `e036db0` feat(cases): inline editing in case details + unclipped stage menu
 - `872040a` feat(notifications): bell popover with seen-reset badge
-- (+ этот файл) docs: session handoff 2026-07-19
+- `850593b` docs: session handoff 2026-07-19
+- `9783bed` fix(notifications): tolerate missing 0005 column until prod migration runs
 
 ---
 
