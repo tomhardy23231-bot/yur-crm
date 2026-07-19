@@ -356,6 +356,7 @@ const GET_CASE_SELECT = {
       phone: true,
       email: true,
       source: true,
+      created_by: true,
     },
   },
   users_cases_lawyer_idTousers: { select: { id: true, full_name: true } },
@@ -423,6 +424,7 @@ export async function getCase(id: string): Promise<CaseWithRefs | null> {
           phone: client.phone,
           email: client.email,
           source: client.source,
+          created_by: client.created_by,
         }
       : null,
     lawyer: lawyer ? { id: lawyer.id, full_name: lawyer.full_name } : null,

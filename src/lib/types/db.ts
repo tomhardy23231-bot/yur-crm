@@ -561,6 +561,9 @@ export type CaseWithRefs = Case & {
     phone: string | null;
     email: string | null;
     source: ClientSource | null;
+    // Автор записи — гейт inline-правки контактов с карточки дела
+    // (staff по view_all_cases ИЛИ автор; зеркало updateClientAction).
+    created_by: string | null;
   } | null;
   lawyer: {
     id: string;

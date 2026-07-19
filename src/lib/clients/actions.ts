@@ -428,6 +428,98 @@ export async function updateClientAction(
   redirect(`/clients/${clientId}`);
 }
 
+// ── Inline-правка контакта клиента с карточки дела (карандаш в «Деталях») ──
+// Лёгкий брат updateClientAction: одно поле из allowlist, те же права (staff
+// по view_all_cases ИЛИ автор записи; RLS дублирует) и тот же журнал
+// (client_updated с diff). caseId — для ревалидации карточки дела-источника.
+export type InlineClientFieldState = { ok: boolean; message?: string };
+
+const CLIENT_INLINE_FIELDS = ['phone', 'email', 'source'] as const;
+export type ClientInlineField = (typeof CLIENT_INLINE_FIELDS)[number];
+
+export async function updateClientFieldAction(
+  clientId: string,
+  caseId: string | null,
+  field: ClientInlineField,
+  value: string,
+): Promise<InlineClientFieldState> {
+  const user = await requireUser();
+  const { t } = await getT();
+
+  if (!UUID_RE.test(clientId) || (caseId !== null && !UUID_RE.test(caseId)))
+    return { ok: false, message: t.clients.actions.updateFailed };
+  if (!(CLIENT_INLINE_FIELDS as readonly string[]).includes(field))
+    return { ok: false, message: t.clients.actions.updateFailed };
+
+  // Валидация — зеркало validate() полной формы по этому полю; пусто → NULL.
+  const raw = value.trim();
+  if (field === 'email' && raw && !EMAIL_RE.test(raw))
+    return { ok: false, message: t.clients.actions.invalidEmail };
+  if (field === 'source' && raw && !isClientSource(raw))
+    return { ok: false, message: t.clients.actions.invalidSource };
+  const next = raw || null;
+  // source сужен isClientSource выше — Prisma ждёт enum-тип, не string.
+  const data =
+    field === 'phone'
+      ? { phone: next }
+      : field === 'email'
+        ? { email: next }
+        : { source: next as ClientSource | null };
+
+  let res:
+    | { kind: 'notFound' }
+    | { kind: 'forbidden' }
+    | { kind: 'noop' }
+    | { kind: 'blocked' }
+    | { kind: 'done'; prev: string | null };
+  try {
+    res = await userDb(user.profile.id, async (tx) => {
+      const b = await tx.clients.findUnique({
+        where: { id: clientId },
+        select: { phone: true, email: true, source: true, created_by: true },
+      });
+      if (!b) return { kind: 'notFound' as const };
+      // Права — как в updateClientAction (P2.3): staff или автор записи.
+      if (!user.caps.view_all_cases && b.created_by !== user.profile.id)
+        return { kind: 'forbidden' as const };
+      const prev = (b[field] ?? null) as string | null;
+      if (prev === next) return { kind: 'noop' as const };
+      const upd = await tx.clients.updateMany({ where: { id: clientId }, data });
+      if (upd.count === 0) return { kind: 'blocked' as const };
+      return { kind: 'done' as const, prev };
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError(
+        'updateClientFieldAction',
+        err,
+        t.clients.actions.updateFailed,
+        t.errors.db,
+      ),
+    };
+  }
+  if (res.kind === 'notFound')
+    return { ok: false, message: t.clients.actions.updateFailed };
+  if (res.kind === 'forbidden')
+    return { ok: false, message: t.clients.actions.noEditPermission };
+  if (res.kind === 'noop') return { ok: true };
+  if (res.kind === 'blocked')
+    return { ok: false, message: t.clients.actions.updateFailed };
+
+  await logActivity({
+    entity_type: 'client',
+    entity_id: clientId,
+    action: 'client_updated',
+    changes: { diff: { [field]: { from: res.prev, to: next } } },
+  });
+
+  revalidatePath('/clients');
+  revalidatePath(`/clients/${clientId}`);
+  if (caseId) revalidatePath(`/cases/${caseId}`);
+  return { ok: true };
+}
+
 // ============================================================================
 // Задача 5: создание клиента «на месте» из формы дела.
 // В отличие от createClientAction НЕ делает redirect — возвращает созданного

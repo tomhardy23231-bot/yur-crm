@@ -3,13 +3,27 @@ import Link from 'next/link';
 import { CategoryBadge } from '@/components/ui/category-badge';
 import { PriorityBadge } from '@/components/cases/priority-badge';
 import { BillingTypesBadges } from '@/components/cases/billing-types-badges';
+import { InlineEditField } from '@/components/cases/inline-edit-field';
+import { updateCaseFieldAction, type CaseInlineField } from '@/lib/cases/actions';
+import {
+  updateClientFieldAction,
+  type ClientInlineField,
+} from '@/lib/clients/actions';
 import { getT } from '@/lib/i18n/server';
 import { cn } from '@/lib/utils';
-import type { CaseWithRefs } from '@/lib/types/db';
+import {
+  CASE_CATEGORIES,
+  CASE_PRIORITIES,
+  CASE_TYPES,
+  CLIENT_SOURCES,
+  type CaseWithRefs,
+} from '@/lib/types/db';
 
 // Плотная сетка «поле: значение» в шапке дела — по эталону карточки заказа (3
-// колонки: Дело · Клиент · Финансы/Суд). Серверный компонент: только отображение,
-// интерактив (tel/mailto) — обычные ссылки. Значения берём из join'а getCase.
+// колонки: Дело · Клиент · Финансы/Суд). Серверный компонент: отображение +
+// (по запросу владельца 2026-07-19) inline-карандаши на ключевых полях; сами
+// редакторы — клиентские листья InlineEditField, server actions привязываются
+// к полю здесь (bind), журналирование — внутри экшенов.
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
@@ -21,13 +35,25 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 // колонки делят одну dl-сетку, поэтому подписи выровнены по вертикали.
 const DL_CLASS = 'grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1.5';
 
+// Гейты inline-правки (вычисляет карточка дела): без пропа грид read-only.
+export type CaseInfoGridEdit = {
+  /** Право править дело (RLS UPDATE) — №/предмет/тип/приоритет. */
+  caseFields: boolean;
+  /** Категория — ЗП-определяющее поле, только staff. */
+  category: boolean;
+  /** Контакты клиента — staff (view_all_cases) или автор записи. */
+  client: boolean;
+};
+
 export async function CaseInfoGrid({
   c,
   stacked = false,
+  edit,
 }: {
   c: CaseWithRefs;
   /** true — колонки одна под другой (узкий сайдбар «Обзора»), false — сетка 2–3 колонки. */
   stacked?: boolean;
+  edit?: CaseInfoGridEdit;
 }) {
   const { t } = await getT();
   const o = t.caseCard.overview;
@@ -39,6 +65,29 @@ export async function CaseInfoGrid({
   const phone = client?.phone?.trim() || null;
   const email = client?.email?.trim() || null;
 
+  // Server actions, привязанные к сущности и полю (в клиент уходит (value)=>…).
+  const caseField = (field: CaseInlineField) =>
+    updateCaseFieldAction.bind(null, c.id, field);
+  const clientField = (field: ClientInlineField) =>
+    updateClientFieldAction.bind(null, client?.id ?? '', c.id, field);
+
+  const caseTypeOptions = CASE_TYPES.map((v) => ({
+    value: v,
+    label: t.enums.caseType[v],
+  }));
+  const categoryOptions = CASE_CATEGORIES.map((v) => ({
+    value: v,
+    label: t.enums.caseCategory[v],
+  }));
+  const priorityOptions = CASE_PRIORITIES.map((v) => ({
+    value: v,
+    label: t.enums.casePriority[v],
+  }));
+  const sourceOptions = [
+    { value: '', label: o.notSet },
+    ...CLIENT_SOURCES.map((v) => ({ value: v, label: t.enums.clientSource[v] })),
+  ];
+
   return (
     <div
       className={cn(
@@ -49,14 +98,78 @@ export async function CaseInfoGrid({
       {/* ── Колонка «Дело» ─────────────────────────────────────────── */}
       <Column title={o.colCase}>
         <dl className={DL_CLASS}>
-          <Field label={o.number}>{c.number_title}</Field>
-          {c.subject && <Field label={o.subject}>{c.subject}</Field>}
-          <Field label={o.caseType}>{t.enums.caseType[c.case_type]}</Field>
+          <Field label={o.number}>
+            {edit?.caseFields ? (
+              <InlineEditField
+                label={o.number}
+                value={c.number_title}
+                required
+                maxLength={200}
+                action={caseField('number_title')}
+              >
+                {c.number_title}
+              </InlineEditField>
+            ) : (
+              c.number_title
+            )}
+          </Field>
+          {(c.subject || edit?.caseFields) && (
+            <Field label={o.subject}>
+              {edit?.caseFields ? (
+                <InlineEditField
+                  label={o.subject}
+                  value={c.subject ?? ''}
+                  maxLength={300}
+                  action={caseField('subject')}
+                >
+                  {c.subject ?? dash}
+                </InlineEditField>
+              ) : (
+                c.subject
+              )}
+            </Field>
+          )}
+          <Field label={o.caseType}>
+            {edit?.caseFields ? (
+              <InlineEditField
+                label={o.caseType}
+                value={c.case_type}
+                options={caseTypeOptions}
+                action={caseField('case_type')}
+              >
+                {t.enums.caseType[c.case_type]}
+              </InlineEditField>
+            ) : (
+              t.enums.caseType[c.case_type]
+            )}
+          </Field>
           <Field label={o.category}>
-            <CategoryBadge category={c.category} quiet />
+            {edit?.category ? (
+              <InlineEditField
+                label={o.category}
+                value={c.category}
+                options={categoryOptions}
+                action={caseField('category')}
+              >
+                <CategoryBadge category={c.category} quiet />
+              </InlineEditField>
+            ) : (
+              <CategoryBadge category={c.category} quiet />
+            )}
           </Field>
           <Field label={o.priority}>
-            <PriorityBadge priority={c.priority} />
+            {edit?.caseFields ? (
+              <InlineEditField
+                label={o.priority}
+                value={c.priority}
+                options={priorityOptions}
+                action={caseField('priority')}
+              >
+                <PriorityBadge priority={c.priority} />
+              </InlineEditField>
+            ) : (
+              <PriorityBadge priority={c.priority} />
+            )}
           </Field>
           <Field label={o.opened} mono>
             {DATE_FMT.format(new Date(c.opened_at))}
@@ -92,13 +205,52 @@ export async function CaseInfoGrid({
             </Field>
           )}
           <Field label={o.phone} mono>
-            {phone ?? dash}
+            {client && edit?.client ? (
+              <InlineEditField
+                label={o.phone}
+                value={client.phone ?? ''}
+                inputType="tel"
+                maxLength={100}
+                action={clientField('phone')}
+              >
+                {phone ?? dash}
+              </InlineEditField>
+            ) : (
+              (phone ?? dash)
+            )}
           </Field>
           <Field label={o.email}>
-            {email ? <span className="break-all">{email}</span> : dash}
+            {client && edit?.client ? (
+              <InlineEditField
+                label={o.email}
+                value={client.email ?? ''}
+                inputType="email"
+                maxLength={200}
+                action={clientField('email')}
+              >
+                {email ? <span className="break-all">{email}</span> : dash}
+              </InlineEditField>
+            ) : email ? (
+              <span className="break-all">{email}</span>
+            ) : (
+              dash
+            )}
           </Field>
           <Field label={o.source}>
-            {client?.source ? t.enums.clientSource[client.source] : o.notSet}
+            {client && edit?.client ? (
+              <InlineEditField
+                label={o.source}
+                value={client.source ?? ''}
+                options={sourceOptions}
+                action={clientField('source')}
+              >
+                {client.source ? t.enums.clientSource[client.source] : o.notSet}
+              </InlineEditField>
+            ) : client?.source ? (
+              t.enums.clientSource[client.source]
+            ) : (
+              o.notSet
+            )}
           </Field>
         </dl>
       </Column>

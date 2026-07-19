@@ -236,10 +236,23 @@ export default async function CaseDetailPage({
 
       {/* Сайдбар: детали дела + вознаграждение команды. */}
       <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-16 lg:self-start">
-        {/* Детальная сетка «поле: значение» — одной колонкой в сайдбаре. */}
+        {/* Детальная сетка «поле: значение» — одной колонкой в сайдбаре.
+            Inline-карандаши: поля дела — по праву записи (не в архиве),
+            категория — staff, контакты клиента — staff или автор записи. */}
         <Card className="p-5">
           <CardLabel className="mb-3.5">{t.caseCard.detail.detailsTitle}</CardLabel>
-          <CaseInfoGrid c={c} stacked />
+          <CaseInfoGrid
+            c={c}
+            stacked
+            edit={{
+              caseFields: canEdit && !isArchived,
+              category: isStaff && !isArchived,
+              client:
+                !!c.client &&
+                (user.caps.view_all_cases ||
+                  c.client.created_by === user.profile.id),
+            }}
+          />
         </Card>
 
         {payroll && participants.length > 0 && (
@@ -452,8 +465,10 @@ export default async function CaseDetailPage({
       )}
 
       {/* ── Шапка дела (по каркасу): бейджи → заголовок → клиент →
-           инфо-плитки → акцент-полоса «Оплата по делу». ── */}
-      <Card id="overview" className="scroll-mt-16 overflow-hidden">
+           инфо-плитки → акцент-полоса «Оплата по делу». ──
+           overflow-visible: дефолтный overflow-hidden Card обрезал меню
+           этап-дропдауна; скругление низа держит сама полоса оплаты. */}
+      <Card id="overview" className="scroll-mt-16 overflow-visible">
         <div className="flex flex-col gap-2 px-4 py-2.5 sm:px-5 sm:py-3">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
             <div className="flex min-w-0 flex-col gap-1">
@@ -598,8 +613,10 @@ export default async function CaseDetailPage({
         </div>
 
         {/* Акцент-полоса оплаты (каркас): подпись слева, суммы mono справа,
-            прогресс во всю ширину. Долг/переплата — чипами рядом с суммами. */}
-        <div className="flex flex-col gap-1 border-t border-border bg-primary-softer/40 px-4 py-2 sm:px-5">
+            прогресс во всю ширину. Долг/переплата — чипами рядом с суммами.
+            Нижнее скругление своё (внутренний радиус = карточка − 1px бордер),
+            т.к. Card здесь overflow-visible ради меню этапов. */}
+        <div className="flex flex-col gap-1 rounded-b-[calc(var(--r-card)_-_1px)] border-t border-border bg-primary-softer/40 px-4 py-2 sm:px-5">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[12.5px]">
             <span className="font-semibold text-text">
               {t.caseCard.detail.paymentStripTitle}

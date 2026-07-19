@@ -851,6 +851,133 @@ export async function updateCaseDescriptionAction(
   return { ok: true };
 }
 
+// ── Inline-правка одного поля дела с карточки (карандаш в «Деталях») ──────
+// Лёгкий брат updateCaseAction: одно поле из allowlist, та же валидация и тот
+// же журнал (case_updated с diff). Права держит RLS (юрист/Експерт дела или
+// видит-всё → UPDATE; иначе count=0), category — staff-only (зеркало БД-триггера
+// cases_guard_financial_fields, как в полной форме).
+export type InlineFieldState = { ok: boolean; message?: string };
+
+const CASE_INLINE_FIELDS = [
+  'number_title',
+  'subject',
+  'case_type',
+  'category',
+  'priority',
+] as const;
+export type CaseInlineField = (typeof CASE_INLINE_FIELDS)[number];
+
+export async function updateCaseFieldAction(
+  caseId: string,
+  field: CaseInlineField,
+  value: string,
+): Promise<InlineFieldState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const a = t.caseCard.actions;
+
+  if (!UUID_RE.test(caseId))
+    return { ok: false, message: t.caseCard.actions.caseInvalid };
+  if (!(CASE_INLINE_FIELDS as readonly string[]).includes(field))
+    return { ok: false, message: t.caseCard.actions.updateFailed };
+
+  // Валидация и нормализация — зеркало validate() полной формы по этому полю.
+  const raw = value.trim();
+  let next: string | null;
+  let data: Prisma.casesUncheckedUpdateManyInput;
+  switch (field) {
+    case 'number_title': {
+      if (!raw) return { ok: false, message: a.numberRequired };
+      if (raw.length > 200) return { ok: false, message: a.numberTooLong };
+      next = raw;
+      data = { number_title: raw };
+      break;
+    }
+    case 'subject': {
+      if (raw.length > 300) return { ok: false, message: a.subjectTooLong };
+      next = raw || null;
+      data = { subject: next };
+      break;
+    }
+    case 'case_type': {
+      if (!isCaseType(raw))
+        return { ok: false, message: t.caseCard.actions.updateFailed };
+      next = raw;
+      data = { case_type: raw };
+      break;
+    }
+    case 'category': {
+      if (!isCaseCategory(raw))
+        return { ok: false, message: t.caseCard.actions.updateFailed };
+      // ЗП-определяющее поле — только staff (жёсткая защита — БД-триггер).
+      if (!STAFF_ROLES.includes(user.profile.role))
+        return { ok: false, message: t.cases.financialFieldStaffOnly };
+      next = raw;
+      data = { category: raw };
+      break;
+    }
+    case 'priority': {
+      if (!isCasePriority(raw))
+        return { ok: false, message: t.caseCard.actions.updateFailed };
+      next = raw;
+      data = { priority: raw };
+      break;
+    }
+  }
+
+  let res:
+    | { kind: 'notFound' }
+    | { kind: 'noop' }
+    | { kind: 'blocked' }
+    | { kind: 'done'; prev: string | null };
+  try {
+    res = await userDb(user.profile.id, async (tx) => {
+      const b = await tx.cases.findUnique({
+        where: { id: caseId },
+        select: {
+          number_title: true,
+          subject: true,
+          case_type: true,
+          category: true,
+          priority: true,
+        },
+      });
+      if (!b) return { kind: 'notFound' as const };
+      const prev = (b[field] ?? null) as string | null;
+      if (prev === next) return { kind: 'noop' as const };
+      const upd = await tx.cases.updateMany({ where: { id: caseId }, data });
+      if (upd.count === 0) return { kind: 'blocked' as const };
+      return { kind: 'done' as const, prev };
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError(
+        'updateCaseFieldAction',
+        err,
+        t.caseCard.actions.updateFailed,
+        t.errors.db,
+      ),
+    };
+  }
+  if (res.kind === 'notFound')
+    return { ok: false, message: t.caseCard.actions.caseNotFound };
+  if (res.kind === 'noop') return { ok: true };
+  if (res.kind === 'blocked')
+    return { ok: false, message: t.caseCard.actions.updateFailed };
+
+  await logActivity({
+    entity_type: 'case',
+    entity_id: caseId,
+    action: 'case_updated',
+    changes: { diff: { [field]: { from: res.prev, to: next } } },
+  });
+
+  revalidatePath('/cases');
+  revalidatePath(`/cases/${caseId}`);
+  return { ok: true };
+}
+
 // ── Закрыть дело как «не заключили» (lost) — v3 Сессия 7 ──────────────────
 // Дело с этапа new_request|consultation закрывается без договора. Право (staff или
 // юрист дела + видимость) и журнал (case_lost) — внутри SECURITY DEFINER
