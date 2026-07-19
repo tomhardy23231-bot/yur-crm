@@ -50,7 +50,7 @@ export function ReleaseModal({
         type="button"
         aria-label={t.help.release.close}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[4px] animate-[wm-fade_220ms_ease-out]"
+        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[10px] animate-[wm-fade_220ms_ease-out]"
       />
 
       {/* Карточка */}

@@ -116,7 +116,7 @@ export function Modal({
         type="button"
         aria-label={closeLabel}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[4px] animate-[wm-fade_220ms_ease-out]"
+        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[10px] animate-[wm-fade_220ms_ease-out]"
       />
 
       {/* Карточка */}

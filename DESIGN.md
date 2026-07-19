@@ -278,8 +278,9 @@ short 200ms / medium 360ms`. Появления: `fade-in-up` (каскад бл
 - **Table** — плотная: ряд 44px (`h-11`), шапка 40px caps `text-text-subtle`
   (на белом — AA), `sticky` thead, `border-separate` + границы на ячейках
   (границы едут вместе со sticky-шапкой). Числа — вправо, `tabular-nums`.
-- **Modal / ConfirmDialog** — `rounded-modal`, подложка `bg-overlay` +
-  backdrop-blur, фокус-трап, Esc; деструктив — красная CTA.
+- **Modal / ConfirmDialog** — `rounded-modal`, подложка — светлая вуаль
+  `bg-overlay` + `backdrop-blur-[10px]`: фон РАЗМЫВАЕТСЯ, не затемняется
+  (решение владельца 2026-07-19); фокус-трап, Esc; деструктив — красная CTA.
 - **Avatar** — круг (или `square` 8px для таблиц), инициалы на `--avatar-N`.
 - **Командная палитра** `Cmd/Ctrl+K`; kbd-подсказки — JetBrains Mono.
 - **Toast** (`ui/toast.tsx`, v3 s11) — обратная связь на действие.

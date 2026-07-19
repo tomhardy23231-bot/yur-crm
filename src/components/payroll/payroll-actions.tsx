@@ -150,7 +150,7 @@ function ModalShell({
         type="button"
         aria-label={t.payroll.actions.closeAria}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[3px]"
+        className="absolute inset-0 cursor-default bg-overlay backdrop-blur-[10px]"
       />
       <div className="relative z-10 flex w-[min(560px,95vw)] max-h-[90vh] flex-col overflow-hidden rounded-modal border border-border bg-surface shadow-[var(--shadow-pop)]">
         <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
