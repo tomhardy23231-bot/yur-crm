@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/app/sidebar';
 import { BottomNav } from '@/components/app/bottom-nav';
 import { Topbar } from '@/components/app/topbar';
 import { requireUser } from '@/lib/auth/require-role';
+import { getNotificationsUnseen } from '@/lib/notifications/queries';
 import {
   countOpenTasksAssignedTo,
   countUserTasksDue,
@@ -27,10 +28,12 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
   // tasksOpen — счётчик «Задачи» в навигации; tasksDue — колокольчик топбара
-  // (просроченные + сегодняшние, v3 Сессия 6).
-  const [tasksOpen, tasksDue] = await Promise.all([
+  // (просроченные + сегодняшние, v3 Сессия 6); notifUnseen — гасим бейдж после
+  // просмотра попапа (2026-07-19, lib/notifications).
+  const [tasksOpen, tasksDue, notifUnseen] = await Promise.all([
     countOpenTasksAssignedTo(user.profile.id),
     countUserTasksDue(user.profile.id),
+    getNotificationsUnseen(user.profile.id),
   ]);
 
   // Локаль и словарь активного языка — отдаём в клиентский провайдер (в бандл
@@ -65,6 +68,7 @@ export default async function AppLayout({
                 roleLabel={roleLabel}
                 tasksOverdue={tasksDue.overdue}
                 tasksToday={tasksDue.today}
+                notificationsUnseen={notifUnseen}
                 canCreateCase={user.caps.create_cases}
               />
               <div

@@ -170,13 +170,14 @@ function kyivOffset(): string {
   return /GMT([+-]\d{2}:\d{2})/.exec(tzName ?? '')?.[1] ?? '+02:00';
 }
 
-// Начало СЕГОДНЯШНЕГО дня Киева как UTC-instant (ISO) — для среза «Мой день».
-function kyivTodayStartIso(): string {
+// Начало СЕГОДНЯШНЕГО дня Киева как UTC-instant (ISO) — для среза «Мой день»
+// (экспорт — ещё и для попапа уведомлений, lib/notifications).
+export function kyivTodayStartIso(): string {
   return new Date(`${kyivToday()}T00:00:00${kyivOffset()}`).toISOString();
 }
 
 // Конец СЕГОДНЯШНЕГО дня Киева как UTC-instant (ISO).
-function kyivTodayEndIso(): string {
+export function kyivTodayEndIso(): string {
   const [y, m, d] = kyivToday().split('-').map(Number);
   const next = new Date(Date.UTC(y!, m! - 1, d! + 1)).toISOString().slice(0, 10);
   return new Date(`${next}T00:00:00${kyivOffset()}`).toISOString();

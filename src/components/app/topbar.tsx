@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bell, Plus, Search } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
+import { NotificationBell } from '@/components/app/notification-bell';
 import { useI18n } from '@/lib/i18n/provider';
 import type { Messages } from '@/lib/i18n/messages';
 import { useCommandPalette } from './command-palette';
@@ -48,6 +49,7 @@ export function Topbar({
   roleLabel,
   tasksOverdue,
   tasksToday,
+  notificationsUnseen,
   canCreateCase,
 }: {
   userName: string;
@@ -56,24 +58,15 @@ export function Topbar({
   tasksOverdue: number;
   /** Открытые задачи со сроком сегодня по Киеву. */
   tasksToday: number;
+  /** Есть события новее последнего просмотра попапа — показать бейдж. */
+  notificationsUnseen: boolean;
   /** Право create_cases — показывает кнопку «Новое дело». */
   canCreateCase: boolean;
 }) {
   const pathname = usePathname();
   const { open } = useCommandPalette();
-  const { t, fmt } = useI18n();
+  const { t } = useI18n();
   const title = titleForPath(pathname, t.topbar);
-
-  // Честный колокольчик (v3 Сессия 6): считаем только горящее (просрочено +
-  // сегодня), а не все открытые задачи. Красная точка — есть просрочка.
-  const dueTotal = tasksOverdue + tasksToday;
-  const dueLabel =
-    dueTotal > 0
-      ? fmt(t.topbar.notificationsDue, {
-          overdue: tasksOverdue,
-          today: tasksToday,
-        })
-      : t.topbar.notificationsAria;
 
   return (
     <header className="sticky top-0 z-20 flex h-10 shrink-0 items-center gap-3 border-b border-border bg-bg/70 px-4 backdrop-blur-xl sm:gap-4 sm:px-5">
@@ -122,25 +115,14 @@ export function Topbar({
         <Search size={17} strokeWidth={1.9} />
       </button>
 
-      {/* Уведомления → задачи. Числовой бейдж (каркас): красный — есть
-          просроченные, брендовый — только сегодняшние; нет горящего — чисто. */}
-      <Link
-        href="/tasks"
-        aria-label={dueLabel}
-        title={dueLabel}
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-pressed"
-      >
-        <Bell size={18} strokeWidth={1.9} />
-        {dueTotal > 0 && (
-          <span
-            className={`absolute right-0.5 top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold leading-none tabular-nums text-white ${
-              tasksOverdue > 0 ? 'bg-error' : 'bg-primary'
-            }`}
-          >
-            {dueTotal > 9 ? '9+' : dueTotal}
-          </span>
-        )}
-      </Link>
+      {/* Уведомления (2026-07-19): попап под колокольчиком (задачи + платежи),
+          бейдж гаснет после просмотра. Красный — есть просроченные, брендовый —
+          только сегодняшние. */}
+      <NotificationBell
+        tasksOverdue={tasksOverdue}
+        tasksToday={tasksToday}
+        unseen={notificationsUnseen}
+      />
 
       {/* Пользователь → профиль (на мобильных профиль также в шторке «Ещё»). */}
       <Link

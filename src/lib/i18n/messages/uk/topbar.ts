@@ -28,8 +28,18 @@ export const topbar: TopbarMessages = {
   searchButton: 'Пошук за справами, клієнтами…',
   searchAria: 'Пошук за справами, клієнтами',
   newCase: 'Нова справа',
-  notificationsAria: 'Завдання',
+  notificationsAria: 'Сповіщення',
   notificationsAriaCount: 'Завдання: {count} відкритих',
   // Чесний дзвіночок (v3 Сесія 6): aria-label/title з розбивкою.
   notificationsDue: 'Прострочено: {overdue}, сьогодні: {today}',
+
+  // Попап сповіщень (2026-07-19): вікно під дзвіночком замість переходу.
+  notifTitle: 'Сповіщення',
+  notifAllTasks: 'Усі завдання',
+  notifEmpty: 'Нових сповіщень немає',
+  notifOverdue: 'Прострочені завдання',
+  notifToday: 'На сьогодні',
+  notifPayments: 'Прострочені платежі',
+  notifPaymentLine: 'недоплата {amount} ₴ · з {date}',
+  notifNoCase: 'без справи',
 };
