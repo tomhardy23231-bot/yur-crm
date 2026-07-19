@@ -116,7 +116,12 @@ export default async function CashReportPage({
         <MonthPicker month={month} />
       </div>
 
-      {canManage && <CashBackfillBanner count={unsyncedCount} />}
+      {canManage && (
+        <CashBackfillBanner
+          count={unsyncedCount}
+          hasAccounts={accounts.length > 0}
+        />
+      )}
 
       {/* Hero-полоса «Общий баланс» (каркас cash-page 2026-07-13): градиентный
           якорь экрана с mono-балансом и стеклянными мини-статами месяца. */}

@@ -11,7 +11,15 @@ import { useI18n } from '@/lib/i18n/provider';
 // Баннер: платежи, внесённые до настройки счетов кассы, не попали в кассу — предлагаем
 // синхронизацию (бэкфилл). Рендерится только при count > 0 на странице /reports/cash;
 // после успеха revalidatePath обновит count и баннер исчезнет.
-export function CashBackfillBanner({ count }: { count: number }) {
+// Без единого счёта бэкфилл создать записи не может (cash_resolve_account → NULL,
+// «создано 0») — в этом случае кнопку прячем и объясняем порядок действий.
+export function CashBackfillBanner({
+  count,
+  hasAccounts,
+}: {
+  count: number;
+  hasAccounts: boolean;
+}) {
   const { t, fmt } = useI18n();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -38,21 +46,25 @@ export function CashBackfillBanner({ count }: { count: number }) {
         <p className="text-[13px] font-medium text-text">
           {t.cash.backfill.notice.replace('{count}', String(count))}
         </p>
-        <p className="text-[12px] text-text-muted">{t.cash.backfill.hint}</p>
+        <p className="text-[12px] text-text-muted">
+          {hasAccounts ? t.cash.backfill.hint : t.cash.backfill.noAccountsHint}
+        </p>
       </div>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        disabled={pending}
-        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
-      >
-        <RefreshCw
-          size={14}
-          strokeWidth={1.75}
-          className={pending ? 'animate-spin' : undefined}
-        />
-        {pending ? t.cash.backfill.syncing : t.cash.backfill.sync}
-      </button>
+      {hasAccounts && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          disabled={pending}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
+        >
+          <RefreshCw
+            size={14}
+            strokeWidth={1.75}
+            className={pending ? 'animate-spin' : undefined}
+          />
+          {pending ? t.cash.backfill.syncing : t.cash.backfill.sync}
+        </button>
+      )}
 
       <ConfirmDialog
         open={open}
