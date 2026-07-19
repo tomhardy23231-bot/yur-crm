@@ -9,7 +9,25 @@ import type { Capability } from '@/lib/types/db';
 
 // Кнопка «?» возле названия права (карточка сотрудника): открывает модалку с
 // развёрнутым объяснением — что право включает, что происходит без него и
-// какие есть нюансы. Тексты — t.enums.capabilityHelp (абзацы через \n\n).
+// какие есть нюансы. Тексты — t.enums.capabilityHelp (абзацы через \n\n);
+// лид-фраза до двоеточия («Що дає», «Без права», «Запобіжник»…) выделяется
+// жирным, чтобы структура читалась с одного взгляда.
+
+function HelpParagraph({ text }: { text: string }) {
+  const m = text.match(/^([^:]{2,28}):\s*(.*)$/);
+  return (
+    <p className="text-[15px] leading-[1.65] text-text">
+      {m ? (
+        <>
+          <strong className="font-semibold">{m[1]}:</strong> {m[2]}
+        </>
+      ) : (
+        text
+      )}
+    </p>
+  );
+}
+
 export function CapHelpButton({ cap }: { cap: Capability }) {
   const { t, fmt } = useI18n();
   const [open, setOpen] = useState(false);
@@ -33,14 +51,12 @@ export function CapHelpButton({ cap }: { cap: Capability }) {
         open={open}
         onClose={() => setOpen(false)}
         title={label}
-        subtitle={t.enums.capabilityHint[cap]}
         closeLabel={t.common.close}
+        className="w-[min(680px,95vw)]"
       >
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           {paragraphs.map((p, i) => (
-            <p key={i} className="text-[13.5px] leading-[1.55] text-text">
-              {p}
-            </p>
+            <HelpParagraph key={i} text={p} />
           ))}
         </div>
       </Modal>
