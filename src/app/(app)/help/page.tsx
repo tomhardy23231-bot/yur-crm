@@ -15,11 +15,15 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
+import Link from 'next/link';
+
 import { Card } from '@/components/ui/card';
 import { HelpActions } from '@/components/onboarding/help-actions';
 import { requireUser } from '@/lib/auth/require-role';
 import { STAFF_ROLES, type CaseStage } from '@/lib/types/db';
 import { getT } from '@/lib/i18n/server';
+import { HELP_SECTIONS } from '@/lib/help/sections';
+import { getPayrollRates } from '@/lib/payroll/queries';
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -62,10 +66,19 @@ export default async function HelpPage() {
     { name: t.enums.role.expert, tone: 'var(--success)', sees: h.roleSees.expert },
   ];
 
+  // Живые ставки компании (payroll_rates); фолбэк — дефолты из словаря.
+  const liveRates = await getPayrollRates();
+  const pctFor = (category: string, fallback: string): string => {
+    const r = liveRates.find((x) => x.category === category);
+    if (!r) return fallback;
+    const l = Number(r.lawyer_percent);
+    const e = Number(r.expert_percent);
+    return l === e ? `${l}%` : `${l}% / ${e}%`;
+  };
   const rates: ReadonlyArray<{ cat: string; pct: string; varName: string }> = [
-    { cat: t.enums.caseCategory.document, pct: h.payroll.rateDocument, varName: '--cat-document' },
-    { cat: t.enums.caseCategory.claim, pct: h.payroll.rateClaim, varName: '--cat-claim' },
-    { cat: t.enums.caseCategory.representation, pct: h.payroll.rateRepresentation, varName: '--cat-representation' },
+    { cat: t.enums.caseCategory.document, pct: pctFor('document', h.payroll.rateDocument), varName: '--cat-document' },
+    { cat: t.enums.caseCategory.claim, pct: pctFor('claim', h.payroll.rateClaim), varName: '--cat-claim' },
+    { cat: t.enums.caseCategory.representation, pct: pctFor('representation', h.payroll.rateRepresentation), varName: '--cat-representation' },
   ];
 
   const faqs: Faq[] = [
@@ -136,15 +149,6 @@ export default async function HelpPage() {
             a: (
               <>
                 {h.faq.usersA1} <b>{h.faq.usersA2}</b> {h.faq.usersA3}
-              </>
-            ),
-          },
-          {
-            q: h.faq.themeQ,
-            a: (
-              <>
-                {h.faq.themeA1} <b>{h.faq.themeA2}</b>
-                {h.faq.themeA3}
               </>
             ),
           },
@@ -241,6 +245,41 @@ export default async function HelpPage() {
           <HelpActions />
         </div>
       </section>
+
+      {/* ── Разделы многостраничной справки ────────────────────── */}
+      <Section
+        title={t.helpNav.sectionsTitle}
+        meta={<span className="hidden sm:inline">{t.helpNav.sectionsLead}</span>}
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {HELP_SECTIONS.map((s) => {
+            const Icon = s.icon;
+            return (
+              <Link key={s.slug} href={`/help/${s.slug}`} className="group">
+                <Card className="flex h-full flex-col gap-2.5 p-5 transition-colors group-hover:border-primary-border group-hover:bg-primary-softer">
+                  <span
+                    className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${s.tone}`}
+                  >
+                    <Icon size={20} strokeWidth={1.75} />
+                  </span>
+                  <h3 className="inline-flex items-center gap-1.5 text-[15px] font-semibold text-text">
+                    {t.helpNav.sections[s.slug].title}
+                    <ArrowRight
+                      size={14}
+                      strokeWidth={2.2}
+                      className="text-text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+                      aria-hidden="true"
+                    />
+                  </h3>
+                  <p className="text-[13px] leading-relaxed text-text-muted">
+                    {t.helpNav.sections[s.slug].lead}
+                  </p>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      </Section>
 
       {/* ── Ключевые принципы ─────────────────────────────────── */}
       <Section title={h.sections.howItWorks}>

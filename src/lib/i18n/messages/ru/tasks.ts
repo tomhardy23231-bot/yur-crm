@@ -72,7 +72,7 @@ export const tasks = {
     // Подсказки ролей в списке исполнителей
     roleHint: {
       owner: 'владелец',
-      admin: 'админ',
+      admin: 'руководитель',
       office_manager: 'секретарь',
       lawyer: 'юрист',
       expert: 'эксперт',

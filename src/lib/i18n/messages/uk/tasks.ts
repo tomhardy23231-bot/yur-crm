@@ -64,7 +64,7 @@ export const tasks: TasksMessages = {
     saving: 'Збереження…',
     roleHint: {
       owner: 'власник',
-      admin: 'адмін',
+      admin: 'керівник',
       office_manager: 'секретар',
       lawyer: 'юрист',
       expert: 'експерт',

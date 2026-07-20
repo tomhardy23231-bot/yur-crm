@@ -31,6 +31,15 @@ import { payroll } from './payroll';
 import { payrollPrint } from './payrollPrint';
 import { users } from './users';
 import { help } from './help';
+import { helpCases } from './helpCases';
+import { helpClients } from './helpClients';
+import { helpMoney } from './helpMoney';
+import { helpNav } from './helpNav';
+import { helpPayroll } from './helpPayroll';
+import { helpRoles } from './helpRoles';
+import { helpStart } from './helpStart';
+import { helpStages } from './helpStages';
+import { helpTasks } from './helpTasks';
 import { activity } from './activity';
 import { ui } from './ui';
 
@@ -62,6 +71,15 @@ export const uk: Messages = {
   payrollPrint,
   users,
   help,
+  helpCases,
+  helpClients,
+  helpMoney,
+  helpNav,
+  helpPayroll,
+  helpRoles,
+  helpStart,
+  helpStages,
+  helpTasks,
   activity,
   ui,
 };
