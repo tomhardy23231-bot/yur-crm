@@ -240,7 +240,7 @@ export default async function CaseDetailPage({
             Inline-карандаши: поля дела — по праву записи (не в архиве),
             категория — staff, контакты клиента — staff или автор записи. */}
         <Card className="p-5">
-          <CardLabel className="mb-3.5">{t.caseCard.detail.detailsTitle}</CardLabel>
+          <CardLabel className="mb-3.5 text-[15px] text-text">{t.caseCard.detail.detailsTitle}</CardLabel>
           <CaseInfoGrid
             c={c}
             stacked

@@ -20,6 +20,10 @@ import type {
 
 export const CASES_PAGE_SIZE = 20;
 
+// Допустимые размеры страницы списка дел (селект «на сторінці»; выбор
+// запоминается за пользователем в cookie, см. components/cases/cases-page-size).
+export const CASES_PAGE_SIZES = [10, 20, 40, 50, 100] as const;
+
 // Поиск (q) идёт в RPC search_case_ids — там свой SQL; чистим спецсимволы как
 // прежде (безопасность строкового ввода + wildcard'ы ILIKE `_`/`%`).
 function sanitizeSearch(value: string): string {
@@ -106,6 +110,7 @@ export type ListCasesParams = {
   closedFrom?: string;
   closedTo?: string;
   page?: number;
+  pageSize?: number;
   sort?: CasesSortColumn;
   dir?: SortDir;
 };
@@ -174,21 +179,22 @@ export async function listCases(
   params: ListCasesParams = {},
 ): Promise<ListCasesResult> {
   const page = Math.max(1, params.page ?? 1);
-  const offset = (page - 1) * CASES_PAGE_SIZE;
+  const pageSize = params.pageSize ?? CASES_PAGE_SIZE;
+  const offset = (page - 1) * pageSize;
   const q = params.q ? sanitizeSearch(params.q) : '';
   const sortColumn: CasesSortColumn = params.sort ?? CASES_DEFAULT_SORT.sort;
   const sortDir: SortDir = params.dir ?? CASES_DEFAULT_SORT.dir;
 
   const user = await getCurrentUser();
   if (!user) {
-    return { items: [], total: 0, page, pageSize: CASES_PAGE_SIZE, pageCount: 1 };
+    return { items: [], total: 0, page, pageSize, pageCount: 1 };
   }
   const uid = user.profile.id;
   const empty: ListCasesResult = {
     items: [],
     total: 0,
     page,
-    pageSize: CASES_PAGE_SIZE,
+    pageSize,
     pageCount: 1,
   };
 
@@ -208,7 +214,7 @@ export async function listCases(
         archived: params.archived ?? false,
         closedFrom: params.closedFrom ?? null,
         closedTo: params.closedTo ?? null,
-        limit: CASES_PAGE_SIZE,
+        limit: pageSize,
         offset,
         sort: sortColumn,
         dir: sortDir,
@@ -226,8 +232,8 @@ export async function listCases(
     });
 
     if (rows.length === 0) return empty;
-    const pageCount = Math.max(1, Math.ceil(total / CASES_PAGE_SIZE));
-    return { items: rows.map(toCaseListItem), total, page, pageSize: CASES_PAGE_SIZE, pageCount };
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    return { items: rows.map(toCaseListItem), total, page, pageSize, pageCount };
   }
 
   // Фильтр подразделения (без q): резолвим членов; пусто → дел нет.
@@ -267,15 +273,15 @@ export async function listCases(
         where,
         orderBy,
         skip: offset,
-        take: CASES_PAGE_SIZE,
+        take: pageSize,
         select: LIST_SELECT,
       }),
     ),
     userDb(uid, (tx) => tx.cases.count({ where })),
   ]);
 
-  const pageCount = Math.max(1, Math.ceil(total / CASES_PAGE_SIZE));
-  return { items: rows.map(toCaseListItem), total, page, pageSize: CASES_PAGE_SIZE, pageCount };
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  return { items: rows.map(toCaseListItem), total, page, pageSize, pageCount };
 }
 
 // Счётчики дел по этапам для строки статус-фильтров (бриф §6). Те же НЕ-этапные

@@ -123,6 +123,8 @@ export const cases: CasesMessages = {
     info: 'Сторінка {page} з {pageCount} · по {size} на сторінці',
     prev: '← Назад',
     next: 'Вперед →',
+    perPageAria: 'Скільки справ показувати на сторінці',
+    perPageOption: 'по {size} на сторінці',
   },
 
   empty: {

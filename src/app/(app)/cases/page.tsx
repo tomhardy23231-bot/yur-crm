@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { Archive, Briefcase, ExternalLink, History, LayoutGrid, Pencil, Plus } from 'lucide-react';
 
 import { Avatar } from '@/components/ui/avatar';
@@ -26,6 +27,10 @@ import {
   CasesViewProvider,
 } from '@/components/cases/cases-view-settings';
 import { CasesDateFilter } from '@/components/cases/cases-date-filter';
+import {
+  CasesPageSize,
+  CASES_PAGE_SIZE_COOKIE,
+} from '@/components/cases/cases-page-size';
 import { ArchiveCaseForm } from '@/components/cases/archive-case-form';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { CaseListMobile } from '@/components/cases/case-list-mobile';
@@ -37,6 +42,7 @@ import { type SortDir } from '@/components/ui/sortable-header';
 import {
   CASES_DEFAULT_SORT,
   CASES_PAGE_SIZE,
+  CASES_PAGE_SIZES,
   CASES_SORTABLE_COLUMNS,
   type CasesSortColumn,
   countCasesByStage,
@@ -162,6 +168,14 @@ export default async function CasesPage({
   const dir: SortDir =
     sp.dir && isSortDir(sp.dir) ? sp.dir : CASES_DEFAULT_SORT.dir;
 
+  // Размер страницы — личный выбор пользователя, живёт в cookie (не в URL).
+  const pageSizeRaw = Number(
+    (await cookies()).get(CASES_PAGE_SIZE_COOKIE)?.value,
+  );
+  const pageSize = (CASES_PAGE_SIZES as readonly number[]).includes(pageSizeRaw)
+    ? pageSizeRaw
+    : CASES_PAGE_SIZE;
+
   const isStaff = STAFF_ROLES.includes(user.profile.role);
 
   // Списки для staff-фильтров (юрист / эксперт / клиент). Юристам/Експертам они
@@ -188,7 +202,7 @@ export default async function CasesPage({
         : Promise.resolve(emptyRefs),
       listCases({
         q, stage, caseType, category, responsibleId, lawyerId, clientId, departmentId,
-        debtOnly, archived, closedFrom, closedTo, page, sort, dir,
+        debtOnly, archived, closedFrom, closedTo, page, pageSize, sort, dir,
       }),
       countCasesByStage({
         caseType, category, responsibleId, lawyerId, clientId, departmentId, debtOnly,
@@ -340,6 +354,11 @@ export default async function CasesPage({
             </Button>
           )}
 
+          {/* Быстрые пресеты (v3 s11) — только на активной вкладке: «С долгом» и
+              «Зависшие» в архиве не работают, «Закрытые за месяц» сам ведёт в архив.
+              Рядом — личные сохранённые виды (v4, localStorage). */}
+          {!archived && <CasesQuickFilters sp={sp} extra={<CasesSavedViews />} />}
+
           {/* Вкладки: активные дела / архив — сегмент-контрол каркаса. */}
           <div
             role="tablist"
@@ -371,11 +390,6 @@ export default async function CasesPage({
             })}
           </div>
         </div>
-
-        {/* Быстрые пресеты (v3 s11) — только на активной вкладке: «С долгом» и
-            «Зависшие» в архиве не работают, «Закрытые за месяц» сам ведёт в архив.
-            Рядом — личные сохранённые виды (v4, localStorage). */}
-        {!archived && <CasesQuickFilters sp={sp} extra={<CasesSavedViews />} />}
 
         {/* Ряд 2: фильтры — горизонтальная лента (свайп) на узких экранах,
             обычный перенос на ≥ sm. */}
@@ -599,9 +613,9 @@ export default async function CasesPage({
                   >
                     {c.number_title}
                   </Link>
-                  <div className="mt-0.5 truncate font-mono text-[11.5px] text-text-subtle">
+                  <div className="mt-0.5 truncate font-mono text-[11.5px] text-text-muted">
                     {c.client ? (
-                      <Link href={`/clients/${c.client.id}`} className="text-text-muted transition-colors hover:text-primary">
+                      <Link href={`/clients/${c.client.id}`} className="text-text transition-colors hover:text-primary">
                         {c.client.name}
                       </Link>
                     ) : (
@@ -651,8 +665,8 @@ export default async function CasesPage({
                     <div className="flex min-w-0 items-center gap-2">
                       <Avatar name={c.responsible.full_name} size="sm" shape="square" />
                       <div className="min-w-0 leading-tight">
-                        <div className="truncate text-[13px] text-text">{c.responsible.full_name}</div>
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-subtle">
+                        <div className="truncate text-[13px] font-medium text-text">{c.responsible.full_name}</div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-muted">
                           {t.enums.roleInCase.expert}
                         </div>
                       </div>
@@ -663,7 +677,7 @@ export default async function CasesPage({
                 </div>
 
                 {/* Открыто (актив) / Закрыто (архив — по этой дате фильтр) */}
-                <div role="cell" data-col="opened" className="text-[12.5px] tabular-nums text-text-muted">
+                <div role="cell" data-col="opened" className="text-[12.5px] tabular-nums text-text">
                   {archived ? (
                     c.closed_at ? (
                       DATE_FMT.format(new Date(c.closed_at))
@@ -745,19 +759,29 @@ export default async function CasesPage({
         </>
       )}
 
-      {pageCount > 1 && (
+      {/* Нижняя панель показывается всегда при наличии дел: селект «по N на
+          сторінці» должен быть доступен и когда всё влезло на одну страницу. */}
+      {items.length > 0 && (
         <nav
-          className="flex items-center justify-between"
+          className="flex flex-wrap items-center justify-between gap-2"
           aria-label={t.cases.pagination.aria}
         >
           <p className="text-[12px] text-text-muted">
             {fmt(t.cases.pagination.info, {
               page,
               pageCount,
-              size: CASES_PAGE_SIZE,
+              size: pageSize,
             })}
           </p>
           <div className="flex items-center gap-2">
+            <CasesPageSize
+              value={pageSize}
+              ariaLabel={t.cases.pagination.perPageAria}
+              options={CASES_PAGE_SIZES.map((n) => ({
+                value: n,
+                label: fmt(t.cases.pagination.perPageOption, { size: n }),
+              }))}
+            />
             <PageLink href={buildHref({ page: page - 1 })} disabled={page <= 1}>
               {t.cases.pagination.prev}
             </PageLink>
@@ -822,7 +846,7 @@ function StageDays({
   const stale = days >= STALE_STAGE_DAYS;
   return (
     <div
-      className={`mt-1 text-[11px] tabular-nums ${stale ? 'font-medium text-warning' : 'text-text-subtle'}`}
+      className={`mt-1 text-[11px] tabular-nums ${stale ? 'font-medium text-warning' : 'text-text-muted'}`}
       title={title}
     >
       {label}

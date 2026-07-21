@@ -105,7 +105,7 @@
   /* Stage colors (5 этапов воронки) — шкала каркаса 2026-07-13.
      Тройка на этап: тон (точка/заливка), -bg (подложка чипа), -fg (ТЕКСТ на
      подложке — тёмный, WCAG AA ≥ 4.5 на своём -bg). */
-  --stage-new:             #64748B; --stage-new-bg:             #F1F5F9; --stage-new-fg:             #475569;
+  --stage-new:             #64748B; --stage-new-bg:             #F1F5F9; --stage-new-fg:             #1E293B;
   --stage-consultation:    #8B5CF6; --stage-consultation-bg:    #F3EEFF; --stage-consultation-fg:    #6D28D9;
   --stage-in-progress:     #2563EB; --stage-in-progress-bg:     #DBE7FE; --stage-in-progress-fg:     #1E40AF;
   --stage-awaiting:        #F97316; --stage-awaiting-bg:        #FFEDD5; --stage-awaiting-fg:        #C2410C;

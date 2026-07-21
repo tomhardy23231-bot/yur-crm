@@ -141,6 +141,8 @@ export const cases = {
     info: 'Страница {page} из {pageCount} · по {size} на странице',
     prev: '← Назад',
     next: 'Вперёд →',
+    perPageAria: 'Сколько дел показывать на странице',
+    perPageOption: 'по {size} на странице',
   },
 
   // Пустое состояние списка

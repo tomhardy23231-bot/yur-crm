@@ -5,8 +5,8 @@ import { getT } from '@/lib/i18n/server';
 import { currentMonth, kyivToday } from '@/lib/payroll/month';
 
 // ============================================================================
-// Быстрые пресеты фильтров /cases (v3 Сессия 11) — ряд чипов-ссылок над рядом
-// фильтров. Пресет = готовый query из параметров, которые страница УЖЕ парсит;
+// Быстрые пресеты фильтров /cases (v3 Сессия 11) — чипы-ссылки в ряду поиска
+// (после кнопки «Доска»). Пресет = готовый query из параметров, которые страница УЖЕ парсит;
 // никакой новой логики в queries (кроме разрешённой сортировки stage_changed_at).
 //   • «С долгом»          → ?debt=true
 //   • «Закрытые за месяц» → ?archived=1&closed_from=…&closed_to=… (текущий месяц
@@ -66,7 +66,7 @@ export async function CasesQuickFilters({
 
   return (
     <div
-      className="no-scrollbar -mx-3 flex items-center gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0"
+      className="flex flex-wrap items-center gap-2"
       aria-label={t.cases.quickFilters.aria}
     >
       {presets.map((preset) => {

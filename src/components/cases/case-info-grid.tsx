@@ -289,7 +289,7 @@ function Column({
 }) {
   return (
     <div className="min-w-0">
-      <h3 className="mb-2.5 text-[12px] font-semibold text-text-muted">
+      <h3 className="mb-2.5 text-[14px] font-semibold text-text">
         {title}
       </h3>
       {children}
@@ -310,12 +310,12 @@ function Field({
 }) {
   return (
     <>
-      <dt className="whitespace-nowrap pt-px text-[12px] text-text-subtle">
+      <dt className="whitespace-nowrap pt-px text-[14px] text-text">
         {label}
       </dt>
       <dd
         className={cn(
-          'min-w-0 text-[12.5px] font-medium text-text',
+          'min-w-0 text-[14.5px] font-medium text-text',
           mono && 'tabular-nums',
         )}
       >
