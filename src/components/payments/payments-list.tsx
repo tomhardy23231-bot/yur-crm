@@ -115,7 +115,7 @@ export function PaymentsList({
 
       {overpaid > 0 && (
         <p
-          className="mb-2 inline-flex rounded-full bg-info-bg px-2.5 py-0.5 text-[11.5px] font-semibold text-info"
+          className="mb-2 inline-flex rounded-full bg-info-bg px-2.5 py-0.5 text-[11.5px] font-semibold text-info-text"
           title={b.overpaidTitle}
         >
           {fmt(b.overpaid, { amount: formatMoney(overpaid) })}

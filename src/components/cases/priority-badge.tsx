@@ -7,7 +7,13 @@ import { useI18n } from '@/lib/i18n/provider';
 // Приоритет в таблице (бриф §7): точка + текст. «Срочный» — красным,
 // «Обычный» — тёмным текстом с серой точкой. Без заливки, чтобы плотная
 // таблица не шумела.
-export function PriorityBadge({ priority }: { priority: CasePriority }) {
+export function PriorityBadge({
+  priority,
+  className,
+}: {
+  priority: CasePriority;
+  className?: string;
+}) {
   const { t } = useI18n();
   const urgent = priority === 'urgent';
   return (
@@ -15,6 +21,7 @@ export function PriorityBadge({ priority }: { priority: CasePriority }) {
       className={cn(
         'inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] font-semibold',
         urgent ? 'text-error' : 'text-text',
+        className,
       )}
     >
       <span

@@ -38,7 +38,8 @@ export function CardListShell({
   className?: string;
 }) {
   // Каркас 2026-07-13: список — ОДНА карточка-контейнер (rounded-card, мягкая
-  // тень), строки внутри разделены тонкими бордерами; шапка — на sunken-фоне.
+  // тень), строки внутри разделены тонкими бордерами; шапка — светло-синяя
+  // primary-subtle (sunken сливался с paper-фоном страницы, правка 21.07).
   return (
     <div className={cn('hidden pb-1 md:block', className)}>
       <div
@@ -50,7 +51,7 @@ export function CardListShell({
         <div
           role="row"
           style={{ gridTemplateColumns: cols }}
-          className="sticky top-0 z-10 grid items-center gap-3 border-b border-border bg-surface-sunken px-4 py-2.5"
+          className="sticky top-0 z-10 grid items-center gap-3 border-b border-primary-border bg-primary-subtle px-4 py-1"
         >
           {header}
         </div>
@@ -78,8 +79,8 @@ export function CardHead({
       role="columnheader"
       data-col={dataCol}
       className={cn(
-        // text-muted, не subtle: AA на sunken-подложке шапки
-        'text-[11px] font-semibold uppercase tracking-wide text-text-muted',
+        // Тёмно-синий на primary-subtle подложке шапки (AA ≈ 7.6:1)
+        'text-[11px] font-semibold uppercase tracking-wide text-primary-pressed',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         className,
@@ -130,7 +131,7 @@ export async function CardSortHead({
           align === 'right' && 'flex-row-reverse',
           isActive
             ? 'text-text'
-            : 'text-text-muted transition-colors duration-[80ms] hover:text-text',
+            : 'text-primary-pressed transition-colors duration-[80ms] hover:text-text',
         )}
         aria-label={fmt(t.ui.sort.label, {
           column: typeof children === 'string' ? children : column,

@@ -120,7 +120,7 @@ export async function CaseListMobile({
                       {formatMoney(c.contract_sum)} ₴
                     </p>
                     {c.overpaid > 0 ? (
-                      <p className="font-mono text-[12px] font-medium tabular-nums text-info">
+                      <p className="font-mono text-[12px] font-medium tabular-nums text-info-text">
                         +{formatMoney(c.overpaid)} ₴
                       </p>
                     ) : (

@@ -27,10 +27,7 @@ import {
   CasesViewProvider,
 } from '@/components/cases/cases-view-settings';
 import { CasesDateFilter } from '@/components/cases/cases-date-filter';
-import {
-  CasesPageSize,
-  CASES_PAGE_SIZE_COOKIE,
-} from '@/components/cases/cases-page-size';
+import { CasesPageSize } from '@/components/cases/cases-page-size';
 import { ArchiveCaseForm } from '@/components/cases/archive-case-form';
 import { CasesSearch } from '@/components/cases/cases-search';
 import { CaseListMobile } from '@/components/cases/case-list-mobile';
@@ -51,7 +48,10 @@ import {
   listExpertsForFilter,
   listLawyersForFilter,
 } from '@/lib/cases/queries';
-import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
+import {
+  CASES_PAGE_SIZE_COOKIE,
+  STALE_STAGE_DAYS,
+} from '@/lib/cases/constants';
 import {
   CASES_DEFAULT_MIN_WIDTH,
   CASES_DEFAULT_TEMPLATE,
@@ -609,11 +609,13 @@ export default async function CasesPage({
                 <div role="cell" className="min-w-0">
                   <Link
                     href={`/cases/${c.id}`}
-                    className="block truncate font-semibold text-text transition-colors group-hover:text-primary focus-visible:text-primary focus-visible:outline-none"
+                    className="block truncate text-[16px] leading-[1.3] font-semibold text-text transition-colors group-hover:text-primary focus-visible:text-primary focus-visible:outline-none"
                   >
                     {c.number_title}
                   </Link>
-                  <div className="mt-0.5 truncate font-mono text-[11.5px] text-text-muted">
+                  {/* Крупнее (+2px, просьба владельца 21.07) при прежней высоте
+                      строки: компенсируем плотным leading. */}
+                  <div className="mt-0.5 truncate font-mono text-[13.5px] leading-[1.3] text-text-muted">
                     {c.client ? (
                       <Link href={`/clients/${c.client.id}`} className="text-text transition-colors hover:text-primary">
                         {c.client.name}
@@ -628,7 +630,12 @@ export default async function CasesPage({
                 {/* Этап (залитая плашка) + дни на этапе */}
                 <div role="cell" data-col="stage" className="min-w-0">
                   <span className="inline-flex flex-wrap items-center gap-1.5">
-                    <StageBadge stage={c.stage} pulse={false} />
+                    {/* Крупный текст чипа при прежней высоте: py-1 → py-[3px]. */}
+                    <StageBadge
+                      stage={c.stage}
+                      pulse={false}
+                      className="px-2.5 py-[3px] text-[14px]"
+                    />
                     {c.outcome === 'lost' && (
                       <Badge tone="neutral" title={t.cases.lost.badgeTitle}>
                         {t.cases.lost.badge}
@@ -651,12 +658,15 @@ export default async function CasesPage({
 
                 {/* Категория — залитый бейдж (каркас 2026-07-13). */}
                 <div role="cell" data-col="category" className="min-w-0">
-                  <CategoryBadge category={c.category} />
+                  <CategoryBadge
+                    category={c.category}
+                    className="py-0.5 text-[13px] leading-[1.2]"
+                  />
                 </div>
 
                 {/* Приоритет */}
                 <div role="cell" data-col="priority" className="min-w-0">
-                  <PriorityBadge priority={c.priority} />
+                  <PriorityBadge priority={c.priority} className="text-[14px]" />
                 </div>
 
                 {/* Эксперт: аватар + имя + роль */}
@@ -665,7 +675,7 @@ export default async function CasesPage({
                     <div className="flex min-w-0 items-center gap-2">
                       <Avatar name={c.responsible.full_name} size="sm" shape="square" />
                       <div className="min-w-0 leading-tight">
-                        <div className="truncate text-[13px] font-medium text-text">{c.responsible.full_name}</div>
+                        <div className="truncate text-[15px] leading-[1.25] font-medium text-text">{c.responsible.full_name}</div>
                         <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-muted">
                           {t.enums.roleInCase.expert}
                         </div>
@@ -677,7 +687,7 @@ export default async function CasesPage({
                 </div>
 
                 {/* Открыто (актив) / Закрыто (архив — по этой дате фильтр) */}
-                <div role="cell" data-col="opened" className="text-[12.5px] tabular-nums text-text">
+                <div role="cell" data-col="opened" className="text-[14.5px] leading-[1.25] tabular-nums text-text">
                   {archived ? (
                     c.closed_at ? (
                       DATE_FMT.format(new Date(c.closed_at))
@@ -692,7 +702,7 @@ export default async function CasesPage({
                 {/* Сумма + прогресс оплаты */}
                 <div role="cell" data-col="sum" className="text-right">
                   <div className="ml-auto flex w-full flex-col items-end gap-1">
-                    <span className="whitespace-nowrap tabular-nums">{formatMoney(c.contract_sum)} ₴</span>
+                    <span className="whitespace-nowrap text-[16px] leading-[1.25] tabular-nums">{formatMoney(c.contract_sum)} ₴</span>
                     <PaymentProgress
                       paid={Math.max(0, c.contract_sum - c.debt)}
                       total={c.contract_sum}
@@ -702,9 +712,9 @@ export default async function CasesPage({
                 </div>
 
                 {/* U7: долг ИЛИ переплата (взаимоисключающи). */}
-                <div role="cell" data-col="debt" className="whitespace-nowrap text-right tabular-nums">
+                <div role="cell" data-col="debt" className="whitespace-nowrap text-right text-[16px] leading-[1.25] tabular-nums">
                   {c.overpaid > 0 ? (
-                    <span className="text-info" title={t.cases.row.overpaid}>
+                    <span className="font-medium text-info-text" title={t.cases.row.overpaid}>
                       +{formatMoney(c.overpaid)} ₴
                     </span>
                   ) : (
@@ -846,7 +856,7 @@ function StageDays({
   const stale = days >= STALE_STAGE_DAYS;
   return (
     <div
-      className={`mt-1 text-[11px] tabular-nums ${stale ? 'font-medium text-warning' : 'text-text-muted'}`}
+      className={`mt-1 text-[13px] leading-[1.25] tabular-nums ${stale ? 'font-medium text-warning' : 'text-text-muted'}`}
       title={title}
     >
       {label}

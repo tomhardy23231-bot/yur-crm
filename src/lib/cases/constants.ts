@@ -2,3 +2,8 @@
 // предупреждающим цветом в списках (cases/page, case-list-mobile) и на карточке
 // дела (U6). Один источник правды вместо трёх локальных дублей.
 export const STALE_STAGE_DAYS = 14;
+
+// Имя cookie «по N на сторінці» списка дел. Живёт здесь (чистый shared-модуль):
+// экспорт из 'use client'-файла на сервере превращается в клиентскую ссылку,
+// а не в строку — cookies().get() по ней ничего не находил бы.
+export const CASES_PAGE_SIZE_COOKIE = 'cases_page_size';

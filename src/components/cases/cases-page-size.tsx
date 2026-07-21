@@ -4,11 +4,11 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 
 import { Select } from '@/components/ui/select';
+import { CASES_PAGE_SIZE_COOKIE } from '@/lib/cases/constants';
 
 // Селект «по N на сторінці» в нижней панели списка дел. Выбор запоминается за
 // пользователем в cookie (год): сервер читает её при каждом рендере страницы,
 // поэтому в URL размер не попадает. Смена размера сбрасывает на 1-ю страницу.
-export const CASES_PAGE_SIZE_COOKIE = 'cases_page_size';
 
 export function CasesPageSize({
   value,

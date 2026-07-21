@@ -154,10 +154,10 @@
   /* Тени — мягкое «парение» (каркас 2026-07-13): нейтральный ink-подтон,
      глубина тенью, не линией. */
   --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.05), 0 1px 2px rgba(16, 24, 40, 0.03);
-  --shadow-md: 0 4px 16px rgba(16, 24, 40, 0.06), 0 2px 4px rgba(16, 24, 40, 0.04);
-  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.08), 0 4px 12px rgba(16, 24, 40, 0.05);
-  --shadow-pop: 0 24px 60px rgba(16, 24, 40, 0.14), 0 8px 20px rgba(16, 24, 40, 0.08);
+  --shadow-sm: 0 4px 14px rgba(16, 24, 40, 0.10), 0 2px 5px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.12), 0 3px 8px rgba(16, 24, 40, 0.07);
+  --shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.14), 0 6px 14px rgba(16, 24, 40, 0.08);
+  --shadow-pop: 0 28px 64px rgba(16, 24, 40, 0.18), 0 10px 24px rgba(16, 24, 40, 0.10);
 
   /* Hover-тени привязаны к --primary/--error через color-mix → следуют за токенами. */
   --shadow-primary-hover:     0 6px 18px color-mix(in oklab, var(--primary) 32%, transparent);

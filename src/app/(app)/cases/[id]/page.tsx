@@ -762,7 +762,7 @@ function TotalsRow({
       : tone === 'error'
         ? 'text-error'
         : tone === 'info'
-          ? 'text-info'
+          ? 'text-info-text'
           : tone === 'muted'
             ? 'text-text-muted'
             : 'text-text';
