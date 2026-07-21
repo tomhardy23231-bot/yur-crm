@@ -1,11 +1,15 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { Search } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { useI18n } from '@/lib/i18n/provider';
+
+// Живой поиск (21.07): запрос уходит сам через 350мс после остановки ввода,
+// Enter — мгновенно. Повторный сабмит того же значения не дёргает навигацию.
+const DEBOUNCE_MS = 350;
 
 export function CasesSearch({ initial }: { initial: string }) {
   const { t } = useI18n();
@@ -13,8 +17,20 @@ export function CasesSearch({ initial }: { initial: string }) {
   const searchParams = useSearchParams();
   const [value, setValue] = useState(initial);
   const [, startTransition] = useTransition();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSubmitted = useRef(initial);
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   function submit(next: string) {
+    if (timer.current) clearTimeout(timer.current);
+    if (next === lastSubmitted.current) return;
+    lastSubmitted.current = next;
     const params = new URLSearchParams(searchParams.toString());
     if (next) params.set('q', next);
     else params.delete('q');
@@ -43,7 +59,12 @@ export function CasesSearch({ initial }: { initial: string }) {
         type="search"
         name="q"
         value={value}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => {
+          const next = event.target.value;
+          setValue(next);
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => submit(next), DEBOUNCE_MS);
+        }}
         placeholder={t.cases.toolbar.searchPlaceholder}
         className="pl-9"
         aria-label={t.cases.toolbar.searchAria}

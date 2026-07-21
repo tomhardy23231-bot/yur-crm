@@ -355,7 +355,7 @@ export default async function CasesPage({
           )}
 
           {/* Быстрые пресеты (v3 s11) — только на активной вкладке: «С долгом» и
-              «Зависшие» в архиве не работают, «Закрытые за месяц» сам ведёт в архив.
+              «Зависшие» в архиве не работают.
               Рядом — личные сохранённые виды (v4, localStorage). */}
           {!archived && <CasesQuickFilters sp={sp} extra={<CasesSavedViews />} />}
 

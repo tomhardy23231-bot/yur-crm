@@ -36,7 +36,6 @@ export const cases = {
   quickFilters: {
     aria: 'Быстрые фильтры',
     withDebt: 'С долгом',
-    closedThisMonth: 'Закрытые за месяц',
     stale: 'Зависшие',
   },
 

@@ -2,17 +2,14 @@ import Link from 'next/link';
 
 import { cn } from '@/lib/utils';
 import { getT } from '@/lib/i18n/server';
-import { currentMonth, kyivToday } from '@/lib/payroll/month';
 
 // ============================================================================
 // Быстрые пресеты фильтров /cases (v3 Сессия 11) — чипы-ссылки в ряду поиска
 // (после кнопки «Доска»). Пресет = готовый query из параметров, которые страница УЖЕ парсит;
 // никакой новой логики в queries (кроме разрешённой сортировки stage_changed_at).
-//   • «С долгом»          → ?debt=true
-//   • «Закрытые за месяц» → ?archived=1&closed_from=…&closed_to=… (текущий месяц
-//     по Киеву; date-фильтр closed_at существует только на вкладке «Архив» —
-//     поэтому пресет ведёт в архив, см. PROGRESS s11);
-//   • «Зависшие»          → ?sort=stage_changed_at&dir=asc (дольше всех на этапе);
+//   • «С долгом»  → ?debt=true
+//   • «Зависшие»  → ?sort=stage_changed_at&dir=asc (дольше всех на этапе);
+//   • «Закрытые за месяц» — УДАЛЁН 21.07 (по сути просто открывал архив);
 //   • «Срочные» — пропущен: фильтра priority у листинга нет.
 // Активный чип (его параметры ⊆ текущим searchParams) кликом сбрасывается на /cases.
 // ============================================================================
@@ -34,19 +31,11 @@ export async function CasesQuickFilters({
 }) {
   const { t } = await getT();
 
-  const monthStart = currentMonth(); // 'YYYY-MM-01' по Киеву
-  const today = kyivToday(); // 'YYYY-MM-DD' по Киеву
-
   const presets: Preset[] = [
     {
       key: 'debt',
       label: t.cases.quickFilters.withDebt,
       params: { debt: 'true' },
-    },
-    {
-      key: 'closed-month',
-      label: t.cases.quickFilters.closedThisMonth,
-      params: { archived: '1', closed_from: monthStart, closed_to: today },
     },
     {
       key: 'stale',

@@ -32,7 +32,6 @@ export const cases: CasesMessages = {
   quickFilters: {
     aria: 'Швидкі фільтри',
     withDebt: 'З боргом',
-    closedThisMonth: 'Закриті за місяць',
     stale: 'Завислі',
   },
 
