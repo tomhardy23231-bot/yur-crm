@@ -370,6 +370,8 @@ export function OnboardingProvider({
       <ReleaseModal
         open={releaseOpen}
         release={CURRENT_RELEASE}
+        // owner-only секции релиза (журнал 2.8) сотрудникам не показываются.
+        isOwner={ctx.role === 'owner'}
         onClose={closeRelease}
         // Тур по самой фиче (а не общий онбординг) — только если у релиза есть tourId.
         onStartTour={CURRENT_RELEASE.tourId ? startReleaseTour : undefined}

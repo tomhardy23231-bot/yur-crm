@@ -46,6 +46,8 @@ export const activity: ActivityMessages = {
     case_updated: 'оновив(ла) справу',
     case_deleted: 'видалив(ла) справу',
     case_lost: 'закрив(ла) справу без договору',
+    case_archived: 'відправив(ла) справу в архів',
+    case_restored: 'повернув(ла) справу з архіву',
     stage_corrected: 'скоригував(ла) етап',
     client_created: 'створив(ла) клієнта',
     client_updated: 'оновив(ла) клієнта',
@@ -61,6 +63,8 @@ export const activity: ActivityMessages = {
     task_toggled: 'перемкнув(ла) статус завдання',
     task_deleted: 'видалив(ла) завдання',
     comment_edited: 'відредагував(ла) коментар',
+    act_created: 'виписав(ла) акт',
+    act_paid: 'підтвердив(ла) оплату акта',
     act_deleted: 'видалив(ла) акт',
     payroll_paid: 'відмітив(ла) виплату зарплати',
     payroll_reverted: 'відкотив(ла) виплату зарплати',
@@ -69,6 +73,36 @@ export const activity: ActivityMessages = {
     user_role_changed: 'змінив(ла) роль користувача',
     user_deactivated: 'деактивував(ла) користувача',
     user_reactivated: 'реактивував(ла) користувача',
+    user_permissions_changed: 'змінив(ла) права користувача',
+    user_department_changed: 'змінив(ла) підрозділ користувача',
+    user_salary_changed: 'змінив(ла) зарплату користувача',
+    user_password_reset: 'скинув(ла) пароль користувача',
+    user_email_changed: 'змінив(ла) логін користувача',
+    user_invited: 'надіслав(ла) запрошення співробітнику',
+    user_deleted: 'видалив(ла) користувача',
+    department_created: 'створив(ла) підрозділ',
+    department_renamed: 'перейменував(ла) підрозділ',
+    department_activated: 'активував(ла) підрозділ',
+    department_deactivated: 'деактивував(ла) підрозділ',
+    // Журнал 2026-07-21 (міграція 0006) — fallback-підписи нових дій.
+    comment_added: 'додав(ла) коментар',
+    comment_deleted: 'видалив(ла) коментар',
+    document_downloaded: 'завантажив(ла) собі документ',
+    act_completion_changed: 'змінив(ла) відмітку виконання акта',
+    payroll_bonus: 'нарахував(ла) премію',
+    payroll_tx_deleted: 'видалив(ла) рух зарплати',
+    user_password_changed: 'змінив(ла) свій пароль',
+    user_login: 'увійшов (увійшла) в систему',
+    user_login_failed: 'невдала спроба входу',
+    absence_created: 'вніс(ла) відсутність',
+    absence_deleted: 'зняв(ла) відсутність',
+    cash_account_created: 'створив(ла) рахунок каси',
+    cash_account_updated: 'змінив(ла) рахунок каси',
+    cash_entry_created: 'вніс(ла) операцію каси',
+    cash_entry_updated: 'змінив(ла) операцію каси',
+    cash_entry_deleted: 'видалив(ла) операцію каси',
+    payroll_rates_changed: 'змінив(ла) ставки зарплати',
+    org_requisites_updated: 'оновив(ла) реквізити компанії',
   },
 
   event: {
@@ -112,6 +146,47 @@ export const activity: ActivityMessages = {
     payrollPayoutDetail: 'виплата зарплати: {tail}',
 
     actDeleted: 'видалив(ла) акт №{number} на {amount}',
+
+    // ── Журнал 2026-07-21: нові події ──
+    commentAdded: 'додав(ла) коментар: «{text}»',
+    commentDeleted: 'видалив(ла) коментар: «{text}»',
+
+    documentDownloadedTyped: 'завантажив(ла) собі документ «{name}» ({type})',
+    documentDownloaded: 'завантажив(ла) собі документ «{name}»',
+
+    actCompletionChanged: 'змінив(ла) відмітку виконання акта №{number}: {completion}',
+
+    payrollBonus: 'нарахував(ла) премію: {tail}',
+    payrollBonusComment: ' — «{comment}»',
+    payrollTxDeleted: 'видалив(ла) {kind}: {tail}',
+    payrollTxKindPayout: 'виплату зарплати',
+    payrollTxKindBonus: 'премію',
+
+    passwordChanged: 'змінив(ла) свій пароль',
+
+    login: 'увійшов (увійшла) в систему',
+    loginIp: ' (IP {ip})',
+    loginFailedPassword: 'невдала спроба входу: невірний пароль (спроба {n})',
+    loginFailedInactive: 'спроба входу в деактивований обліковий запис',
+    loginFailed: 'невдала спроба входу',
+
+    absenceCreated: 'вніс(ла) відсутність: {tail}',
+    absenceDeleted: 'зняв(ла) відсутність: {tail}',
+    absencePeriod: '{who} — {kind}, {from} – {to}',
+
+    cashAccountCreated: 'створив(ла) рахунок каси «{name}»',
+    cashAccountUpdated: 'змінив(ла) рахунок каси «{name}»',
+    cashEntryIn: 'вніс(ла) прихід у касу: {amount}{account} — «{description}»',
+    cashEntryOut: 'вніс(ла) витрату з каси: {amount}{account} — «{description}»',
+    cashEntryDeleted: 'видалив(ла) операцію каси: {amount}{account} — «{description}»',
+    cashEntryUpdated: 'змінив(ла) операцію каси: {amount}{account} — «{description}»',
+    cashAccountSuffix: ' ({name})',
+
+    ratesChanged: 'змінив(ла) ставки зарплати: {detail}',
+    ratesCategory: '{category}: юрист {lawyerFrom}% → {lawyerTo}%, експерт {expertFrom}% → {expertTo}%',
+
+    requisitesUpdated: 'оновив(ла) реквізити компанії ({org})',
+    requisitesUpdatedPlain: 'оновив(ла) реквізити компанії',
 
     unknownAction: 'дія: {action}',
   },

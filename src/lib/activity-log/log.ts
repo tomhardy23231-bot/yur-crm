@@ -12,7 +12,20 @@ import { rpcLogActivity } from '@/lib/db/rpc';
 // ВАЖНО: эта функция НИКОГДА не должна выбрасывать исключение наружу —
 // логирование вторично, не должно ломать основной серверный action.
 // Ошибки заглушаются и пишутся в console.error.
-export type ActivityEntityType = 'case' | 'client' | 'user' | 'department';
+export type ActivityEntityType =
+  | 'case'
+  | 'client'
+  | 'user'
+  | 'department'
+  // Журнал 2026-07-21 (миграция 0006): owner-only категории ленты.
+  | 'cash'
+  | 'org'
+  | 'auth'
+  | 'absence';
+
+// Синглтон-события уровня компании (ставки ЗП, реквизиты) не имеют своего
+// uuid — журналируются под нулевым uuid (entity_id обязателен в БД).
+export const ORG_ENTITY_ID = '00000000-0000-0000-0000-000000000000';
 
 export type LogActivityInput = {
   entity_type: ActivityEntityType;

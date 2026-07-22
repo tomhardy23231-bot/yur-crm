@@ -39,6 +39,7 @@ import { helpStart } from './helpStart';
 import { helpStages } from './helpStages';
 import { helpTasks } from './helpTasks';
 import { activity } from './activity';
+import { journal } from './journal';
 import { ui } from './ui';
 
 export const ru = {
@@ -79,5 +80,6 @@ export const ru = {
   helpStages,
   helpTasks,
   activity,
+  journal,
   ui,
 };

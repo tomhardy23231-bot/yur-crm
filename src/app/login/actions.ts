@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import bcrypt from 'bcryptjs';
 
 import { adminDb } from '@/lib/db/admin';
@@ -48,6 +48,35 @@ function safeNext(next: FormDataEntryValue | null): string {
   if (typeof next !== 'string' || next.length === 0) return '/';
   if (!next.startsWith('/') || next.startsWith('//')) return '/';
   return next;
+}
+
+// Журнал 2026-07-21: входы в систему (успех/неудача) — в ленту владельца
+// (entity 'auth', в SELECT-политике только owner). Пишем ПРЯМОЙ вставкой через
+// admin-пул: логин — санкционированный adminDb-путь (пользователь ещё не
+// аутентифицирован), а RLS-путь log_activity требует активную учётку
+// (active_uid) и потерял бы попытку входа в деактивированную. Лог никогда
+// не ломает сам вход.
+async function logAuthEvent(
+  userId: string,
+  action: 'user_login' | 'user_login_failed',
+  changes: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const h = await headers();
+    const ip = (h.get('x-forwarded-for') ?? '').split(',')[0]?.trim() || null;
+    const ua = (h.get('user-agent') ?? '').slice(0, 160) || null;
+    await adminDb().activity_log.create({
+      data: {
+        entity_type: 'auth',
+        entity_id: userId,
+        user_id: userId,
+        action,
+        changes: { ...changes, ip, ua },
+      },
+    });
+  } catch (err) {
+    console.error('[loginAction] auth log failed:', err);
+  }
 }
 
 export async function loginAction(
@@ -102,6 +131,11 @@ export async function loginAction(
           updated_at: new Date(),
         },
       });
+      await logAuthEvent(account.id, 'user_login_failed', {
+        email: account.email,
+        reason: 'wrong_password',
+        attempt: failed,
+      });
       return { error: t.auth.login.failed };
     }
 
@@ -111,6 +145,11 @@ export async function loginAction(
       select: { is_active: true, language: true, pwd_version: true },
     });
     if (!profile || !profile.is_active) {
+      // Верный пароль у деактивированной учётки — заметное событие для владельца.
+      await logAuthEvent(account.id, 'user_login_failed', {
+        email: account.email,
+        reason: 'inactive',
+      });
       return { error: t.auth.login.inactive };
     }
 
@@ -128,6 +167,8 @@ export async function loginAction(
       pwdVersion: profile.pwd_version,
     });
     language = profile.language;
+
+    await logAuthEvent(account.id, 'user_login', { email: account.email });
   } catch (err) {
     console.error('[loginAction]', err);
     return { error: t.auth.login.failed };

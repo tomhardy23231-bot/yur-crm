@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { requireRole, requireCap } from '@/lib/auth/require-role';
-import { logActivity } from '@/lib/activity-log/log';
+import { logActivity, ORG_ENTITY_ID } from '@/lib/activity-log/log';
 import { userDb } from '@/lib/db';
 import { dbActionError } from '@/lib/db/errors';
 import { toDbDate } from '@/lib/db/convert';
@@ -76,8 +76,26 @@ export async function updatePayrollRatesAction(
     updates.push({ category, lawyer, expert });
   }
 
+  // Прежние значения — для diff'а в журнале (пишем только реально изменённое).
+  let ratesDiff: Array<{
+    category: string;
+    lawyer_from: number;
+    lawyer_to: number;
+    expert_from: number;
+    expert_to: number;
+  }> = [];
+
   try {
     await userDb(user.profile.id, async (tx) => {
+      const before = await tx.payroll_rates.findMany({
+        select: { category: true, lawyer_percent: true, expert_percent: true },
+      });
+      const beforeByCat = new Map(
+        before.map((r) => [
+          r.category,
+          { lawyer: Number(r.lawyer_percent), expert: Number(r.expert_percent) },
+        ]),
+      );
       for (const u of updates) {
         await tx.payroll_rates.updateMany({
           where: { category: u.category },
@@ -88,12 +106,36 @@ export async function updatePayrollRatesAction(
           },
         });
       }
+      ratesDiff = updates
+        .filter((u) => {
+          const b = beforeByCat.get(u.category);
+          return b !== undefined && (b.lawyer !== u.lawyer || b.expert !== u.expert);
+        })
+        .map((u) => {
+          const b = beforeByCat.get(u.category)!;
+          return {
+            category: u.category,
+            lawyer_from: b.lawyer,
+            lawyer_to: u.lawyer,
+            expert_from: b.expert,
+            expert_to: u.expert,
+          };
+        });
     });
   } catch (err) {
     return {
       ok: false,
       message: dbActionError('updatePayrollRatesAction', err, undefined, t.errors.db),
     };
+  }
+
+  if (ratesDiff.length > 0) {
+    await logActivity({
+      entity_type: 'org',
+      entity_id: ORG_ENTITY_ID,
+      action: 'payroll_rates_changed',
+      changes: { rates: ratesDiff },
+    });
   }
 
   revalidatePath('/settings/payroll');
@@ -333,6 +375,13 @@ export async function createBonusAction(
     };
   }
 
+  await logActivity({
+    entity_type: 'user',
+    entity_id: userId,
+    action: 'payroll_bonus',
+    changes: { user_id: userId, amount, comment, occurred_on: occurred ?? null },
+  });
+
   revalidatePayroll(userId);
   return { ok: true, message: t.payroll.mutations.bonusSaved };
 }
@@ -348,17 +397,32 @@ export async function deletePayrollTransactionAction(
   const row = await userDb(actor.profile.id, (tx) =>
     tx.payroll_transactions.findUnique({
       where: { id },
-      select: { user_id: true },
+      select: { user_id: true, kind: true, amount: true, occurred_on: true },
     }),
   );
 
+  let deletedCount = 0;
   try {
-    await userDb(actor.profile.id, (tx) =>
-      tx.payroll_transactions.deleteMany({ where: { id } }),
+    deletedCount = await userDb(actor.profile.id, (tx) =>
+      tx.payroll_transactions.deleteMany({ where: { id } }).then((r) => r.count),
     );
   } catch (err) {
     console.error('deletePayrollTransactionAction failed:', err);
     return;
+  }
+
+  if (deletedCount > 0 && row) {
+    await logActivity({
+      entity_type: 'user',
+      entity_id: row.user_id,
+      action: 'payroll_tx_deleted',
+      changes: {
+        user_id: row.user_id,
+        kind: row.kind,
+        amount: Number(row.amount),
+        occurred_on: row.occurred_on.toISOString().slice(0, 10),
+      },
+    });
   }
 
   revalidatePayroll(row?.user_id);

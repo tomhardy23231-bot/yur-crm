@@ -311,10 +311,17 @@ export async function setActCompletionAction(formData: FormData): Promise<void> 
   if (!(ACT_COMPLETIONS as readonly string[]).includes(completion)) return;
 
   let failed = false;
+  // Настоящий case_id и номер акта — из БД (CSO #2), не из formData.
+  let logged: { case_id: string; number: number } | null = null;
   try {
-    await userDb(user.profile.id, (tx) =>
-      rpcSetActCompletion(tx, { actId: act_id, completion }),
-    );
+    logged = await userDb(user.profile.id, async (tx) => {
+      const actRow = await tx.case_acts.findUnique({
+        where: { id: act_id },
+        select: { case_id: true, number: true },
+      });
+      await rpcSetActCompletion(tx, { actId: act_id, completion });
+      return actRow ? { case_id: actRow.case_id, number: Number(actRow.number) } : null;
+    });
   } catch (err) {
     console.error('setActCompletionAction failed:', err);
     failed = true;
@@ -325,6 +332,15 @@ export async function setActCompletionAction(formData: FormData): Promise<void> 
       redirect(`/cases/${case_id}?error=act_update_failed`);
     }
     return;
+  }
+
+  if (logged !== null) {
+    await logActivity({
+      entity_type: 'case',
+      entity_id: logged.case_id,
+      action: 'act_completion_changed',
+      changes: { number: logged.number, completion },
+    });
   }
   if (case_id && UUID_RE.test(case_id)) revalidatePath(`/cases/${case_id}`);
 }

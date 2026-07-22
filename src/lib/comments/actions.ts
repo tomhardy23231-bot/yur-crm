@@ -46,11 +46,23 @@ export async function createCommentAction(
   }
 
   try {
-    await userDb(user.profile.id, (tx) =>
-      tx.case_comments.create({
+    await userDb(user.profile.id, async (tx) => {
+      await tx.case_comments.create({
         data: { case_id, body, author_id: user.profile.id },
-      }),
-    );
+      });
+      // Журнал 2026-07-21: добавление комментария (раньше логировалась только
+      // правка). Ошибку лога глотаем — не должна ломать сам комментарий.
+      try {
+        await rpcLogActivity(tx, {
+          entityType: 'case',
+          entityId: case_id,
+          action: 'comment_added',
+          changes: { text: truncForLog(body) },
+        });
+      } catch {
+        /* лог не критичен для основной операции */
+      }
+    });
   } catch (err) {
     // RLS WITH CHECK / can_write_case отрезали запись → throw.
     return {
@@ -170,11 +182,28 @@ export async function deleteCommentAction(formData: FormData): Promise<void> {
   }
 
   try {
-    await userDb(user.profile.id, (tx) =>
+    await userDb(user.profile.id, async (tx) => {
+      // Текст и настоящий case_id — из самой записи (CSO #2), для лога удаления.
+      const before = await tx.case_comments.findUnique({
+        where: { id: comment_id },
+        select: { body: true, case_id: true },
+      });
       // deleteMany: чужой DELETE RLS режет тихо (count:0), без P2025 — как прежний
       // no-op на PostgREST. Настоящую ошибку БД ловит catch ниже.
-      tx.case_comments.deleteMany({ where: { id: comment_id } }),
-    );
+      const res = await tx.case_comments.deleteMany({ where: { id: comment_id } });
+      if (res.count > 0 && before) {
+        try {
+          await rpcLogActivity(tx, {
+            entityType: 'case',
+            entityId: before.case_id,
+            action: 'comment_deleted',
+            changes: { text: truncForLog(before.body) },
+          });
+        } catch {
+          /* лог не критичен для основной операции */
+        }
+      }
+    });
   } catch {
     redirect(backToCase ? `${backToCase}?error=delete_failed` : '/cases?error=delete_failed');
   }

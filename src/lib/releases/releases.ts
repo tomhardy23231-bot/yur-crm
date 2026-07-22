@@ -32,6 +32,11 @@ export type ReleaseSection = {
   headingKey: ReleaseTextKey;
   /** Ключи пунктов секции (help.releases.*). */
   itemKeys: ReadonlyArray<ReleaseTextKey>;
+  /**
+   * Секцию видит ТОЛЬКО владелец (owner). Для фич, которые сотрудникам не
+   * анонсируются (например, журнал активности, 2.8) — модалка фильтрует.
+   */
+  ownerOnly?: boolean;
 };
 
 export type Release = {
@@ -45,6 +50,12 @@ export type Release = {
   badgeKey?: ReleaseTextKey;
   /** Ключ вводного абзаца (help.releases.*). */
   leadKey: ReleaseTextKey;
+  /**
+   * Заголовок/вводка ДЛЯ ВЛАДЕЛЬЦА, если общие тексты сознательно умалчивают
+   * owner-only фичу (см. ReleaseSection.ownerOnly). Не заданы → общие.
+   */
+  ownerTitleKey?: ReleaseTextKey;
+  ownerLeadKey?: ReleaseTextKey;
   /** Блоки: что добавлено / изменено / как работает. */
   sections: ReadonlyArray<ReleaseSection>;
   /** Крупное обновление (акцент). */
@@ -59,10 +70,42 @@ export type Release = {
 };
 
 // Текущая версия системы. Поднимается с каждым заметным обновлением.
-export const APP_VERSION = '2.7';
+export const APP_VERSION = '2.8';
 
 // Свежие релизы — сверху. RELEASES[0] = текущий (по нему строится модалка).
 export const RELEASES: ReadonlyArray<Release> = [
+  {
+    version: '2.8',
+    // Сотрудникам — только улучшения списка (журнал не анонсируем, решение
+    // владельца 2026-07-22); владельцу — полные тексты (ownerTitle/ownerLead).
+    titleKey: 'v2_8TitleStaff',
+    date: '2026-07-22',
+    major: true,
+    leadKey: 'v2_8LeadStaff',
+    ownerTitleKey: 'v2_8Title',
+    ownerLeadKey: 'v2_8Lead',
+    sections: [
+      {
+        headingKey: 'headingAdded',
+        itemKeys: ['v2_8Added1', 'v2_8Added2', 'v2_8Added3', 'v2_8Added4'],
+        ownerOnly: true,
+      },
+      {
+        headingKey: 'headingHowItWorks',
+        itemKeys: ['v2_8How1'],
+        ownerOnly: true,
+      },
+      {
+        // Кастомный заголовок секции: улучшения списка дел этой же сессии.
+        headingKey: 'v2_8HeadingCases',
+        itemKeys: ['v2_8Cases1', 'v2_8Cases2', 'v2_8Cases3', 'v2_8Cases4', 'v2_8Cases5'],
+      },
+      {
+        headingKey: 'headingChanged',
+        itemKeys: ['v2_8Changed1'],
+      },
+    ],
+  },
   {
     version: '2.7',
     titleKey: 'v2_7Title',

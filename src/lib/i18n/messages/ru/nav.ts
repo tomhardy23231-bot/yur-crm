@@ -17,6 +17,8 @@ export const nav = {
   documentsShort: 'Документы',
   finance: 'Касса',
   financeShort: 'Касса',
+  journal: 'Журнал',
+  journalShort: 'Журнал',
   settings: 'Настройки',
   settingsShort: 'Настройки',
   help: 'Справка',

@@ -41,6 +41,7 @@ import { helpStart } from './helpStart';
 import { helpStages } from './helpStages';
 import { helpTasks } from './helpTasks';
 import { activity } from './activity';
+import { journal } from './journal';
 import { ui } from './ui';
 
 export const uk: Messages = {
@@ -81,5 +82,6 @@ export const uk: Messages = {
   helpStages,
   helpTasks,
   activity,
+  journal,
   ui,
 };

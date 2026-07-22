@@ -11,14 +11,18 @@ import type { Release } from '@/lib/releases/releases';
 // Большая модалка «Что нового». Показывается один раз на устройство для версии
 // (логику показа держит OnboardingProvider). Для крупных релизов (major) внизу —
 // кнопка «Пройти тур».
+// isOwner: owner-only секции релиза (и owner-варианты заголовка/вводки) видит
+// только владелец — сотрудникам фичи вроде журнала активности не анонсируются.
 export function ReleaseModal({
   open,
   release,
+  isOwner = false,
   onClose,
   onStartTour,
 }: {
   open: boolean;
   release: Release;
+  isOwner?: boolean;
   onClose: () => void;
   onStartTour?: () => void;
 }) {
@@ -38,6 +42,12 @@ export function ReleaseModal({
   const showTour = Boolean(onStartTour);
   const rel = t.help.releases;
 
+  const sections = release.sections.filter((s) => isOwner || !s.ownerOnly);
+  const titleKey =
+    isOwner && release.ownerTitleKey ? release.ownerTitleKey : release.titleKey;
+  const leadKey =
+    isOwner && release.ownerLeadKey ? release.ownerLeadKey : release.leadKey;
+
   return createPortal(
     <div
       className="fixed inset-0 z-[110] flex items-center justify-center p-4"
@@ -54,10 +64,10 @@ export function ReleaseModal({
       />
 
       {/* Карточка */}
-      <div className="relative z-10 flex max-h-[90vh] w-[min(740px,96vw)] flex-col overflow-hidden rounded-[24px] border border-border bg-surface shadow-[var(--shadow-pop)] antialiased animate-[wm-pop_280ms_var(--ease-out)]">
+      <div className="relative z-10 flex max-h-[92vh] w-[min(840px,96vw)] flex-col overflow-hidden rounded-[24px] border border-border bg-surface shadow-[var(--shadow-pop)] antialiased animate-[wm-pop_280ms_var(--ease-out)]">
         {/* Hero — фирменный градиент */}
         <div
-          className="relative flex flex-col gap-3 px-8 pb-7 pt-9 text-white"
+          className="relative flex flex-col gap-3 px-9 pb-8 pt-10 text-white"
           style={{ backgroundImage: 'var(--grad-brand)' }}
         >
           <button
@@ -79,31 +89,31 @@ export function ReleaseModal({
             )}
           </div>
 
-          <h2 className="text-[27px] font-extrabold leading-tight tracking-[-0.01em]">
-            {rel[release.titleKey]}
+          <h2 className="text-[30px] font-extrabold leading-tight tracking-[-0.01em]">
+            {rel[titleKey]}
           </h2>
-          <p className="max-w-[58ch] text-[14.5px] font-[450] leading-[1.55] text-white/90">
-            {rel[release.leadKey]}
+          <p className="max-w-[62ch] text-[15px] font-[450] leading-[1.6] text-white/90">
+            {rel[leadKey]}
           </p>
         </div>
 
         {/* Тело — секции */}
-        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto px-8 py-7">
-          {release.sections.map((section) => (
+        <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-auto px-9 py-8">
+          {sections.map((section) => (
             <div key={section.headingKey} className="flex flex-col gap-3">
-              <h3 className="text-[13px] font-bold uppercase tracking-[0.05em] text-text-muted">
+              <h3 className="text-[13.5px] font-bold uppercase tracking-[0.05em] text-text-muted">
                 {rel[section.headingKey]}
               </h3>
-              <ul className="flex flex-col gap-2.5">
+              <ul className="flex flex-col gap-3">
                 {section.itemKeys.map((itemKey) => (
-                  <li key={itemKey} className="flex items-start gap-2.5">
+                  <li key={itemKey} className="flex items-start gap-3">
                     <span
                       aria-hidden="true"
-                      className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-subtle text-primary"
+                      className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-subtle text-primary"
                     >
-                      <Check size={12} strokeWidth={2.5} />
+                      <Check size={13} strokeWidth={2.5} />
                     </span>
-                    <span className="text-[14px] leading-[1.55] text-text">
+                    <span className="text-[14.5px] leading-[1.6] text-text">
                       {rel[itemKey]}
                     </span>
                   </li>
@@ -114,7 +124,7 @@ export function ReleaseModal({
         </div>
 
         {/* Футер */}
-        <div className="flex items-center justify-between gap-4 border-t border-border bg-surface-muted/50 px-8 py-5">
+        <div className="flex items-center justify-between gap-4 border-t border-border bg-surface-muted/50 px-9 py-5">
           <span className="text-[12px] tabular-nums text-text-subtle">
             v{release.version}
           </span>

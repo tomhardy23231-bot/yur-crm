@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Coins,
   HelpCircle,
+  History,
   LogOut,
   Settings,
   Wallet,
@@ -78,6 +79,7 @@ export function MobileMoreSheet({
     ...(caps.view_cash || caps.can_manage_cash
       ? [{ id: 'cash', href: '/reports/cash', icon: Wallet, label: t.nav.finance }]
       : []),
+    { id: 'journal', href: '/journal', icon: History, label: t.nav.journal },
     ...(canAdmin
       ? [{ id: 'settings', href: '/settings', icon: Settings, label: t.nav.settings }]
       : []),

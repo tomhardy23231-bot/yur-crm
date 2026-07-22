@@ -10,6 +10,7 @@ import {
   Calendar,
   Coins,
   Wallet,
+  History,
   Settings,
   HelpCircle,
   type LucideIcon,
@@ -32,6 +33,7 @@ type NavId =
   | 'calendar'
   | 'payroll'
   | 'finance'
+  | 'journal'
   | 'settings'
   | 'help';
 
@@ -59,6 +61,8 @@ const WORK_ITEMS: ReadonlyArray<NavItem> = [
   // Касса — обладателю view_cash ИЛИ can_manage_cash (сплит 2026-07-16;
   // по дефолту owner). RLS дублирует.
   { id: 'finance',   href: '/reports/cash', icon: Wallet,       enabled: true, requiredCaps: ['view_cash', 'can_manage_cash'], tourId: 'nav-cash' },
+  // Журнал — виден всем: RLS отдаёт каждому его срез событий (2026-07-21).
+  { id: 'journal',   href: '/journal',   icon: History,         enabled: true, tourId: 'nav-journal' },
 ];
 
 // Администрирование. Единый вход — «Настройки». Виден обладателям права

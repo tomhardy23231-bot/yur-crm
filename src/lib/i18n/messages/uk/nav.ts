@@ -18,6 +18,8 @@ export const nav: NavMessages = {
   documentsShort: 'Документи',
   finance: 'Каса',
   financeShort: 'Каса',
+  journal: 'Журнал',
+  journalShort: 'Журнал',
   settings: 'Налаштування',
   settingsShort: 'Налаштування',
   help: 'Довідка',

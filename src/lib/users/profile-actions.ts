@@ -3,6 +3,7 @@
 import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
 
+import { logActivity } from '@/lib/activity-log/log';
 import { requireUser } from '@/lib/auth/require-role';
 import { adminDb } from '@/lib/db/admin';
 import {
@@ -114,6 +115,15 @@ export async function changePasswordAction(
     console.error('changePasswordAction:', err);
     return { ok: false, message: t.account.password.updateFailed };
   }
+
+  // Журнал 2026-07-21: смена СОБСТВЕННОГО пароля (сброс владельцем логируется
+  // отдельно как user_password_reset). log_activity разрешает self-запись.
+  await logActivity({
+    entity_type: 'user',
+    entity_id: user.authId,
+    action: 'user_password_changed',
+    changes: { user_id: user.authId },
+  });
 
   const store = await cookies();
   store.set(SESSION_COOKIE, freshToken, sessionCookieOptions());

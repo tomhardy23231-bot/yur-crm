@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { logActivity } from '@/lib/activity-log/log';
 import { requireUser } from '@/lib/auth/require-role';
 import {
   createSignedDownloadUrl,
@@ -31,6 +32,14 @@ export async function GET(
 
   try {
     const url = await createSignedDownloadUrl(doc.storage_key, doc.file_name);
+    // Журнал 2026-07-21: кто скачал какой файл (конфиденциальность документов).
+    // logActivity fail-silent — скачивание не ломает.
+    await logActivity({
+      entity_type: 'case',
+      entity_id: doc.case_id,
+      action: 'document_downloaded',
+      changes: { file_name: doc.file_name, doc_type: doc.doc_type },
+    });
     // signedUrl локального провайдера относителен (/api/storage/local?…) —
     // резолвим по origin запроса; presigned URL S3/R2 уже абсолютен и проходит
     // насквозь (base игнорируется для абсолютных URL).

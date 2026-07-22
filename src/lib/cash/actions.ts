@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
+import { logActivity } from '@/lib/activity-log/log';
 import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { userDb } from '@/lib/db';
 import { dbActionError } from '@/lib/db/errors';
@@ -58,6 +59,7 @@ export async function createCashAccountAction(
 
   // Снятие флага с прежнего дефолта + вставка — одной транзакцией (partial-unique
   // индекс cash_accounts_one_default допускает лишь один is_default на компанию).
+  let createdId: string | null = null;
   try {
     await userDb(user.profile.id, async (tx) => {
       if (is_default) {
@@ -66,7 +68,7 @@ export async function createCashAccountAction(
           data: { is_default: false },
         });
       }
-      await tx.cash_accounts.create({
+      const created = await tx.cash_accounts.create({
         data: {
           name,
           kind: kind as CashAccountKind,
@@ -75,13 +77,24 @@ export async function createCashAccountAction(
           is_default,
           created_by: user.profile.id,
         },
+        select: { id: true },
       });
+      createdId = created.id;
     });
   } catch (err) {
     return {
       ok: false,
       message: dbActionError('createCashAccountAction', err, t.cash.actions.saveFailed, t.errors.db),
     };
+  }
+
+  if (createdId) {
+    await logActivity({
+      entity_type: 'cash',
+      entity_id: createdId,
+      action: 'cash_account_created',
+      changes: { name, kind, opening_balance, opening_date, is_default },
+    });
   }
 
   revalidatePath('/reports/cash');
@@ -148,6 +161,13 @@ export async function updateCashAccountAction(
     };
   }
 
+  await logActivity({
+    entity_type: 'cash',
+    entity_id: id,
+    action: 'cash_account_updated',
+    changes: { name, opening_balance, opening_date, is_active, is_default },
+  });
+
   revalidatePath('/reports/cash');
   return { ok: true, message: t.cash.actions.accountSaved };
 }
@@ -193,9 +213,10 @@ export async function createCashEntryAction(
     return { ok: false, fieldErrors, message: t.cash.actions.checkForm };
   }
 
+  let accountName: string | null = null;
   try {
-    await userDb(user.profile.id, (tx) =>
-      tx.cash_entries.create({
+    await userDb(user.profile.id, async (tx) => {
+      await tx.cash_entries.create({
         data: {
           account_id,
           entry_date: toDbDate(entry_date),
@@ -205,14 +226,32 @@ export async function createCashEntryAction(
           created_by: user.profile.id,
           // payment_id остаётся NULL — это ручная операция (RLS требует payment_id IS NULL).
         },
-      }),
-    );
+      });
+      const acc = await tx.cash_accounts.findUnique({
+        where: { id: account_id },
+        select: { name: true },
+      });
+      accountName = acc?.name ?? null;
+    });
   } catch (err) {
     return {
       ok: false,
       message: dbActionError('createCashEntryAction', err, t.cash.actions.saveFailed, t.errors.db),
     };
   }
+
+  await logActivity({
+    entity_type: 'cash',
+    entity_id: account_id,
+    action: 'cash_entry_created',
+    changes: {
+      account_name: accountName,
+      direction,
+      amount: parseAmount(amount_raw),
+      entry_date,
+      description,
+    },
+  });
 
   revalidatePath('/reports/cash');
   return { ok: true, message: t.cash.actions.entrySaved };
@@ -227,15 +266,62 @@ export async function deleteCashEntryAction(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '').trim();
   if (!id || !UUID_RE.test(id)) return;
 
+  // Детали строки — до удаления (в журнал пишем, что именно снесли).
+  let deleted: {
+    account_id: string;
+    account_name: string | null;
+    direction: string;
+    amount: number;
+    entry_date: string;
+    description: string;
+  } | null = null;
+
   try {
-    // deleteMany — тихий no-op, если строка невидима или это авто-приход
-    // (RLS DELETE отсекает payment_id IS NOT NULL).
-    await userDb(user.profile.id, (tx) =>
-      tx.cash_entries.deleteMany({ where: { id } }),
-    );
+    // Возврат из колбэка (не присваивание в замыкании) — иначе TS теряет тип.
+    deleted = await userDb(user.profile.id, async (tx) => {
+      const row = await tx.cash_entries.findUnique({
+        where: { id },
+        select: {
+          account_id: true,
+          direction: true,
+          amount: true,
+          entry_date: true,
+          description: true,
+          payment_id: true,
+          cash_accounts: { select: { name: true } },
+        },
+      });
+      // deleteMany — тихий no-op, если строка невидима или это авто-приход
+      // (RLS DELETE отсекает payment_id IS NOT NULL).
+      const res = await tx.cash_entries.deleteMany({ where: { id } });
+      if (res.count === 0 || !row || row.payment_id !== null) return null;
+      return {
+        account_id: row.account_id,
+        account_name: row.cash_accounts?.name ?? null,
+        direction: row.direction,
+        amount: Number(row.amount),
+        entry_date: row.entry_date.toISOString().slice(0, 10),
+        description: row.description,
+      };
+    });
   } catch (err) {
     console.error('deleteCashEntryAction failed:', err);
     return;
+  }
+
+  if (deleted !== null) {
+    await logActivity({
+      entity_type: 'cash',
+      entity_id: deleted.account_id,
+      action: 'cash_entry_deleted',
+      changes: {
+        account_name: deleted.account_name,
+        direction: deleted.direction,
+        amount: deleted.amount,
+        entry_date: deleted.entry_date,
+        description: deleted.description,
+      },
+    });
   }
   revalidatePath('/reports/cash');
 }

@@ -45,6 +45,31 @@ function dateTime(locale: Locale): Intl.DateTimeFormat {
   }));
 }
 
+const DATE_ONLY_BY_LOCALE: Partial<Record<Locale, Intl.DateTimeFormat>> = {};
+
+function dateOnly(locale: Locale): Intl.DateTimeFormat {
+  return (DATE_ONLY_BY_LOCALE[locale] ??= new Intl.DateTimeFormat(LOCALE_BCP47[locale], {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }));
+}
+
+// YYYY-MM-DD → локальная дата (журнал: отпуска, движения ЗП). Мусор — как есть.
+function formatDateStr(locale: Locale, v: unknown): string {
+  const s = asString(v);
+  if (!s) return '';
+  const d = new Date(`${s}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? s : dateOnly(locale).format(d);
+}
+
+// Усечение длинного текста для строки журнала (комментарии, описания кассы).
+function truncText(v: unknown, dash: string, max = 80): string {
+  const s = asString(v);
+  if (!s) return dash;
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
 function asString(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   if (typeof v === 'string') return v;
@@ -92,7 +117,8 @@ function resolveId(value: unknown, dash: string, nameById?: NameById): string {
 }
 
 // Локализация значения поля для человекочитаемого diff'a (case.stage = 'pretrial' → «Досудебное»).
-function localizeFieldValue(
+// Экспорт: журнал (/journal) рендерит diff-строки сам (чипы этапов и т.п.).
+export function localizeFieldValue(
   i18n: I18n,
   field: string,
   value: unknown,
@@ -179,9 +205,23 @@ function localizeFieldValue(
   }
 }
 
-function fieldLabel(i18n: I18n, field: string): string {
+export function fieldLabel(i18n: I18n, field: string): string {
   const map = i18n.t.activity.field as Record<string, string>;
   return map[field] ?? field;
+}
+
+// Структурированный diff из changes.diff — для богатого рендера в журнале
+// («Этап: [чип] → [чип]»). Порядок полей сохраняется как записан.
+export type DiffEntry = { field: string; from: unknown; to: unknown };
+
+export function extractDiffEntries(changes: ActivityChanges | null): DiffEntry[] {
+  if (!changes) return [];
+  const diff = (changes as Record<string, unknown>).diff;
+  if (!diff || typeof diff !== 'object') return [];
+  return Object.entries(diff as Record<string, unknown>).map(([field, val]) => {
+    const v = (val ?? {}) as { from?: unknown; to?: unknown };
+    return { field, from: v.from, to: v.to };
+  });
 }
 
 function formatDiff(
@@ -374,14 +414,162 @@ export function formatActivity(
     // ---------- comments ----------
     case 'comment_edited': {
       // Усекаем для строки журнала (тексты могут быть длинными).
-      const trunc = (v: unknown): string => {
-        const s = asString(v);
-        if (!s) return dash;
-        return s.length > 80 ? `${s.slice(0, 80)}…` : s;
-      };
       return {
         actor,
-        text: fmt(ev.commentEdited, { from: trunc(c.from), to: trunc(c.to) }),
+        text: fmt(ev.commentEdited, {
+          from: truncText(c.from, dash),
+          to: truncText(c.to, dash),
+        }),
+      };
+    }
+    case 'comment_added':
+      return { actor, text: fmt(ev.commentAdded, { text: truncText(c.text, dash) }) };
+    case 'comment_deleted':
+      return { actor, text: fmt(ev.commentDeleted, { text: truncText(c.text, dash) }) };
+
+    // ---------- журнал 2026-07-21: скачивания, акты, премии ----------
+    case 'document_downloaded': {
+      const name = asString(c.file_name) ?? dash;
+      const type = asString(c.doc_type);
+      const typeLabel = type && type in DOC_TYPE_LABEL ? t.enums.docType[type as DocType] : null;
+      return {
+        actor,
+        text: typeLabel
+          ? fmt(ev.documentDownloadedTyped, { name, type: typeLabel })
+          : fmt(ev.documentDownloaded, { name }),
+      };
+    }
+    case 'act_completion_changed': {
+      const number = asNumber(c.number);
+      const completion = asString(c.completion);
+      const label =
+        completion && completion in t.enums.actCompletion
+          ? t.enums.actCompletion[completion as keyof typeof t.enums.actCompletion]
+          : (completion ?? dash);
+      return {
+        actor,
+        text: fmt(ev.actCompletionChanged, {
+          number: number === null ? dash : String(number),
+          completion: label,
+        }),
+      };
+    }
+    case 'payroll_bonus': {
+      const who = resolveId(c.user_id, dash, nameById);
+      const amount = asNumber(c.amount);
+      const amountStr = amount === null ? null : `${money(i18n.locale).format(amount)} ₴`;
+      const comment = asString(c.comment);
+      const tail = [who, amountStr].filter(Boolean).join(' — ');
+      const suffix = comment
+        ? fmt(ev.payrollBonusComment, { comment: truncText(comment, dash) })
+        : '';
+      return { actor, text: fmt(ev.payrollBonus, { tail }) + suffix };
+    }
+    case 'payroll_tx_deleted': {
+      const who = resolveId(c.user_id, dash, nameById);
+      const amount = asNumber(c.amount);
+      const amountStr = amount === null ? null : `${money(i18n.locale).format(amount)} ₴`;
+      const kind =
+        asString(c.kind) === 'bonus' ? ev.payrollTxKindBonus : ev.payrollTxKindPayout;
+      const date = formatDateStr(i18n.locale, c.occurred_on);
+      const tail = [[who, amountStr].filter(Boolean).join(' — '), date && `(${date})`]
+        .filter(Boolean)
+        .join(' ');
+      return { actor, text: fmt(ev.payrollTxDeleted, { kind, tail }) };
+    }
+
+    // ---------- журнал 2026-07-21: доступ и безопасность ----------
+    case 'user_password_changed':
+      return { actor, text: ev.passwordChanged };
+    case 'user_login': {
+      const ip = asString(c.ip);
+      return { actor, text: ev.login + (ip ? fmt(ev.loginIp, { ip }) : '') };
+    }
+    case 'user_login_failed': {
+      const reason = asString(c.reason);
+      const ip = asString(c.ip);
+      const attempt = asNumber(c.attempt);
+      const base =
+        reason === 'inactive'
+          ? ev.loginFailedInactive
+          : reason === 'wrong_password'
+            ? fmt(ev.loginFailedPassword, { n: attempt === null ? '?' : attempt })
+            : ev.loginFailed;
+      return { actor, text: base + (ip ? fmt(ev.loginIp, { ip }) : '') };
+    }
+
+    // ---------- журнал 2026-07-21: отпуска ----------
+    case 'absence_created':
+    case 'absence_deleted': {
+      const who = resolveId(c.user_id, dash, nameById);
+      const kind = asString(c.kind);
+      const kindLabel =
+        kind && kind in t.enums.absenceKind
+          ? t.enums.absenceKind[kind as keyof typeof t.enums.absenceKind]
+          : (kind ?? dash);
+      const tail = fmt(ev.absencePeriod, {
+        who,
+        kind: kindLabel,
+        from: formatDateStr(i18n.locale, c.starts_on) || dash,
+        to: formatDateStr(i18n.locale, c.ends_on) || dash,
+      });
+      const verb = entry.action === 'absence_created' ? ev.absenceCreated : ev.absenceDeleted;
+      return { actor, text: fmt(verb, { tail }) };
+    }
+
+    // ---------- журнал 2026-07-21: касса ----------
+    case 'cash_account_created':
+      return { actor, text: fmt(ev.cashAccountCreated, { name: asString(c.name) ?? dash }) };
+    case 'cash_account_updated':
+      return { actor, text: fmt(ev.cashAccountUpdated, { name: asString(c.name) ?? dash }) };
+    case 'cash_entry_created':
+    case 'cash_entry_updated':
+    case 'cash_entry_deleted': {
+      const amount = asNumber(c.amount);
+      const amountStr = amount === null ? dash : `${money(i18n.locale).format(amount)} ₴`;
+      const accName = asString(c.account_name);
+      const account = accName ? fmt(ev.cashAccountSuffix, { name: accName }) : '';
+      const description = truncText(c.description, dash);
+      const tpl =
+        entry.action === 'cash_entry_deleted'
+          ? ev.cashEntryDeleted
+          : entry.action === 'cash_entry_updated'
+            ? ev.cashEntryUpdated
+            : asString(c.direction) === 'out'
+              ? ev.cashEntryOut
+              : ev.cashEntryIn;
+      return { actor, text: fmt(tpl, { amount: amountStr, account, description }) };
+    }
+
+    // ---------- журнал 2026-07-21: системные настройки ----------
+    case 'payroll_rates_changed': {
+      const rates = Array.isArray(c.rates) ? (c.rates as Array<Record<string, unknown>>) : [];
+      const detail = rates
+        .map((r) => {
+          const cat = asString(r.category);
+          const catLabel =
+            cat && cat in CASE_CATEGORY_LABEL
+              ? t.enums.caseCategory[cat as CaseCategory]
+              : (cat ?? dash);
+          return fmt(ev.ratesCategory, {
+            category: catLabel,
+            lawyerFrom: asNumber(r.lawyer_from) ?? dash,
+            lawyerTo: asNumber(r.lawyer_to) ?? dash,
+            expertFrom: asNumber(r.expert_from) ?? dash,
+            expertTo: asNumber(r.expert_to) ?? dash,
+          });
+        })
+        .join('; ');
+      return {
+        actor,
+        text: detail ? fmt(ev.ratesChanged, { detail }) : t.activity.action.payroll_rates_changed,
+      };
+    }
+    case 'org_requisites_updated': {
+      const org = asString(c.org_name);
+      return {
+        actor,
+        text: org ? fmt(ev.requisitesUpdated, { org }) : ev.requisitesUpdatedPlain,
       };
     }
 

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
+import { logActivity } from '@/lib/activity-log/log';
 import { requireUser } from '@/lib/auth/require-role';
 import { userDb } from '@/lib/db';
 import { dbActionError, pgErrorCode, prismaErrorToDbError } from '@/lib/db/errors';
@@ -109,6 +110,13 @@ export async function createAbsenceAction(
     };
   }
 
+  await logActivity({
+    entity_type: 'absence',
+    entity_id: user_id,
+    action: 'absence_created',
+    changes: { user_id, kind, starts_on, ends_on, note: note || null },
+  });
+
   revalidatePath(`/reports/payroll/${user_id}`);
   revalidatePath('/calendar');
   return { ok: true };
@@ -127,14 +135,48 @@ export async function deleteAbsenceAction(formData: FormData): Promise<void> {
   const user_id = String(formData.get('user_id') ?? '').trim();
   if (!id || !UUID_RE.test(id)) return;
 
+  // Детали строки — до удаления (для записи в журнал).
+  let deleted: {
+    user_id: string;
+    kind: string;
+    starts_on: string;
+    ends_on: string;
+  } | null = null;
+
   try {
-    // deleteMany — тихий no-op под RLS (0 строк), не исключение невидимой строки.
-    await userDb(user.profile.id, (tx) =>
-      tx.absences.deleteMany({ where: { id } }),
-    );
+    // Возврат из колбэка (не присваивание в замыкании) — иначе TS теряет тип.
+    deleted = await userDb(user.profile.id, async (tx) => {
+      const row = await tx.absences.findUnique({
+        where: { id },
+        select: { user_id: true, kind: true, starts_on: true, ends_on: true },
+      });
+      // deleteMany — тихий no-op под RLS (0 строк), не исключение невидимой строки.
+      const res = await tx.absences.deleteMany({ where: { id } });
+      if (res.count === 0 || !row) return null;
+      return {
+        user_id: row.user_id,
+        kind: row.kind,
+        starts_on: row.starts_on.toISOString().slice(0, 10),
+        ends_on: row.ends_on.toISOString().slice(0, 10),
+      };
+    });
   } catch (err) {
     console.error('deleteAbsenceAction failed:', err);
     return;
+  }
+
+  if (deleted !== null) {
+    await logActivity({
+      entity_type: 'absence',
+      entity_id: deleted.user_id,
+      action: 'absence_deleted',
+      changes: {
+        user_id: deleted.user_id,
+        kind: deleted.kind,
+        starts_on: deleted.starts_on,
+        ends_on: deleted.ends_on,
+      },
+    });
   }
   if (user_id && UUID_RE.test(user_id)) revalidatePath(`/reports/payroll/${user_id}`);
   revalidatePath('/calendar');

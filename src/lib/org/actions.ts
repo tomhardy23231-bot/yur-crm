@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
+import { logActivity, ORG_ENTITY_ID } from '@/lib/activity-log/log';
 import { requireUser } from '@/lib/auth/require-role';
 import { userDb } from '@/lib/db';
 import { dbActionError } from '@/lib/db/errors';
@@ -111,6 +112,13 @@ export async function updateOrgRequisitesAction(
       ),
     };
   }
+
+  await logActivity({
+    entity_type: 'org',
+    entity_id: ORG_ENTITY_ID,
+    action: 'org_requisites_updated',
+    changes: { org_name, edrpou },
+  });
 
   revalidatePath('/settings/requisites');
   return { ok: true };
