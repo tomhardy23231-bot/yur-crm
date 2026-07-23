@@ -147,6 +147,7 @@ model cases {
   created_at                        DateTime             @default(now()) @db.Timestamptz(6)
   lawyer_rate_override              Decimal?             @db.Decimal(5, 2)
   expert_rate_override              Decimal?             @db.Decimal(5, 2)
+  dual_rate_override                Decimal?             @db.Decimal(5, 2)
   accrual_mode                      accrual_mode         @default(on_completion)
   overpaid                          Decimal              @default(0) @db.Decimal(14, 2)
   closed_without_act                Boolean              @default(false)

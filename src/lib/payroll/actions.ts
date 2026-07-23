@@ -231,7 +231,9 @@ export async function createPayoutAction(
   for (const s of selected) {
     if (
       typeof s?.case_id !== 'string' ||
-      (s.role_in_case !== 'lawyer' && s.role_in_case !== 'expert')
+      (s.role_in_case !== 'lawyer' &&
+        s.role_in_case !== 'expert' &&
+        s.role_in_case !== 'dual')
     ) {
       continue;
     }
@@ -239,7 +241,10 @@ export async function createPayoutAction(
     if (amount > 0) {
       allocations.push({
         case_id: s.case_id,
-        role_in_case: s.role_in_case,
+        // 'dual' (совмещение ролей, 0007) — отчётная роль; в payout_allocations
+        // CHECK разрешает только lawyer/expert → пишем канонично как 'lawyer'
+        // (payroll_employee_cases склеивает аллокации обеих ролей обратно в dual).
+        role_in_case: s.role_in_case === 'dual' ? 'lawyer' : s.role_in_case,
         amount: Math.round(amount * 100) / 100,
       });
     }

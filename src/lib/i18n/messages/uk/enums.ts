@@ -120,6 +120,8 @@ export const enums: EnumsMessages = {
   roleInCase: {
     lawyer: 'Юрист',
     expert: 'Експерт',
+    // Суміщення ролей (0007): юрист і експерт справи — одна людина.
+    dual: 'Юрист і експерт',
   },
 
   // Скоуп видимості для admin/office_manager (v2). Виставляє лише власник.

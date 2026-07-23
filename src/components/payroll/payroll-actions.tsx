@@ -17,15 +17,17 @@ import {
   deletePayrollTransactionAction,
   type PayrollMutationState,
 } from '@/lib/payroll/actions';
-import { type RoleInCase } from '@/lib/types/db';
+import { type PayrollRole } from '@/lib/types/db';
 import { todayIso } from '@/lib/validation';
 
 const PAYROLL_INITIAL: PayrollMutationState = { ok: false };
 
+// role_in_case='dual' (0007) — совмещение ролей: одна строка с единой ставкой;
+// сервер маппит её в аллокацию 'lawyer' (CHECK payout_allocations).
 export type PayoutBucket = {
   case_id: string;
   number_title: string;
-  role_in_case: RoleInCase;
+  role_in_case: PayrollRole;
   outstanding: number;
 };
 

@@ -298,6 +298,9 @@ tax_status_lines (text[]), updated_at, updated_by`
 P1.2). Редактирует только `owner`. См. §7-4. На конкретном деле % переопределяется:
 `cases.lawyer_rate_override` / `expert_rate_override` (NULL → ставка категории; менять
 может только owner/admin, БД-триггер `cases_guard_rate_overrides` — доработка P1.1).
+При **совмещении ролей** (`lawyer_id = responsible_id`) действует
+`cases.dual_rate_override` — единый % одинарного начисления (NULL → большая из
+эффективных ставок ролей; миграция 0007, см. §7-4).
 — **Режим зарплаты (v2 Этап 4)** живёт на сотруднике (`users.salary_mode`): процентная
 механика выше применяется для режимов `percent`/`fixed_percent`, а для `fixed`
 **зануляется** в отчётных функциях (`case_payroll`, `payroll_by_specialist`,
@@ -453,6 +456,14 @@ updated_at`
    меняет только `owner`, override на деле — owner/admin. Live-расчёт —
    `public.case_payroll` / `public.payroll_by_specialist`; фиксация начисления/выплаты
    — в `payroll_ledger` (P1.3), момент задаёт `cases.accrual_mode` (P2.1).
+   **Совмещение ролей (миграция 0007, 2026-07-23, замечание клиента):** если
+   `lawyer_id = responsible_id` (один человек и юрист, и Експерт), начисление идёт
+   **ОДИН раз** — по `cases.dual_rate_override` (назначает owner/admin: модалка на
+   карточке дела при первом открытии либо форма дела), а пока не назначено —
+   по **большей** из эффективных ставок ролей. В отчётных функциях такое дело —
+   одна строка `role_in_case='dual'`; аллокации выплат обеих ролей склеиваются в
+   неё, новые выплаты пишутся с ролью `'lawyer'` (CHECK `payout_allocations` не
+   расширялся). Гард — тот же `cases_guard_rate_overrides` (`edit_rate_overrides`).
    **Режим зарплаты на сотруднике (v2 Этап 4, `users.salary_mode`):** `percent` —
    только процент (выше); `fixed` — фиксированный оклад/мес, **процентная часть = 0**;
    `fixed_percent` — оклад + процент. Оклад (`salary_fixed_amount`) — справочно за

@@ -43,6 +43,7 @@ export type CaseFormFields =
   | 'billing_types'
   | 'lawyer_rate_override'
   | 'expert_rate_override'
+  | 'dual_rate_override'
   | 'opponent'
   | 'court_case_number'
   | 'court'
@@ -50,10 +51,12 @@ export type CaseFormFields =
 
 // Переопределения % по делу (P1.1). Применяются ТОЛЬКО owner/admin; для прочих
 // ролей не попадают в payload (а БД-триггер cases_guard_rate_overrides — жёсткая
-// защита). null → ставка категории.
+// защита). null → ставка категории. dual_rate_override (0007) — единый % при
+// совмещении ролей (юрист = Експерт); null → большая из ставок ролей.
 export type RateOverrides = {
   lawyer_rate_override: number | null;
   expert_rate_override: number | null;
+  dual_rate_override: number | null;
 };
 
 export type CaseActionState = {
@@ -134,6 +137,7 @@ function validate(
   const tags_raw = getString(formData, 'tags');
   const lawyer_rate_override_raw = getString(formData, 'lawyer_rate_override');
   const expert_rate_override_raw = getString(formData, 'expert_rate_override');
+  const dual_rate_override_raw = getString(formData, 'dual_rate_override');
 
   const billing_types_raw = formData
     .getAll('billing_types')
@@ -155,6 +159,7 @@ function validate(
     billing_types: billing_types.join(','),
     lawyer_rate_override: lawyer_rate_override_raw,
     expert_rate_override: expert_rate_override_raw,
+    dual_rate_override: dual_rate_override_raw,
     opponent,
     court_case_number,
     court,
@@ -218,7 +223,7 @@ function validate(
   // Override % по делу (P1.1): пусто → null; иначе число 0..100.
   function parseOverride(
     raw: string,
-    field: 'lawyer_rate_override' | 'expert_rate_override',
+    field: 'lawyer_rate_override' | 'expert_rate_override' | 'dual_rate_override',
   ): number | null {
     if (!raw) return null;
     const n = Number(raw.replace(',', '.'));
@@ -235,6 +240,12 @@ function validate(
   const expert_rate_override = parseOverride(
     expert_rate_override_raw,
     'expert_rate_override',
+  );
+  // 0007: единый % при совмещении ролей. Поле в форме видно только при
+  // юрист = Експерт; при разных людях приходит пустым → null (сброс).
+  const dual_rate_override = parseOverride(
+    dual_rate_override_raw,
+    'dual_rate_override',
   );
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -282,7 +293,7 @@ function validate(
       tags,
       closed_at,
     },
-    overrides: { lawyer_rate_override, expert_rate_override },
+    overrides: { lawyer_rate_override, expert_rate_override, dual_rate_override },
     values,
     selectedBillingTypes: billing_types,
   };
@@ -316,6 +327,7 @@ function caseCreateData(
   if (overrides) {
     data.lawyer_rate_override = overrides.lawyer_rate_override;
     data.expert_rate_override = overrides.expert_rate_override;
+    data.dual_rate_override = overrides.dual_rate_override;
   }
   return data;
 }
@@ -395,6 +407,7 @@ const CASE_DIFF_FIELDS = [
   'billing_types',
   'lawyer_rate_override',
   'expert_rate_override',
+  'dual_rate_override',
   'opponent',
   'court_case_number',
   'court',
@@ -416,6 +429,7 @@ type CaseDiffShape = {
   billing_types: BillingType[];
   lawyer_rate_override: number | null;
   expert_rate_override: number | null;
+  dual_rate_override: number | null;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;
@@ -460,6 +474,7 @@ export async function updateCaseAction(
           billing_types: true,
           lawyer_rate_override: true,
           expert_rate_override: true,
+          dual_rate_override: true,
           opponent: true,
           court_case_number: true,
           court: true,
@@ -553,6 +568,7 @@ export async function updateCaseAction(
   if (canEditRates) {
     data.lawyer_rate_override = result.overrides.lawyer_rate_override;
     data.expert_rate_override = result.overrides.expert_rate_override;
+    data.dual_rate_override = result.overrides.dual_rate_override;
   }
 
   // v3 s4: optimistic locking — сверяем updated_at::text (полная микросекундная
@@ -641,6 +657,7 @@ export async function updateCaseAction(
       billing_types: before.billing_types as BillingType[],
       lawyer_rate_override: decOrNull(before.lawyer_rate_override),
       expert_rate_override: decOrNull(before.expert_rate_override),
+      dual_rate_override: decOrNull(before.dual_rate_override),
       opponent: before.opponent,
       court_case_number: before.court_case_number,
       court: before.court,
@@ -666,6 +683,9 @@ export async function updateCaseAction(
       expert_rate_override: canEditRates
         ? result.overrides.expert_rate_override
         : beforeShape.expert_rate_override,
+      dual_rate_override: canEditRates
+        ? result.overrides.dual_rate_override
+        : beforeShape.dual_rate_override,
       opponent: result.data.opponent,
       court_case_number: result.data.court_case_number,
       court: result.data.court,
@@ -975,6 +995,79 @@ export async function updateCaseFieldAction(
 
   revalidatePath('/cases');
   revalidatePath(`/cases/${caseId}`);
+  return { ok: true };
+}
+
+// ── Ставка при совмещении ролей (0007): модалка на карточке дела ──────────
+// Юрист и Експерт дела — один человек → зарплата начисляется ОДИН раз; каким
+// процентом — задаёт owner/admin (cap edit_rate_overrides) в этой модалке.
+// Пока не задан, расчёт берёт большую из эффективных ставок ролей.
+export type DualRateActionState = { ok: boolean; message?: string };
+
+export async function setCaseDualRateAction(
+  caseId: string,
+  _prev: DualRateActionState,
+  formData: FormData,
+): Promise<DualRateActionState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const a = t.caseCard.actions;
+
+  if (!UUID_RE.test(caseId)) return { ok: false, message: a.caseInvalid };
+  // Мягкий гейт (жёсткий — БД-триггер cases_guard_rate_overrides).
+  if (!user.caps.edit_rate_overrides)
+    return { ok: false, message: a.updateFailed };
+
+  const raw = getString(formData, 'dual_rate_override');
+  const percent = Number(raw.replace(',', '.'));
+  if (!raw || !Number.isFinite(percent) || percent < 0 || percent > 100)
+    return { ok: false, message: a.percentInvalid };
+
+  let res:
+    | { kind: 'notFound' }
+    | { kind: 'notDual' }
+    | { kind: 'blocked' }
+    | { kind: 'done'; prev: number | null };
+  try {
+    res = await userDb(user.profile.id, async (tx) => {
+      const b = await tx.cases.findUnique({
+        where: { id: caseId },
+        select: {
+          lawyer_id: true,
+          responsible_id: true,
+          dual_rate_override: true,
+        },
+      });
+      if (!b) return { kind: 'notFound' as const };
+      if (b.lawyer_id !== b.responsible_id) return { kind: 'notDual' as const };
+      const upd = await tx.cases.updateMany({
+        where: { id: caseId },
+        data: { dual_rate_override: percent },
+      });
+      if (upd.count === 0) return { kind: 'blocked' as const };
+      return { kind: 'done' as const, prev: decOrNull(b.dual_rate_override) };
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError('setCaseDualRateAction', err, a.updateFailed, t.errors.db),
+    };
+  }
+  if (res.kind === 'notFound') return { ok: false, message: a.caseNotFound };
+  if (res.kind === 'notDual' || res.kind === 'blocked')
+    return { ok: false, message: a.updateFailed };
+
+  if (res.prev !== percent) {
+    await logActivity({
+      entity_type: 'case',
+      entity_id: caseId,
+      action: 'case_updated',
+      changes: { diff: { dual_rate_override: { from: res.prev, to: percent } } },
+    });
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath('/reports/payroll');
   return { ok: true };
 }
 

@@ -26,6 +26,8 @@ export type DashboardCaseRow = {
   responsible_id: string;
   lawyer_rate_override: number | null;
   expert_rate_override: number | null;
+  // Единый % при совмещении ролей (юрист = Експерт, 0007); null → greatest.
+  dual_rate_override: number | null;
 };
 
 // Этапы «до контракта»: дело ещё не в работе. Дойти до in_progress+ = заключить договор.
@@ -156,12 +158,18 @@ export function computePersonalEarnings(
       const isLawyer = r.lawyer_id === userId;
       const role_in_case: 'lawyer' | 'expert' = isLawyer ? 'lawyer' : 'expert';
       const rate = rateByCategory.get(r.category);
-      const override = isLawyer ? r.lawyer_rate_override : r.expert_rate_override;
-      const categoryDefault = isLawyer
-        ? (rate?.lawyer_percent ?? 0)
-        : (rate?.expert_percent ?? 0);
+      const lawyerEff = r.lawyer_rate_override ?? rate?.lawyer_percent ?? 0;
+      const expertEff = r.expert_rate_override ?? rate?.expert_percent ?? 0;
+      // 0007: совмещение ролей (юрист = Експерт) — единый % (назначенный
+      // dual_rate_override, иначе большая из ставок ролей). Зеркало SQL-функций.
+      const isDual = r.lawyer_id === r.responsible_id;
+      const roleEff = isDual
+        ? (r.dual_rate_override ?? Math.max(lawyerEff, expertEff))
+        : isLawyer
+          ? lawyerEff
+          : expertEff;
       // Режим fixed → процент 0 (как в case_payroll / payroll_*).
-      const percent = isFixed ? 0 : (override ?? categoryDefault);
+      const percent = isFixed ? 0 : roleEff;
       return {
         id: r.id,
         number_title: r.number_title,

@@ -32,11 +32,16 @@ import { CaseActsBlock } from '@/components/acts/case-acts-block';
 import { PaymentPlanBlock } from '@/components/payments/payment-plan-block';
 import { PaymentsList } from '@/components/payments/payments-list';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
+import { DualRateModal } from '@/components/cases/dual-rate-modal';
 import { requireUser } from '@/lib/auth/require-role';
 import { cn, daysSince, formatMoney, formatPercent } from '@/lib/utils';
 import { getCase } from '@/lib/cases/queries';
 import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
-import { getCasePayroll, getCasePaidByRole } from '@/lib/payroll/queries';
+import {
+  getCasePayroll,
+  getCasePaidByRole,
+  getPayrollRates,
+} from '@/lib/payroll/queries';
 import { caseHasDocOfType, listDocumentsByCase } from '@/lib/documents/queries';
 import { listPaymentsByCase } from '@/lib/payments/queries';
 import { listActsByCase } from '@/lib/acts/queries';
@@ -54,7 +59,7 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
 type Participant = {
   name: string;
   roleLabel: string;
-  roleKey: 'lawyer' | 'expert';
+  roleKey: 'lawyer' | 'expert' | 'dual';
   percent: number;
   amount: number;
   paid: number;
@@ -165,38 +170,74 @@ export default async function CaseDetailPage({
       ? Math.min(100, Math.round((c.paid_total / c.contract_sum) * 100))
       : 0;
 
+  // Совмещение ролей (0007): юрист и Експерт дела — один человек. Начисление
+  // одинарное (case_payroll кладёт его в lawyer_*-поля, expert_* = 0).
+  const dualRole = c.lawyer_id === c.responsible_id;
+
   // Участники «вознаграждения», с учётом видимости начислений по роли зрителя.
   const participants: Participant[] = [];
   if (payroll) {
-    if ((seeAllPayroll || myRole === 'lawyer') && c.lawyer) {
-      const paid = Math.min(paidByRole.lawyer, payroll.lawyer_amount);
-      participants.push({
-        name: c.lawyer.full_name,
-        roleLabel: t.caseCard.detail.roleLawyerManager,
-        roleKey: 'lawyer',
-        percent: payroll.lawyer_percent,
-        amount: payroll.lawyer_amount,
-        paid: paidByRole.lawyer,
-        outstanding: Math.max(0, payroll.lawyer_amount - paid),
-        override: c.lawyer_rate_override != null,
-      });
-    }
-    if ((seeAllPayroll || myRole === 'expert') && c.responsible) {
-      const paid = Math.min(paidByRole.expert, payroll.expert_amount);
-      participants.push({
-        name: c.responsible.full_name,
-        roleLabel: t.enums.roleInCase.expert,
-        roleKey: 'expert',
-        percent: payroll.expert_percent,
-        amount: payroll.expert_amount,
-        paid: paidByRole.expert,
-        outstanding: Math.max(0, payroll.expert_amount - paid),
-        override: c.expert_rate_override != null,
-      });
+    if (dualRole) {
+      if ((seeAllPayroll || myRole !== null) && c.lawyer) {
+        // Выплаченное по делу — обе роли вместе (исторические выплаты могли
+        // писаться и как 'expert'; новые для совмещённых идут как 'lawyer').
+        const paidTotalByUser = paidByRole.lawyer + paidByRole.expert;
+        const paid = Math.min(paidTotalByUser, payroll.lawyer_amount);
+        participants.push({
+          name: c.lawyer.full_name,
+          roleLabel: t.caseCard.detail.roleDual,
+          roleKey: 'dual',
+          percent: payroll.lawyer_percent,
+          amount: payroll.lawyer_amount,
+          paid: paidTotalByUser,
+          outstanding: Math.max(0, payroll.lawyer_amount - paid),
+          override: c.dual_rate_override != null,
+        });
+      }
+    } else {
+      if ((seeAllPayroll || myRole === 'lawyer') && c.lawyer) {
+        const paid = Math.min(paidByRole.lawyer, payroll.lawyer_amount);
+        participants.push({
+          name: c.lawyer.full_name,
+          roleLabel: t.caseCard.detail.roleLawyerManager,
+          roleKey: 'lawyer',
+          percent: payroll.lawyer_percent,
+          amount: payroll.lawyer_amount,
+          paid: paidByRole.lawyer,
+          outstanding: Math.max(0, payroll.lawyer_amount - paid),
+          override: c.lawyer_rate_override != null,
+        });
+      }
+      if ((seeAllPayroll || myRole === 'expert') && c.responsible) {
+        const paid = Math.min(paidByRole.expert, payroll.expert_amount);
+        participants.push({
+          name: c.responsible.full_name,
+          roleLabel: t.enums.roleInCase.expert,
+          roleKey: 'expert',
+          percent: payroll.expert_percent,
+          amount: payroll.expert_amount,
+          paid: paidByRole.expert,
+          outstanding: Math.max(0, payroll.expert_amount - paid),
+          override: c.expert_rate_override != null,
+        });
+      }
     }
   }
   const shownReward = participants.reduce((s, p) => s + p.amount, 0);
   const hasOverride = participants.some((p) => p.override);
+
+  // Модалка назначения dual-ставки: совмещение есть, ставка не назначена,
+  // зритель вправе её задать (owner/admin). Дело в архиве не трогаем.
+  const askDualRate =
+    dualRole &&
+    c.dual_rate_override == null &&
+    user.caps.edit_rate_overrides &&
+    !isArchived;
+  // Эффективные ставки ролей для пресетов модалки (override ?? категория).
+  const categoryRates = askDualRate ? await getPayrollRates() : [];
+  const catRate = categoryRates.find((r) => r.category === c.category);
+  const lawyerEffPercent = c.lawyer_rate_override ?? catRate?.lawyer_percent ?? 0;
+  const expertEffPercent = c.expert_rate_override ?? catRate?.expert_percent ?? 0;
 
   // ── Вкладка «Обзор»: рабочая колонка + sticky-сайдбар (по каркасу).
   // Правка владельца 14.07: слева — редактируемое «Описание дела» (+ теги),
@@ -710,6 +751,16 @@ export default async function CaseDetailPage({
           },
         ]}
       />
+
+      {/* Совмещение ролей без назначенной ставки: спросить owner/admin (0007). */}
+      {askDualRate && c.lawyer && (
+        <DualRateModal
+          caseId={c.id}
+          personName={c.lawyer.full_name}
+          lawyerPercent={lawyerEffPercent}
+          expertPercent={expertEffPercent}
+        />
+      )}
     </main>
   );
 }

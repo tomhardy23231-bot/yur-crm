@@ -85,6 +85,7 @@ export async function getDashboardCases(): Promise<DashboardCasesResult> {
           responsible_id: true,
           lawyer_rate_override: true,
           expert_rate_override: true,
+          dual_rate_override: true,
         },
       }),
     ),
@@ -107,6 +108,8 @@ export async function getDashboardCases(): Promise<DashboardCasesResult> {
       r.lawyer_rate_override == null ? null : dec(r.lawyer_rate_override),
     expert_rate_override:
       r.expert_rate_override == null ? null : dec(r.expert_rate_override),
+    dual_rate_override:
+      r.dual_rate_override == null ? null : dec(r.dual_rate_override),
   }));
 
   return { cases, truncated: total > cases.length };

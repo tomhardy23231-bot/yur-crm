@@ -30,6 +30,7 @@ function mkCase(over: Partial<DashboardCaseRow> = {}): DashboardCaseRow {
     responsible_id: 'U2',
     lawyer_rate_override: null,
     expert_rate_override: null,
+    dual_rate_override: null,
     ...over,
   };
 }
@@ -69,6 +70,68 @@ describe('computePersonalEarnings — режимы зарплаты', () => {
     const fixed = new Set(['U1']);
     const [r] = computePersonalEarnings([mkCase()], RATES, 'U2', fixed);
     expect(r?.earned).toBe(2500); // U2 не в наборе fixed → процент сохраняется
+  });
+});
+
+// Совмещение ролей (0007): юрист и Експерт дела — один человек → начисление
+// ОДИН раз (dual_rate_override, иначе большая из эффективных ставок ролей).
+describe('computePersonalEarnings — совмещение ролей (юрист = эксперт)', () => {
+  it('без назначенной ставки — один процент категории, не сумма двух', () => {
+    const [r] = computePersonalEarnings(
+      [mkCase({ responsible_id: 'U1' })], // U1 и юрист, и эксперт
+      RATES,
+      'U1',
+    );
+    expect(r?.percent).toBe(25); // одинарные 25%, а не 50%
+    expect(r?.earned).toBe(2500);
+  });
+
+  it('dual_rate_override перекрывает всё (12% → 1200)', () => {
+    const [r] = computePersonalEarnings(
+      [mkCase({ responsible_id: 'U1', dual_rate_override: 12 })],
+      RATES,
+      'U1',
+    );
+    expect(r?.percent).toBe(12);
+    expect(r?.earned).toBe(1200);
+  });
+
+  it('без dual-ставки берётся большая из override ставок ролей', () => {
+    const [r] = computePersonalEarnings(
+      [
+        mkCase({
+          responsible_id: 'U1',
+          lawyer_rate_override: 8,
+          expert_rate_override: 30,
+        }),
+      ],
+      RATES,
+      'U1',
+    );
+    expect(r?.percent).toBe(30); // greatest(8, 30)
+    expect(r?.earned).toBe(3000);
+  });
+
+  it('fixed зануляет и dual-начисление', () => {
+    const fixed = new Set(['U1']);
+    const [r] = computePersonalEarnings(
+      [mkCase({ responsible_id: 'U1', dual_rate_override: 12 })],
+      RATES,
+      'U1',
+      fixed,
+    );
+    expect(r?.percent).toBe(0);
+    expect(r?.earned).toBe(0);
+  });
+
+  it('dual_rate_override чужого совмещённого дела не влияет на раздельные роли', () => {
+    // Роли разные (U1 юрист, U2 эксперт) — dual-ставка игнорируется.
+    const [r] = computePersonalEarnings(
+      [mkCase({ dual_rate_override: 12 })],
+      RATES,
+      'U1',
+    );
+    expect(r?.percent).toBe(25);
   });
 });
 

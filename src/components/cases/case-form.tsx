@@ -166,6 +166,10 @@ export function CaseForm({
           return caseRow.expert_rate_override == null
             ? ''
             : String(caseRow.expert_rate_override);
+        case 'dual_rate_override':
+          return caseRow.dual_rate_override == null
+            ? ''
+            : String(caseRow.dual_rate_override);
         case 'opponent': return caseRow.opponent ?? '';
         case 'court_case_number': return caseRow.court_case_number ?? '';
         case 'court': return caseRow.court ?? '';
@@ -192,8 +196,8 @@ export function CaseForm({
 
   const defaultOpenedAt = value('opened_at') || todayIso();
 
-  // v3 s1: следим за выбором юриста/эксперта, чтобы показать НЕблокирующее
-  // предупреждение о совпадении ролей (один человек получит обе ставки ЗП).
+  // v3 s1: следим за выбором юриста/эксперта — предупреждение о совпадении
+  // ролей (0007: начисление одинарное) + переключение полей ставок на dual.
   const [lawyerId, setLawyerId] = useState<string>(defaultLawyer);
   const [responsibleId, setResponsibleId] = useState<string>(defaultResponsible);
   const sameLawyerExpert = Boolean(lawyerId) && lawyerId === responsibleId;
@@ -499,48 +503,89 @@ export function CaseForm({
                 {t.caseCard.form.rateOverrideTitle}
               </p>
               <p className="text-[12px] text-text-subtle">
-                {t.caseCard.form.rateOverrideHint}
+                {sameLawyerExpert
+                  ? t.caseCard.form.dualRateHint
+                  : t.caseCard.form.rateOverrideHint}
               </p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field
-                  label={t.caseCard.form.lawyerRate}
-                  htmlFor="lawyer_rate_override"
-                  error={err('lawyer_rate_override')}
-                >
-                  <Input
-                    id="lawyer_rate_override"
+              {sameLawyerExpert ? (
+                <>
+                  {/* Роли совмещены: начисление одинарное — правится только
+                      dual-ставка. Ставки ролей не показываем, но сохраняем
+                      (fallback greatest и возврат в силу при разъезде ролей). */}
+                  <input
+                    type="hidden"
                     name="lawyer_rate_override"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
-                    max="100"
                     defaultValue={value('lawyer_rate_override')}
-                    placeholder={t.caseCard.form.rateByCategoryPlaceholder}
-                    aria-invalid={err('lawyer_rate_override') ? 'true' : undefined}
-                    className=""
                   />
-                </Field>
-                <Field
-                  label={t.caseCard.form.expertRate}
-                  htmlFor="expert_rate_override"
-                  error={err('expert_rate_override')}
-                >
-                  <Input
-                    id="expert_rate_override"
+                  <input
+                    type="hidden"
                     name="expert_rate_override"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
-                    max="100"
                     defaultValue={value('expert_rate_override')}
-                    placeholder={t.caseCard.form.rateByCategoryPlaceholder}
-                    aria-invalid={err('expert_rate_override') ? 'true' : undefined}
-                    className=""
                   />
-                </Field>
-              </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field
+                      label={t.caseCard.form.dualRate}
+                      htmlFor="dual_rate_override"
+                      error={err('dual_rate_override')}
+                    >
+                      <Input
+                        id="dual_rate_override"
+                        name="dual_rate_override"
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        defaultValue={value('dual_rate_override')}
+                        placeholder={t.caseCard.form.rateByCategoryPlaceholder}
+                        aria-invalid={err('dual_rate_override') ? 'true' : undefined}
+                        className=""
+                      />
+                    </Field>
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field
+                    label={t.caseCard.form.lawyerRate}
+                    htmlFor="lawyer_rate_override"
+                    error={err('lawyer_rate_override')}
+                  >
+                    <Input
+                      id="lawyer_rate_override"
+                      name="lawyer_rate_override"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      defaultValue={value('lawyer_rate_override')}
+                      placeholder={t.caseCard.form.rateByCategoryPlaceholder}
+                      aria-invalid={err('lawyer_rate_override') ? 'true' : undefined}
+                      className=""
+                    />
+                  </Field>
+                  <Field
+                    label={t.caseCard.form.expertRate}
+                    htmlFor="expert_rate_override"
+                    error={err('expert_rate_override')}
+                  >
+                    <Input
+                      id="expert_rate_override"
+                      name="expert_rate_override"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      defaultValue={value('expert_rate_override')}
+                      placeholder={t.caseCard.form.rateByCategoryPlaceholder}
+                      aria-invalid={err('expert_rate_override') ? 'true' : undefined}
+                      className=""
+                    />
+                  </Field>
+                </div>
+              )}
             </div>
           )}
 

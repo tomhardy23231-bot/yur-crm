@@ -129,9 +129,14 @@ export default async function PayrollEmployeePage({
   const monthCaseAllocated = monthCases.reduce((s, c) => s + c.paid, 0);
   const monthBonusPaid = Math.max(0, Math.round((payoutMonth - monthCaseAllocated) * 100) / 100);
 
-  // Роли сотрудника (по всем делам, не только за месяц).
-  const lawyerCount = allCases.filter((c) => c.role_in_case === 'lawyer').length;
-  const expertCount = allCases.filter((c) => c.role_in_case === 'expert').length;
+  // Роли сотрудника (по всем делам, не только за месяц). 'dual' (0007) —
+  // совмещение: человек в деле и юрист, и Експерт — считаем в обе роли.
+  const lawyerCount = allCases.filter(
+    (c) => c.role_in_case === 'lawyer' || c.role_in_case === 'dual',
+  ).length;
+  const expertCount = allCases.filter(
+    (c) => c.role_in_case === 'expert' || c.role_in_case === 'dual',
+  ).length;
   const roleBits: string[] = [];
   if (lawyerCount > 0) roleBits.push(fmt(t.payroll.employee.rolesLawyer, { count: lawyerCount }));
   if (expertCount > 0) roleBits.push(fmt(t.payroll.employee.rolesExpert, { count: expertCount }));

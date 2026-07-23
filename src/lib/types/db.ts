@@ -528,6 +528,10 @@ export type Case = {
   // Индивидуальные % по делу (null → ставка категории). Меняет только owner/admin.
   lawyer_rate_override: number | null;
   expert_rate_override: number | null;
+  // Единый % при совмещении ролей (lawyer_id = responsible_id): начисление идёт
+  // ОДИН раз по этой ставке; null → greatest(эффективных ставок ролей). При
+  // разных людях в ролях игнорируется. Меняет только owner/admin (0007).
+  dual_rate_override: number | null;
   opponent: string | null;
   court_case_number: string | null;
   court: string | null;
@@ -874,11 +878,12 @@ export type CasePayroll = {
   total: number; // lawyer_amount + expert_amount
 };
 
-// Строка отчёта public.payroll_by_specialist().
+// Строка отчёта public.payroll_by_specialist(). role_in_case='dual' (0007) —
+// совмещение ролей: юрист и Експерт дела — один человек, начисление одинарное.
 export type PayrollBySpecialist = {
   user_id: string;
   full_name: string;
-  role_in_case: 'lawyer' | 'expert';
+  role_in_case: PayrollRole;
   case_count: number;
   paid_base: number;
   earned: number;
@@ -942,6 +947,11 @@ export const PAYROLL_TX_KIND_LABEL: Record<PayrollTxKind, string> = {
 // inline-тип; выносим лейблы сюда для переиспользования в отчёте ЗП.
 export type RoleInCase = 'lawyer' | 'expert';
 
+// Роль в ОТЧЁТНЫХ строках ЗП (0007): + 'dual' — совмещение ролей (юрист и
+// Експерт дела — один человек, начисление одинарное). В payout_allocations
+// такие строки пишутся с role_in_case='lawyer' (CHECK БД не расширялся).
+export type PayrollRole = RoleInCase | 'dual';
+
 export const ROLE_IN_CASE_LABEL: Record<RoleInCase, string> = {
   lawyer: 'Юрист',
   expert: 'Эксперт',
@@ -960,11 +970,12 @@ export type PayrollEmployeeSummary = {
 };
 
 // Строка разбивки по делам в карточке сотрудника (public.payroll_employee_cases).
+// role_in_case='dual' — совмещённое дело (одна строка вместо юрист+Експерт).
 export type PayrollEmployeeCase = {
   case_id: string;
   number_title: string;
   stage: CaseStage;
-  role_in_case: RoleInCase;
+  role_in_case: PayrollRole;
   paid_total: number;
   percent: number;
   earned: number;       // paid_total × percent (live)
