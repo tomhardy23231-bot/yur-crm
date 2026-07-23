@@ -532,6 +532,54 @@ body {
   will-change: width, height;
 }
 
+/* ------------------------------------------------------------
+   Hover строк списков (эталон «СРМ Вадима», решение 2026-07-23):
+   плавная заливка фона + лёгкий подъём строки + скруглённая
+   полоска-«скобка» у левого края, которая мягко вырастает из
+   центра (фейд + scaleY). Вешается на ClickableCard (списки
+   дел/клиентов) и ClickableRow (таблицы отчётов); заливку и
+   transition несёт сам класс — Tailwind-hover на компоненте
+   не нужен.
+   ------------------------------------------------------------ */
+:root {
+  --row-lift-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.row-lift {
+  position: relative;
+  transition:
+    background-color 300ms ease,
+    transform 240ms var(--row-lift-ease);
+}
+/* Полоска-«скобка» [: вся высота строки, концы загибаются вправо по углам
+   (левый бордер + скругление углов — толщина дуги плавно сходит на нет).
+   Появляется плавным фейдом, «расправляясь» по вертикали из середины. */
+.row-lift::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  border-left: 5px solid var(--primary);
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition:
+    opacity 250ms ease,
+    transform 400ms var(--row-lift-ease);
+  pointer-events: none;
+}
+.row-lift:hover {
+  background-color: var(--primary-softer);
+  transform: translateY(-2px);
+}
+.row-lift:hover::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up,
   .animate-screen-in,
@@ -546,6 +594,10 @@ body {
   }
   .shake { transform: none; }
   .t-resize { transition: none; }
+  .row-lift,
+  .row-lift::before { transition: none; }
+  .row-lift:hover { transform: none; }
+  .row-lift:hover::before { transform: none; }
   .stage-dot-live::after { animation: none; opacity: 0; }
   /* Меню Radix Select (анимация открытия задаётся inline-классом). */
   [data-radix-select-content] { animation: none !important; }

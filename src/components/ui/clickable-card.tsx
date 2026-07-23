@@ -18,8 +18,11 @@ interface ClickableCardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 // Строка кликабельного списка (каркас 2026-07-13): строки живут внутри ОДНОЙ
-// карточки-контейнера (CardListShell), разделены тонкими бордерами, hover —
-// светло-синяя подсветка всей строки. Вся строка кликабельна (как ClickableRow,
+// карточки-контейнера (CardListShell), разделены тонкими бордерами. Hover —
+// паттерн `.row-lift` (globals.css, эталон «СРМ Вадима» 2026-07-23):
+// плавная синяя заливка + лёгкий подъём + скруглённая полоска-«скобка»
+// у левого края.
+// Вся строка кликабельна (как ClickableRow,
 // но на <div> — внутри есть настоящие <a>/<button>, что недопустимо вложить в
 // <a>). Доступная навигация — на реальном <Link> внутри (Tab+Enter, новая
 // вкладка по Cmd/Ctrl-клику). Сетка задаётся через `cols` (тот же, что у шапки).
@@ -53,9 +56,11 @@ export function ClickableCard({
       onClick={handleClick}
       style={{ gridTemplateColumns: cols, ...style }}
       className={cn(
-        'group grid cursor-pointer items-center gap-3 px-4 py-3',
+        // py-2 (была py-3): строки компактнее по высоте, шрифты прежние
+        // (просьба владельца 23.07).
+        'group grid cursor-pointer items-center gap-3 px-4 py-2',
         'border-b border-border/60 last:border-b-0',
-        'transition-colors duration-150 ease-out hover:bg-primary-softer',
+        'row-lift',
         className,
       )}
       {...props}
