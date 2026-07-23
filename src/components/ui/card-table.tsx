@@ -40,22 +40,30 @@ export function CardListShell({
   // Каркас 2026-07-13: список — ОДНА карточка-контейнер (rounded-card, мягкая
   // тень), строки внутри разделены тонкими бордерами; шапка — светло-синяя
   // primary-subtle (sunken сливался с paper-фоном страницы, правка 21.07).
+  //
+  // Sticky-шапка (починка 23.07): прежний overflow-hidden на карточке создавал
+  // scroll-контейнер и ГЛУШИЛ position:sticky — шапка уезжала при скролле.
+  // Теперь углы содержимого режет внутренняя `.list-clip`-обёртка (clip-path
+  // sticky не ломает), а бордер/тень живут на внешнем боксе и не обрезаются.
+  // Шапка липнет к верху контент-зоны — упирается в низ топбара.
   return (
     <div className={cn('hidden pb-1 md:block', className)}>
       <div
         role="table"
         aria-label={ariaLabel}
         style={{ minWidth }}
-        className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
+        className="rounded-card border border-border bg-surface shadow-sm"
       >
-        <div
-          role="row"
-          style={{ gridTemplateColumns: cols }}
-          className="sticky top-0 z-10 grid items-center gap-3 border-b border-primary-border bg-primary-subtle px-4 py-1"
-        >
-          {header}
+        <div role="presentation" className="list-clip">
+          <div
+            role="row"
+            style={{ gridTemplateColumns: cols }}
+            className="sticky top-0 z-10 grid items-center gap-3 border-b border-primary-border bg-primary-subtle px-4 py-1"
+          >
+            {header}
+          </div>
+          {children}
         </div>
-        {children}
       </div>
     </div>
   );

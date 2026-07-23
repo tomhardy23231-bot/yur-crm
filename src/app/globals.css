@@ -580,6 +580,15 @@ body {
   transform: scaleY(1);
 }
 
+/* Обрезка содержимого карточки-списка по скруглению БЕЗ overflow-hidden:
+   overflow создал бы scroll-контейнер и убил sticky-шапку колонок
+   (CardListShell), clip-path — нет. -1px — внутренний радиус за бордером.
+   Бонус: прилипшая шапка (посреди длины клип-бокса) не скругляется —
+   упирается в топбар без прозрачных уголков. */
+.list-clip {
+  clip-path: inset(0 round calc(var(--r-card) - 1px));
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up,
   .animate-screen-in,
