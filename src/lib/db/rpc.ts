@@ -18,7 +18,6 @@ import type { PrismaClient } from '@/generated/prisma/client';
 import type {
   case_category,
   case_stage,
-  case_type,
 } from '@/generated/prisma/enums';
 import type { Db } from '@/lib/db';
 
@@ -101,7 +100,7 @@ export async function rpcSearchCaseIds(
   args: {
     q?: string | null;
     stage?: case_stage | null;
-    caseType?: case_type | null;
+    caseType?: string | null;
     responsibleId?: string | null;
     category?: case_category | null;
     lawyerId?: string | null;
@@ -120,7 +119,7 @@ export async function rpcSearchCaseIds(
     select * from public.search_case_ids(
       ${args.q ?? null}::text,
       ${args.stage ?? null}::case_stage,
-      ${args.caseType ?? null}::case_type,
+      ${args.caseType ?? null}::text,
       ${args.responsibleId ?? null}::uuid,
       ${args.category ?? null}::case_category,
       ${args.lawyerId ?? null}::uuid,

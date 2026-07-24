@@ -141,10 +141,12 @@ export function localizeFieldValue(
         : String(value);
     }
     case 'case_type': {
+      // Встроенные коды — через словарь; кастомные — через nameById (в него
+      // мерджатся пары code→лейбл справочника типов дел); иначе сам код.
       const s = asString(value);
-      return s && s in CASE_TYPE_LABEL
-        ? t.enums.caseType[s as CaseType]
-        : String(value);
+      if (!s) return String(value);
+      if (s in CASE_TYPE_LABEL) return t.enums.caseType[s as CaseType];
+      return nameById?.get(s) ?? s;
     }
     case 'category': {
       const s = asString(value);
@@ -571,6 +573,30 @@ export function formatActivity(
         actor,
         text: org ? fmt(ev.requisitesUpdated, { org }) : ev.requisitesUpdatedPlain,
       };
+    }
+
+    // ---------- справочник типов дел (2026-07-24) ----------
+    case 'case_type_created': {
+      const name = asString(c.name) ?? dash;
+      return { actor, text: fmt(ev.caseTypeCreated, { name }) };
+    }
+    case 'case_type_renamed': {
+      return {
+        actor,
+        text: fmt(ev.caseTypeRenamed, {
+          from: asString(c.from) ?? dash,
+          to: asString(c.to) ?? dash,
+        }),
+      };
+    }
+    case 'case_type_activated':
+    case 'case_type_deactivated': {
+      const name = asString(c.name) ?? dash;
+      const verb =
+        entry.action === 'case_type_activated'
+          ? ev.caseTypeActivated
+          : ev.caseTypeDeactivated;
+      return { actor, text: fmt(verb, { name }) };
     }
 
     default:

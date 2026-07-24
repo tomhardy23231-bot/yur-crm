@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Building2, Coins, FileSpreadsheet, Languages, ShieldCheck, Users, ChevronRight } from 'lucide-react';
+import { Building2, Coins, FileSpreadsheet, Languages, ShieldCheck, Tags, Users, ChevronRight } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,8 +17,9 @@ export default async function SettingsPage() {
   // Сплит 2026-07-16: в раздел пользователей пускает и право create_users.
   const canManageUsers = actor.caps.manage_users || actor.caps.create_users;
   const canEditRates = actor.caps.edit_payroll_rates;
+  const canManageCaseTypes = actor.caps.manage_case_types;
   const isOwner = actor.profile.role === 'owner';
-  if (!canManageUsers && !canEditRates) redirect('/forbidden');
+  if (!canManageUsers && !canEditRates && !canManageCaseTypes) redirect('/forbidden');
 
   return (
     <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
@@ -99,6 +100,30 @@ export default async function SettingsPage() {
           </Link>
         )}
 
+        {canManageCaseTypes && (
+          <Link
+            href="/settings/case-types"
+            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
+              <Tags size={20} strokeWidth={1.75} />
+            </span>
+            <span className="flex-1">
+              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
+                {t.settings.caseTypesCard.title}
+              </span>
+              <span className="block text-[13px] text-text-muted">
+                {t.settings.caseTypesCard.desc}
+              </span>
+            </span>
+            <ChevronRight
+              size={18}
+              strokeWidth={1.75}
+              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
+            />
+          </Link>
+        )}
+
         {isOwner && (
           <Link
             href="/settings/requisites"
@@ -158,6 +183,7 @@ export default async function SettingsPage() {
           <CapRow title={t.settings.capManageUsers} owner admin roles={t.enums.roleShort} />
           <CapRow title={t.settings.capDestructive} owner admin roles={t.enums.roleShort} />
           <CapRow title={t.settings.capAllCasesFinance} owner admin staff roles={t.enums.roleShort} />
+          <CapRow title={t.settings.capManageCaseTypes} owner admin roles={t.enums.roleShort} />
           <CapRow title={t.settings.capRateOverride} owner admin last roles={t.enums.roleShort} />
         </Card>
         <p className="text-[12px] text-text-subtle">{t.settings.capsFootnote}</p>

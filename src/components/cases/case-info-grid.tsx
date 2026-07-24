@@ -14,10 +14,10 @@ import { cn } from '@/lib/utils';
 import {
   CASE_CATEGORIES,
   CASE_PRIORITIES,
-  CASE_TYPES,
   CLIENT_SOURCES,
   type CaseWithRefs,
 } from '@/lib/types/db';
+import { caseTypeLabeler, listActiveCaseTypes } from '@/lib/cases/case-types';
 
 // Плотная сетка «поле: значение» в шапке дела — по эталону карточки заказа (3
 // колонки: Дело · Клиент · Финансы/Суд). Серверный компонент: отображение +
@@ -71,10 +71,16 @@ export async function CaseInfoGrid({
   const clientField = (field: ClientInlineField) =>
     updateClientFieldAction.bind(null, client?.id ?? '', c.id, field);
 
-  const caseTypeOptions = CASE_TYPES.map((v) => ({
-    value: v,
-    label: t.enums.caseType[v],
-  }));
+  // Тип дела — из справочника (активные); лейбл текущего типа резолвим отдельно
+  // (встроенные — из словаря, кастомные — свой name). Если тип дела скрыт, всё
+  // равно добавляем его опцией, чтобы не «терять» текущее значение при правке.
+  const activeCaseTypes = await listActiveCaseTypes();
+  const caseTypeLabel = (await caseTypeLabeler())(c.case_type);
+  const caseTypeOptions = (
+    activeCaseTypes.some((o) => o.code === c.case_type)
+      ? activeCaseTypes
+      : [...activeCaseTypes, { code: c.case_type, label: caseTypeLabel }]
+  ).map((o) => ({ value: o.code, label: o.label }));
   const categoryOptions = CASE_CATEGORIES.map((v) => ({
     value: v,
     label: t.enums.caseCategory[v],
@@ -137,10 +143,10 @@ export async function CaseInfoGrid({
                 options={caseTypeOptions}
                 action={caseField('case_type')}
               >
-                {t.enums.caseType[c.case_type]}
+                {caseTypeLabel}
               </InlineEditField>
             ) : (
-              t.enums.caseType[c.case_type]
+              caseTypeLabel
             )}
           </Field>
           <Field label={o.category}>

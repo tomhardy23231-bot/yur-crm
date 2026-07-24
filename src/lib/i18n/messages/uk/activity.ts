@@ -106,6 +106,10 @@ export const activity: ActivityMessages = {
     cash_entry_deleted: 'видалив(ла) операцію каси',
     payroll_rates_changed: 'змінив(ла) ставки зарплати',
     org_requisites_updated: 'оновив(ла) реквізити компанії',
+    case_type_created: 'додав(ла) тип справи',
+    case_type_renamed: 'перейменував(ла) тип справи',
+    case_type_activated: 'повернув(ла) тип справи',
+    case_type_deactivated: 'приховав(ла) тип справи',
   },
 
   event: {
@@ -190,6 +194,12 @@ export const activity: ActivityMessages = {
 
     requisitesUpdated: 'оновив(ла) реквізити компанії ({org})',
     requisitesUpdatedPlain: 'оновив(ла) реквізити компанії',
+
+    // Довідник типів справ (2026-07-24).
+    caseTypeCreated: 'додав(ла) тип справи «{name}»',
+    caseTypeRenamed: 'перейменував(ла) тип справи: «{from}» → «{to}»',
+    caseTypeActivated: 'повернув(ла) тип справи «{name}»',
+    caseTypeDeactivated: 'приховав(ла) тип справи «{name}»',
 
     unknownAction: 'дія: {action}',
   },

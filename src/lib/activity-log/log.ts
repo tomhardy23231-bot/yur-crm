@@ -21,7 +21,9 @@ export type ActivityEntityType =
   | 'cash'
   | 'org'
   | 'auth'
-  | 'absence';
+  | 'absence'
+  // Справочник типов дел (миграция 0008): видят owner + обладатели manage_case_types.
+  | 'case_type';
 
 // Синглтон-события уровня компании (ставки ЗП, реквизиты) не имеют своего
 // uuid — журналируются под нулевым uuid (entity_id обязателен в БД).

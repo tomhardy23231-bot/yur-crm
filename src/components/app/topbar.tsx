@@ -34,6 +34,7 @@ function titleForPath(pathname: string, tb: Messages['topbar']): string {
   if (pathname.startsWith('/settings/payroll')) return tb.titleRates;
   if (pathname.startsWith('/settings/users')) return tb.titleUsers;
   if (pathname.startsWith('/settings/departments')) return tb.departments;
+  if (pathname.startsWith('/settings/case-types')) return tb.caseTypes;
   if (pathname.startsWith('/settings/requisites')) return tb.requisites;
   if (pathname.startsWith('/profile')) return tb.titleProfile;
   if (pathname.startsWith('/settings')) return tb.titleSettings;

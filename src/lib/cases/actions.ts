@@ -19,14 +19,13 @@ import {
   CASE_CATEGORIES,
   CASE_PRIORITIES,
   CASE_STAGES,
-  CASE_TYPES,
   STAFF_ROLES,
   type BillingType,
   type CaseCategory,
   type CasePriority,
   type CaseStage,
-  type CaseType,
 } from '@/lib/types/db';
+import { caseTypeCodeSet } from '@/lib/cases/case-types';
 
 export type CaseFormFields =
   | 'number_title'
@@ -72,9 +71,6 @@ function getString(formData: FormData, key: string): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function isCaseType(value: string): value is CaseType {
-  return (CASE_TYPES as readonly string[]).includes(value);
-}
 function isCaseStage(value: string): value is CaseStage {
   return (CASE_STAGES as readonly string[]).includes(value);
 }
@@ -94,7 +90,7 @@ type Validated = {
   lawyer_id: string;
   responsible_id: string;
   opened_at: string;
-  case_type: CaseType;
+  case_type: string;
   category: CaseCategory;
   subject: string | null;
   stage: CaseStage;
@@ -111,6 +107,7 @@ type Validated = {
 function validate(
   formData: FormData,
   t: Messages,
+  validCaseTypes: ReadonlySet<string>,
 ):
   | {
       ok: true;
@@ -191,7 +188,7 @@ function validate(
     fieldErrors.opened_at = a.dateFormat;
 
   if (!case_type_raw) fieldErrors.case_type = a.caseTypeRequired;
-  else if (!isCaseType(case_type_raw))
+  else if (!validCaseTypes.has(case_type_raw))
     fieldErrors.case_type = a.caseTypeInvalid;
 
   if (!category_raw) fieldErrors.category = a.categoryRequired;
@@ -280,7 +277,7 @@ function validate(
       lawyer_id,
       responsible_id,
       opened_at,
-      case_type: case_type_raw as CaseType,
+      case_type: case_type_raw,
       category: category_raw as CaseCategory,
       subject: subject || null,
       stage,
@@ -341,7 +338,8 @@ export async function createCaseAction(
   if (!user.caps.create_cases) {
     return { ok: false, message: t.caseCard.actions.noCreatePermission };
   }
-  const result = validate(formData, t);
+  const validCaseTypes = await caseTypeCodeSet();
+  const result = validate(formData, t, validCaseTypes);
   if (!result.ok) return result.state;
 
   // Override % задаёт только обладатель права edit_rate_overrides; иначе поля не
@@ -420,7 +418,7 @@ type CaseDiffShape = {
   lawyer_id: string;
   responsible_id: string;
   opened_at: string;
-  case_type: CaseType;
+  case_type: string;
   category: CaseCategory;
   subject: string | null;
   stage: CaseStage;
@@ -443,7 +441,8 @@ export async function updateCaseAction(
 ): Promise<CaseActionState> {
   const user = await requireUser();
   const { t } = await getT();
-  const result = validate(formData, t);
+  const validCaseTypes = await caseTypeCodeSet();
+  const result = validate(formData, t, validCaseTypes);
   if (!result.ok) return result.state;
 
   const canEditRates = user.caps.edit_rate_overrides;
@@ -920,7 +919,8 @@ export async function updateCaseFieldAction(
       break;
     }
     case 'case_type': {
-      if (!isCaseType(raw))
+      const validCaseTypes = await caseTypeCodeSet();
+      if (!validCaseTypes.has(raw))
         return { ok: false, message: t.caseCard.actions.updateFailed };
       next = raw;
       data = { case_type: raw };

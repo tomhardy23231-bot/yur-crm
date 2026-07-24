@@ -130,7 +130,8 @@ model cases {
   lawyer_id                         String               @db.Uuid
   responsible_id                    String               @db.Uuid
   opened_at                         DateTime             @db.Date
-  case_type                         case_type
+  // Код типа дела из справочника public.case_types (FK cases_case_type_fkey).
+  case_type                         String
   category                          case_category
   subject                           String?
   stage                             case_stage           @default(new_request)
@@ -574,14 +575,17 @@ enum case_stage {
   @@schema("public")
 }
 
-enum case_type {
-  civil
-  criminal
-  corporate
-  administrative
-  family
-  labor
-  other
+// Справочник типов дел (редактируется из интерфейса по праву manage_case_types).
+// cases.case_type ссылается на code (FK cases_case_type_fkey); связь в Prisma не
+// объявляем — лейблы резолвим отдельной выборкой (lib/cases/case-types.ts).
+model case_types {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code       String   @unique
+  name       String
+  is_builtin Boolean  @default(false)
+  is_active  Boolean  @default(true)
+  sort_order Int      @default(0)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
 
   @@schema("public")
 }

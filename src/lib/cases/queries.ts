@@ -13,7 +13,6 @@ import type {
   CaseOutcome,
   CasePriority,
   CaseStage,
-  CaseType,
   CaseWithRefs,
   ClientKind,
 } from '@/lib/types/db';
@@ -57,7 +56,7 @@ export type CaseListItem = {
   id: string;
   number_title: string;
   stage: CaseStage;
-  case_type: CaseType;
+  case_type: string;
   category: CaseCategory;
   priority: CasePriority;
   opened_at: string;
@@ -99,7 +98,7 @@ export const CASES_DEFAULT_SORT: { sort: CasesSortColumn; dir: SortDir } = {
 export type ListCasesParams = {
   q?: string;
   stage?: CaseStage;
-  caseType?: CaseType;
+  caseType?: string;
   category?: CaseCategory;
   responsibleId?: string;
   lawyerId?: string;
@@ -451,7 +450,7 @@ export type BoardCaseItem = {
   number_title: string;
   stage: CaseStage;
   priority: CasePriority;
-  case_type: CaseType;
+  case_type: string;
   category: CaseCategory;
   opened_at: string;
   stage_changed_at: string;
@@ -488,7 +487,7 @@ type BoardRow = Prisma.casesGetPayload<{ select: typeof BOARD_SELECT }>;
 export async function listCasesForBoard(
   params: {
     responsibleId?: string;
-    caseType?: CaseType;
+    caseType?: string;
     category?: CaseCategory;
     departmentId?: string;
   } = {},

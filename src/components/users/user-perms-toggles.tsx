@@ -48,7 +48,15 @@ const PERM_GROUPS: ReadonlyArray<{
       'can_manage_cash',
     ],
   },
-  { key: 'admin', caps: ['create_users', 'manage_users', 'edit_payroll_rates'] },
+  {
+    key: 'admin',
+    caps: [
+      'create_users',
+      'manage_users',
+      'edit_payroll_rates',
+      'manage_case_types',
+    ],
+  },
 ];
 
 // Тумблеры персональных прав (карточка /settings/users/[id]). Показывают

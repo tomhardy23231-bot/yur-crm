@@ -22,6 +22,7 @@ import {
   type ActivityLogEntry,
 } from '@/lib/activity-log/queries';
 import { collectActivityIds } from '@/lib/activity-log/format';
+import { caseTypeLabelEntries } from '@/lib/cases/case-types';
 import { kyivToday } from '@/lib/payroll/month';
 import { getT } from '@/lib/i18n/server';
 import { LOCALE_BCP47, type Locale } from '@/lib/i18n/config';
@@ -106,6 +107,9 @@ export default async function JournalPage({
   // Имена сотрудников-целей пригодны и для текста (absence/payroll-события).
   const names = new Map(nameById);
   for (const [id, name] of targets.userById) if (!names.has(id)) names.set(id, name);
+  // Типы дел (diff case_type): code → лейбл, чтобы кастомный тип показывался
+  // именем, а не кодом-slug'ом.
+  for (const [code, label] of await caseTypeLabelEntries()) names.set(code, label);
 
   // Группировка по киевским дням (записи уже отсортированы desc).
   const days: Array<{ key: string; entries: ActivityLogEntry[] }> = [];

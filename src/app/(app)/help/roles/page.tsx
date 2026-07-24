@@ -58,7 +58,15 @@ const CAP_GROUPS: ReadonlyArray<{
       'can_manage_cash',
     ],
   },
-  { key: 'admin', caps: ['create_users', 'manage_users', 'edit_payroll_rates'] },
+  {
+    key: 'admin',
+    caps: [
+      'create_users',
+      'manage_users',
+      'edit_payroll_rates',
+      'manage_case_types',
+    ],
+  },
 ];
 
 const ROLE_TONES: Record<Role, string> = {

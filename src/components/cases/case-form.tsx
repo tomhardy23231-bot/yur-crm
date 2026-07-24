@@ -30,11 +30,11 @@ import {
   CASE_CATEGORIES,
   CASE_PRIORITIES,
   CASE_STAGES,
-  CASE_TYPES,
   type BillingType,
   type Case,
   type CaseStage,
 } from '@/lib/types/db';
+import type { CaseTypeOption } from '@/lib/cases/case-types';
 
 const INITIAL: CaseActionState = { ok: false };
 
@@ -54,6 +54,8 @@ interface CaseFormProps {
   lawyers: AssigneeOption[];
   /** Експерты-исполнители (responsible_id). */
   experts: AssigneeOption[];
+  /** Типы дел из справочника (активные + текущий тип при правке). */
+  caseTypes: CaseTypeOption[];
   submitLabel: string;
   cancelHref: string;
   /** Подсказать форме умолчания (например, текущего пользователя как Експерта). */
@@ -90,6 +92,7 @@ export function CaseForm({
   lockedClient,
   lawyers,
   experts,
+  caseTypes,
   submitLabel,
   cancelHref,
   defaultResponsibleId,
@@ -375,13 +378,13 @@ export function CaseForm({
             <Select
               id="case_type"
               name="case_type"
-              defaultValue={value('case_type') || 'civil'}
+              defaultValue={value('case_type') || caseTypes[0]?.code || ''}
               required
               aria-invalid={err('case_type') ? 'true' : undefined}
             >
-              {CASE_TYPES.map((ct) => (
-                <option key={ct} value={ct}>
-                  {t.enums.caseType[ct]}
+              {caseTypes.map((ct) => (
+                <option key={ct.code} value={ct.code}>
+                  {ct.label}
                 </option>
               ))}
             </Select>

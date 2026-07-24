@@ -16,6 +16,7 @@ import {
   formatActivityTime,
   collectActivityIds,
 } from '@/lib/activity-log/format';
+import { caseTypeLabelEntries } from '@/lib/cases/case-types';
 import { getT } from '@/lib/i18n/server';
 import { LOCALE_BCP47 } from '@/lib/i18n/config';
 
@@ -47,6 +48,9 @@ export async function CaseActivityBlock({
   // Резолвим UUID юристов/Експертов/клиентов из записей в имена (Задача 3).
   const { userIds, clientIds } = collectActivityIds(entries);
   const nameById = await resolveActivityNames(userIds, clientIds);
+  // Типы дел (diff case_type): code → лейбл, чтобы кастомный тип показывался
+  // именем, а не кодом-slug'ом.
+  for (const [code, label] of await caseTypeLabelEntries()) nameById.set(code, label);
 
   return (
     <Card>

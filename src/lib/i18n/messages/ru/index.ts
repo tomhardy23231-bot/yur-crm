@@ -10,6 +10,7 @@ import { errors } from './errors';
 import { account } from './account';
 import { settings } from './settings';
 import { departments } from './departments';
+import { caseTypes } from './caseTypes';
 import { commandPalette } from './commandPalette';
 
 import { dashboard } from './dashboard';
@@ -52,6 +53,7 @@ export const ru = {
   account,
   settings,
   departments,
+  caseTypes,
   commandPalette,
   dashboard,
   clients,

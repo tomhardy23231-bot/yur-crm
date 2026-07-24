@@ -8,6 +8,7 @@ import { advanceCaseStageAction } from '@/lib/cases/actions';
 import { cn, daysSince } from '@/lib/utils';
 import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
 import { type CaseStage } from '@/lib/types/db';
+import { caseTypeLabeler } from '@/lib/cases/case-types';
 import { getT } from '@/lib/i18n/server';
 import type { BoardCaseItem } from '@/lib/cases/queries';
 
@@ -31,6 +32,7 @@ export async function BoardCard({
   nextStageLabel: string | null;
 }) {
   const { t, fmt, plural } = await getT();
+  const caseTypeLabel = (await caseTypeLabeler())(c.case_type);
   const isUrgent = c.priority === 'urgent';
   const isClosed: boolean = (c.stage as CaseStage) === 'closed';
   // Индикатор застоя — как в списке (U6): дни на текущем этапе ≥ порога.
@@ -77,7 +79,7 @@ export async function BoardCard({
         <div className="flex items-center gap-2">
           <CategoryBadge category={c.category} quiet />
           <span className="text-[11.5px] text-text-subtle">
-            {t.enums.caseType[c.case_type]}
+            {caseTypeLabel}
           </span>
         </div>
       </Link>

@@ -60,13 +60,12 @@ import { listActiveDepartments } from '@/lib/departments/queries';
 import {
   CASE_CATEGORIES,
   CASE_STAGES,
-  CASE_TYPES,
   STAFF_ROLES,
   canSeeAllCases,
   type CaseCategory,
   type CaseStage,
-  type CaseType,
 } from '@/lib/types/db';
+import { caseTypeLabeler, listActiveCaseTypes } from '@/lib/cases/case-types';
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
@@ -87,9 +86,6 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isCaseStage(value: string): value is CaseStage {
   return (CASE_STAGES as readonly string[]).includes(value);
-}
-function isCaseType(value: string): value is CaseType {
-  return (CASE_TYPES as readonly string[]).includes(value);
 }
 function isCaseCategory(value: string): value is CaseCategory {
   return (CASE_CATEGORIES as readonly string[]).includes(value);
@@ -128,6 +124,12 @@ export default async function CasesPage({
   const { t, fmt, plural } = await getT();
   const sp = await searchParams;
 
+  // Справочник типов дел (редактируется из UI): активные — для фильтра, резолвер
+  // лейблов — для строк списка (встроенные из словаря, кастомные — свой name).
+  const activeCaseTypes = await listActiveCaseTypes();
+  const caseTypeCodes = new Set(activeCaseTypes.map((o) => o.code));
+  const caseTypeLabel = await caseTypeLabeler();
+
   // Вкладка «Архив»: дело лежит в архиве по отдельному признаку (не по этапу).
   const archived = sp.archived === '1';
 
@@ -136,7 +138,7 @@ export default async function CasesPage({
   const stage =
     !archived && sp.stage && isCaseStage(sp.stage) ? sp.stage : undefined;
   const debtOnly = !archived && sp.debt === 'true';
-  const caseType = sp.type && isCaseType(sp.type) ? sp.type : undefined;
+  const caseType = sp.type && caseTypeCodes.has(sp.type) ? sp.type : undefined;
   const category =
     sp.category && isCaseCategory(sp.category) ? sp.category : undefined;
   const responsibleId =
@@ -423,10 +425,7 @@ export default async function CasesPage({
             ariaLabel={t.cases.filters.typeAria}
             options={[
               { value: '', label: t.cases.filters.allTypes },
-              ...CASE_TYPES.map((ct) => ({
-                value: ct,
-                label: t.enums.caseType[ct],
-              })),
+              ...activeCaseTypes.map((o) => ({ value: o.code, label: o.label })),
             ]}
           />
 
@@ -623,7 +622,7 @@ export default async function CasesPage({
                     ) : (
                       <Empty />
                     )}
-                    <span> · {t.enums.caseType[c.case_type]}</span>
+                    <span> · {caseTypeLabel(c.case_type)}</span>
                   </div>
                 </div>
 

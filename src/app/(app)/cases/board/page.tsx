@@ -15,18 +15,14 @@ import { getT } from '@/lib/i18n/server';
 import {
   CASE_CATEGORIES,
   CASE_STAGES,
-  CASE_TYPES,
   STAFF_ROLES,
   canSeeAllCases,
   type CaseCategory,
-  type CaseType,
   type CaseStage,
 } from '@/lib/types/db';
+import { listActiveCaseTypes } from '@/lib/cases/case-types';
 import { UUID_RE } from '@/lib/validation';
 
-function isCaseType(value: string): value is CaseType {
-  return (CASE_TYPES as readonly string[]).includes(value);
-}
 function isCaseCategory(value: string): value is CaseCategory {
   return (CASE_CATEGORIES as readonly string[]).includes(value);
 }
@@ -45,7 +41,10 @@ export default async function CasesBoardPage({
   const user = await requireUser();
   const { t } = await getT();
   const sp = await searchParams;
-  const caseType = sp.type && isCaseType(sp.type) ? sp.type : undefined;
+  // Справочник типов дел (активные) — для фильтра доски.
+  const activeCaseTypes = await listActiveCaseTypes();
+  const caseTypeCodes = new Set(activeCaseTypes.map((o) => o.code));
+  const caseType = sp.type && caseTypeCodes.has(sp.type) ? sp.type : undefined;
   const category =
     sp.category && isCaseCategory(sp.category) ? sp.category : undefined;
   const responsibleId =
@@ -105,10 +104,7 @@ export default async function CasesBoardPage({
           basePath="/cases/board"
           options={[
             { value: '', label: t.cases.filters.allTypes },
-            ...CASE_TYPES.map((ct) => ({
-              value: ct,
-              label: t.enums.caseType[ct],
-            })),
+            ...activeCaseTypes.map((o) => ({ value: o.code, label: o.label })),
           ]}
         />
         <CasesFilterSelect

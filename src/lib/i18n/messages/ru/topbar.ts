@@ -19,6 +19,7 @@ export const topbar = {
   titleRates: 'Ставки зарплаты',
   titleUsers: 'Пользователи',
   departments: 'Подразделения',
+  caseTypes: 'Типы дел',
   requisites: 'Реквизиты',
   titleSettings: 'Настройки',
   titleProfile: 'Профиль',

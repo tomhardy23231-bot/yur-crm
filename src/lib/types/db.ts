@@ -129,6 +129,8 @@ export const CAPABILITIES = [
   'edit_payroll_rates',
   'view_cash',
   'can_manage_cash',
+  // 2026-07-24: управление справочником типов дел (Настройки → Типы дел).
+  'manage_case_types',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -153,6 +155,7 @@ export const CAP_ROLE_DEFAULTS: Record<Capability, readonly Role[]> = {
   edit_payroll_rates: ['owner'],
   view_cash: ['owner'],
   can_manage_cash: ['owner'],
+  manage_case_types: ['owner', 'admin'],
 };
 
 // Права, которые выдаёт ТОЛЬКО владелец (системные настройки и касса —
@@ -433,16 +436,10 @@ export type CaseType =
   | 'labor'
   | 'other';
 
-export const CASE_TYPES: ReadonlyArray<CaseType> = [
-  'civil',
-  'criminal',
-  'corporate',
-  'administrative',
-  'family',
-  'labor',
-  'other',
-];
-
+// Встроенные типы дел (миграция 0008 перевела case_type в редактируемый
+// справочник public.case_types). CaseType/CASE_TYPE_LABEL остаются как ru-словарь
+// встроенных для форматтера журнала; список вариантов формы/фильтра приходит из
+// БД (lib/cases/case-types.ts).
 export const CASE_TYPE_LABEL: Record<CaseType, string> = {
   civil: 'Гражданское',
   criminal: 'Уголовное',
@@ -511,7 +508,10 @@ export type Case = {
   lawyer_id: string;
   responsible_id: string;
   opened_at: string;
-  case_type: CaseType;
+  // Код типа дела из справочника public.case_types (редактируется из интерфейса).
+  // Встроенные коды (civil..other) локализуются через enums.caseType, кастомные —
+  // показываются своим name из справочника (см. lib/cases/case-types.ts).
+  case_type: string;
   category: CaseCategory;
   subject: string | null;
   // Свободное описание дела (блок «Описание» на карточке, правка 2026-07-14).

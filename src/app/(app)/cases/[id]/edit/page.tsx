@@ -11,6 +11,7 @@ import {
   listExpertsForAssignment,
   listLawyersForAssignment,
 } from '@/lib/cases/queries';
+import { listCaseTypesForForm } from '@/lib/cases/case-types';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { allowedStagesFor, STAFF_ROLES, type CaseStage } from '@/lib/types/db';
@@ -32,6 +33,9 @@ export default async function EditCasePage({
   ]);
 
   if (!c) notFound();
+
+  // Типы дел для формы: активные + текущий тип дела (даже если он скрыт).
+  const caseTypes = await listCaseTypesForForm(c.case_type);
 
   // bind на Server Action сохраняет server-action-маркировку (см. Шаг 4 баг).
   const boundAction = updateCaseAction.bind(null, id);
@@ -71,6 +75,7 @@ export default async function EditCasePage({
             clients={clients}
             lawyers={lawyers}
             experts={experts}
+            caseTypes={caseTypes}
             submitLabel={t.common.save}
             cancelHref={`/cases/${id}`}
             allowedStages={allowedStages}

@@ -66,6 +66,10 @@ export const JOURNAL_GROUPS = {
     'department_activated',
     'department_deactivated',
     'org_requisites_updated',
+    'case_type_created',
+    'case_type_renamed',
+    'case_type_activated',
+    'case_type_deactivated',
   ],
   security: ['user_login', 'user_login_failed'],
   cash: [

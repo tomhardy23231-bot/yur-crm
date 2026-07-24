@@ -110,6 +110,10 @@ export const activity = {
     cash_entry_deleted: 'удалил(а) операцию кассы',
     payroll_rates_changed: 'изменил(а) ставки зарплаты',
     org_requisites_updated: 'обновил(а) реквизиты компании',
+    case_type_created: 'добавил(а) тип дела',
+    case_type_renamed: 'переименовал(а) тип дела',
+    case_type_activated: 'вернул(а) тип дела',
+    case_type_deactivated: 'скрыл(а) тип дела',
   },
 
   // Богатые формулировки конкретных событий (ветки switch в formatActivity).
@@ -200,6 +204,12 @@ export const activity = {
 
     requisitesUpdated: 'обновил(а) реквизиты компании ({org})',
     requisitesUpdatedPlain: 'обновил(а) реквизиты компании',
+
+    // Справочник типов дел (2026-07-24).
+    caseTypeCreated: 'добавил(а) тип дела «{name}»',
+    caseTypeRenamed: 'переименовал(а) тип дела: «{from}» → «{to}»',
+    caseTypeActivated: 'вернул(а) тип дела «{name}»',
+    caseTypeDeactivated: 'скрыл(а) тип дела «{name}»',
 
     // Неизвестный/новый action-код.
     unknownAction: 'действие: {action}',

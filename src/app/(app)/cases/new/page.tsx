@@ -9,6 +9,7 @@ import {
   listExpertsForAssignment,
   listLawyersForAssignment,
 } from '@/lib/cases/queries';
+import { listCaseTypesForForm } from '@/lib/cases/case-types';
 import { getClient } from '@/lib/clients/queries';
 import { requireCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
@@ -25,10 +26,11 @@ export default async function NewCasePage({
   const canEditRates = user.caps.edit_rate_overrides;
   const sp = await searchParams;
 
-  const [clients, lawyers, experts] = await Promise.all([
+  const [clients, lawyers, experts, caseTypes] = await Promise.all([
     listClientsForSelect(),
     listLawyersForAssignment(),
     listExpertsForAssignment(),
+    listCaseTypesForForm(),
   ]);
 
   // Если пришли с карточки клиента — фиксируем его в форме.
@@ -61,6 +63,7 @@ export default async function NewCasePage({
             lockedClient={lockedClient}
             lawyers={lawyers}
             experts={experts}
+            caseTypes={caseTypes}
             submitLabel={t.caseCard.create.submit}
             cancelHref={lockedClient ? `/clients/${lockedClient.id}` : '/cases'}
             canEditRates={canEditRates}

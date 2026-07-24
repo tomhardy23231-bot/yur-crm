@@ -19,6 +19,7 @@ export const topbar: TopbarMessages = {
   titleRates: 'Ставки зарплати',
   titleUsers: 'Користувачі',
   departments: 'Підрозділи',
+  caseTypes: 'Типи справ',
   requisites: 'Реквізити',
   titleSettings: 'Налаштування',
   titleProfile: 'Профіль',
