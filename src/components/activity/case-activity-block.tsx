@@ -1,15 +1,7 @@
-import {
-  ArrowLeftRight,
-  Banknote,
-  FileSpreadsheet,
-  FileText,
-  History,
-  MessageSquare,
-  Pencil,
-  Plus,
-} from 'lucide-react';
+import { History } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
+import { actionVisual, TONE_CLASS } from '@/components/journal/action-visual';
 import { listCaseActivity, resolveActivityNames } from '@/lib/activity-log/queries';
 import {
   formatActivity,
@@ -19,23 +11,12 @@ import {
 import { caseTypeLabelEntries } from '@/lib/cases/case-types';
 import { getT } from '@/lib/i18n/server';
 import { LOCALE_BCP47 } from '@/lib/i18n/config';
+import { cn } from '@/lib/utils';
 
 interface CaseActivityBlockProps {
   caseId: string;
   /** Сколько последних записей показывать. */
   limit?: number;
-}
-
-// Иконка события по `activity_log.action` (каркас: таймлайн с кружками).
-// Эвристика по подстроке — действия именуются '<entity>_<verb>'.
-function actionIcon(action: string): React.ElementType {
-  if (action.includes('payment') || action.includes('payout')) return Banknote;
-  if (action.includes('stage')) return ArrowLeftRight;
-  if (action.includes('comment')) return MessageSquare;
-  if (action.includes('document')) return FileText;
-  if (action.includes('act')) return FileSpreadsheet;
-  if (action.includes('created')) return Plus;
-  return Pencil;
 }
 
 export async function CaseActivityBlock({
@@ -75,7 +56,7 @@ export async function CaseActivityBlock({
         <ol className="flex flex-col px-3 py-2">
           {entries.map((entry, i) => {
             const f = formatActivity(i18n, entry, nameById);
-            const Icon = actionIcon(entry.action);
+            const { icon: Icon, tone } = actionVisual(entry.action);
             const last = i === entries.length - 1;
             return (
               <li
@@ -83,7 +64,12 @@ export async function CaseActivityBlock({
                 className="relative flex items-start gap-3 rounded-xl px-2 py-2.5"
               >
                 <div className="relative flex flex-col items-center self-stretch">
-                  <span className="z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-subtle text-primary-pressed ring-4 ring-surface">
+                  <span
+                    className={cn(
+                      'z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-surface',
+                      TONE_CLASS[tone],
+                    )}
+                  >
                     <Icon size={13} strokeWidth={2.2} />
                   </span>
                   {!last && (

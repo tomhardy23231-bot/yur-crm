@@ -678,13 +678,8 @@ export function JournalRow({
   timeTitle: string;
 }) {
   const { t } = i18n;
-  const c = (entry.changes ?? {}) as Record<string, unknown>;
 
   const visual = actionVisual(entry.action);
-  const tone =
-    entry.action === 'cash_entry_created' && c.direction === 'out'
-      ? 'payout'
-      : visual.tone;
   const Icon = visual.icon;
 
   const actor = entry.user?.full_name ?? t.activity.actorSystem;
@@ -708,7 +703,7 @@ export function JournalRow({
       <span
         className={cn(
           'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
-          TONE_CLASS[tone],
+          TONE_CLASS[visual.tone],
         )}
         aria-hidden="true"
       >
