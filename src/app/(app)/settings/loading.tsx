@@ -1,28 +1,14 @@
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Скелет хаба настроек: плитки-ссылки разделов + карточка справки о правах.
+// Скелет обзора настроек: вводка + сводная таблица прав (разделы — в рейле).
 export default function SettingsLoading() {
   return (
     <main
       className="flex flex-col gap-5 px-3 py-2 sm:px-4"
       aria-busy="true"
     >
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm"
-          >
-            <Skeleton className="h-10 w-10 rounded-xl" />
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Skeleton className="h-4 w-36" />
-              <Skeleton className="h-3 w-56 max-w-full" />
-            </div>
-            <Skeleton className="h-4 w-4" />
-          </div>
-        ))}
-      </section>
+      <Skeleton className="h-4 w-80 max-w-full" />
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center gap-2">

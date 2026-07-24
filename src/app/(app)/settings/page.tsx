@@ -1,6 +1,5 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Building2, Coins, FileSpreadsheet, Languages, ShieldCheck, Tags, Users, ChevronRight } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,9 +7,10 @@ import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import type { Messages } from '@/lib/i18n/messages';
 
-// Хаб настроек — единый вход в администрирование. Доступен обладателям права
-// управления пользователями ИЛИ системных настроек (ставок). Каждая карточка
-// дополнительно гейтится своим правом; RLS дублирует защиту на стороне БД.
+// Обзор настроек — стартовая правая панель. Разделы вынесены в левый рейл
+// (settings/layout.tsx); здесь остаётся вводка + сводная таблица прав (P3.1).
+// Доступ — обладателям права управления пользователями ИЛИ системных настроек
+// (ставок) ИЛИ управления типами дел. RLS дублирует защиту на стороне БД.
 export default async function SettingsPage() {
   const actor = await requireUser();
   const { t } = await getT();
@@ -18,159 +18,14 @@ export default async function SettingsPage() {
   const canManageUsers = actor.caps.manage_users || actor.caps.create_users;
   const canEditRates = actor.caps.edit_payroll_rates;
   const canManageCaseTypes = actor.caps.manage_case_types;
-  const isOwner = actor.profile.role === 'owner';
   if (!canManageUsers && !canEditRates && !canManageCaseTypes) redirect('/forbidden');
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      {/* Доступные настройки */}
-      <section
-        data-tour="settings-content"
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
-      >
-        {canEditRates && (
-          <Link
-            href="/settings/payroll"
-            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
-              <Coins size={20} strokeWidth={1.75} />
-            </span>
-            <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
-                {t.settings.ratesCard.title}
-              </span>
-              <span className="block text-[13px] text-text-muted">
-                {t.settings.ratesCard.desc}
-              </span>
-            </span>
-            <ChevronRight
-              size={18}
-              strokeWidth={1.75}
-              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
-            />
-          </Link>
-        )}
-
-        {canManageUsers && (
-          <Link
-            href="/settings/users"
-            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
-              <Users size={20} strokeWidth={1.75} />
-            </span>
-            <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
-                {t.settings.usersCard.title}
-              </span>
-              <span className="block text-[13px] text-text-muted">
-                {t.settings.usersCard.desc}
-              </span>
-            </span>
-            <ChevronRight
-              size={18}
-              strokeWidth={1.75}
-              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
-            />
-          </Link>
-        )}
-
-        {isOwner && (
-          <Link
-            href="/settings/departments"
-            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
-              <Building2 size={20} strokeWidth={1.75} />
-            </span>
-            <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
-                {t.settings.departmentsCard.title}
-              </span>
-              <span className="block text-[13px] text-text-muted">
-                {t.settings.departmentsCard.desc}
-              </span>
-            </span>
-            <ChevronRight
-              size={18}
-              strokeWidth={1.75}
-              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
-            />
-          </Link>
-        )}
-
-        {canManageCaseTypes && (
-          <Link
-            href="/settings/case-types"
-            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
-              <Tags size={20} strokeWidth={1.75} />
-            </span>
-            <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
-                {t.settings.caseTypesCard.title}
-              </span>
-              <span className="block text-[13px] text-text-muted">
-                {t.settings.caseTypesCard.desc}
-              </span>
-            </span>
-            <ChevronRight
-              size={18}
-              strokeWidth={1.75}
-              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
-            />
-          </Link>
-        )}
-
-        {isOwner && (
-          <Link
-            href="/settings/requisites"
-            className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
-              <FileSpreadsheet size={20} strokeWidth={1.75} />
-            </span>
-            <span className="flex-1">
-              <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
-                {t.settings.requisitesCard.title}
-              </span>
-              <span className="block text-[13px] text-text-muted">
-                {t.settings.requisitesCard.desc}
-              </span>
-            </span>
-            <ChevronRight
-              size={18}
-              strokeWidth={1.75}
-              className="text-text-subtle transition-transform group-hover:translate-x-0.5"
-            />
-          </Link>
-        )}
-
-        {/* Язык интерфейса — персональная настройка (полный экран в профиле). */}
-        <Link
-          href="/profile"
-          className="group flex items-center gap-4 rounded-card border border-border bg-surface p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md"
-        >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-subtle text-primary">
-            <Languages size={20} strokeWidth={1.75} />
-          </span>
-          <span className="flex-1">
-            <span className="block text-[15px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
-              {t.settings.languageCard.title}
-            </span>
-            <span className="block text-[13px] text-text-muted">
-              {t.settings.languageCard.desc}
-            </span>
-          </span>
-          <ChevronRight
-            size={18}
-            strokeWidth={1.75}
-            className="text-text-subtle transition-transform group-hover:translate-x-0.5"
-          />
-        </Link>
-      </section>
+    <main
+      data-tour="settings-content"
+      className="flex flex-col gap-5 px-3 py-2 sm:px-4"
+    >
+      <p className="text-[13.5px] text-text-muted">{t.settings.overviewLead}</p>
 
       {/* Сводный список прав (P3.1) */}
       <section className="flex flex-col gap-3">
