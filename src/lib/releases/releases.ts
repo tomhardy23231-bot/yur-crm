@@ -70,10 +70,27 @@ export type Release = {
 };
 
 // Текущая версия системы. Поднимается с каждым заметным обновлением.
-export const APP_VERSION = '2.9';
+export const APP_VERSION = '2.10';
 
 // Свежие релизы — сверху. RELEASES[0] = текущий (по нему строится модалка).
 export const RELEASES: ReadonlyArray<Release> = [
+  {
+    // Типы дел настраиваются из интерфейса (справочник case_types + право).
+    version: '2.10',
+    titleKey: 'v2_10Title',
+    date: '2026-07-24',
+    leadKey: 'v2_10Lead',
+    sections: [
+      {
+        headingKey: 'headingAdded',
+        itemKeys: ['v2_10Added1', 'v2_10Added2', 'v2_10Added3'],
+      },
+      {
+        headingKey: 'headingHowItWorks',
+        itemKeys: ['v2_10How1', 'v2_10How2'],
+      },
+    ],
+  },
   {
     // Совмещение ролей (0007): одинарное начисление ЗП при юрист = эксперт.
     version: '2.9',
