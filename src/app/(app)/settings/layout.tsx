@@ -27,9 +27,10 @@ export default async function SettingsLayout({
 
   return (
     <div className="flex flex-col md:flex-row md:gap-6">
-      {/* Desktop — левый рейл разделов (sticky, остаётся на виду при скролле). */}
-      <aside className="hidden shrink-0 pl-3 pt-2 sm:pl-4 md:block md:w-56">
-        <div className="sticky top-2">
+      {/* Desktop — левый рейл разделов на белой панели (sticky, остаётся на
+          виду при скролле). Карточка отделяет рейл от серого фона. */}
+      <aside className="hidden shrink-0 pl-3 pt-2 sm:pl-4 md:block md:w-64">
+        <div className="sticky top-2 rounded-card border border-border bg-surface p-2 shadow-sm">
           <SettingsNav visibleIds={visibleIds} variant="rail" />
         </div>
       </aside>
