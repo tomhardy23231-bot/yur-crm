@@ -26,6 +26,8 @@ export function CardListShell({
   header,
   ariaLabel,
   minWidth = 1100,
+  maxBodyHeight,
+  footer,
   children,
   className,
 }: {
@@ -34,6 +36,15 @@ export function CardListShell({
   ariaLabel?: string;
   /** px-число или CSS-выражение (напр. var(--cases-minw, 1376px)). */
   minWidth?: number | string;
+  /**
+   * Потолок высоты ТЕЛА списка (CSS-значение, напр. 'min(52vh,560px)'). Задан —
+   * строки скроллятся внутри, шапка и подвал остаются на месте, а блок не
+   * растёт бесконечно при сотне строк (2026-07-25). Не задан — прежнее
+   * поведение: список растёт вместе со страницей (у /cases своя пагинация).
+   */
+  maxBodyHeight?: string;
+  /** Строка итогов под списком — вне области прокрутки, видна всегда. */
+  footer?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -62,7 +73,15 @@ export function CardListShell({
           >
             {header}
           </div>
-          {children}
+          {maxBodyHeight ? (
+            // Тело со своим скроллом: шапка выше него, подвал ниже — оба на месте.
+            <div className="overflow-y-auto" style={{ maxHeight: maxBodyHeight }}>
+              {children}
+            </div>
+          ) : (
+            children
+          )}
+          {footer}
         </div>
       </div>
     </div>

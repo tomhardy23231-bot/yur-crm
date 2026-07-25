@@ -17,15 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Avatar } from '@/components/ui/avatar';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table';
-import { ClickableRow } from '@/components/ui/clickable-row';
+import { CardListShell, CardHead } from '@/components/ui/card-table';
+import { ClickableCard } from '@/components/ui/clickable-card';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { getPayrollEmployeeSummary, getPayrollRates } from '@/lib/payroll/queries';
@@ -84,10 +77,15 @@ export default async function PayrollReportPage({
   );
   // Колонку «Оклад» показываем, только если у кого-то из видимых есть оклад.
   const showFixed = rows.some((r) => r.salary_mode !== 'percent');
+  // Сетка списка сотрудников: имя + денежные колонки + шеврон. ОДНА строка
+  // для шапки, строк и итогов — колонки физически не могут разъехаться.
+  const cols = `minmax(200px,1.6fr) repeat(${showFixed ? 5 : 4}, minmax(110px,1fr)) 24px`;
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    // gap-3 вместо gap-5 (2026-07-25, замечание владельца о больших пробелах):
+    // заголовки секций прижаты к своему содержимому через вложенные section.
+    <main className="flex flex-col gap-3 px-3 py-2 sm:px-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           {/* Заголовок страницы — в топбаре (единый источник); здесь только
               описание периода. Редизайн Волна 2: убран дубль h1. */}
@@ -124,8 +122,14 @@ export default async function PayrollReportPage({
         </div>
       </div>
 
-      {/* Сводные KPI-плитки месяца (редизайн v5) — данные уже посчитаны в totals */}
-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      {/* Сводные KPI-плитки месяца. Сетка по ЧИСЛУ плиток (2026-07-25): при
+          трёх плитках прежние 4 колонки оставляли пустую четверть справа. */}
+      <div
+        className={cn(
+          'grid grid-cols-1 gap-4 sm:grid-cols-2',
+          showFixed ? 'xl:grid-cols-4' : 'lg:grid-cols-3',
+        )}
+      >
         <KpiTile
           label={t.payroll.report.kpiBalance}
           value={`${formatMoney(totals.balance)} ₴`}
@@ -158,85 +162,68 @@ export default async function PayrollReportPage({
         />
       </div>
 
-      {/* Ставки по категориям — цветовые якоря категорий + полосы-визуализация */}
-      <Card className="p-0">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-[15px] font-semibold text-text">{t.payroll.report.ratesTitle}</h2>
-        </div>
-        <div className="p-5">
-          <ul className="flex flex-col gap-4">
-            {rates.map((r) => {
-              const maxPercent = Math.max(
-                showLawyerRate ? r.lawyer_percent : 0,
-                showExpertRate ? r.expert_percent : 0,
-              );
-              // Трек нормируем на максимум дефолтных ставок (25% — представительство).
-              const width = Math.min(100, (maxPercent / RATE_MAX) * 100);
-              return (
-                <li key={r.category} className="flex flex-col gap-2">
-                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        aria-hidden="true"
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ background: `var(--cat-${r.category})` }}
-                      />
-                      <span className="text-[13px] font-medium text-text">
-                        {t.enums.caseCategory[r.category]}
-                      </span>
+      {/* Ставки по категориям — три компактные карточки в ряд (2026-07-25).
+          Прежние полосы-прогрессбары убраны: длина полосы ничего не измеряла
+          (нормировка на 25%), а блок занимал треть первого экрана. */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-[15px] font-semibold text-text">{t.payroll.report.ratesTitle}</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {rates.map((r) => (
+            <div
+              key={r.category}
+              className="flex items-center justify-between gap-3 rounded-card border border-border bg-surface px-4 py-3 shadow-sm"
+            >
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: `var(--cat-${r.category})` }}
+                />
+                <span className="truncate text-[13px] font-medium text-text">
+                  {t.enums.caseCategory[r.category]}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-baseline gap-3">
+                {showLawyerRate && (
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="text-[11px] text-text-muted">
+                      {t.payroll.report.rateLawyer}
                     </span>
-                    <span className="flex items-baseline gap-4">
-                      {showLawyerRate && (
-                        <span className="flex items-baseline gap-1.5">
-                          <span className="text-[11px] text-text-muted">
-                            {t.payroll.report.rateLawyer}
-                          </span>
-                          <span
-                            className={cn(
-                              'font-mono text-[18px] font-bold leading-none tabular-nums',
-                              CAT_FG[r.category],
-                            )}
-                          >
-                            {formatPercent(r.lawyer_percent)}%
-                          </span>
-                        </span>
+                    <span
+                      className={cn(
+                        'font-mono text-[17px] font-bold leading-none tabular-nums',
+                        CAT_FG[r.category],
                       )}
-                      {showExpertRate && (
-                        <span className="flex items-baseline gap-1.5">
-                          <span className="text-[11px] text-text-muted">
-                            {t.payroll.report.rateExpert}
-                          </span>
-                          <span
-                            className={cn(
-                              'font-mono text-[18px] font-bold leading-none tabular-nums',
-                              CAT_FG[r.category],
-                            )}
-                          >
-                            {formatPercent(r.expert_percent)}%
-                          </span>
-                        </span>
-                      )}
+                    >
+                      {formatPercent(r.lawyer_percent)}%
                     </span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ background: `var(--cat-${r.category})`, width: `${width}%` }}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          {showFixed && (
-            <div className="mt-5 rounded-xl bg-surface-sunken/60 p-3">
-              <p className="text-[11.5px] leading-relaxed text-text-muted">
-                {t.payroll.report.fixedNote}
-              </p>
+                  </span>
+                )}
+                {showExpertRate && (
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="text-[11px] text-text-muted">
+                      {t.payroll.report.rateExpert}
+                    </span>
+                    <span
+                      className={cn(
+                        'font-mono text-[17px] font-bold leading-none tabular-nums',
+                        CAT_FG[r.category],
+                      )}
+                    >
+                      {formatPercent(r.expert_percent)}%
+                    </span>
+                  </span>
+                )}
+              </span>
             </div>
-          )}
+          ))}
         </div>
-      </Card>
+        {showFixed && (
+          <p className="text-[11.5px] leading-relaxed text-text-muted">
+            {t.payroll.report.fixedNote}
+          </p>
+        )}
+      </section>
 
       {/* Список сотрудников */}
       {rows.length === 0 ? (
@@ -251,111 +238,94 @@ export default async function PayrollReportPage({
         {/* Мобильное представление — карточки сотрудников вместо таблицы (6.4). */}
         <PayrollListMobile rows={rows} />
 
-        <div
-          data-tour="payroll-list"
-          className="hidden overflow-auto rounded-card border border-border bg-surface shadow-sm md:block"
-        >
-          {/* Шапка секции: заголовок + счётчик сотрудников (каркас v5) */}
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2 className="text-[15px] font-semibold text-text">
-              {t.payroll.report.employeesTitle}
-            </h2>
-            <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-text-muted">
-              <Users size={14} strokeWidth={1.75} />
-              {plural(t.payroll.report.employeesCount, rows.length)}
-            </span>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-surface-sunken/50 hover:bg-surface-sunken/50">
-                <TableHead>{t.payroll.report.colEmployee}</TableHead>
-                <TableHead className="text-right">{t.payroll.report.colEarnedMonth}</TableHead>
-                {showFixed && (
-                  <TableHead className="text-right">{t.payroll.report.colFixedMonth}</TableHead>
-                )}
-                <TableHead className="text-right">{t.payroll.report.colBonusMonth}</TableHead>
-                <TableHead className="text-right">{t.payroll.report.colPaidMonth}</TableHead>
-                <TableHead className="text-right">{t.payroll.report.colBalanceTotal}</TableHead>
-                <TableHead className="w-8" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r, i) => (
-                <ClickableRow
-                  key={r.user_id}
-                  href={`/reports/payroll/${r.user_id}`}
-                  className="cursor-pointer"
-                  // Якорь тура: маршрут карточки первого сотрудника читается из data-href.
-                  data-tour={i === 0 ? 'payroll-first-row' : undefined}
-                  data-href={`/reports/payroll/${r.user_id}`}
-                >
-                  <TableCell>
-                    <span className="inline-flex items-center gap-2.5">
-                      <Avatar name={r.full_name} size="md" shape="square" />
-                      <span className="text-[13.5px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
-                        {r.full_name}
-                      </span>
-                    </span>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] tabular-nums text-success-text">
-                    {formatMoney(r.earned)} ₴
-                  </TableCell>
-                  {showFixed && (
-                    <TableCell
-                      className={cn(
-                        'whitespace-nowrap text-right font-mono text-[13px] tabular-nums',
-                        r.salary_mode !== 'percent' ? 'text-text' : 'text-text-subtle',
-                      )}
-                    >
-                      {r.salary_mode !== 'percent' ? `${formatMoney(r.fixed)} ₴` : '—'}
-                    </TableCell>
-                  )}
-                  <TableCell
-                    className={cn(
-                      'whitespace-nowrap text-right font-mono text-[13px] tabular-nums',
-                      r.bonus > 0 ? 'text-warning-text' : 'text-text-subtle',
-                    )}
-                  >
-                    {r.bonus > 0 ? `+${formatMoney(r.bonus)} ₴` : '—'}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] tabular-nums text-success-text">
-                    {formatMoney(r.payout)} ₴
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-[14px] font-bold tabular-nums text-primary-pressed">
-                    {formatMoney(r.balance)} ₴
-                  </TableCell>
-                  <TableCell className="text-right text-text-subtle">
-                    <ChevronRight size={16} strokeWidth={1.75} />
-                  </TableCell>
-                </ClickableRow>
-              ))}
-              {/* Итоги месяца — финальный ряд таблицы, выровнен под колонками */}
-              <TableRow className="bg-surface-sunken/50">
-                <TableCell className="text-[13.5px] font-bold text-text">
-                  {t.payroll.report.totalLabel}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-success-text">
-                  {formatMoney(totals.earned)} ₴
-                </TableCell>
-                {showFixed && (
-                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-text">
-                    {formatMoney(totals.fixed)} ₴
-                  </TableCell>
-                )}
-                <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-warning-text">
-                  {formatMoney(totals.bonus)} ₴
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right font-mono text-[13px] font-bold tabular-nums text-success-text">
-                  {formatMoney(totals.payout)} ₴
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right font-mono text-[14px] font-bold tabular-nums text-primary-pressed">
-                  {formatMoney(totals.balance)} ₴
-                </TableCell>
-                <TableCell />
-              </TableRow>
-            </TableBody>
-          </Table>
+        {/* Заголовок прижат к списку (одна section), а не висит отдельным
+            блоком с большими отступами сверху и снизу. */}
+        <section className="hidden flex-col gap-2 md:flex">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-[15px] font-semibold text-text">
+            {t.payroll.report.employeesTitle}
+          </h2>
+          <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-text-muted">
+            <Users size={14} strokeWidth={1.75} />
+            {plural(t.payroll.report.employeesCount, rows.length)}
+          </span>
         </div>
+
+        {/* Список сотрудников — общий каркас списков проекта (2026-07-25,
+            вместо <table>): шапка и строки делят ОДИН grid-template-columns,
+            поэтому колонки не могут разъехаться. */}
+        <CardListShell
+          cols={cols}
+          minWidth={880}
+          ariaLabel={t.payroll.report.employeesTitle}
+          // Потолок высоты тела: при большом штате список не растягивает
+          // страницу — шапка и итоги остаются на виду (2026-07-25).
+          maxBodyHeight="min(58vh, 620px)"
+          footer={
+            <div
+              role="row"
+              style={{ gridTemplateColumns: cols }}
+              className="grid items-center gap-3 border-t border-border bg-surface-sunken/70 px-4 py-2.5"
+            >
+              <div role="cell" className="text-[13px] font-bold text-text">
+                {t.payroll.report.totalLabel}
+              </div>
+              <Money value={totals.earned} tone="success" bold />
+              {showFixed && <Money value={totals.fixed} tone="plain" bold />}
+              <Money value={totals.bonus} tone="bonus" bold />
+              <Money value={totals.payout} tone="success" bold />
+              <Money value={totals.balance} tone="balance" bold />
+              <div role="cell" />
+            </div>
+          }
+          header={
+            <>
+              <CardHead>{t.payroll.report.colEmployee}</CardHead>
+              <CardHead align="right">{t.payroll.report.colEarnedMonth}</CardHead>
+              {showFixed && (
+                <CardHead align="right">{t.payroll.report.colFixedMonth}</CardHead>
+              )}
+              <CardHead align="right">{t.payroll.report.colBonusMonth}</CardHead>
+              <CardHead align="right">{t.payroll.report.colPaidMonth}</CardHead>
+              <CardHead align="right">{t.payroll.report.colBalanceTotal}</CardHead>
+              <CardHead />
+            </>
+          }
+        >
+          <div data-tour="payroll-list">
+            {rows.map((r, i) => (
+              <ClickableCard
+                key={r.user_id}
+                href={`/reports/payroll/${r.user_id}`}
+                cols={cols}
+                // Якорь тура: маршрут карточки первого сотрудника — в data-href.
+                data-tour={i === 0 ? 'payroll-first-row' : undefined}
+                data-href={`/reports/payroll/${r.user_id}`}
+              >
+                <div role="cell" className="flex min-w-0 items-center gap-2.5">
+                  <Avatar name={r.full_name} size="md" shape="square" />
+                  <span className="truncate text-[13.5px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
+                    {r.full_name}
+                  </span>
+                </div>
+                <Money value={r.earned} tone="success" />
+                {showFixed && (
+                  <Money
+                    value={r.salary_mode !== 'percent' ? r.fixed : null}
+                    tone="plain"
+                  />
+                )}
+                <Money value={r.bonus > 0 ? r.bonus : null} tone="bonus" />
+                <Money value={r.payout} tone="success" />
+                <Money value={r.balance} tone="balance" />
+                <div role="cell" className="text-right text-text-subtle">
+                  <ChevronRight size={16} strokeWidth={1.75} />
+                </div>
+              </ClickableCard>
+            ))}
+          </div>
+        </CardListShell>
+        </section>
         </>
       )}
     </main>
@@ -369,8 +339,36 @@ const CAT_FG = {
   representation: 'text-cat-representation-fg',
 } as const;
 
-// Нормировка трека визуализации ставок: максимум дефолтных ставок (25%).
-const RATE_MAX = 25;
+// Денежная ячейка списка: моно, вправо, тон по смыслу колонки. null → «—».
+const MONEY_TONE = {
+  success: 'text-success-text',
+  bonus: 'text-warning-text',
+  balance: 'text-primary-pressed',
+  plain: 'text-text',
+} as const;
+
+function Money({
+  value,
+  tone,
+  bold,
+}: {
+  value: number | null;
+  tone: keyof typeof MONEY_TONE;
+  bold?: boolean;
+}) {
+  return (
+    <div
+      role="cell"
+      className={cn(
+        'whitespace-nowrap text-right font-mono text-[13px] tabular-nums',
+        value === null ? 'text-text-subtle' : MONEY_TONE[tone],
+        bold && 'font-bold',
+      )}
+    >
+      {value === null ? '—' : `${tone === 'bonus' && value > 0 ? '+' : ''}${formatMoney(value)} ₴`}
+    </div>
+  );
+}
 
 // Сводная KPI-плитка отчёта ЗП (каркас v5: лейбл + иконка в тинт-квадрате +
 // крупное mono-число).
@@ -388,27 +386,29 @@ function KpiTile({
   valueClass: string;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md">
-      <div className="flex items-center justify-between gap-2">
+    // Иконка сбоку от числа, а не над ним (2026-07-25): в колоночной раскладке
+    // плитка была ~90px и снизу-справа зияла пустота. Стало ~66px.
+    <div className="flex items-center justify-between gap-3 rounded-card border border-border bg-surface px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-border hover:shadow-md">
+      <div className="min-w-0">
         <p className="text-[12.5px] font-medium text-text-muted">{label}</p>
-        <span
-          aria-hidden="true"
+        <p
           className={cn(
-            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-            iconClass,
+            'mt-1 font-mono text-[22px] font-bold leading-none tracking-tight tabular-nums',
+            valueClass,
           )}
         >
-          <Icon size={16} strokeWidth={2.2} />
-        </span>
+          {value}
+        </p>
       </div>
-      <p
+      <span
+        aria-hidden="true"
         className={cn(
-          'font-mono text-[24px] font-bold leading-none tracking-tight tabular-nums',
-          valueClass,
+          'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+          iconClass,
         )}
       >
-        {value}
-      </p>
+        <Icon size={16} strokeWidth={2.2} />
+      </span>
     </div>
   );
 }

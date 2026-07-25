@@ -1,21 +1,21 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowLeft, Briefcase, Coins, FileText, Gift, Wallet } from 'lucide-react';
+import {
+  ArrowLeft,
+  Briefcase,
+  Coins,
+  FileText,
+  Gift,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { StageBadge } from '@/components/ui/stage-badge';
-import { PaymentProgress } from '@/components/cases/payment-progress';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table';
+import { CardListShell, CardHead } from '@/components/ui/card-table';
+import { ClickableCard } from '@/components/ui/clickable-card';
 import { requireUser } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { cn, formatMoney, formatPercent } from '@/lib/utils';
@@ -186,26 +186,39 @@ export default async function PayrollEmployeePage({
 
   const payouts = monthTx.filter((t) => t.kind === 'payout');
 
-  return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      <Link
-        href="/reports/payroll"
-        className="inline-flex w-fit items-center gap-1.5 text-[13px] text-text-muted transition-colors hover:text-text"
-      >
-        <ArrowLeft size={15} strokeWidth={1.75} />
-        {t.payroll.employee.backToAll}
-      </Link>
+  // Итоги подвала списка дел за месяц.
+  const caseTotals = sortedCases.reduce(
+    (a, c) => ({
+      earned: a.earned + c.earned,
+      paid: a.paid + Math.max(0, c.paid),
+      outstanding: a.outstanding + Math.max(0, c.outstanding),
+    }),
+    { earned: 0, paid: 0, outstanding: 0 },
+  );
 
-      {/* Шапка сотрудника */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+  return (
+    // Перебор каркаса 2026-07-25 (владелец: «сделать красиво и современно»):
+    // шапка в одну строку, сводка — плитки, дела — сеточный список, пустые
+    // секции — узкие полосы вместо огромных белых карточек. Ритм gap-3.
+    <main className="flex flex-col gap-3 px-3 py-2 sm:px-4">
+      {/* Шапка сотрудника: возврат + аватар + имя слева, период и действия справа */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link
+            href="/reports/payroll"
+            aria-label={t.payroll.employee.backToAll}
+            title={t.payroll.employee.backToAll}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-colors hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed"
+          >
+            <ArrowLeft size={16} strokeWidth={1.75} />
+          </Link>
           <Avatar name={fullName} size="lg" />
-          <div>
-            <h1 className="text-[22px] font-bold leading-tight text-text">
+          <div className="min-w-0">
+            <h1 className="truncate text-[20px] font-bold leading-tight text-text">
               {fullName}
             </h1>
             {roleBits.length > 0 && (
-              <p className="text-[12.5px] text-text-muted">
+              <p className="truncate text-[12.5px] text-text-muted">
                 {roleBits.join(' · ')} {t.payroll.employee.rolesSuffix}
               </p>
             )}
@@ -249,53 +262,53 @@ export default async function PayrollEmployeePage({
         </div>
       )}
 
-      {/* Сводка: «к выплате» крупно + разбивка */}
-      <Card
+      {/* Сводка — четыре равные плитки (было: одна широкая карточка, разбитая
+          на неравные ячейки; левая треть тонировалась и «ломала» полосу). */}
+      <div
         data-tour="payroll-summary"
-        className="flex flex-col gap-0 overflow-hidden sm:flex-row sm:items-stretch sm:divide-x sm:divide-border"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
       >
-        <div className="flex flex-col justify-center gap-1 bg-warning-bg/40 px-6 py-5 sm:w-[34%]">
-          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-[0.05em] text-text-muted">
-            <Wallet size={13} strokeWidth={2} />{t.payroll.employee.toPayNow}
-          </span>
-          <span className="font-mono text-[30px] font-extrabold leading-none tracking-tight tabular-nums text-warning">
-            {formatMoney(balance)} ₴
-          </span>
-          <span className="text-[12px] text-text-muted">
-            {fmt(t.payroll.employee.toPayBreakdown, {
-              cases: formatMoney(casesOutstandingAll),
-              bonus: formatMoney(bonusOutstandingAll),
-            })}
-          </span>
-        </div>
-        <div className="grid flex-1 grid-cols-3 divide-x divide-border">
-          <SummaryCell
-            label={t.payroll.employee.earnedMonth}
-            value={`${formatMoney(earnedMonth)} ₴`}
-            tone="text"
-          />
-          <SummaryCell
-            label={t.payroll.employee.bonusMonth}
-            value={`${bonusMonth > 0 ? '+' : ''}${formatMoney(bonusMonth)} ₴`}
-            tone="muted"
-          />
-          <SummaryCell
-            label={t.payroll.employee.paidMonth}
-            value={`${formatMoney(payoutMonth)} ₴`}
-            tone="success"
-            caption={fmt(t.payroll.employee.paidMonthCaption, {
-              cases: formatMoney(monthCaseAllocated),
-              bonus: formatMoney(monthBonusPaid),
-            })}
-          />
-        </div>
-      </Card>
+        <SummaryTile
+          label={t.payroll.employee.toPayNow}
+          value={`${formatMoney(balance)} ₴`}
+          caption={fmt(t.payroll.employee.toPayBreakdown, {
+            cases: formatMoney(casesOutstandingAll),
+            bonus: formatMoney(bonusOutstandingAll),
+          })}
+          icon={Wallet}
+          tone="accent"
+        />
+        <SummaryTile
+          label={t.payroll.employee.earnedMonth}
+          value={`${formatMoney(earnedMonth)} ₴`}
+          icon={Briefcase}
+          tone="plain"
+        />
+        <SummaryTile
+          label={t.payroll.employee.bonusMonth}
+          value={`${bonusMonth > 0 ? '+' : ''}${formatMoney(bonusMonth)} ₴`}
+          icon={Gift}
+          tone={bonusMonth > 0 ? 'bonus' : 'muted'}
+        />
+        <SummaryTile
+          label={t.payroll.employee.paidMonth}
+          value={`${formatMoney(payoutMonth)} ₴`}
+          caption={fmt(t.payroll.employee.paidMonthCaption, {
+            cases: formatMoney(monthCaseAllocated),
+            bonus: formatMoney(monthBonusPaid),
+          })}
+          icon={Coins}
+          tone="success"
+        />
+      </div>
 
-      {/* Дела */}
-      <section data-tour="payroll-cases" className="flex flex-col gap-3">
+      {/* Дела — сеточный список (общий каркас проекта). Колонка-прогрессбар
+          убрана: при невыплаченных делах это была пустая серая полоса на
+          четверть ширины. Вместо неё — чип статуса с суммой. */}
+      <section data-tour="payroll-cases" className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <Briefcase size={16} strokeWidth={1.75} className="text-text-muted" />
-          <h2 className="text-[16px] font-semibold text-text">
+          <h2 className="text-[15px] font-semibold text-text">
             {fmt(t.payroll.employee.casesTitle, { month: monthLabel(month, monthNames) })}
           </h2>
           <span className="text-[12.5px] text-text-subtle">
@@ -303,100 +316,119 @@ export default async function PayrollEmployeePage({
           </span>
         </div>
         {monthCasesShown.length === 0 ? (
-          <Card className="px-6 py-10 text-center">
-            <p className="text-[13px] text-text-muted">
-              {fmt(t.payroll.employee.casesEmpty, { month: monthLabel(month, monthNames) })}
-            </p>
-          </Card>
+          <EmptyStrip
+            icon={Briefcase}
+            text={fmt(t.payroll.employee.casesEmpty, { month: monthLabel(month, monthNames) })}
+          />
         ) : (
-          <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-sm">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-surface-sunken/50">
-                  <TableHead>{t.payroll.employee.colCase}</TableHead>
-                  <TableHead>{t.payroll.employee.colStage}</TableHead>
-                  <TableHead>{t.payroll.employee.colRole}</TableHead>
-                  <TableHead className="text-right">{t.payroll.employee.colEarned}</TableHead>
-                  <TableHead className="min-w-32">{t.payroll.employee.colPayout}</TableHead>
-                  <TableHead className="text-right">{t.payroll.employee.colRemaining}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedCases.map((c) => {
-                  const fullyPaid = c.earned > 0 && c.outstanding <= 0.001;
-                  const partially = c.paid > 0 && !fullyPaid;
-                  return (
-                    <TableRow key={`${c.case_id}-${c.role_in_case}`}>
-                      <TableCell>
-                        <Link
-                          href={`/cases/${c.case_id}`}
-                          className="text-[13px] font-medium text-text transition-colors hover:text-primary"
-                        >
-                          {c.number_title}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <StageBadge stage={c.stage} />
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-[12.5px] text-text-muted">
-                        {t.enums.roleInCase[c.role_in_case]} · {formatPercent(c.percent)}%
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="font-mono text-[13px] font-semibold tabular-nums text-text">
-                          {formatMoney(c.earned)} ₴
-                        </div>
-                        <div className="text-[11px] text-text-subtle">
-                          {fmt(t.payroll.employee.earnedFrom, {
-                            percent: formatPercent(c.percent),
-                            paid: formatMoney(c.paid_total),
-                          })}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <PaymentProgress
-                            paid={Math.max(0, c.paid)}
-                            total={Math.max(c.earned, 0.01)}
-                            className="w-full"
-                          />
-                          <span className="text-[11px] text-text-subtle">
-                            {fullyPaid ? (
-                              <span className="font-medium text-success">
-                                {t.payroll.employee.statusPaid}
-                              </span>
-                            ) : partially ? (
-                              <>{fmt(t.payroll.employee.statusPartial, { amount: formatMoney(c.paid) })}</>
-                            ) : c.earned > 0 ? (
-                              t.payroll.employee.statusUnpaid
-                            ) : (
-                              t.common.dash
-                            )}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          'whitespace-nowrap text-right font-mono text-[13px] font-semibold tabular-nums',
-                          c.outstanding > 0.001 ? 'text-warning' : 'text-text-subtle',
-                        )}
-                      >
-                        {formatMoney(Math.max(0, c.outstanding))} ₴
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+          <CardListShell
+            cols={CASE_COLS}
+            minWidth={860}
+            ariaLabel={t.payroll.employee.casesTitle}
+            // Потолок высоты: при 100 делах за месяц список не растягивает
+            // страницу — строки скроллятся внутри блока (замечание владельца).
+            maxBodyHeight="min(52vh, 560px)"
+            footer={
+              <div
+                role="row"
+                style={{ gridTemplateColumns: CASE_COLS }}
+                className="grid items-center gap-3 border-t border-border bg-surface-sunken/70 px-4 py-2.5"
+              >
+                <div role="cell" className="text-[13px] font-bold text-text">
+                  {t.payroll.report.totalLabel}
+                </div>
+                <div role="cell" />
+                <div role="cell" />
+                <div role="cell" className="text-right font-mono text-[13px] font-bold tabular-nums text-text">
+                  {formatMoney(caseTotals.earned)} ₴
+                </div>
+                <div role="cell" className="text-right font-mono text-[13px] font-bold tabular-nums text-success-text">
+                  {formatMoney(caseTotals.paid)} ₴
+                </div>
+                <div role="cell" className="text-right font-mono text-[13px] font-bold tabular-nums text-warning">
+                  {formatMoney(caseTotals.outstanding)} ₴
+                </div>
+              </div>
+            }
+            header={
+              <>
+                <CardHead>{t.payroll.employee.colCase}</CardHead>
+                <CardHead>{t.payroll.employee.colStage}</CardHead>
+                <CardHead>{t.payroll.employee.colRole}</CardHead>
+                <CardHead align="right">{t.payroll.employee.colEarned}</CardHead>
+                <CardHead align="right">{t.payroll.employee.colPayout}</CardHead>
+                <CardHead align="right">{t.payroll.employee.colRemaining}</CardHead>
+              </>
+            }
+          >
+            {sortedCases.map((c) => {
+              const fullyPaid = c.earned > 0 && c.outstanding <= 0.001;
+              const partially = c.paid > 0 && !fullyPaid;
+              return (
+                <ClickableCard
+                  key={`${c.case_id}-${c.role_in_case}`}
+                  href={`/cases/${c.case_id}`}
+                  cols={CASE_COLS}
+                >
+                  <div role="cell" className="min-w-0">
+                    <span className="block truncate text-[13.5px] font-semibold text-text transition-colors group-hover:text-primary-pressed">
+                      {c.number_title}
+                    </span>
+                  </div>
+                  <div role="cell">
+                    <StageBadge stage={c.stage} pulse={false} />
+                  </div>
+                  <div role="cell" className="truncate text-[12.5px] text-text-muted">
+                    {t.enums.roleInCase[c.role_in_case]} · {formatPercent(c.percent)}%
+                  </div>
+                  <div role="cell" className="text-right">
+                    <div className="font-mono text-[13px] font-semibold tabular-nums text-text">
+                      {formatMoney(c.earned)} ₴
+                    </div>
+                    <div className="text-[11px] text-text-subtle">
+                      {fmt(t.payroll.employee.earnedFrom, {
+                        percent: formatPercent(c.percent),
+                        paid: formatMoney(c.paid_total),
+                      })}
+                    </div>
+                  </div>
+                  <div role="cell" className="flex justify-end">
+                    {fullyPaid ? (
+                      <Badge tone="success">{t.payroll.employee.statusPaid}</Badge>
+                    ) : partially ? (
+                      <Badge tone="warning">
+                        {fmt(t.payroll.employee.statusPartial, {
+                          amount: formatMoney(c.paid),
+                        })}
+                      </Badge>
+                    ) : c.earned > 0 ? (
+                      <Badge tone="neutral">{t.payroll.employee.statusUnpaid}</Badge>
+                    ) : (
+                      <span className="text-[12.5px] text-text-subtle">{t.common.dash}</span>
+                    )}
+                  </div>
+                  <div
+                    role="cell"
+                    className={cn(
+                      'whitespace-nowrap text-right font-mono text-[13px] font-semibold tabular-nums',
+                      c.outstanding > 0.001 ? 'text-warning' : 'text-text-subtle',
+                    )}
+                  >
+                    {formatMoney(Math.max(0, c.outstanding))} ₴
+                  </div>
+                </ClickableCard>
+              );
+            })}
+          </CardListShell>
         )}
       </section>
 
       {/* Премии */}
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Gift size={16} strokeWidth={1.75} className="text-text-muted" />
-            <h2 className="text-[16px] font-semibold text-text">
+            <h2 className="text-[15px] font-semibold text-text">
               {fmt(t.payroll.employee.bonusesTitle, { month: monthLabel(month, monthNames) })}
             </h2>
           </div>
@@ -424,11 +456,10 @@ export default async function PayrollEmployeePage({
           )}
         </div>
         {bonusRows.length === 0 ? (
-          <Card className="px-6 py-8 text-center">
-            <p className="text-[13px] text-text-muted">
-              {fmt(t.payroll.employee.bonusesEmpty, { month: monthLabel(month, monthNames) })}
-            </p>
-          </Card>
+          <EmptyStrip
+            icon={Gift}
+            text={fmt(t.payroll.employee.bonusesEmpty, { month: monthLabel(month, monthNames) })}
+          />
         ) : (
           <ul className="flex flex-col gap-2">
             {bonusRows.map((b) => (
@@ -480,19 +511,18 @@ export default async function PayrollEmployeePage({
       </section>
 
       {/* История выплат */}
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <Coins size={16} strokeWidth={1.75} className="text-text-muted" />
-          <h2 className="text-[16px] font-semibold text-text">
+          <h2 className="text-[15px] font-semibold text-text">
             {fmt(t.payroll.employee.payoutsTitle, { month: monthLabel(month, monthNames) })}
           </h2>
         </div>
         {payouts.length === 0 ? (
-          <Card className="px-6 py-8 text-center">
-            <p className="text-[13px] text-text-muted">
-              {fmt(t.payroll.employee.payoutsEmpty, { month: monthLabel(month, monthNames) })}
-            </p>
-          </Card>
+          <EmptyStrip
+            icon={Coins}
+            text={fmt(t.payroll.employee.payoutsEmpty, { month: monthLabel(month, monthNames) })}
+          />
         ) : (
           <ul className="flex flex-col gap-2">
             {payouts.map((tx) => {
@@ -566,34 +596,82 @@ export default async function PayrollEmployeePage({
   );
 }
 
-function SummaryCell({
+// Сетка списка дел сотрудника: справа · этап · роль · заработок · выплата ·
+// остаток. Общая для шапки, строк и подвала — колонки не разъезжаются.
+// Доли колонок близки друг к другу — иначе слева (номер дела — короткая дата)
+// оставалась дыра в треть экрана, а деньги жались к правому краю.
+const CASE_COLS =
+  'minmax(110px,0.9fr) minmax(140px,1fr) minmax(110px,0.9fr) minmax(140px,1.1fr) minmax(140px,1fr) minmax(110px,0.9fr)';
+
+// Плитка сводки: подпись + число + иконка сбоку (высота ~66px). Тон «accent» —
+// главный показатель «К выплате сейчас».
+const TILE_TONE = {
+  accent: {
+    box: 'border-warning/35 bg-warning-bg/45',
+    value: 'text-warning',
+    icon: 'bg-warning-bg text-warning',
+  },
+  success: { box: '', value: 'text-success-text', icon: 'bg-success-bg text-success' },
+  bonus: { box: '', value: 'text-warning-text', icon: 'bg-warning-bg text-warning' },
+  plain: { box: '', value: 'text-text', icon: 'bg-primary-subtle text-primary' },
+  muted: { box: '', value: 'text-text-muted', icon: 'bg-surface-sunken text-text-muted' },
+} as const;
+
+function SummaryTile({
   label,
   value,
-  tone,
   caption,
+  icon: Icon,
+  tone,
 }: {
   label: string;
   value: string;
-  tone: 'text' | 'muted' | 'success';
   caption?: string;
+  icon: LucideIcon;
+  tone: keyof typeof TILE_TONE;
 }) {
-  const color =
-    tone === 'success'
-      ? 'text-success'
-      : tone === 'muted'
-        ? 'text-text-muted'
-        : 'text-text';
+  const s = TILE_TONE[tone];
   return (
-    <div className="flex flex-col justify-center gap-1 px-5 py-4">
-      <span className="text-[11px] text-text-muted">
-        {label}
-      </span>
-      <span className={cn('font-mono text-[18px] font-bold tabular-nums', color)}>
-        {value}
-      </span>
-      {caption && (
-        <span className="text-[11px] text-text-subtle">{caption}</span>
+    <div
+      className={cn(
+        'flex items-center justify-between gap-3 rounded-card border border-border bg-surface px-4 py-3 shadow-sm',
+        s.box,
       )}
+    >
+      <div className="min-w-0">
+        <p className="truncate text-[12px] font-medium text-text-muted">{label}</p>
+        <p
+          className={cn(
+            'mt-1 font-mono text-[21px] font-bold leading-none tracking-tight tabular-nums',
+            s.value,
+          )}
+        >
+          {value}
+        </p>
+        {caption && (
+          <p className="mt-1 truncate text-[11px] text-text-subtle">{caption}</p>
+        )}
+      </div>
+      <span
+        aria-hidden="true"
+        className={cn(
+          'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+          s.icon,
+        )}
+      >
+        <Icon size={16} strokeWidth={2.2} />
+      </span>
+    </div>
+  );
+}
+
+// Пустая секция — узкая полоса вместо карточки в 100px высотой с одной
+// строчкой текста по центру (замечание владельца 2026-07-25).
+function EmptyStrip({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-card border border-dashed border-border bg-surface/60 px-4 py-3">
+      <Icon size={15} strokeWidth={1.75} className="shrink-0 text-text-subtle" aria-hidden="true" />
+      <p className="text-[12.5px] text-text-muted">{text}</p>
     </div>
   );
 }
