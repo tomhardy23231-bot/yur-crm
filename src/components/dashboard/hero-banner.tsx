@@ -2,6 +2,7 @@ import { Sparkles } from 'lucide-react';
 
 import { getT } from '@/lib/i18n/server';
 import { LOCALE_BCP47 } from '@/lib/i18n/config';
+import { givenName } from '@/lib/utils';
 
 // ============================================================================
 // Hero-баннер дашборда (каркас владельца 2026-07-13): большой градиентный
@@ -30,7 +31,7 @@ export async function HeroBanner({
   revenueUpPct,
   stats,
 }: {
-  /** Полное имя — покажем первое слово. */
+  /** Полное ФИО — в приветствии покажем только имя (givenName). */
   name: string;
   /** Открытые задачи пользователя на сегодня (Киев). */
   taskCount: number;
@@ -42,7 +43,7 @@ export async function HeroBanner({
   stats: HeroStat[];
 }) {
   const { t, fmt, plural, locale } = await getT();
-  const firstName = name.trim().split(/\s+/)[0] ?? name;
+  const firstName = givenName(name);
 
   // Час и дата — в поясе фирмы (Киев), не сервера.
   const now = new Date();
