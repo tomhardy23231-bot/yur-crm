@@ -177,7 +177,10 @@ export function Select({
             position="popper"
             sideOffset={6}
             className={cn(
-              'z-50 overflow-hidden rounded-xl border border-border bg-surface shadow-lg',
+              // z-[105] — ВЫШЕ модалки (z-[100]), но ниже тостов (z-[110]).
+              // Было z-50: список открывался ЗА модалкой и выглядел «не работает»
+              // в любой форме внутри диалога (касса, расходы, выплаты) — 2026-07-25.
+              'z-[105] overflow-hidden rounded-xl border border-border bg-surface shadow-lg',
               'max-h-[min(var(--radix-select-content-available-height),22rem)]',
               'min-w-[var(--radix-select-trigger-width)]',
               'data-[state=open]:animate-[stage-menu-in_140ms_var(--ease-out)]',
