@@ -3,6 +3,7 @@ import 'server-only';
 import { getCurrentUser } from '@/lib/auth/current-user';
 import { userDb } from '@/lib/db';
 import { dateOnly, dec } from '@/lib/db/convert';
+import { CLEANUP_MARKERS, isExact } from '@/lib/expenses/cleanup-shared';
 
 // Разбор старых «расходов, заведённых платежом плюсом».
 //
@@ -32,18 +33,8 @@ export type CleanupCandidate = {
   exact: boolean;
 };
 
-// Слова-маркеры: как их писали на проде (укр./рус., разный регистр).
-const MARKERS = ['витрат', 'расход', 'розхід', 'розход'];
-
-// Поле целиком = трата (без «хвостов» вроде «витрати 10000»).
-const EXACT = new Set([
-  'витрати', 'витрата', 'витрати:', 'розхід', 'розход',
-  'расход', 'расходы', 'расход:',
-]);
-
-function isExact(value: string | null): boolean {
-  return value ? EXACT.has(value.trim().toLowerCase()) : false;
-}
+// Слова-маркеры и isExact вынесены в cleanup-shared.ts (юнит-тестируются).
+const MARKERS = CLEANUP_MARKERS;
 
 export async function listCleanupCandidates(): Promise<CleanupCandidate[]> {
   const user = await getCurrentUser();

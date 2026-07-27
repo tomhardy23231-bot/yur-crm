@@ -8,8 +8,8 @@ import { userDb } from '@/lib/db';
 import { dbActionError } from '@/lib/db/errors';
 import { dec } from '@/lib/db/convert';
 import { activeExpenseCategoryIdSet } from '@/lib/expenses/categories';
+import { guessMethod } from '@/lib/expenses/cleanup-shared';
 import { getT } from '@/lib/i18n/server';
-import type { ExpenseMethod } from '@/lib/types/db';
 import { UUID_RE } from '@/lib/validation';
 
 // Конвертация «платёж-плюсом» → расход по делу (разовый разбор старых данных).
@@ -35,18 +35,7 @@ export type BatchConvertState = {
   converted?: number;
 };
 
-// Способ оплаты платежа (свободный текст) → код счёта списания расхода.
-// Не угадали — 'cash': касса всё равно упадёт на дефолтный счёт, а владелец
-// видит строку в отчёте и может поправить, удалив и заведя расход заново.
-function guessMethod(method: string | null, note: string | null): ExpenseMethod {
-  const s = `${method ?? ''} ${note ?? ''}`.toLowerCase();
-  if (s.includes('карт') || s.includes('card')) return 'card';
-  if (s.includes('рахун') || s.includes('счет') || s.includes('счёт') ||
-      s.includes('банк') || s.includes('bank') || s.includes('безготів')) {
-    return 'bank';
-  }
-  return 'cash';
-}
+// guessMethod (способ оплаты → код счёта списания) — в cleanup-shared.ts.
 
 // ============================================================================
 // Массовый разбор: N платежей → расходы за одну операцию.

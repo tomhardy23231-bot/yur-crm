@@ -1,44 +1,38 @@
 // scripts/smoke-rls.ts
 // Smoke-тест RLS/триггеров против ЖИВОЙ базы (цикл v4 — чистый Postgres/Neon).
-// Быстрый ручной прогон после миграций/сида или прод-переезда (сессия 7):
-// печатает читаемый PASS/FAIL по секциям, БЕЗ vitest-раннера. Дополняет
-// integration-сьют (tests/), не заменяет его.
+// Быстрый ручной прогон после миграций / прод-переезда: печатает читаемый
+// PASS/FAIL по секциям, БЕЗ vitest-раннера. Дополняет integration-сьют
+// (tests/), не заменяет его.
+//
+// САМОДОСТАТОЧЕН (переписан 2026-07-27): больше НЕ требует сидовых логинов
+// (*@yur.local) и «ровно двух дел» — строит собственный изолированный мир
+// IT-<runId> через tests/helpers/fixtures (те же фикстуры, что у интеграционных
+// тестов), проверяет инварианты от лица его пользователей и УБИРАЕТ ЗА СОБОЙ
+// (destroyWorld в finally — и при падении тоже). Volume-зависимые ожидания
+// сняты: видимость дел фильтруется по префиксу мира, ставки ЗП читаются
+// фактические (на живой базе владелец мог их менять). Благодаря этому смоук
+// безопасен на ЛЮБОЙ живой БД — сид, клон прода, прод после миграций.
 //
 // «Сессия» пользователя = userDb(userId, tx => …) — тот же боевой путь под RLS
 // (set_config('app.user_id') → auth.uid() шима), что и приложение. Системные
 // операции сетапа/уборки — через adminDb (owner БД обходит RLS, аналог сида).
 //
-// Семантика Prisma vs прежний PostgREST: отказ RLS на INSERT/raw КИДАЕТ
-// (P2010/42501), «строка невидима для UPDATE/DELETE» → updateMany/deleteMany
-// возвращают count:0 (тихий no-op, не throw), триггерные/CHECK-ошибки — throw
-// с текстом в message.
+// Семантика Prisma: отказ RLS на INSERT/raw КИДАЕТ (P2010/42501), «строка
+// невидима для UPDATE/DELETE» → updateMany/deleteMany возвращают count:0
+// (тихий no-op), триггерные/CHECK-ошибки — throw с текстом в message.
 //
-// Покрытие — все ЖИВЫЕ инварианты. НЕ портированы секции payroll_ledger
-// (accrual per_payment / revert_payout / гонка «выплата+платёж»): механика
-// леджера ЗАМОРОЖЕНА в v3 с12 (триггер cases_sync_ledger снят, accrual_mode —
-// поле-призрак) — тестировать нечего.
+// НЕ портированы секции payroll_ledger (механика ЗАМОРОЖЕНА в v3 с12) и
+// сценарии книги операций (полное покрытие — tests/integration/money-book):
+// смоуку достаточно каталога RLS (секция 0 включает expenses).
 //
-// Данные — из scripts/seed.ts (департаментный скоуп Этапа 2 УЧТЁН):
-//   CRM-2026-001 (A): lawyer(Київ) + expert(Дніпро), representation 25%,
-//     оплачено 10000 → paid 10000, debt 20000, in_progress. Видят: owner,
-//     admin/office(Київ), lawyer, expert.
-//   CRM-2026-002 (B): lawyer2(Дніпро) + expert2(Львів), claim 10%, без оплат →
-//     debt 120000, consultation, priority urgent. admin/office(Київ) НЕ видят.
-//
-// ⚠ Рассчитан на СВЕЖИЙ сид (`npm run db:seed` / CI-БД), НЕ на прод-volume:
-//   секции жёстко ждут ровно 2 дела. После прод-переезда (с7) — прогонять на
-//   отдельной проверочной БД, не на боевой. Прерванный прогон может оставить
-//   temp-строки (cleanup после fail() не идёт) → перед повтором `npm run db:seed`.
-//   Секция 0 (каталог RLS) от volume НЕ зависит и валидна везде.
-//
-// Запуск: npm run smoke:rls (после db:migrate + db:seed).
-// Требует DATABASE_URL_APP (app_user) и DATABASE_URL_ADMIN (owner).
+// Запуск: npm run smoke:rls (нужны DATABASE_URL_APP + DATABASE_URL_ADMIN).
 
 import { randomUUID } from 'node:crypto';
 
 import { userDb } from '@/lib/db';
 import { adminDb } from '@/lib/db/admin';
 import { rpcCasePayroll, rpcLogActivity, rpcPayrollBySpecialist } from '@/lib/db/rpc';
+import { createWorld, destroyWorld, type World } from '../tests/helpers/fixtures';
 
 const admin = adminDb();
 
@@ -47,7 +41,7 @@ function ok(msg: string) {
 }
 function fail(msg: string): never {
   console.error(`  ✗ ${msg}`);
-  process.exit(1);
+  throw new Error(`smoke-rls: ${msg}`);
 }
 
 // Ожидаем, что промис ОТКЛОНЁН (RLS WITH CHECK / триггер / CHECK). Опционально
@@ -69,18 +63,6 @@ async function expectReject(
   fail(`${what}: ожидался отказ, но операция прошла`);
 }
 
-async function uid(email: string): Promise<string> {
-  const u = await admin.public_users.findFirst({ where: { email }, select: { id: true } });
-  if (!u) fail(`нет пользователя ${email} — сид прогнан?`);
-  return u.id;
-}
-
-async function caseId(numberTitle: string): Promise<string> {
-  const c = await admin.cases.findFirst({ where: { number_title: numberTitle }, select: { id: true } });
-  if (!c) fail(`нет дела ${numberTitle} — сид прогнан?`);
-  return c.id;
-}
-
 async function stageOf(id: string): Promise<string> {
   const c = await admin.cases.findUnique({ where: { id }, select: { stage: true } });
   return c!.stage as string;
@@ -92,7 +74,7 @@ async function mkUser(
   opts: { active?: boolean } = {},
 ): Promise<string> {
   const id = randomUUID();
-  const email = `smoke-${id.slice(0, 8)}@yur.local`;
+  const email = `smoke-${id.slice(0, 8)}@yur.test`;
   await admin.$transaction([
     admin.auth_users.create({ data: { id, email } }),
     admin.public_users.create({
@@ -107,19 +89,15 @@ async function rmUser(id: string): Promise<void> {
   await admin.auth_users.deleteMany({ where: { id } });
 }
 
-async function main() {
-  const owner = await uid('owner@yur.local');
-  const adminU = await uid('admin@yur.local');
-  const office = await uid('office@yur.local');
-  const lawyer1 = await uid('lawyer@yur.local');
-  const lawyer2 = await uid('lawyer2@yur.local');
-  const expert1 = await uid('expert@yur.local');
-  const expert2 = await uid('expert2@yur.local');
-
-  const caseA = await caseId('CRM-2026-001');
-  const caseB = await caseId('CRM-2026-002');
-  const client = await admin.clients.findFirst({ select: { id: true } });
-  if (!client) fail('нет ни одного клиента — сид прогнан?');
+async function run(world: World): Promise<void> {
+  const { prefix, clientId, caseA, caseB, caseS } = world;
+  const owner = world.users.owner.id;
+  const adminU = world.users.kyivAdmin.id; // руководитель Києва (scope=department)
+  const office = world.users.officeKyiv.id; // office_manager Києва
+  const lawyer1 = world.users.lawyer1.id; // Київ; дела A и S
+  const lawyer2 = world.users.lawyer2.id; // Дніпро; дело B
+  const expert1 = world.users.expert1.id; // Дніпро; дела A и S
+  const expert2 = world.users.expert2.id; // Львів; дело B
 
   // ── 0. Каталог RLS: все доменные таблицы под защитой ───────────────────────
   // Схема пересобрана из очищенного слепка — дропнутый ENABLE RLS/политика на
@@ -132,6 +110,8 @@ async function main() {
       'absences', 'user_notify_channels', 'payroll_transactions',
       'payout_allocations', 'payroll_ledger', 'payroll_rates', 'org_requisites',
       'departments', 'users', 'activity_log',
+      // Книга операций (0008–0010): справочники и расходы тоже под RLS.
+      'case_types', 'expenses', 'expense_categories',
     ];
     const rows = await admin.$queryRaw<Array<{ tablename: string; rls: boolean; policies: number }>>`
       select c.relname as tablename, c.relrowsecurity as rls,
@@ -145,10 +125,10 @@ async function main() {
       if (!r.rls) fail(`таблица public.${t}: RLS ВЫКЛЮЧЕН (relrowsecurity=false)`);
       if (Number(r.policies) === 0) fail(`таблица public.${t}: нет ни одной RLS-политики`);
     }
+    ok(`RLS включён и политики присутствуют на ${expected.length} доменных таблицах`);
   }
-  ok('RLS включён и политики присутствуют на 20 доменных таблицах');
 
-  // ── 1. Триггеры recalc (paid_total/debt из сида) ───────────────────────────
+  // ── 1. Триггеры recalc (paid_total/debt мира) ──────────────────────────────
   console.log('1. Триггеры recalc (paid_total/debt):');
   {
     const a = await admin.cases.findUnique({ where: { id: caseA }, select: { paid_total: true, debt: true } });
@@ -163,20 +143,26 @@ async function main() {
   ok('paid_total/debt пересчитаны триггерами');
 
   // ── 2. Изоляция видимости дел (userDb → RLS) ───────────────────────────────
+  // Живая база полна чужих дел — сравниваем только дела НАШЕГО мира (префикс).
   console.log('2. Изоляция видимости дел по ролям:');
-  const seen = (userId: string) =>
-    userDb(userId, (tx) => tx.cases.findMany({ select: { number_title: true } }));
-  const only = (rows: { number_title: string }[], n: string) =>
-    rows.length === 1 && rows[0]!.number_title === n;
   {
-    if (!only(await seen(lawyer1), 'CRM-2026-001')) fail('lawyer1 должен видеть только дело A');
-    if (!only(await seen(expert1), 'CRM-2026-001')) fail('expert1 должен видеть только дело A');
-    if (!only(await seen(lawyer2), 'CRM-2026-002')) fail('lawyer2 должен видеть только дело B');
-    if (!only(await seen(expert2), 'CRM-2026-002')) fail('expert2 должен видеть только дело B');
-    if ((await seen(owner)).length !== 2) fail('owner должен видеть 2 дела');
-    // Департаментный скоуп (Этап 2): admin/office Києва видят только дело A.
-    if (!only(await seen(adminU), 'CRM-2026-001')) fail('admin(Київ) должен видеть только дело A (не B)');
-    if (!only(await seen(office), 'CRM-2026-001')) fail('office(Київ) должен видеть только дело A (не B)');
+    const seen = async (userId: string): Promise<string> => {
+      const rows = await userDb(userId, (tx) =>
+        tx.cases.findMany({
+          where: { number_title: { startsWith: prefix } },
+          select: { number_title: true },
+        }),
+      );
+      return rows.map((r) => r.number_title.slice(prefix.length)).sort().join(',');
+    };
+    if ((await seen(lawyer1)) !== 'A,S') fail('lawyer1 должен видеть ровно свои дела A и S');
+    if ((await seen(expert1)) !== 'A,S') fail('expert1 должен видеть ровно свои дела A и S');
+    if ((await seen(lawyer2)) !== 'B') fail('lawyer2 должен видеть только дело B');
+    if ((await seen(expert2)) !== 'B') fail('expert2 должен видеть только дело B');
+    if ((await seen(owner)) !== 'A,B,S') fail('owner должен видеть все 3 дела мира');
+    // Департаментный скоуп (Этап 2): admin/office Києва видят дела Києва (A, S), не B.
+    if ((await seen(adminU)) !== 'A,S') fail('admin(Київ) должен видеть A и S (не B)');
+    if ((await seen(office)) !== 'A,S') fail('office(Київ) должен видеть A и S (не B)');
   }
   ok('юрист/Експерт — только свои; owner — все; admin/office — своё подразделение');
 
@@ -210,14 +196,29 @@ async function main() {
   ok('salary_mode/salary_fixed_amount под app_user отвергнуты (column privilege)');
 
   // ── 5. RPC case_payroll через реестр ───────────────────────────────────────
-  console.log('5. case_payroll (representation 25%, paid 10000):');
+  // Ставки на живой базе могли быть изменены владельцем — читаем фактические.
+  console.log('5. case_payroll (representation, paid 10000, фактические ставки):');
   {
+    const rate = await admin.payroll_rates.findUnique({
+      where: { category: 'representation' },
+      select: { lawyer_percent: true, expert_percent: true },
+    });
+    if (!rate) fail('нет строки payroll_rates(representation)');
+    const expLawyer = (10000 * Number(rate!.lawyer_percent)) / 100;
+    const expExpert = (10000 * Number(rate!.expert_percent)) / 100;
+    const near = (x: number, y: number) => Math.abs(x - y) < 0.005;
+
     const p = (await userDb(lawyer1, (tx) => rpcCasePayroll(tx, { caseId: caseA })))[0];
-    if (!p || p.lawyer_amount !== 2500 || p.expert_amount !== 2500 || p.total !== 5000) {
-      fail(`case_payroll: ожидалось 2500/2500/5000, факт ${JSON.stringify(p)}`);
+    if (
+      !p ||
+      !near(p.lawyer_amount, expLawyer) ||
+      !near(p.expert_amount, expExpert) ||
+      !near(p.total, expLawyer + expExpert)
+    ) {
+      fail(`case_payroll: ожидалось ${expLawyer}/${expExpert}, факт ${JSON.stringify(p)}`);
     }
+    ok(`case_payroll: lawyer=${expLawyer}, expert=${expExpert} (ставки живой базы)`);
   }
-  ok('case_payroll: lawyer=2500, expert=2500, total=5000');
 
   // ── 6. Запись: своё дело — да, чужое — нет; override под guard ──────────────
   console.log('6. Запись в дело (своё/чужое) + guard override:');
@@ -243,7 +244,7 @@ async function main() {
   console.log('7. Управление пользователями (кто может менять users):');
   {
     const orig = (await admin.public_users.findUnique({ where: { id: lawyer1 }, select: { full_name: true } }))!.full_name;
-    // admin может (не скоупится по подразделению).
+    // admin может (управление users не скоупится по подразделению).
     await userDb(adminU, (tx) => tx.public_users.updateMany({ where: { id: lawyer1 }, data: { full_name: 'Изменено админом' } }));
     let now = (await admin.public_users.findUnique({ where: { id: lawyer1 }, select: { full_name: true } }))!.full_name;
     if (now !== 'Изменено админом') fail('admin должен мочь менять users');
@@ -315,12 +316,13 @@ async function main() {
   // ── 10. tasks RLS (через дело) ─────────────────────────────────────────────
   console.log('10. tasks RLS:');
   {
+    const ownCases = new Set([caseA, caseS]);
     const l1Tasks = await userDb(lawyer1, (tx) => tx.tasks.findMany({ select: { case_id: true } }));
-    if (l1Tasks.some((t) => t.case_id !== caseA)) fail('lawyer1 видит task чужого дела');
+    if (l1Tasks.some((t) => !ownCases.has(t.case_id))) fail('lawyer1 видит task чужого дела');
     // создать на своё дело — ok.
     const created = await userDb(lawyer1, (tx) =>
       tx.tasks.create({
-        data: { case_id: caseA, title: 'smoke task', kind: 'task', assignee_id: lawyer1, created_by: lawyer1 },
+        data: { case_id: caseA, title: `${prefix}task`, kind: 'task', assignee_id: lawyer1, created_by: lawyer1 },
         select: { id: true },
       }),
     );
@@ -433,7 +435,7 @@ async function main() {
       userDb(owner, (tx) =>
         tx.cases.create({
           data: {
-            number_title: `SMOKE-INACT-R-${inactive.slice(0, 8)}`, client_id: client.id,
+            number_title: `${prefix}TMP-INACT-R`, client_id: clientId,
             lawyer_id: lawyer1, responsible_id: inactive, opened_at: new Date('2026-05-27'),
             case_type: 'civil', category: 'document', stage: 'new_request', priority: 'normal', contract_sum: 0,
           },
@@ -445,7 +447,7 @@ async function main() {
       userDb(owner, (tx) =>
         tx.cases.create({
           data: {
-            number_title: `SMOKE-INACT-L-${inactive.slice(0, 8)}`, client_id: client.id,
+            number_title: `${prefix}TMP-INACT-L`, client_id: clientId,
             lawyer_id: inactive, responsible_id: expert1, opened_at: new Date('2026-05-27'),
             case_type: 'civil', category: 'document', stage: 'new_request', priority: 'normal', contract_sum: 0,
           },
@@ -460,10 +462,10 @@ async function main() {
   // ── 15. log_activity case_deleted после delete (is_staff bypass) ───────────
   console.log('15. case_deleted после удаления дела (staff-bypass):');
   {
-    const run = `smoke-del-${randomUUID()}`;
+    const run = `${prefix}TMP-DEL`;
     const tmp = await admin.cases.create({
       data: {
-        number_title: run, client_id: client.id, lawyer_id: lawyer1, responsible_id: expert1,
+        number_title: run, client_id: clientId, lawyer_id: lawyer1, responsible_id: expert1,
         opened_at: new Date('2026-05-27'), case_type: 'civil', category: 'document',
         stage: 'new_request', priority: 'normal', contract_sum: 0,
       },
@@ -482,30 +484,28 @@ async function main() {
   }
   ok('admin пишет case_deleted про удалённое дело; lawyer — skip');
 
-  // ── 16. Payroll: ставки, сводка, изменение ставок ──────────────────────────
-  console.log('16. Payroll — ставки/сводка/права:');
+  // ── 16. Payroll: сводка по зрителю, изменение ставок ───────────────────────
+  // Значения ставок на живой базе НЕ проверяем на 7/10/25 (владелец волен их
+  // менять) — проверяем ПРАВА: сводка фильтруется, ставку меняет только owner.
+  console.log('16. Payroll — сводка/права на ставки:');
   {
-    const rates = await admin.payroll_rates.findMany({ select: { category: true, lawyer_percent: true, expert_percent: true } });
-    const rm = new Map(rates.map((r) => [r.category, [Number(r.lawyer_percent), Number(r.expert_percent)]]));
-    if (String(rm.get('document')) !== '7,7' || String(rm.get('claim')) !== '10,10' || String(rm.get('representation')) !== '25,25') {
-      fail(`payroll_rates ожидались 7/10/25 (lawyer=expert), факт: ${JSON.stringify(rates)}`);
-    }
     // payroll_by_specialist: lawyer1 видит только свои строки; staff — многих.
     const l1 = await userDb(lawyer1, (tx) => rpcPayrollBySpecialist(tx));
     if (l1.length === 0 || l1.some((r) => r.user_id !== lawyer1)) fail('payroll_by_specialist: lawyer1 видит чужие строки');
     const staff = await userDb(owner, (tx) => rpcPayrollBySpecialist(tx));
     if (new Set(staff.map((r) => r.user_id)).size < 2) fail('payroll_by_specialist: staff должен видеть многих');
     // office НЕ может менять ставки (owner-only write) → 0 строк.
+    const orig = Number((await admin.payroll_rates.findUnique({ where: { category: 'document' }, select: { lawyer_percent: true } }))!.lawyer_percent);
     const offRate = await userDb(office, (tx) => tx.payroll_rates.updateMany({ where: { category: 'document' }, data: { lawyer_percent: 99 } }));
     if (offRate.count !== 0) fail('office смог менять ставку — owner-only');
-    if (Number((await admin.payroll_rates.findUnique({ where: { category: 'document' }, select: { lawyer_percent: true } }))!.lawyer_percent) !== 7) {
+    if (Number((await admin.payroll_rates.findUnique({ where: { category: 'document' }, select: { lawyer_percent: true } }))!.lawyer_percent) !== orig) {
       fail('ставка document изменена не-owner');
     }
-    // owner может.
-    await userDb(owner, (tx) => tx.payroll_rates.update({ where: { category: 'document' }, data: { lawyer_percent: 8 } }));
-    await userDb(owner, (tx) => tx.payroll_rates.update({ where: { category: 'document' }, data: { lawyer_percent: 7 } })); // restore
+    // owner может (и сразу возвращаем как было).
+    await userDb(owner, (tx) => tx.payroll_rates.update({ where: { category: 'document' }, data: { lawyer_percent: orig + 1 } }));
+    await userDb(owner, (tx) => tx.payroll_rates.update({ where: { category: 'document' }, data: { lawyer_percent: orig } })); // restore
   }
-  ok('ставки 7/10/25; сводка фильтруется по зрителю; ставки меняет только owner');
+  ok('сводка фильтруется по зрителю; ставки меняет только owner');
 
   // ── 17. overpaid (переплата клиента) ───────────────────────────────────────
   console.log('17. overpaid при переплате (дело B):');
@@ -526,7 +526,7 @@ async function main() {
   {
     const c = await admin.cases.create({
       data: {
-        number_title: `SMOKE-ACT-${randomUUID().slice(0, 8)}`, client_id: client.id, lawyer_id: lawyer1, responsible_id: expert1,
+        number_title: `${prefix}TMP-ACT`, client_id: clientId, lawyer_id: lawyer1, responsible_id: expert1,
         opened_at: new Date('2026-05-28'), case_type: 'civil', category: 'document', stage: 'closed',
         closed_at: new Date('2026-05-28'), priority: 'normal', contract_sum: 0,
       },
@@ -566,7 +566,7 @@ async function main() {
     await userDb(owner, (tx) => tx.public_users.update({ where: { id: office }, data: { role: 'office_manager' } })); // restore
     // admin МОЖЕТ создать не-админскую роль, но НЕ admin.
     const nu = randomUUID();
-    const nuEmail = `smoke-nu-${nu.slice(0, 8)}@yur.local`;
+    const nuEmail = `smoke-nu-${nu.slice(0, 8)}@yur.test`;
     await admin.auth_users.create({ data: { id: nu, email: nuEmail } });
     await expectReject(
       userDb(adminU, (tx) => tx.public_users.create({ data: { id: nu, full_name: 'NewAdmin', email: nuEmail, role: 'admin', is_active: true } })),
@@ -581,7 +581,7 @@ async function main() {
   console.log('20. Создание клиента (юрист да, эксперт нет):');
   {
     const created = await userDb(lawyer1, (tx) =>
-      tx.clients.create({ data: { name: `SMOKE Client ${randomUUID().slice(0, 8)}`, client_kind: 'individual', created_by: lawyer1 }, select: { id: true } }),
+      tx.clients.create({ data: { name: `${prefix}client`, client_kind: 'individual', created_by: lawyer1 }, select: { id: true } }),
     );
     const sees = await userDb(lawyer1, (tx) => tx.clients.findUnique({ where: { id: created.id }, select: { id: true } }));
     if (!sees) fail('юрист не видит созданного клиента (RETURNING/SELECT-политика)');
@@ -615,9 +615,29 @@ async function main() {
   console.log('\nSMOKE RLS: все проверки зелёные ✓');
 }
 
+async function main() {
+  console.log('Строю изолированный мир IT-… (фикстуры интеграционных тестов)…');
+  const world = await createWorld();
+  try {
+    await run(world);
+  } finally {
+    // Убираем за собой и при падении: временные дела/юзеры секций сносятся в
+    // самих секциях, мир — здесь.
+    try {
+      await destroyWorld(world);
+      console.log(`Мир ${world.prefix} убран.`);
+    } catch (e) {
+      console.error(
+        `⚠ Уборка мира ${world.prefix} не удалась — остатки ищи по префиксу «${world.prefix}» / smoke-*@yur.test:`,
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+}
+
 main()
   .catch((err) => {
-    console.error(err);
+    console.error(err instanceof Error ? err.message : err);
     process.exitCode = 1;
   })
   .finally(() => admin.$disconnect());

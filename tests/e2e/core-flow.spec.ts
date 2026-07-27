@@ -1,18 +1,19 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// E2E основного денежного флоу (v3 Сессия 12): вход owner → создать клиента →
-// создать дело (сумма 10000) → открыть карточку → внести платёж 4000 → проверить
-// «Оплачено 4 000» и долг «6 000».
+// E2E основного денежного флоу: вход owner → создать клиента → создать дело
+// (сумма 10000) → карточка → платёж 4000 через модалку «+ Платіж» → проверить
+// «Оплачено 4 000» и «Борг 6 000».
 //
-// ⚠ ПОМЕЧЕН describe.skip (план v3 §12.5 это разрешает). Причина: тест требует
-// поднятого ЛОКАЛЬНОГО стека (`npx supabase start` + `npm run db:seed`) И живой
-// верификации селекторов формы дела — поля client_id/lawyer_id/responsible_id/
-// category отрисованы общим <Select> на @radix-ui/react-select (НЕ нативный
-// <select>, поэтому page.selectOption не работает: нужно кликнуть триггер и опцию).
-// Плюс интерфейс на uk-локали (playwright.config locale='uk-UA') — денежные подписи
-// берутся из словаря (t.caseCard.detail.rewardPaid/rewardDebt). Каркас написан по
-// образцу auth.spec.ts; включить — снять .skip и сверить отмеченные TODO-селекторы
-// в живом браузере. Инфраструктура в s12 намеренно не поднималась (см. PROGRESS).
+// Активирован 2026-07-27 (был каркасом под describe.skip с v3 s12): селекторы
+// сверены с живым кодом форм — client-form (#last_name/#first_name), case-form
+// (#client_id/#lawyer_id/#responsible_id/#case_type/#category — Radix-селекты
+// через общий <Select>), payment-form в модалке (role=dialog) из быстрых
+// действий карточки (кнопка «Платіж», сабмит «Додати платіж»).
+//
+// Требуется учётка владельца: на сидовой базе — дефолт ниже, на любой другой —
+// E2E_OWNER_EMAIL / E2E_OWNER_PASSWORD (см. tests/README.md). Созданные записи
+// (клиент/дело/платёж) остаются в БД — прибирает их владелец учётки или
+// сопровождающий скрипт по created_by временного владельца.
 
 const OWNER_EMAIL = process.env.E2E_OWNER_EMAIL ?? 'owner@yur.local';
 const OWNER_PASSWORD = process.env.E2E_OWNER_PASSWORD ?? 'test12345!';
@@ -31,59 +32,82 @@ async function login(page: Page, email: string, password: string) {
   });
 }
 
-// Открыть стилизованный <Select> (Radix) по связанному label и выбрать опцию.
-// TODO(verify): сверить роль триггера/опции в живом DOM — у @radix-ui/react-select
-// триггер обычно role="combobox", опции role="option". Если drop-in <Select>
-// рендерит нативный <select> — заменить на page.selectOption.
-async function pickSelect(page: Page, fieldId: string, optionIndex = 0) {
-  const trigger = page.locator(`#${fieldId}`);
-  await trigger.click();
-  const options = page.getByRole('option');
-  await options.nth(optionIndex).click();
+// Открыть стилизованный <Select> (Radix) по id триггера и выбрать опцию:
+// по тексту (name) или первую попавшуюся. Опции Radix рендерятся в портал —
+// ищем по role=option на всей странице.
+async function pickSelect(page: Page, fieldId: string, name?: RegExp) {
+  await page.locator(`#${fieldId}`).click();
+  const options = name ? page.getByRole('option', { name }) : page.getByRole('option');
+  await options.first().click();
 }
 
-test.describe.skip('Основной флоу: клиент → дело → платёж → долг', () => {
-  test('платёж 4000 по делу на 10000 → Оплачено 4 000 / Долг 6 000', async ({
+test.describe('Основной флоу: клиент → дело → платёж → долг', () => {
+  test('платёж 4000 по делу на 10000 → Оплачено 4 000 / Борг 6 000', async ({
     page,
   }) => {
+    // Свежий браузерный профиль → всплыли бы онбординг и модалка релиза
+    // (оверлей перехватывает клики). Помечаем «уже видел» ДО загрузки приложения;
+    // ключ релиза — на несколько версий вперёд, чтобы тест не гнил с релизами.
+    await page.addInitScript(() => {
+      window.localStorage.setItem('yk_onboarding_v1', '1');
+      for (const v of ['2.11', '2.12', '2.13', '2.14', '2.15', '3.0']) {
+        window.localStorage.setItem(`yk_release_seen_${v}`, '1');
+      }
+    });
     await login(page, OWNER_EMAIL, OWNER_PASSWORD);
 
     // 1) Клиент (физлицо по умолчанию — без Radix-селектов: только ФИО).
     await page.goto('/clients/new');
     await page.locator('#last_name').fill(`${RUN}`);
     await page.locator('#first_name').fill('Тест');
-    await page.locator('button[type="submit"]').click();
+    // По тексту: у «Вийти» в сайдбаре тоже type=submit.
+    await page.getByRole('button', { name: 'Створити клієнта' }).click();
     // Успех редиректит на карточку клиента.
     await page.waitForURL(/\/clients\/[0-9a-f-]{36}/, { timeout: 60_000 });
 
-    // 2) Дело. number_title — обычный input; client_id/lawyer_id/responsible_id/
-    // category — Radix-селекты (см. pickSelect). case_type — тоже селект.
+    // 2) Дело: свой клиент — по имени (список на живой базе длинный),
+    // юрист/Експерт — первые активные из списка, тип/категория — первые.
     await page.goto('/cases/new');
     await page.locator('[name="number_title"]').fill(`${RUN}-ДОГ`);
-    await pickSelect(page, 'client_id', 0); // TODO(verify): выбрать созданного клиента
-    await pickSelect(page, 'lawyer_id', 0); // первый сотрудник (owner засеян)
-    await pickSelect(page, 'responsible_id', 0);
-    await pickSelect(page, 'case_type', 0);
-    await pickSelect(page, 'category', 0);
+    await pickSelect(page, 'client_id', new RegExp(RUN));
+    // Первая опция у юриста/Експерта — пустышка «не обрано» (sentinel общего
+    // Select) — целимся в конкретных сотрудников по имени (времянки e2e либо
+    // сидовые, scripts/seed.ts). Юрист ≠ Експерт, иначе поверх карточки всплывёт
+    // модалка «Суміщення ролей» (0007) и перекроет модалку платежа.
+    await pickSelect(page, 'lawyer_id', /IT E2E Owner|Влад Владелец/);
+    await pickSelect(page, 'responsible_id', /IT E2E Expert|Эдуард Экспертов/);
+    await pickSelect(page, 'case_type');
+    await pickSelect(page, 'category');
     await page.locator('[name="contract_sum"]').fill('10000');
-    await page.locator('button[type="submit"]').click();
+    await page.getByRole('button', { name: 'Створити справу' }).click();
     await page.waitForURL(/\/cases\/[0-9a-f-]{36}/, { timeout: 60_000 });
 
-    // 3) Платёж 4000. Форма платежа на карточке: amount/paid_at по name
-    // (id динамический через useId). Дата по умолчанию уже проставлена.
-    await page.locator('[name="amount"]').first().fill('4000');
-    // Кнопка сабмита формы платежа — TODO(verify): уточнить по тексту/роли,
-    // если на странице несколько форм.
-    await page
-      .getByRole('button', { name: /Зберегти|Сохранить|Додати|Платіж/i })
-      .first()
-      .click();
+    // 3) Платёж 4000: быстрое действие «+ Платіж» открывает модалку с формой.
+    // Ждём полностью отрисованную карточку (холодная компиляция маршрута +
+    // стриминг RSC перерисовывают шапку — клик по «нестабильной» кнопке висит).
+    await expect(
+      page.getByRole('heading', { name: new RegExp(`${RUN}-ДОГ`) }),
+    ).toBeVisible({ timeout: 60_000 });
+    const payButton = page.getByRole('button', { name: 'Платіж', exact: true });
+    await expect(payButton).toBeVisible({ timeout: 30_000 });
+    // Диалог — по имени: на карточке могут жить и другие role=dialog.
+    // Клик с повтором: сразу после стриминга кнопка может быть ещё не
+    // гидратирована (клик уходит в пустоту).
+    const dialog = page.getByRole('dialog', { name: 'Новий платіж' });
+    await expect(async () => {
+      await payButton.click();
+      await expect(dialog).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+    await dialog.locator('[name="amount"]').fill('4000');
+    // Дата уже проставлена (сегодня); счёт/способ — необязательные.
+    await dialog.getByRole('button', { name: 'Додати платіж' }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
 
-    // 4) Проверка сумм. Подписи локализованы (uk): «Оплачено/Сплачено»,
-    // «Борг/Долг». Сверяем по числам с разрядкой (Intl): 4 000 и 6 000.
-    await expect(page.getByText(/4[\s  ]?000/).first()).toBeVisible({
+    // 4) Суммы в шапке карточки. Подписи локализованы (uk: «Оплачено»/«Борг»),
+    // числа с разрядкой Intl (4 000 / 6 000 — пробел может быть NBSP/узким).
+    await expect(page.getByText(/4[\s  ]?000/).first()).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText(/6[\s  ]?000/).first()).toBeVisible();
+    await expect(page.getByText(/6[\s  ]?000/).first()).toBeVisible();
   });
 });
