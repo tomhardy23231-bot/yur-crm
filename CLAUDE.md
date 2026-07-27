@@ -175,15 +175,28 @@ npm run smoke:rls       # быстрый RLS-smoke на живой БД (21 ин
   С миграций `0008`/`0009` прав **19**: +`manage_case_types` (типы дел) и
   +`view_case_expenses` / `manage_case_expenses` / `manage_expense_categories`
   (расходы по делу, см. ниже).
-- **расходы по делу (2026-07-24, миграция `0009_case_expenses`)** —
-  `case_expenses`/`expense_categories`: SELECT расхода = `can_see_case(case_id)`
-  **И** право `view_case_expenses`; INSERT = `can_write_case` **И**
-  `manage_case_expenses` (+ автор); DELETE = `manage_case_expenses` И (автор ИЛИ
-  `can_manage_users`); UPDATE-политики НЕТ (правка = удалить и внести заново).
-  Композиция «право × видимость дела» намеренная: выдача права юристу НЕ
-  открывает ему чужие дела. Справочник статей читают все активные сотрудники,
-  пишет `manage_expense_categories`. Все три права выдают owner **и** admin
-  (общая ветка `can_grant_cap`, спец-условия как у кассы нет).
+- **расходы (0009 → переделаны 0010–0016, 2026-07-27)** — таблица
+  `public.expenses` (было `case_expenses`) + `expense_categories`.
+  **Дело у расхода НЕОБЯЗАТЕЛЬНО**, и от этого зависит доступ (RLS
+  `expenses_select` / `_insert` / `_delete` — развилка по `case_id IS NULL`):
+  - **строка С делом** (судовий збір, експертиза) — SELECT =
+    `can_see_case(case_id)` **И** `view_case_expenses`; INSERT =
+    `can_write_case` **И** `manage_case_expenses` (+ автор); DELETE =
+    `manage_case_expenses` И (автор ИЛИ `can_manage_users`);
+  - **строка БЕЗ дела** (оренда, податки, зв'язок, **зарплата**) — SELECT =
+    `view_cash` ИЛИ `can_manage_cash`, запись/удаление = `can_manage_cash`.
+    Разделение НАМЕРЕННОЕ: среди общефирменных расходов есть зарплата, её
+    суммы не должны открываться каждому с галочкой «расходы по делу».
+
+  UPDATE-политики НЕТ (правка = удалить и внести заново). Строки с
+  `payroll_transaction_id` (авто-расход от выплаты ЗП) руками не создаются и
+  не удаляются — уходят вместе с выплатой каскадом. Композиция «право ×
+  видимость дела» сохранена: выдача права юристу НЕ открывает ему чужие дела.
+  Справочник статей читают все активные сотрудники, пишет
+  `manage_expense_categories`; три права расходов выдают owner **и** admin.
+  Список счетов для форм отдаёт SECURITY DEFINER `public.cash_accounts_pick()`
+  (id/name/kind, БЕЗ остатков) — доступен любому активному сотруднику, потому
+  что платёж вносит юрист, а права кассы выдаёт только owner.
 
 ---
 
@@ -274,7 +287,14 @@ admin/office_manager своего подразделения (либо `visibili
 и в общем календаре (violet-маркер `--absence`, отличим от заседаний/дедлайнов).
 
 **payments** (оплаты)
-`id, case_id, amount, paid_at, method, note, created_by, act_id (опц. → case_acts)`
+`id, case_id, amount, paid_at, method (свободный текст, опц.),
+account_id (→ cash_accounts restrict, опц. — КОНКРЕТНЫЙ счёт прихода, 0016),
+note, created_by, act_id (опц. → case_acts)`
+— `account_id` (2026-07-27, 0016): форма платежа показывает список счетов по
+именам, приход в кассе ложится именно туда. NULL — старые записи и платежи от
+актов: счёт подбирается по `method`. **Правка платежа** — `updatePaymentAction`
+под правом `edit_payments`; у платежа с `act_id` сумма и дата неизменны
+(БД-триггер `payments_guard_act_payment`), правятся только счёт/метод/примечание.
 — `paid_total` и `debt` в case считаются из платежей и `contract_sum` (триггеры).
 `act_id` (v2 Этап 5) — платёж, созданный подтверждением акта (один платёж на акт,
 unique-индекс); при удалении такого платежа триггер `case_acts_revert_on_payment_delete`
@@ -374,42 +394,61 @@ unique), created_by (→ users restrict), created_at`
 — приход/расход за день, свободное описание (аренда/налоги/реклама — НЕ привязаны к делам).
 **Авто-приход:** платёж по делу автоматически создаёт `cash_entries(direction='in')` на
 счёт (триггер `cash_sync_on_payment` на `payments`, SECURITY DEFINER): счёт выбирается
-`private.cash_resolve_account(method)` (kind по методу: card/bank/cash, `'act'`→bank;
-фолбэк — дефолтный счёт; нет касс → **операция пропускается, триггер не падает**). Удаление
+`coalesce(payments.account_id, private.cash_resolve_account(method))` —
+явный счёт важнее подбора (0016). Подбор `cash_resolve_account`: kind по методу
+(card/bank/cash, `'act'`→bank) → счёт с `is_default` → **единственный активный
+счёт** (0011, иначе 365 платежей молча не попадали в кассу) → NULL. Нет касс →
+**операция пропускается, триггер не падает**. Удаление
 платежа снимает строку (FK cascade); правка платежа пересоздаёт её. Авто-строки
 (`payment_id IS NULL=false`) пользователю на UPDATE/DELETE не отдаются (правятся через сам
 платёж); ручные (`payment_id IS NULL`) правит/удаляет cash-manager. Сальдо считается
 накопительно в TS (`lib/cash/saldo.ts`, юнит-тест по образцу ОЛІМП), отчёт — `/reports/cash`
 (вкладки счетов + Total, разворот по дням, итоги месяца).
 
-**case_expenses** (расходы по делу) + **expense_categories** (статьи) — 2026-07-24, миграция 0009
-`case_expenses: id, case_id (→ cases cascade), category_id (→ expense_categories
-restrict), amount numeric(14,2) (>0), spent_at date, method (card|bank|cash —
-ЗАКРЫТЫЙ код счёта списания, не свободный текст как у платежа), note (≤500),
-created_by (→ users restrict), created_at`
+**expenses** (расходы фирмы) + **expense_categories** (статьи) — 0009, переделаны 0010–0016 (2026-07-27)
+`expenses: id, case_id (→ cases cascade, NULLABLE!), category_id (→
+expense_categories restrict), amount numeric(14,2) (>0), spent_at date,
+account_id (→ cash_accounts restrict, опц. — конкретный счёт списания),
+method (card|bank|cash, опц. — вид счёта, когда конкретный неизвестен),
+payroll_transaction_id (→ payroll_transactions cascade, опц. — авто-расход от
+выплаты ЗП), note (≤500), created_by (→ users restrict), created_at`
 `expense_categories: id, code (unique), name, is_builtin, is_active, sort_order,
-created_at` — структура 1:1 с `case_types`; 9 встроенных статей засеяны миграцией
-(court_fee, state_duty, expertise, travel, rent, advertising, taxes, bank_fees,
-other), лейблы встроенных — из i18n `enums.expenseCategory`, кастомных — из `name`.
+scope (case|company|both), created_at` — структура 1:1 с `case_types`;
+12 встроенных статей (court_fee, state_duty, expertise, travel — `scope='case'`;
+rent, advertising, taxes, bank_fees, salary, communication, office —
+`scope='company'`; other — `both`), лейблы встроенных из i18n
+`enums.expenseCategory`, кастомных — из `name`. `scope` — подсказка ввода:
+форма дела предлагает case+both, форма кассы — company+both.
+— **`case_id NULL` = расход ФИРМЫ** (оренда, податки, зв'язок, зарплата): в
+маржу дел не входит, живёт под правами кассы. `case_id NOT NULL` = трата по
+делу: уменьшает маржу дела. Разбор постановки — файл клиента ОЛІМП, где 18 из
+18 расходов месяца общефирменные (см. docs/PROGRESS.md, сессия 26–27.07).
 — ⚠️ **Расходы НЕ входят в базу ЗП.** База ЗП = `cases.paid_total` =
-`SUM(payments.amount)`; `case_expenses` не читает НИ ОДНА payroll-функция и ни
+`SUM(payments.amount)`; `expenses` не читает НИ ОДНА payroll-функция и ни
 одна `dashboard_*`. Отдельная таблица выбрана именно ради этого инварианта.
 — **Зеркало в кассу:** триггер `cash_sync_on_expense` (SECURITY DEFINER, калька
 `cash_sync_on_payment`) кладёт `cash_entries(direction='out', case_id, expense_id)`
-на счёт, выбранный `private.cash_resolve_account(method)`; нет счетов → тихо
-пропускает (расход всё равно сохраняется). Новая колонка `cash_entries.expense_id`
-(FK cascade, partial-unique) — системная: три политики записи кассы расширены
+на счёт `coalesce(new.account_id, private.cash_resolve_account(method))`; нет
+счетов → тихо пропускает (расход всё равно сохраняется). Номер дела в описании —
+только если дело указано. Колонка `cash_entries.expense_id` (FK cascade,
+partial-unique) — системная: три политики записи кассы расширены
 `payment_id IS NULL AND expense_id IS NULL`. Удаление расхода снимает строку кассы.
-— **Отчёт** `/reports/profit` — `public.finance_by_case(from,to)` (SECURITY
-**INVOKER** → RLS сама режет: дела по `case_visible`, расходы по `view_case_expenses`).
-Доход = `SUM(payments.amount)` за период, ТОЛЬКО для показа. Маржа = доход − расходы.
+— **Зарплата → касса (0010):** триггер `expense_sync_on_payout` на
+`payroll_transactions` (только `kind='payout'`; премия — начисление, не движение
+денег) создаёт расход по статье `salary` с `case_id = NULL`, дальше он идёт в
+кассу общим путём. Иначе зарплату вносили бы дважды и цифры разошлись бы.
+— **Отчёты:** `public.finance_by_case(from,to)` — прибыльность дел (вкладка
+«По делам» в кассе); `public.expenses_by_category(from,to)` — «куда сколько
+ушло» (вкладка «Витрати»). Обе SECURITY **INVOKER** → RLS режет строки сама.
+Доход = `SUM(payments.amount)` за период, ТОЛЬКО для показа.
 — **Разбор старых данных:** `/settings/expense-cleanup` (нужны `manage_case_expenses`
 И `delete_payments`) — до 0009 траты заводили платежом «плюсом» (note/method
 «витрати»), что завышало `paid_total` → фейковая переплата и ЗАВЫШЕННАЯ ЗП.
 Конвертация в одной транзакции: создать расход → удалить платёж (триггеры
 пересчитают `paid_total`/долг/переплату, приход кассы уйдёт каскадом). Журнал:
 `expense_created`/`expense_deleted`/`payment_converted_to_expense` (под
-`entity_type='case'`) + `expense_category_*` (новый `entity_type='expense_category'`).
+`entity_type='case'` для трат по делу и `entity_type='cash'` для расходов
+фирмы) + `expense_category_*` (`entity_type='expense_category'`).
 
 **case_comments** (комментарии к делу) — лента обсуждения
 `id, case_id (→ cases cascade), author_id (→ users restrict), body (text, 1–5000,
@@ -512,10 +551,15 @@ updated_at`
    owner (любому) или admin своего подразделения (БД-гард `users_guard_salary_fields`,
    право `private.can_manage_user_salary`); колонки `salary_*` приватны (column-level
    привилегии), читаются только через SECURITY DEFINER-функции.
-   **Расходы по делу зарплату НЕ трогают (2026-07-24, решение владельца):**
-   `case_expenses` не даёт процент и НЕ уменьшает базу — она остаётся
-   `paid_total`. Расход — это деньги компании, а не клиента; он списывается со
-   счёта кассы и уменьшает только МАРЖУ дела (доход − расходы, считается до ЗП).
+   **Расходы зарплату НЕ трогают (2026-07-24, решение владельца):** таблица
+   `expenses` не даёт процент и НЕ уменьшает базу — она остаётся `paid_total`.
+   Расход — это деньги компании, а не клиента; он списывается со счёта кассы и
+   уменьшает только МАРЖУ дела (доход − расходы, считается до ЗП).
+   **Обратная связка (0010, 2026-07-27):** ВЫПЛАТА зарплаты
+   (`payroll_transactions.kind='payout'`) сама создаёт расход фирмы по статье
+   «Зарплата» с `case_id = NULL` → он идёт в кассу расходом. В маржу дел не
+   входит, на процент не влияет. Премия (`bonus`) не зеркалится: это начисление,
+   а не движение денег.
 5. **admin и office_manager видят финансы/ЗП своего подразделения** (v2 Этап 2;
    `visibility_scope='all'`/`department_id IS NULL` → всей компании); office_manager не
    удаляет записи и не правит платежи; управление пользователями — только owner/admin
@@ -582,6 +626,22 @@ updated_at`
 > (вкладки счетов + Total, разворот по дням, итоги месяца) + пункт «Касса» в
 > навигации (cap-gated). См. §4–§5, §7-8.
 
+> **✅ КНИГА ОПЕРАЦИЙ — бухучёт всей фирмы (2026-07-27, НА ПРОДЕ).** Требование
+> клиента: «нужно понимать, куда сколько пришло и откуда сколько и куда ушло».
+> Миграции **0009–0016**. Ключевое: расход перестал быть привязанным к делу
+> (`expenses.case_id` NULLABLE) — теперь одна сущность на траты по делам и
+> общефирменные (оренда, податки, зв'язок, зарплата); у расхода и платежа
+> появился **конкретный счёт списания/прихода** (не «вид счёта»); статьи
+> расходов делятся по области применения (`scope`); **выплата ЗП сама
+> становится расходом** и попадает в кассу; единственный активный счёт
+> считается счётом по умолчанию (без этого 365 платежей молча не попадали в
+> оборотку); платежи стало можно **править**, счета и статьи — удалять.
+> UI: вкладка «Витрати» в кассе с разбивкой по статьям, компактная шапка кассы,
+> обе страницы ЗП на общем каркасе списков. Онбординг: релиз **2.11** (модалка
+> с блокировкой закрытия на 60 с + красный блок про разбор старых «витрат»),
+> тур по кассе (7 шагов) и раздел справки `/help/cash`. Детали и гочи —
+> `docs/PROGRESS.md`, запись «Сессия 2026-07-26/27».
+>
 > **✅ Управление доступами сотрудников (2026-06-30, НА ПРОДЕ).** Owner-only модалка
 > в `/settings/users` (клик по сотруднику): показать логин + выдать/сменить пароль,
 > изменить логин (email), отправить приглашение на email (встроенная почта Supabase,
