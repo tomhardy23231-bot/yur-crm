@@ -1,17 +1,20 @@
 'use client';
 
-import { useActionState, useEffect, useId, useRef, useState } from 'react';
-import { Plus, Pencil, Banknote, CreditCard, Landmark } from 'lucide-react';
+import { useActionState, useEffect, useId, useRef, useState, useTransition } from 'react';
+import { Plus, Pencil, Trash2, Banknote, CreditCard, Landmark } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import { cn, formatMoney } from '@/lib/utils';
 import { CASH_ACCOUNT_KINDS, type CashAccount } from '@/lib/types/db';
 import {
   createCashAccountAction,
+  deleteCashAccountAction,
   updateCashAccountAction,
   type CashAccountState,
 } from '@/lib/cash/actions';
@@ -102,6 +105,7 @@ export function CashAccountsManager({
                     >
                       <Pencil size={13} strokeWidth={1.75} />
                     </button>
+                    <DeleteAccountButton account={acc} />
                   </div>
                 </div>
 
@@ -131,6 +135,49 @@ export function CashAccountsManager({
         )}
       </div>
     </section>
+  );
+}
+
+// Удаление счёта: подтверждение + понятный отказ, если по счёту уже есть
+// операции (тогда предлагаем сделать счёт неактивным — история сохранится).
+function DeleteAccountButton({ account }: { account: CashAccount }) {
+  const { t, fmt } = useI18n();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const run = () => {
+    setOpen(false);
+    startTransition(async () => {
+      const res = await deleteCashAccountAction(account.id);
+      if (res.ok) toast.success(res.message ?? t.cash.actions.accountDeleted);
+      else toast.error(res.message ?? t.cash.actions.accountDeleteFailed);
+    });
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={pending}
+        aria-label={t.cash.accounts.delete}
+        title={t.cash.accounts.delete}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-error-bg hover:text-error disabled:opacity-50"
+      >
+        <Trash2 size={13} strokeWidth={1.75} />
+      </button>
+      <ConfirmDialog
+        open={open}
+        title={t.cash.accounts.delete}
+        description={fmt(t.cash.accounts.deleteConfirm, { name: account.name })}
+        confirmLabel={t.cash.accounts.delete}
+        tone="danger"
+        pending={pending}
+        onConfirm={run}
+        onClose={() => setOpen(false)}
+      />
+    </>
   );
 }
 

@@ -186,3 +186,26 @@ export async function getUnsyncedPaymentsCount(): Promise<number> {
     return 0;
   }
 }
+
+// =====================================================================
+// getCurrentBalances — фактический остаток по счетам НА СЕГОДНЯ, независимо от
+// выбранного в отчёте месяца (2026-07-26, замечание владельца: листая месяцы,
+// он видел остаток на конец того месяца и не понимал, сколько на счету сейчас).
+//
+// Считает та же SQL-функция cash_balances_before, но с границей «завтра»:
+// накопленный перенос по всем операциям + начальный остаток счёта.
+// =====================================================================
+export async function getCurrentBalances(): Promise<Record<string, number>> {
+  const user = await getCurrentUser();
+  if (!user) return {};
+  // Граница берётся строго меньше, поэтому «завтра» = включая сегодняшний день.
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const rows = await userDb(user.profile.id, (tx) =>
+    rpcCashBalancesBefore(tx, { before: tomorrow }),
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.account_id] = r.balance;
+  return out;
+}

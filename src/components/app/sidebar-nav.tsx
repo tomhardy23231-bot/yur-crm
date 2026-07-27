@@ -60,6 +60,9 @@ const WORK_ITEMS: ReadonlyArray<NavItem> = [
   { id: 'payroll',   href: '/reports/payroll', icon: Coins,     enabled: true, tourId: 'nav-payroll'  },
   // Касса — обладателю view_cash ИЛИ can_manage_cash (сплит 2026-07-16;
   // по дефолту owner). RLS дублирует.
+  // Прибыльность (доходы−расходы по делам) — НЕ отдельный пункт, а вкладка
+  // «По делам» внутри «Кассы» (решение владельца 2026-07-24: всё про деньги
+  // в одном разделе).
   { id: 'finance',   href: '/reports/cash', icon: Wallet,       enabled: true, requiredCaps: ['view_cash', 'can_manage_cash'], tourId: 'nav-cash' },
   // Журнал — виден всем: RLS отдаёт каждому его срез событий (2026-07-21).
   { id: 'journal',   href: '/journal',   icon: History,         enabled: true, tourId: 'nav-journal' },

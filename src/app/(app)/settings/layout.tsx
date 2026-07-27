@@ -21,6 +21,12 @@ export default async function SettingsLayout({
   if (caps.manage_users || caps.create_users) visibleIds.push('users');
   if (isOwner) visibleIds.push('departments');
   if (caps.manage_case_types) visibleIds.push('caseTypes');
+  if (caps.manage_expense_categories) visibleIds.push('expenseCategories');
+  // Разбор старых «расходов-платежей» — разовый инструмент, но пока записи есть,
+  // он должен быть на виду (а не ссылкой внутри другой страницы).
+  if (caps.manage_case_expenses && caps.delete_payments) {
+    visibleIds.push('expenseCleanup');
+  }
   if (caps.edit_payroll_rates) visibleIds.push('rates');
   if (isOwner) visibleIds.push('requisites');
   visibleIds.push('language');

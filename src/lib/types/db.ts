@@ -131,6 +131,11 @@ export const CAPABILITIES = [
   'can_manage_cash',
   // 2026-07-24: управление справочником типов дел (Настройки → Типы дел).
   'manage_case_types',
+  // 2026-07-24: расходы по делу. Просмотр и внесение разделены (как касса),
+  // справочник статей — отдельно. Расходы НЕ влияют на ЗП (миграция 0009).
+  'view_case_expenses',
+  'manage_case_expenses',
+  'manage_expense_categories',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -156,6 +161,9 @@ export const CAP_ROLE_DEFAULTS: Record<Capability, readonly Role[]> = {
   view_cash: ['owner'],
   can_manage_cash: ['owner'],
   manage_case_types: ['owner', 'admin'],
+  view_case_expenses: ['owner', 'admin', 'office_manager'],
+  manage_case_expenses: ['owner', 'admin', 'office_manager'],
+  manage_expense_categories: ['owner', 'admin'],
 };
 
 // Права, которые выдаёт ТОЛЬКО владелец (системные настройки и касса —
@@ -791,6 +799,60 @@ export type PaymentRow = {
 
 export type PaymentWithCreator = PaymentRow & {
   creator: { id: string; full_name: string } | null;
+};
+
+// =====================================================================
+// Case expenses — расходы по делу (миграция 0009, 2026-07-24).
+//
+// ⚠️ КЛЮЧЕВОЕ: расходы НЕ входят в базу зарплаты. База ЗП — cases.paid_total
+// = SUM(payments.amount); case_expenses не читает ни одна payroll-функция.
+// Расход зеркалится в кассу расходом (триггер cash_sync_on_expense), поэтому
+// method — ЗАКРЫТЫЙ код счёта списания, а не свободный текст как у платежа.
+// =====================================================================
+
+// Счёт списания расхода: тот же набор, что kind у счетов кассы (см. ниже).
+export type ExpenseMethod = CashAccountKind;
+
+export const EXPENSE_METHODS: ReadonlyArray<ExpenseMethod> = ['card', 'bank', 'cash'];
+
+export function isExpenseMethod(value: unknown): value is ExpenseMethod {
+  return value === 'card' || value === 'bank' || value === 'cash';
+}
+
+export type ExpenseRow = {
+  id: string;
+  // NULL (0010) — общефирменный расход вне дел: аренда, налоги, связь,
+  // зарплата. В маржу дел такие не входят и живут под правами кассы.
+  case_id: string | null;
+  category_id: string;
+  // numeric(14,2) → нормализуем в number при чтении.
+  amount: number;
+  // date (не timestamptz) — YYYY-MM-DD.
+  spent_at: string;
+  // NULL — счёт по умолчанию (так пишется авто-расход зарплаты).
+  method: ExpenseMethod | null;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+  // NOT NULL — системная строка: расход, порождённый выплатой зарплаты.
+  // Руками не вносится и не удаляется (снимается вместе с выплатой).
+  payroll_transaction_id: string | null;
+  // Конкретный счёт списания (0015). NULL — счёт подбирается по method.
+  account_id: string | null;
+};
+
+// Расход + статья (с готовым лейблом) и автор — строка списка на карточке дела.
+export type ExpenseWithRefs = ExpenseRow & {
+  category: { id: string; code: string; label: string };
+  creator: { id: string; full_name: string } | null;
+};
+
+// Итоги денег по делу для сводки «Дохід / Витрати / Маржа».
+// income = cases.paid_total (реально оплачено клиентом), не сумма договора.
+export type CaseMoneySummary = {
+  income: number;
+  expense: number;
+  margin: number;
 };
 
 // =====================================================================

@@ -8,7 +8,9 @@ import {
   ArrowDownLeft,
   ArrowDownUp,
   ArrowUpRight,
+  ChevronDown,
   Link2,
+  Settings2,
   Wallet,
 } from 'lucide-react';
 
@@ -28,7 +30,18 @@ import { useI18n } from '@/lib/i18n/provider';
 import type { CashAccount, CashEntryWithCase } from '@/lib/types/db';
 import type { CashDayRow, CashMonthTotals, CashTotalRow } from '@/lib/cash/saldo';
 import { deleteCashEntryAction } from '@/lib/cash/actions';
-import { CashEntryForm } from './cash-entry-form';
+import type {
+  CategorySpendRow,
+  CategorySpendTotals,
+  ProfitRow,
+  ProfitTotals,
+} from '@/lib/expenses/report';
+import type { ExpenseCategoryOption } from '@/lib/expenses/categories';
+import type { ExpenseWithRefs } from '@/lib/types/db';
+import { AddExpenseDialog } from '@/components/expenses/add-expense-dialog';
+import { CashEntryDialog } from './cash-entry-dialog';
+import { CashExpensesPanel } from './cash-expenses-panel';
+import { CashProfitPanel } from './cash-profit-panel';
 
 export type CashAccountView = {
   accountId: string;
@@ -36,9 +49,25 @@ export type CashAccountView = {
   totals: CashMonthTotals;
   closingNow: number;
   hasBeforeOpening: boolean;
+  /** Дата открытия счёта — 'YYYY-MM-DD' (для пояснения пустого месяца). */
+  openingDate: string;
+  /** Весь выбранный месяц раньше даты открытия счёта: сальдо и обороты = 0. */
+  monthBeforeOpening: boolean;
+  /**
+   * Операции ЭТОГО месяца, отсечённые датой открытия счёта: они видны в журнале,
+   * но в обороты и сальдо не входят. Без явной цифры это выглядело как ошибка
+   * расчёта (2026-07-26: таблица показывала +27 000, журнал — 30 операций).
+   */
+  cutOff: { count: number; net: number };
 };
 
 const TOTAL_TAB = '__total__';
+// Вкладка «По делам» — прибыльность (дохід/витрати/маржа). Живёт здесь, а не
+// отдельным пунктом меню: владелец (2026-07-24) — «всё про деньги в одном месте».
+const PROFIT_TAB = '__profit__';
+// Вкладка «Витрати» — расходы фирмы + разбивка по статьям (2026-07-26,
+// требование клиента «понимать куда сколько ушло»).
+const EXPENSES_TAB = '__expenses__';
 
 function money(n: number): string {
   return `${formatMoney(n)} ₴`;
@@ -51,6 +80,15 @@ export function CashReport({
   journals,
   truncated = false,
   canManage = true,
+  balances = {},
+  accountsManager = null,
+  profitRows,
+  profitTotals,
+  companyExpenses,
+  expenseCategories = [],
+  categorySpend,
+  categorySpendTotals,
+  canAddCategory = false,
 }: {
   accounts: CashAccount[];
   views: CashAccountView[];
@@ -60,23 +98,53 @@ export function CashReport({
   // Право can_manage_cash (сплит 2026-07-16): false — режим «только смотрю»
   // (view_cash), без формы добавления и удаления ручных операций.
   canManage?: boolean;
+  /** Текущий остаток по счёту (accountId → closingNow) — показывается прямо во вкладке. */
+  balances?: Record<string, number>;
+  // Панель управления счетами (плитки + формы). Свёрнута по умолчанию — раскрывается
+  // кнопкой в строке вкладок (2026-07-25: шапка занимала весь первый экран).
+  // null — нет права can_manage_cash.
+  accountsManager?: React.ReactNode;
+  // Прибыльность по делам. undefined — нет права view_case_expenses,
+  // вкладку «По делам» не показываем вовсе.
+  profitRows?: ProfitRow[];
+  profitTotals?: ProfitTotals;
+  // Расходы фирмы за месяц + разбивка по статьям. undefined — нет доступа
+  // (вкладку не показываем вовсе).
+  companyExpenses?: ExpenseWithRefs[];
+  expenseCategories?: ExpenseCategoryOption[];
+  categorySpend?: CategorySpendRow[];
+  categorySpendTotals?: CategorySpendTotals;
+  /** Право заводить статьи «на лету» (manage_expense_categories). */
+  canAddCategory?: boolean;
 }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<string>(accounts[0]?.id ?? TOTAL_TAB);
+  const [showAccounts, setShowAccounts] = useState(false);
 
   if (accounts.length === 0) {
+    // Ни одного счёта: панель управления раскрыта сразу — иначе счёт негде завести.
     return (
-      <Card>
-        <EmptyState
-          icon={Wallet}
-          title={t.cash.report.noAccounts}
-          hint={t.cash.report.noAccountsHint}
-        />
-      </Card>
+      <div className="flex flex-col gap-4">
+        {accountsManager}
+        <Card>
+          <EmptyState
+            icon={Wallet}
+            title={t.cash.report.noAccounts}
+            hint={t.cash.report.noAccountsHint}
+          />
+        </Card>
+      </div>
     );
   }
 
   const viewById = new Map(views.map((v) => [v.accountId, v]));
+
+  // Счёт для новой операции: активная вкладка, а на сводных вкладках — первый
+  // активный счёт (в форме его всё равно можно сменить).
+  const activeAccounts = accounts.filter((a) => a.is_active);
+  const entryAccountId = activeAccounts.some((a) => a.id === tab)
+    ? tab
+    : activeAccounts[0]?.id;
 
   return (
     <div className="flex flex-col gap-4">
@@ -87,37 +155,119 @@ export function CashReport({
         </div>
       )}
 
-      {/* Вкладки: по счёту + сводная. Pill-чипы в языке пресетов /cases. */}
-      <div
-        role="tablist"
-        aria-label={t.cash.report.tabsAria}
-        className="flex flex-wrap items-center gap-2"
-      >
-        {accounts.map((a) => (
-          <TabButton key={a.id} active={tab === a.id} onClick={() => setTab(a.id)}>
-            {a.name}
-            {!a.is_active && (
-              <span className="text-[10px] opacity-70">
-                ({t.cash.accounts.inactiveBadge})
-              </span>
-            )}
+      {/* Шапка отчёта: вкладки счетов (с остатком) слева, действия справа.
+          Pill-чипы в языке пресетов /cases. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div
+          role="tablist"
+          data-tour="cash-tabs"
+          aria-label={t.cash.report.tabsAria}
+          className="flex flex-wrap items-center gap-2"
+        >
+          {accounts.map((a) => (
+            <TabButton
+              key={a.id}
+              active={tab === a.id}
+              onClick={() => setTab(a.id)}
+              meta={money(balances[a.id] ?? a.opening_balance)}
+            >
+              {a.name}
+              {!a.is_active && (
+                <span className="text-[10px] opacity-70">
+                  ({t.cash.accounts.inactiveBadge})
+                </span>
+              )}
+            </TabButton>
+          ))}
+          <TabButton active={tab === TOTAL_TAB} onClick={() => setTab(TOTAL_TAB)} strong>
+            {t.cash.report.tabTotal}
           </TabButton>
-        ))}
-        <TabButton active={tab === TOTAL_TAB} onClick={() => setTab(TOTAL_TAB)} strong>
-          {t.cash.report.tabTotal}
-        </TabButton>
+          {companyExpenses && (
+            <TabButton
+              dataTour="cash-expenses-tab"
+              active={tab === EXPENSES_TAB}
+              onClick={() => setTab(EXPENSES_TAB)}
+              strong
+            >
+              {t.cash.report.tabExpenses}
+            </TabButton>
+          )}
+          {profitRows && (
+            <TabButton
+              active={tab === PROFIT_TAB}
+              onClick={() => setTab(PROFIT_TAB)}
+              strong
+            >
+              {t.cash.report.tabProfit}
+            </TabButton>
+          )}
+        </div>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* Две кнопки вместо одной (2026-07-26): расход вносится ТОЛЬКО формой
+              со статьёй, иначе отчёт «куда ушло» дырявый. Приход руками нужен
+              редко (проценты банка) — оплаты клиентов приходят сами. */}
+          {canManage && expenseCategories.length > 0 && (
+            <span data-tour="cash-add-expense">
+              <AddExpenseDialog
+                categories={expenseCategories}
+                accounts={accounts}
+                canAddCategory={canAddCategory}
+                variant="pill"
+              />
+            </span>
+          )}
+          {canManage && entryAccountId && (
+            <CashEntryDialog accounts={accounts} accountId={entryAccountId} />
+          )}
+
+          {accountsManager && (
+            <button
+              type="button"
+              data-tour="cash-accounts-btn"
+              onClick={() => setShowAccounts((v) => !v)}
+              aria-expanded={showAccounts}
+              className={cn(
+                'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-chip border px-3 text-[12.5px] font-medium transition-all duration-[200ms]',
+                showAccounts
+                  ? 'border-primary-border bg-primary-softer text-primary-pressed'
+                  : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
+              )}
+            >
+              <Settings2 size={13} strokeWidth={1.75} aria-hidden="true" />
+              {t.cash.accounts.heading}
+              <ChevronDown
+                size={13}
+                strokeWidth={2}
+                aria-hidden="true"
+                className={cn('transition-transform duration-[200ms]', showAccounts && 'rotate-180')}
+              />
+            </button>
+          )}
+        </div>
       </div>
 
-      {tab === TOTAL_TAB ? (
+      {showAccounts && accountsManager}
+
+      {tab === EXPENSES_TAB && companyExpenses && categorySpend && categorySpendTotals ? (
+        <CashExpensesPanel
+          expenses={companyExpenses}
+          categories={expenseCategories}
+          spend={categorySpend}
+          totals={categorySpendTotals}
+          canManage={canManage}
+          accounts={accounts}
+          canAddCategory={canAddCategory}
+        />
+      ) : tab === PROFIT_TAB && profitRows && profitTotals ? (
+        <CashProfitPanel rows={profitRows} totals={profitTotals} />
+      ) : tab === TOTAL_TAB ? (
         <TotalTable accounts={accounts} rows={totalRows} />
       ) : (
         (() => {
-          const acc = accounts.find((a) => a.id === tab)!;
           const view = viewById.get(tab)!;
           return (
             <AccountPanel
-              account={acc}
-              accounts={accounts}
               view={view}
               journal={journals[tab] ?? []}
               canManage={canManage}
@@ -132,11 +282,17 @@ export function CashReport({
 function TabButton({
   active,
   strong,
+  meta,
+  dataTour,
   onClick,
   children,
 }: {
   active: boolean;
   strong?: boolean;
+  /** Якорь для гайд-тура. */
+  dataTour?: string;
+  /** Остаток счёта — mono-хвост во вкладке (вместо отдельной строки под ней). */
+  meta?: string;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -144,6 +300,7 @@ function TabButton({
     <button
       type="button"
       role="tab"
+      data-tour={dataTour}
       aria-selected={active}
       onClick={onClick}
       className={cn(
@@ -157,41 +314,64 @@ function TabButton({
       )}
     >
       {children}
+      {meta && (
+        <>
+          <span className={cn(active ? 'text-white/45' : 'text-border-strong')} aria-hidden="true">
+            ·
+          </span>
+          <span
+            className={cn(
+              'font-mono text-[12px] font-semibold tabular-nums',
+              active ? 'text-white/90' : 'text-text',
+            )}
+          >
+            {meta}
+          </span>
+        </>
+      )}
     </button>
   );
 }
 
 function AccountPanel({
-  account,
-  accounts,
   view,
   journal,
   canManage,
 }: {
-  account: CashAccount;
-  accounts: CashAccount[];
   view: CashAccountView;
   journal: CashEntryWithCase[];
   canManage: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, fmt } = useI18n();
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[13px] text-text-muted">
-          {t.cash.accounts.closingNow}:{' '}
-          <span className="font-mono tabular-nums text-[15px] font-bold text-text">
-            {money(view.closingNow)}
+      {/* Строка «Текущий остаток» убрана 2026-07-25 — остаток теперь во вкладке
+          счёта и в полосе баланса. Осталось только предупреждение. */}
+      {view.monthBeforeOpening ? (
+        // Весь месяц раньше даты открытия счёта: операции в журнале есть, но в
+        // сальдо не входят — иначе они посчитались бы дважды (их влияние уже
+        // сидит в начальном остатке). Раньше это выглядело просто как нули.
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-bg px-3.5 py-2.5 text-[12.5px] leading-snug text-text">
+          <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
+          <span>
+            {fmt(t.cash.report.monthBeforeOpening, { date: view.openingDate })}
           </span>
-        </span>
-        {view.hasBeforeOpening && (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-warning">
-            <AlertTriangle size={13} strokeWidth={1.75} />
-            {t.cash.report.beforeOpeningWarning}
-          </span>
-        )}
-      </div>
+        </div>
+      ) : (
+        view.cutOff.count > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-bg px-3.5 py-2.5 text-[12.5px] leading-snug text-text">
+            <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
+            <span>
+              {fmt(t.cash.report.cutOffWarning, {
+                count: String(view.cutOff.count),
+                amount: money(Math.abs(view.cutOff.net)),
+                date: view.openingDate,
+              })}
+            </span>
+          </div>
+        )
+      )}
 
       {/* Разворот по дням */}
       {view.rows.length === 0 ? (
@@ -306,19 +486,6 @@ function AccountPanel({
           </div>
         )}
       </div>
-
-      {/* Добавление ручной операции (счёт активной вкладки предвыбран) —
-          только менеджеру кассы (can_manage_cash). */}
-      {canManage && account.is_active && (
-        <Card className="p-0">
-          <div className="border-b border-border px-5 py-4">
-            <h3 className="text-[15px] font-semibold text-text">{t.cash.entry.heading}</h3>
-          </div>
-          <div className="p-5">
-            <CashEntryForm accounts={accounts} accountId={account.id} />
-          </div>
-        </Card>
-      )}
     </div>
   );
 }

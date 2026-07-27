@@ -31,6 +31,7 @@ import { CaseDocumentsBlock } from '@/components/documents/case-documents-block'
 import { CaseActsBlock } from '@/components/acts/case-acts-block';
 import { PaymentPlanBlock } from '@/components/payments/payment-plan-block';
 import { PaymentsList } from '@/components/payments/payments-list';
+import { ExpensesList } from '@/components/expenses/expenses-list';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { DualRateModal } from '@/components/cases/dual-rate-modal';
 import { requireUser } from '@/lib/auth/require-role';
@@ -44,6 +45,9 @@ import {
 } from '@/lib/payroll/queries';
 import { caseHasDocOfType, listDocumentsByCase } from '@/lib/documents/queries';
 import { listPaymentsByCase } from '@/lib/payments/queries';
+import { listExpensesByCase } from '@/lib/expenses/queries';
+import { listActiveExpenseCategories } from '@/lib/expenses/categories';
+import { listCashAccounts } from '@/lib/cash/queries';
 import { listActsByCase } from '@/lib/acts/queries';
 import { listTasksByCase } from '@/lib/tasks/queries';
 import { getOrgRequisites, requisitesAreUsable } from '@/lib/org/queries';
@@ -107,6 +111,11 @@ export default async function CaseDetailPage({
   // Кнопка-корзинка в списке платежей — право delete_payments (сплит 2026-07-16;
   // edit_payments остаётся за правкой платежей — UI правки пока нет).
   const canManagePay = user.caps.delete_payments;
+  // Расходы по делу (миграция 0009): видимость и внесение — отдельные права.
+  // RLS дублирует оба; здесь прячем блок, чтобы не показывать пустую карточку
+  // тому, кому расходы не положены.
+  const canSeeExpenses = user.caps.view_case_expenses;
+  const canManageExpenses = user.caps.manage_case_expenses;
 
   // Воронка только вперёд (CLAUDE.md §7-2, Задача 8): staff видит все 5 этапов
   // (может скорректировать), не-staff — только текущий и следующий (без прыжков).
@@ -117,18 +126,42 @@ export default async function CaseDetailPage({
   // Начисление зарплаты (live) + сколько уже выплачено по делу (по ролям) +
   // реквизиты компании (для предупреждения «незаполнены» в блоке актов) +
   // есть ли акт приёма-передачи + данные для счётчиков вкладок.
-  const [payroll, paidByRole, org, hasAct, payments, actsList, docsList, tasksList] =
-    await Promise.all([
-      getCasePayroll(c.id),
-      getCasePaidByRole(c.id),
-      getOrgRequisites(),
-      caseHasDocOfType(c.id, 'act'),
-      // Платежи нужны и вкладке «Платежи» (список), и её корешку (счётчик).
-      listPaymentsByCase(c.id),
-      listActsByCase(c.id),
-      listDocumentsByCase(c.id),
-      listTasksByCase(c.id),
-    ]);
+  const [
+    payroll,
+    paidByRole,
+    org,
+    hasAct,
+    payments,
+    actsList,
+    docsList,
+    tasksList,
+    expenses,
+    expenseCategories,
+    cashAccounts,
+  ] = await Promise.all([
+    getCasePayroll(c.id),
+    getCasePaidByRole(c.id),
+    getOrgRequisites(),
+    caseHasDocOfType(c.id, 'act'),
+    // Платежи нужны и вкладке «Платежи» (список), и её корешку (счётчик).
+    listPaymentsByCase(c.id),
+    listActsByCase(c.id),
+    listDocumentsByCase(c.id),
+    listTasksByCase(c.id),
+    // Расходы и справочник статей тянем только при праве — иначе лишние запросы
+    // (RLS и так отдал бы пустой список).
+    canSeeExpenses ? listExpensesByCase(c.id) : Promise.resolve([]),
+    canManageExpenses ? listActiveExpenseCategories('case') : Promise.resolve([]),
+    canManageExpenses && (user.caps.view_cash || user.caps.can_manage_cash)
+      ? listCashAccounts()
+      : Promise.resolve([]),
+  ]);
+
+  // Сводка «Доход / Расходы / Маржа». Доход = paid_total (реально оплачено
+  // клиентом), а не сумма договора: расход — это реально ушедшие деньги.
+  // Маржа считается ДО зарплаты и на её расчёт не влияет.
+  const expenseTotal = expenses.reduce((s, e) => s + e.amount, 0);
+  const margin = c.paid_total - expenseTotal;
   const requisitesUsable = requisitesAreUsable(org);
   const actsCount = actsList.length;
   const docsCount = docsList.length;
@@ -461,8 +494,47 @@ export default async function CaseDetailPage({
             <p className="text-center text-[11.5px] text-text-subtle">
               {fmt(t.caseCard.detail.totalsPct, { pct: paidPct })}
             </p>
+
+            {/* Доход / Расходы / Маржа — только при праве view_case_expenses. */}
+            {canSeeExpenses && (
+              <div className="mt-3 flex flex-col gap-2.5 border-t border-border/60 pt-3">
+                <CardLabel>{t.expenses.summary.heading}</CardLabel>
+                <TotalsRow
+                  label={t.expenses.summary.income}
+                  value={`${formatMoney(c.paid_total)} ₴`}
+                  tone="success"
+                />
+                <TotalsRow
+                  label={t.expenses.summary.expense}
+                  value={`−${formatMoney(expenseTotal)} ₴`}
+                  tone="warning"
+                />
+                <TotalsRow
+                  label={t.expenses.summary.margin}
+                  value={`${margin < 0 ? '−' : ''}${formatMoney(Math.abs(margin))} ₴`}
+                  tone={margin < 0 ? 'error' : 'success'}
+                />
+                <p className="text-[11px] text-text-subtle">
+                  {t.expenses.summary.marginHint}
+                </p>
+              </div>
+            )}
           </div>
         </Card>
+
+        {/* Расходы по делу — под платежами, в той же колонке. */}
+        {canSeeExpenses && (
+          <Card className="p-5">
+            <ExpensesList
+              accounts={cashAccounts}
+              canAddCategory={user.caps.manage_expense_categories}
+              expenses={expenses}
+              caseId={c.id}
+              categories={expenseCategories}
+              canManage={canManageExpenses}
+            />
+          </Card>
+        )}
       </div>
 
       <section id="plan" className="scroll-mt-16">
@@ -805,7 +877,7 @@ function TotalsRow({
 }: {
   label: string;
   value: string;
-  tone?: 'default' | 'success' | 'error' | 'info' | 'muted';
+  tone?: 'default' | 'success' | 'error' | 'info' | 'muted' | 'warning';
 }) {
   const valueClass =
     tone === 'success'
@@ -814,9 +886,11 @@ function TotalsRow({
         ? 'text-error'
         : tone === 'info'
           ? 'text-info-text'
-          : tone === 'muted'
-            ? 'text-text-muted'
-            : 'text-text';
+          : tone === 'warning'
+            ? 'text-warning-text'
+            : tone === 'muted'
+              ? 'text-text-muted'
+              : 'text-text';
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-[12.5px] text-text-muted">{label}</span>

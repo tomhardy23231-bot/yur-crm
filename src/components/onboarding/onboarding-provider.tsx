@@ -24,6 +24,7 @@ import { CURRENT_RELEASE } from '@/lib/releases/releases';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   buildTourSteps,
+  buildCashTourSteps,
   buildPayrollTourSteps,
   FIRST_CASE_ROUTE,
   FIRST_EMPLOYEE_ROUTE,
@@ -306,12 +307,15 @@ export function OnboardingProvider({
     }, 180);
   }, []);
 
-  // Тур по фиче текущего релиза. Сейчас единственный сценарий — 'payroll'.
+  // Тур по фиче текущего релиза: 'payroll' (2.4) или 'cash' (2.11).
   const startReleaseTour = useCallback(() => {
+    const id = CURRENT_RELEASE.tourId;
     const steps =
-      CURRENT_RELEASE.tourId === 'payroll'
+      id === 'payroll'
         ? buildPayrollTourSteps(ctxRef.current, tourRef.current)
-        : undefined;
+        : id === 'cash'
+          ? buildCashTourSteps(ctxRef.current, tourRef.current)
+          : undefined;
     startTour(steps);
   }, [startTour]);
 

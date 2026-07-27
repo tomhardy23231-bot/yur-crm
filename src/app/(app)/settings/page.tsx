@@ -18,7 +18,15 @@ export default async function SettingsPage() {
   const canManageUsers = actor.caps.manage_users || actor.caps.create_users;
   const canEditRates = actor.caps.edit_payroll_rates;
   const canManageCaseTypes = actor.caps.manage_case_types;
-  if (!canManageUsers && !canEditRates && !canManageCaseTypes) redirect('/forbidden');
+  const canManageExpenseCats = actor.caps.manage_expense_categories;
+  if (
+    !canManageUsers &&
+    !canEditRates &&
+    !canManageCaseTypes &&
+    !canManageExpenseCats
+  ) {
+    redirect('/forbidden');
+  }
 
   return (
     <main

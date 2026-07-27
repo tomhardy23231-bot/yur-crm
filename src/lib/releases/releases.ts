@@ -23,6 +23,7 @@
 // ============================================================================
 
 import type { HelpMessages } from '@/lib/i18n/messages/ru/help';
+import type { ReleaseVisualKey } from '@/components/releases/release-visual';
 
 // Ключ строки в словаре релизов (help.releases.*).
 export type ReleaseTextKey = keyof HelpMessages['releases'];
@@ -37,6 +38,13 @@ export type ReleaseSection = {
    * анонсируются (например, журнал активности, 2.8) — модалка фильтрует.
    */
   ownerOnly?: boolean;
+  /** Мини-мокап интерфейса над списком пунктов (см. release-visual.tsx). */
+  visual?: ReleaseVisualKey;
+  /**
+   * 'danger' — красный блок-предупреждение (то, что нужно сделать руками и без
+   * чего цифры останутся кривыми). Рисуется отдельной карточкой, а не списком.
+   */
+  tone?: 'danger';
 };
 
 export type Release = {
@@ -63,17 +71,71 @@ export type Release = {
   /**
    * Идентификатор тура ПО ЭТОЙ фиче (а не общий онбординг). Если задан — в
    * модалке появляется «Пройти тур», который ведёт по новому разделу.
-   * Сейчас поддерживается 'payroll'. Для будущих крупных фич — добавить новый id
-   * и его сценарий в lib/onboarding/tour-steps.ts.
+   * Сценарии — в lib/onboarding/tour-steps.ts.
    */
-  tourId?: 'payroll';
+  tourId?: 'payroll' | 'cash';
+  /**
+   * Сколько секунд держать закрытие модалки заблокированным (2026-07-26,
+   * решение владельца): обновление меняет ежедневную работу, и его нужно
+   * действительно прочитать, а не смахнуть. Кнопка «Пройти тур» доступна
+   * сразу — она и есть желаемый выход из модалки.
+   */
+  holdSeconds?: number;
 };
 
 // Текущая версия системы. Поднимается с каждым заметным обновлением.
-export const APP_VERSION = '2.10';
+export const APP_VERSION = '2.11';
 
 // Свежие релизы — сверху. RELEASES[0] = текущий (по нему строится модалка).
 export const RELEASES: ReadonlyArray<Release> = [
+  {
+    // Книга операций: касса как учёт всех денег фирмы (миграции 0010–0012).
+    version: '2.11',
+    titleKey: 'v2_11Title',
+    date: '2026-07-26',
+    leadKey: 'v2_11Lead',
+    major: true,
+    tourId: 'cash',
+    holdSeconds: 60,
+    sections: [
+      {
+        headingKey: 'headingWhatIs',
+        itemKeys: ['v2_11What1', 'v2_11What2', 'v2_11What3'],
+        visual: 'sync',
+      },
+      {
+        headingKey: 'headingStart',
+        itemKeys: [
+          'v2_11Start1',
+          'v2_11Start2',
+          'v2_11Start3',
+          'v2_11Start4',
+          'v2_11Start5',
+        ],
+        visual: 'accounts',
+      },
+      {
+        headingKey: 'headingHowItWorks',
+        itemKeys: ['v2_11How1', 'v2_11How2', 'v2_11How3', 'v2_11How4'],
+        visual: 'expenses',
+      },
+      {
+        headingKey: 'headingCleanup',
+        tone: 'danger',
+        itemKeys: [
+          'v2_11Cleanup1',
+          'v2_11Cleanup2',
+          'v2_11Cleanup3',
+          'v2_11Cleanup4',
+          'v2_11Cleanup5',
+        ],
+      },
+      {
+        headingKey: 'headingNote',
+        itemKeys: ['v2_11Note1', 'v2_11Note2'],
+      },
+    ],
+  },
   {
     // Типы дел настраиваются из интерфейса (справочник case_types + право).
     version: '2.10',

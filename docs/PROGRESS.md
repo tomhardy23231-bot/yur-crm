@@ -35,6 +35,312 @@
 
 ---
 
+## Сессия 2026-07-24/25 — РАСХОДЫ ПО ДЕЛУ («Витрати») ⚠️ НЕ ЗАКОММИЧЕНО, НЕ НА ПРОДЕ
+
+> **СТАТУС: вся работа лежит в рабочей копии некоммитнутой.** Ни одного коммита не
+> сделано (последний в репо — `4a8019d` из прошлой сессии). На прод ничего не
+> выкачивалось, прод-БД НЕ трогалась. Локалка переключена на КЛОН прод-базы.
+> Раздел «Как откатить» — в конце записи.
+
+### Зачем это делалось (постановка от владельца)
+
+Клиент несколько раз просил учитывать расходы, их всё откладывали. Сотрудники на
+проде начали обходить отсутствие функции сами: **заводили трату обычным платежом
+со знаком «плюс»** (в `method`/`note` писали «Витрати»). Владелец прислал два
+скриншота карточек дел с бейджем «переплата +5 000 ₴» и файл
+`Оборотно_сальдова_звітність_ОЛІМП (2).xls`.
+
+**Разбор файла ОЛІМП** (прочитан через `xlrd`, кодировка cp1251): это классическая
+оборотно-сальдова відомість — листы `Total` / `Карта` / `Рахунок` / `Готівка`, по
+каждому дню «Залишок на початок → Прихід / Витрати → Залишок на кінець».
+**Вывод: это ровно существующий отчёт «Касса» (`/reports/cash`)** — изобретать
+нечего, им просто не пользовались (на проде всего 1 счёт кассы).
+
+**Почему обход ломал систему** (проверено на живых данных прода):
+база ЗП = `cases.paid_total` = `SUM(payments.amount)`, а НЕ сумма договора. Поэтому
+каждая трата-плюсом одновременно: ① завышала ЗП юристу И Експерту, ② рисовала
+фейковую переплату и занижала долг, ③ раздувала доход в аналитике.
+
+**Масштаб на проде (замерено):** 523 платежа на 5 358 950 ₴, из них **159 записей
+на 362 450 ₴ (6,8% «дохода») — на самом деле расходы**; затронуто **154 дела**;
+**ЗП переначислено ≈75 461 ₴** (копится с ноября 2025).
+
+### Решения владельца (заданы через AskUserQuestion, зафиксированы)
+1. Расход **списывается со счёта** (Карта/Рахунок/Готівка) и попадает в оборотку розходом.
+2. Статьи расходов — **редактируемый из интерфейса справочник** (как типы дел).
+3. **Карточка дела** (Дохід/Витрати/Маржа) **+ отдельный отчёт** прибыльности.
+4. Старые платежи-«витрати» — **разобрать и перевести** в расходы.
+5. **Расходы на ЗП не влияют вообще** — не дают процент и НЕ уменьшают базу.
+6. Кто вносит и кто видит расходы — **отдельные права-галочки**.
+
+**Правки по фидбеку владельца в конце сессии (важно — первая версия ему не зашла):**
+- 7. Отдельная страница `/reports/profit` **удалена** → прибыльность стала **вкладкой
+  «По делам» внутри «Кассы»**. Довод: «зачем ещё одна страница, если это можно было
+  реализовать на странице финансы».
+- 8. Разбор старых записей **переделан с поштучного на массовый** (чекбоксы + одна
+  кнопка). Первая версия требовала 158 кликов — провал UX.
+- 9. Экран разбора **вынесен отдельным пунктом в рейл настроек** (был спрятан
+  ссылкой внутри «Статей расходов» — владелец не смог его найти).
+
+---
+
+### ГЛАВНЫЙ ИНВАРИАНТ (не сломать при доработках)
+
+Расходы живут в **ОТДЕЛЬНОЙ таблице** `case_expenses`. Миграция 0009 **не трогает
+ни одного** выражения `SUM(payments.amount)` / `cases.paid_total`. Поэтому база ЗП
+физически не может измениться. Функции `case_payroll`, `payroll_by_specialist`,
+`payroll_employee_summary`, `payroll_employee_cases` (все в `0007_dual_role_rate.sql`)
+и `dashboard_*` остались как были и `case_expenses` не читают.
+
+Проверено e2e на живых данных: до/после внесения расхода `case_payroll` и
+`paid_total` идентичны (17 500 ₴ до и после).
+
+---
+
+### 1. Миграция `db/migrations/0009_case_expenses.sql` (новый файл, ~560 строк)
+
+Применена на **dev-ветке** (`ep-proud-fire`) и на **клоне** (`ep-rough-tree`).
+**НА ПРОД НЕ ПРИМЕНЕНА.** Состоит из 6 частей:
+
+**1.1 Три новых права (16 → 19).** Переписаны целиком `private.cap_role_default`
+(полное тело из 0008 + 3 ветки) и allowlist в `private.validate_perm_overrides`:
+
+| Право | Дефолт | Что даёт |
+|---|---|---|
+| `view_case_expenses` | owner, admin, office_manager | блок «Витрати», строка «Маржа», вкладка «По делам» |
+| `manage_case_expenses` | owner, admin, office_manager | вносить/удалять расходы |
+| `manage_expense_categories` | owner, admin | справочник статей |
+
+`can_grant_cap` НЕ трогали: выдают owner **и** admin по общей ветке (владелец просил,
+чтобы назначать мог и керівник). В `OWNER_ONLY_CAPABILITIES` НЕ добавлены.
+
+**1.2 `public.expense_categories`** — структура 1:1 с `case_types`:
+`id, code (unique), name, is_builtin, is_active, sort_order, created_at`.
+RLS: SELECT — любой активный сотрудник; запись — `manage_expense_categories`.
+Сид 9 встроенных: `court_fee, state_duty, expertise, travel, rent, advertising,
+taxes, bank_fees, other`.
+
+**1.3 `public.case_expenses`** — источник правды:
+```
+id, case_id (→cases CASCADE), category_id (→expense_categories RESTRICT),
+amount numeric(14,2) >0, spent_at date,
+method text NOT NULL CHECK (card|bank|cash),   -- ЗАКРЫТЫЙ код, не свободный текст!
+note (≤500), created_by (→users RESTRICT), created_at
+индексы: (case_id), (category_id), (spent_at)
+```
+⚠️ **Почему `method` закрытый код, в отличие от `payments.method`** (там свободный
+текст): от него зависит, на какой счёт кассы ляжет авто-Розхід через
+`private.cash_kind_for_method`. Свободный текст почти всегда падал бы в фолбэк на
+дефолтный счёт и делал оборотку неточной.
+
+RLS — **композиция «право × видимость дела»** (принципиально):
+```
+SELECT: can_see_case(case_id) AND can('view_case_expenses')
+INSERT: can_write_case(case_id) AND can('manage_case_expenses') AND created_by=active_uid()
+DELETE: can('manage_case_expenses') AND (автор ИЛИ can_manage_users())
+UPDATE: политики НЕТ (правка = удалить + внести заново)
+```
+Выдача права юристу **не открывает** ему чужие дела — проверено под ролью `app_user`.
+
+**1.4 Зеркало в кассу.** `cash_entries` получила колонку `expense_id`
+(FK → `case_expenses` ON DELETE CASCADE, partial-unique `cash_entries_expense_uniq`).
+Новый триггер `private.cash_sync_on_expense()` — **полная калька**
+`private.cash_sync_on_payment()` (`0001_baseline.sql:1043`), но `direction='out'`:
+резолвит счёт ПЕРВЫМ через `cash_resolve_account(method)`, при `null` тихо выходит
+(расход всё равно сохраняется), на UPDATE пересоздаёт строку. Описание строки —
+`«Статья · примечание — Номер дела»` (≤300).
+Три политики записи `cash_entries` расширены: `payment_id IS NULL` →
+`payment_id IS NULL AND expense_id IS NULL` (строки-зеркала неправимы руками).
+**`/reports/cash` менять не пришлось** — `saldo.ts:54` уже суммирует `direction==='out'`.
+
+**1.5 `public.finance_by_case(p_from date, p_to date)`** — SECURITY **INVOKER**
+(намеренно, как `overdue_plan_items`/`debt_aging`): RLS сама режет строки — дела по
+`case_visible`, расходы дополнительно по `view_case_expenses`. Возвращает
+`case_id, number_title, client_name, lawyer_id, responsible_id, income, expense, margin`.
+Читает `payments.amount` ТОЛЬКО для показа, `paid_total` не пишет.
+⚠️ CTE названы `inc`/`spent` — `exp` не использовать (конфликт с built-in `exp()`).
+
+**1.6 Журнал.** `activity_log_action_check` и allowlist внутри `log_activity`
+пересозданы **копированием ВСЕГО прежнего списка из `0008_case_types.sql:249`** +
+7 новых: `expense_created`, `expense_deleted`, `payment_converted_to_expense`,
+`expense_category_created/renamed/activated/deactivated`. Новый `entity_type =
+'expense_category'` (гейт `manage_expense_categories`) + ветка в
+`activity_log_select_visible`. Расходы логируются под `entity_type='case'`.
+⚠️ **Гоча 23514 подтверждена — писать от старой базы нельзя.**
+
+### 2. Prisma (`prisma/schema.prisma`, +64/-9)
+Добавлены модели `case_expenses`, `expense_categories`; в `cash_entries` — поле
+`expense_id` + relation; back-relations в `cases` и `public_users`.
+После правки прогнан `npx prisma generate` (клиент в `src/generated/prisma`).
+
+### 3. Серверный слой — новая папка `src/lib/expenses/` (7 файлов)
+| Файл | Что |
+|---|---|
+| `categories.ts` | справочник: `fetchAllExpenseCategories` (React `cache`), `expenseCategoryLabeler`, `listActiveExpenseCategories`, `listExpenseCategoriesForSettings`, `activeExpenseCategoryIdSet`, `expenseCategoryMap`. Зеркало `lib/cases/case-types.ts` |
+| `actions.ts` | `createExpenseAction` (валидация + дедуп-гард 3 сек как у платежей), `deleteExpenseAction`. Оба под `requireCap('manage_case_expenses')` + `userDb` |
+| `queries.ts` | `listExpensesByCase`, `getCaseExpenseTotal` |
+| `category-actions.ts` | CRUD статей (create/rename/setActive), slugify с транслитом — копия `lib/case-types/actions.ts` |
+| `report.ts` | `getProfitByCase`, `sumProfit`, типы `ProfitRow`/`ProfitTotals` |
+| `cleanup.ts` | `listCleanupCandidates` — поиск платежей-«витрат», флаг `exact` (см. ниже) |
+| `cleanup-actions.ts` | `convertPaymentsBatchAction` — массовая конвертация одной транзакцией |
+
+### 4. UI (новые файлы)
+- `src/components/expenses/{expenses-list,expense-form,add-expense-dialog}.tsx` —
+  блок «Витрати» на карточке дела (useOptimistic, суммы со знаком «−» в warning-тоне,
+  удаление через `ConfirmDialog`). Зеркало троицы платежей.
+- `src/components/expense-categories/{expense-category-create-form,
+  expense-category-row-controls,cleanup-batch}.tsx` — справочник + массовый разбор.
+- `src/components/cash/cash-profit-panel.tsx` — вкладка «По делам» (3 плитки итогов
+  + таблица desktop + карточки mobile).
+- `src/app/(app)/settings/expense-categories/{page,loading}.tsx`
+- `src/app/(app)/settings/expense-cleanup/page.tsx`
+
+### 5. Изменённые файлы (21 файл, +451/−29)
+| Файл | Что изменено |
+|---|---|
+| `src/lib/types/db.ts` | +3 права в `CAPABILITIES`/`CAP_ROLE_DEFAULTS`; типы `ExpenseRow`, `ExpenseWithRefs`, `ExpenseMethod`, `EXPENSE_METHODS`, `isExpenseMethod`, `CaseMoneySummary` |
+| `src/app/(app)/cases/[id]/page.tsx` | `listExpensesByCase` + `listActiveExpenseCategories` в `Promise.all`; карточка «Витрати» под `canSeeExpenses`; сводка Дохід/Витрати/Маржа в карточке «Итого»; `TotalsRow` получил тон `warning` |
+| `src/app/(app)/reports/cash/page.tsx` | грузит `getProfitByCase(monthStart,monthEnd)` при `view_case_expenses`, передаёт в `CashReport` |
+| `src/components/cash/cash-report.tsx` | `PROFIT_TAB` + вкладка «По делам» + пропсы `profitRows`/`profitTotals` |
+| `src/components/settings/settings-nav.tsx` | +2 пункта рейла: `expenseCategories`, `expenseCleanup` |
+| `src/app/(app)/settings/layout.tsx` | гейтинг новых пунктов |
+| `src/app/(app)/settings/page.tsx` | `manage_expense_categories` в условие доступа к индексу |
+| `src/components/app/sidebar-nav.tsx` | ⚠️ комментарий, что прибыльность — вкладка Кассы (пункт `profit` был добавлен и УДАЛЁН по фидбеку) |
+| `src/components/users/user-perms-toggles.tsx` | новые права в группы `finance` / `admin` |
+| `src/lib/activity-log/log.ts` | `+'expense_category'` в `ActivityEntityType` |
+| `src/lib/db/rpc.ts` | `rpcFinanceByCase` + тип `FinanceByCaseRow` (в конец файла) |
+| i18n ×10 | новые словари `expenses`/`expenseCategories`/`expenseCleanup` (ru+uk) + `enums.expenseCategory`/`expenseMethod` + названия и «?»-справки 3 прав + `settings.expense*Card` + `cash.report.tabProfit` |
+| `CLAUDE.md` | §4 (права+RLS расходов), §5 (таблицы), §7-4 (расходы ЗП не трогают) |
+
+### 6. Инструмент разбора старых записей — как работает
+Экран `/settings/expense-cleanup` (пункт рейла «Разбор старых расходов»),
+требует **ОБА** права: `manage_case_expenses` И `delete_payments`.
+
+**Поиск кандидатов** (`cleanup.ts`): `note` или `method` содержит `витрат|расход|
+розхід|розход` (регистронезависимо). Каждому ставится флаг **`exact`**:
+- `exact=true` — поле ЦЕЛИКОМ равно слову-маркеру («Витрати») → точно трата;
+- `exact=false` — маркер ВНУТРИ длинного текста → может быть настоящей оплатой.
+
+⚠️ **Почему это критично.** На проде найден платёж **70 000 ₴** с примечанием
+`«безготівка · витрати 10000»` — это НАСТОЯЩАЯ оплата. Наивный `ILIKE` предложил бы
+её к конвертации и уничтожил бы 70 тысяч. Сомнительные сортируются НАВЕРХ, показаны
+с плашкой «проверьте вручную» и **не отмечаются** галочкой «отметить все однозначные».
+
+**Массовая конвертация** (`convertPaymentsBatchAction`), всё в ОДНОЙ транзакции:
+для каждого отмеченного платежа → создать `case_expenses` (сумма/дата/примечание
+переносятся, `method` угадывается `guessMethod`) → удалить платёж. Если RLS не пустил
+к удалению хоть одного — падает ВСЯ пачка (иначе остался бы расход-дубль при живом
+платеже). Журнал пишется после транзакции, по записи на дело.
+
+**Репетиция на 158 реальных записях клона (транзакция + rollback):**
+| показатель | было | станет | разница |
+|---|---|---|---|
+| «Оплачено» всего | 5 358 950 | 5 066 500 | −292 450 |
+| Переплата | 476 950 | 199 500 | −277 450 |
+| Долг клиентов | 49 999 | 64 999 | **+15 000** |
+| Расходы | 0 | 292 450 | +292 450 |
+| Начислено ЗП | 1 249 741 | 1 174 280 | **−75 461** |
+
+Долг РАСТЁТ — правильно: эти деньги считались полученными, а их не платили.
+
+### 7. Локальное окружение — ПЕРЕКЛЮЧЕНО НА КЛОН ПРОДА ⚠️
+
+По запросу владельца («сделать клон прод базы, чтобы поклацать, но не сломать прод»)
+создана **Neon-ветка `local-clone`** от `production`:
+- проект **UR** `winter-credit-95791968`, родитель `br-jolly-recipe-asyx3pq1`
+- ветка `br-rapid-dawn-as3n99m4`, endpoint **`ep-rough-tree-asfjoxwp`**
+- copy-on-write, мгновенно, прод НЕ трогается
+- сверено: 248 дел / 381 клиент / 523 платежа / суммы до копейки совпали
+
+`.env.local` переключён на неё. **Бэкап прежнего — `.env.local.bak`** (там старая
+dev-ветка `ep-proud-fire`, она цела). В шапку `.env.local` вписано предупреждение.
+`YUR_DB_ENV=prod` выставлен НАМЕРЕННО — чтобы `db:seed` отказался работать.
+
+**Как строились строки подключения:** ветка наследует роли и пароли родителя →
+взяты прод-строки из `.env.prod` с подменённым ХОСТОМ (pooled = host с `-pooler`
+перед `.c-4`). Пароль `neondb_owner` совпал с dev, `app_user` — НЕТ.
+
+**Пароль владельца в клоне сброшен** на `test12345!` (bcrypt-зеркало
+`writePassword()` из `credentials-actions.ts`: hash 10 + `pwd_version+1`), скрипт
+с предохранителем «падать, если хост не клон». **Прод-хеш проверен — не изменился**
+(его `updated_at` остался 15.07). Логин: `owner@yur.local` / `test12345!`.
+
+⚠️ **ФАЙЛЫ ДОКУМЕНТОВ ОБЩИЕ С ПРОДОМ** — тот же R2-бакет `case-documents`, тот же
+ключ. `deleteDocumentAction` вызывает `DeleteObjectCommand`, т.е. удаление документа
+в локалке СТИРАЕТ реальный файл клиента. Владелец решил оставить так («не буду
+удалять»). Единственная ниточка, через которую локалка может навредить проду.
+
+### 8. Проверки (всё зелёное)
+`npx tsc --noEmit` · `npm run lint` · `npm test` (153 теста) · `npm run build` ·
+`npm run db:acl-audit`. **`smoke:rls` НЕ гонялся** — требует сид-логинов, а сид
+перезаписал бы реальные данные; вместо него сделана точечная проверка RLS под ролью
+`app_user` (юрист без права не видит расход, INSERT запрещён — подтверждено).
+
+### Незакрытые вопросы / TODO
+- [ ] **Ничего не закоммичено.** Собрать в коммиты перед выкаткой.
+- [ ] **Кнопку массового разбора владелец ещё не нажимал** — 159 записей на проде
+      (и в клоне) на месте. Сначала он клацает, потом решаем.
+- [ ] Владельцу пройтись по UI и дать фидбек — сессия закончилась на этом.
+- [ ] `smoke:rls` дополнить инвариантами расходов (см. §8).
+- [ ] Счёт кассы на проде всего 1 — без счетов зеркало расходов no-op'ит.
+- [ ] Крупный запрос с 2026-07-23 «Продажа/Виконання» по-прежнему НЕ начат.
+
+### КАК ОТКАТИТЬ ВСЁ НАЗАД (если владельцу не зашло)
+
+**Код** (ничего не закоммичено, поэтому просто):
+```bash
+git checkout -- .                      # вернуть 21 изменённый файл
+rm -rf src/lib/expenses src/components/expenses src/components/expense-categories \
+       src/components/cash/cash-profit-panel.tsx \
+       "src/app/(app)/settings/expense-categories" "src/app/(app)/settings/expense-cleanup" \
+       src/lib/i18n/messages/ru/expense*.ts src/lib/i18n/messages/uk/expense*.ts \
+       db/migrations/0009_case_expenses.sql
+npx prisma generate                    # вернуть клиент к схеме без расходов
+```
+(`push-env.bat` — НЕ наш файл, он был untracked до сессии, не трогать.)
+
+**Локальное окружение — вернуть на старую dev-ветку:**
+```bash
+mv .env.local.bak .env.local           # прежний конфиг (ep-proud-fire)
+```
+Затем перезапустить dev-сервер (env читается только при старте).
+
+**Neon-ветку клона удалить** (если не нужна): Neon Console → проект UR → ветка
+`local-clone` → Delete. Или API `DELETE /projects/winter-credit-95791968/branches/
+br-rapid-dawn-as3n99m4` с `NEON_API_KEY` из `.env.prod`.
+
+**БД:** миграция 0009 применена ТОЛЬКО на dev-ветке и клоне. Прод чист — откатывать
+там нечего. Если нужно снести и на dev: клон удалить целиком, а dev-ветку проще
+пересоздать от production, чем писать down-миграцию (её нет).
+
+**Пароль владельца:** менялся только в клоне. Прод не тронут.
+
+### Handoff для следующей сессии
+- **Стартовать с:** спросить владельца, что из наклацанного не понравилось. Работа
+  продолжается — «доводить до идеала и до нормальной логики».
+- **Файлы открыть первыми:** `db/migrations/0009_case_expenses.sql`,
+  `src/lib/expenses/*`, `src/app/(app)/cases/[id]/page.tsx` (блок расходов ~строки
+  420–500), `src/components/cash/cash-report.tsx` (вкладка «По делам»).
+- **Проверка состояния:** `git status` (должно быть 22 M + 24 ?? + `push-env.bat`,
+  который был untracked ещё ДО сессии и к ней не относится), `npx tsc --noEmit`,
+  `npm run lint`. Сервер: `preview_start name=yur-crm-dev` (порт 3001) — если не
+  запущен, ПОДНЯТЬ (владелец ждёт рабочий сервер); если запущен — не тушить.
+- **Подводные камни:**
+  - локалка смотрит на КЛОН прода — данные реальные, обращаться бережно;
+  - документы в общем с продом R2 — НЕ удалять;
+  - прод-миграции — `node --env-file=.env.prod --import tsx scripts/db-migrate.ts`
+    (в `db:migrate` захардкожен `.env.local`); порядок деплоя — **миграция ПЕРВОЙ**, потом push;
+  - при удалении страницы остаётся стейл `.next/types/validator.ts` → `tsc` падает
+    «Cannot find module .../page.js», лечится `rm -f .next/types/validator.ts`;
+  - скрипты вне проекта не видят `node_modules` → нужен
+    `module.paths.unshift(path.join(process.cwd(),'node_modules'))`;
+  - браузер-проверки не делаем — владелец смотрит сам.
+
+### Коммиты
+- **НЕТ.** Всё в рабочей копии. Последний коммит репо — `4a8019d` (прошлая сессия).
+
+---
+
 ## Сессия 2026-07-24 — настраиваемые типы дел + двухпанельные настройки + цвета журнала ✅ 🚀
 
 _Три UI/продуктовых блока за день, все выкачены на прод (миграция `0008` применена на

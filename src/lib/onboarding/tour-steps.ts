@@ -302,3 +302,95 @@ function payrollSteps(t: TourMessages): ReadonlyArray<TourStep> {
 export function buildPayrollTourSteps(ctx: TourCtx, t: TourMessages): TourStep[] {
   return payrollSteps(t).filter((s) => !s.show || s.show(ctx));
 }
+
+// ============================================================================
+// Тур по кассе (обновление 2.11 «Книга операцій»).
+// ----------------------------------------------------------------------------
+// Ведёт по пути, который сотрудник должен пройти один раз: завести счёт →
+// синхронизировать старые платежи → научиться вносить расход. Шаги привязаны
+// к data-tour-якорям страницы /reports/cash.
+//
+// Все шаги гейтятся правами кассы: у кого их нет, тот раздел не видит вовсе.
+// ============================================================================
+function cashSteps(t: TourMessages): ReadonlyArray<TourStep> {
+  return [
+    {
+      id: 'cash-nav',
+      route: '/reports/cash',
+      element: '[data-tour="nav-cash"]',
+      title: t.cashNavTitle,
+      body: t.cashNavBody,
+      side: 'right',
+      align: 'start',
+    },
+    {
+      id: 'cash-accounts',
+      route: '/reports/cash',
+      element: '[data-tour="cash-accounts-btn"]',
+      title: t.cashAccountsTitle,
+      body: t.cashAccountsBody,
+      side: 'bottom',
+      align: 'end',
+      // Кнопка появляется только у менеджера кассы.
+      optional: true,
+      show: (c) => c.caps.can_manage_cash,
+    },
+    {
+      id: 'cash-sync',
+      route: '/reports/cash',
+      element: '[data-tour="cash-sync"]',
+      title: t.cashSyncTitle,
+      body: t.cashSyncBody,
+      side: 'bottom',
+      align: 'start',
+      // Баннера нет, когда всё уже синхронизировано, — шаг пропускается.
+      optional: true,
+    },
+    {
+      id: 'cash-hero',
+      route: '/reports/cash',
+      element: '[data-tour="cash-hero"]',
+      title: t.cashHeroTitle,
+      body: t.cashHeroBody,
+      side: 'bottom',
+      align: 'start',
+      optional: true,
+    },
+    {
+      id: 'cash-tabs',
+      route: '/reports/cash',
+      element: '[data-tour="cash-tabs"]',
+      title: t.cashTabsTitle,
+      body: t.cashTabsBody,
+      side: 'bottom',
+      align: 'start',
+      optional: true,
+    },
+    {
+      id: 'cash-expenses',
+      route: '/reports/cash',
+      element: '[data-tour="cash-expenses-tab"]',
+      title: t.cashExpensesTitle,
+      body: t.cashExpensesBody,
+      side: 'bottom',
+      align: 'start',
+      optional: true,
+    },
+    {
+      id: 'cash-add',
+      route: '/reports/cash',
+      element: '[data-tour="cash-add-expense"]',
+      title: t.cashAddTitle,
+      body: t.cashAddBody,
+      side: 'bottom',
+      align: 'end',
+      optional: true,
+      show: (c) => c.caps.can_manage_cash,
+    },
+  ];
+}
+
+/** Сценарий тура по кассе, отфильтрованный под роль/права. */
+export function buildCashTourSteps(ctx: TourCtx, t: TourMessages): TourStep[] {
+  return cashSteps(t).filter((s) => !s.show || s.show(ctx));
+}

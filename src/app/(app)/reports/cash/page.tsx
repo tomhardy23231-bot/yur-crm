@@ -4,7 +4,11 @@ import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
 import { requireAnyCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { formatMoney } from '@/lib/utils';
-import { getCashReportData, getUnsyncedPaymentsCount } from '@/lib/cash/queries';
+import {
+  getCashReportData,
+  getCurrentBalances,
+  getUnsyncedPaymentsCount,
+} from '@/lib/cash/queries';
 import {
   buildAccountSaldo,
   buildTotalRows,
@@ -14,6 +18,14 @@ import {
 } from '@/lib/cash/saldo';
 import type { CashEntryWithCase } from '@/lib/types/db';
 import { normalizeMonth, monthLabel, monthNamesFrom } from '@/lib/payroll/month';
+import {
+  getExpensesByCategory,
+  getProfitByCase,
+  sumCategorySpend,
+  sumProfit,
+} from '@/lib/expenses/report';
+import { listCompanyExpenses } from '@/lib/expenses/queries';
+import { listActiveExpenseCategories } from '@/lib/expenses/categories';
 import { MonthPicker } from '@/components/payroll/month-picker';
 import { CashAccountsManager } from '@/components/cash/cash-accounts-manager';
 import { CashBackfillBanner } from '@/components/cash/cash-backfill-banner';
@@ -44,8 +56,32 @@ export default async function CashReportPage({
   const monthStart = month;
   const monthEnd = lastDayOfMonth(month);
 
-  const [{ accounts, entries, openingBalances, truncated }, unsyncedCount] =
-    await Promise.all([getCashReportData(month), getUnsyncedPaymentsCount()]);
+  // Прибыльность по делам — вкладка «По делам» (миграция 0009). Тянем только
+  // при праве view_case_expenses: без него вкладки нет вовсе.
+  const canSeeProfit = user.caps.view_case_expenses;
+
+  // Вкладка «Витрати» — расходы фирмы за месяц и разбивка по статьям.
+  // Общефирменные расходы живут под правами кассы (в них зарплата), поэтому
+  // отдельного гейта не нужно: страница уже под view_cash/can_manage_cash.
+  const [
+    { accounts, entries, openingBalances, truncated },
+    unsyncedCount,
+    profitRows,
+    companyExpenses,
+    categorySpend,
+    expenseCategories,
+  ] = await Promise.all([
+    getCashReportData(month),
+    getUnsyncedPaymentsCount(),
+    canSeeProfit ? getProfitByCase(monthStart, monthEnd) : Promise.resolve(null),
+    listCompanyExpenses(monthStart, monthEnd),
+    getExpensesByCategory(monthStart, monthEnd),
+    listActiveExpenseCategories('company'),
+  ]);
+  // Фактический остаток на сегодня — не зависит от выбранного месяца.
+  const nowBalances = await getCurrentBalances();
+  const profitTotals = profitRows ? sumProfit(profitRows) : undefined;
+  const categorySpendTotals = sumCategorySpend(categorySpend);
 
   // Группируем операции МЕСЯЦА по счёту (журнал + расчёт сальдо).
   const byAccount = new Map<string, CashEntryWithCase[]>();
@@ -65,6 +101,13 @@ export default async function CashReportPage({
   const views: CashAccountView[] = accounts.map((acc) => {
     const accAll = byAccount.get(acc.id) ?? [];
     const accForBalance = entriesFromOpening(accAll, acc.opening_date);
+    // Операции месяца, отсечённые датой открытия счёта (в журнале есть,
+    // в оборотах и сальдо — нет). Показываем их числом, а не намёком.
+    const cut = accAll.filter((e) => e.entry_date < acc.opening_date);
+    const cutOff = {
+      count: cut.length,
+      net: cut.reduce((s2, e) => s2 + (e.direction === 'in' ? e.amount : -e.amount), 0),
+    };
     const opening = openingFor(acc.id, acc.opening_balance);
     const { rows } = buildAccountSaldo(opening, accForBalance, range);
     return {
@@ -73,6 +116,10 @@ export default async function CashReportPage({
       totals: monthTotals(rows),
       closingNow: balanceAsOf(opening, accForBalance, monthEnd),
       hasBeforeOpening: accAll.some((e) => e.entry_date < acc.opening_date),
+      openingDate: acc.opening_date,
+      // Весь месяц раньше открытия счёта — обороты и сальдо будут нулевыми.
+      monthBeforeOpening: monthEnd < acc.opening_date,
+      cutOff,
     };
   });
 
@@ -94,8 +141,14 @@ export default async function CashReportPage({
     );
   }
 
-  // Hero-полоса «Общий баланс»: суммы из уже посчитанных views (без новых запросов).
+  // Hero-полоса. Крупное число — остаток НА СЕГОДНЯ (одинаков в любом месяце),
+  // рядом — остаток на конец выбранного месяца, если смотрим не текущий.
+  const currentTotal = accounts.reduce(
+    (s, a) => s + a.opening_balance + (nowBalances[a.id] ?? 0),
+    0,
+  );
   const totalBalance = views.reduce((s, v) => s + v.closingNow, 0);
+  const isCurrentMonth = month >= normalizeMonth(undefined);
   const heroInflow = views.reduce((s, v) => s + v.totals.inflow, 0);
   const heroOutflow = views.reduce((s, v) => s + v.totals.outflow, 0);
   const balancesById: Record<string, number> = Object.fromEntries(
@@ -103,18 +156,75 @@ export default async function CashReportPage({
   );
 
   return (
-    <main className="flex flex-col gap-5 px-3 py-2 sm:px-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          {/* Заголовок — в топбаре (единый источник); здесь только описание
-              периода. Редизайн Волна 2: убран дубль h1. */}
+    <main className="flex flex-col gap-4 px-3 py-2 sm:px-4">
+      {/* Компактная полоса «Общий баланс» (2026-07-25, замечание владельца: шапка
+          съедала весь первый экран). Градиентный якорь оставлен, но в одну строку;
+          переключатель месяца переехал сюда — отдельная строка-подпись убрана. */}
+      {accounts.length > 0 ? (
+        <section
+          data-tour="cash-hero"
+          className="relative overflow-hidden rounded-card px-4 py-3.5 sm:px-5"
+          style={{ background: 'var(--grad-hero)' }}
+        >
+          {/* Декоративный размытый орб */}
+          <div
+            className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full opacity-40 blur-3xl"
+            style={{ background: 'rgba(255,255,255,0.45)' }}
+            aria-hidden="true"
+          />
+
+          <div className="relative flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                <Wallet size={18} strokeWidth={2} className="text-white" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10.5px] font-semibold uppercase tracking-wide text-white/75">
+                  {t.cash.report.totalBalance}
+                </p>
+                <p className="mt-1 flex flex-wrap items-baseline gap-x-2 font-mono text-[26px] font-bold leading-none tracking-tight text-white tabular-nums">
+                  {formatMoney(currentTotal)} ₴
+                  <span className="font-sans text-[11.5px] font-medium tracking-normal text-white/70">
+                    {plural(t.cash.report.accountsCount, accounts.length)} · UAH
+                  </span>
+                </p>
+                {/* Смотрим прошлый месяц — показываем и остаток на его конец,
+                    иначе крупное число «на сегодня» путало бы. */}
+                {!isCurrentMonth && (
+                  <p className="mt-1.5 font-sans text-[11.5px] text-white/75">
+                    {t.cash.report.balanceAtMonthEnd}{' '}
+                    <span className="font-mono font-semibold tabular-nums text-white">
+                      {formatMoney(totalBalance)} ₴
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <HeroStat
+                label={t.cash.report.monthInflow}
+                value={`+${formatMoney(heroInflow)} ₴`}
+                tone="in"
+              />
+              <HeroStat
+                label={t.cash.report.monthOutflow}
+                value={`−${formatMoney(heroOutflow)} ₴`}
+                tone="out"
+              />
+              <MonthPicker month={month} />
+            </div>
+          </div>
+        </section>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[13px] text-text-muted">
             {t.cash.report.subtitle} ·{' '}
             <span className="font-medium text-text">{monthLabel(month, monthNames)}</span>
           </p>
+          <MonthPicker month={month} />
         </div>
-        <MonthPicker month={month} />
-      </div>
+      )}
 
       {canManage && (
         <CashBackfillBanner
@@ -123,87 +233,6 @@ export default async function CashReportPage({
         />
       )}
 
-      {/* Hero-полоса «Общий баланс» (каркас cash-page 2026-07-13): градиентный
-          якорь экрана с mono-балансом и стеклянными мини-статами месяца. */}
-      {accounts.length > 0 && (
-        <section
-          className="relative overflow-hidden rounded-3xl p-6 sm:p-7"
-          style={{ background: 'var(--grad-hero)' }}
-        >
-          {/* Декоративные размытые орбы */}
-          <div
-            className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full opacity-40 blur-3xl"
-            style={{ background: 'rgba(255,255,255,0.45)' }}
-            aria-hidden="true"
-          />
-          <div
-            className="pointer-events-none absolute -bottom-24 right-32 h-56 w-56 rounded-full opacity-30 blur-3xl"
-            style={{ background: 'var(--primary-bright)' }}
-            aria-hidden="true"
-          />
-
-          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15">
-                  <Wallet size={15} strokeWidth={2} className="text-white" aria-hidden="true" />
-                </span>
-                <span className="text-[12px] font-semibold uppercase tracking-wide text-white/80">
-                  {t.cash.report.totalBalance}
-                </span>
-              </div>
-              <p className="mt-3 font-mono text-[34px] font-bold leading-none tracking-tight text-white tabular-nums sm:text-[40px]">
-                {formatMoney(totalBalance)} ₴
-              </p>
-              <p className="mt-2 text-[12.5px] text-white/75">
-                {plural(t.cash.report.accountsCount, accounts.length)} · UAH
-              </p>
-            </div>
-
-            <div className="flex shrink-0 flex-wrap gap-3">
-              <div className="min-w-[128px] rounded-2xl bg-white/12 px-4 py-3 backdrop-blur-md">
-                <div className="flex items-center gap-1.5">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-success-bg/90">
-                    <ArrowDownLeft
-                      size={12}
-                      strokeWidth={2.5}
-                      className="text-success-text"
-                      aria-hidden="true"
-                    />
-                  </span>
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-white/80">
-                    {t.cash.report.monthInflow}
-                  </span>
-                </div>
-                <p className="mt-1.5 font-mono text-[18px] font-bold leading-none text-white tabular-nums sm:text-[20px]">
-                  +{formatMoney(heroInflow)} ₴
-                </p>
-              </div>
-              <div className="min-w-[128px] rounded-2xl bg-white/12 px-4 py-3 backdrop-blur-md">
-                <div className="flex items-center gap-1.5">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-error-bg/90">
-                    <ArrowUpRight
-                      size={12}
-                      strokeWidth={2.5}
-                      className="text-error-text"
-                      aria-hidden="true"
-                    />
-                  </span>
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-white/80">
-                    {t.cash.report.monthOutflow}
-                  </span>
-                </div>
-                <p className="mt-1.5 font-mono text-[18px] font-bold leading-none text-white tabular-nums sm:text-[20px]">
-                  −{formatMoney(heroOutflow)} ₴
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {canManage && <CashAccountsManager accounts={accounts} balances={balancesById} />}
-
       <CashReport
         accounts={accounts}
         views={views}
@@ -211,7 +240,57 @@ export default async function CashReportPage({
         journals={journals}
         truncated={truncated}
         canManage={canManage}
+        balances={balancesById}
+        // Управление счетами — свёрнутая панель под вкладками (кнопка «Счета»):
+        // остатки видны прямо во вкладках, плитки нужны только для правки.
+        accountsManager={
+          canManage ? (
+            <CashAccountsManager accounts={accounts} balances={balancesById} />
+          ) : null
+        }
+        profitRows={profitRows ?? undefined}
+        profitTotals={profitTotals}
+        companyExpenses={companyExpenses}
+        expenseCategories={expenseCategories}
+        categorySpend={categorySpend}
+        categorySpendTotals={categorySpendTotals}
+        canAddCategory={user.caps.manage_expense_categories}
       />
     </main>
+  );
+}
+
+// Мини-стат месяца на стекле внутри полосы баланса.
+function HeroStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'in' | 'out';
+}) {
+  const Icon = tone === 'in' ? ArrowDownLeft : ArrowUpRight;
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 backdrop-blur-md">
+      <span
+        className={`flex h-5 w-5 items-center justify-center rounded-md ${
+          tone === 'in' ? 'bg-success-bg/90' : 'bg-error-bg/90'
+        }`}
+      >
+        <Icon
+          size={12}
+          strokeWidth={2.5}
+          className={tone === 'in' ? 'text-success-text' : 'text-error-text'}
+          aria-hidden="true"
+        />
+      </span>
+      <span className="text-[10.5px] font-semibold uppercase tracking-wide text-white/80">
+        {label}
+      </span>
+      <span className="font-mono text-[15px] font-bold leading-none text-white tabular-nums">
+        {value}
+      </span>
+    </div>
   );
 }

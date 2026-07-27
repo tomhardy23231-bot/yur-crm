@@ -40,25 +40,30 @@ export function CashBackfillBanner({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning/40 bg-warning-bg px-4 py-3">
-      <TriangleAlert size={16} strokeWidth={1.75} className="shrink-0 text-warning" />
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium text-text">
+    // Одна строка (2026-07-25): текст и подсказка встык — баннер не должен
+    // отъедать первый экран отчёта.
+    <div
+      data-tour="cash-sync"
+      className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-lg border border-warning/40 bg-warning-bg px-3.5 py-2"
+    >
+      <TriangleAlert size={15} strokeWidth={1.75} className="shrink-0 text-warning" />
+      <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-text">
+        <span className="font-medium">
           {t.cash.backfill.notice.replace('{count}', String(count))}
-        </p>
-        <p className="text-[12px] text-text-muted">
+        </span>{' '}
+        <span className="text-text-muted">
           {hasAccounts ? t.cash.backfill.hint : t.cash.backfill.noAccountsHint}
-        </p>
-      </div>
+        </span>
+      </p>
       {hasAccounts && (
         <button
           type="button"
           onClick={() => setOpen(true)}
           disabled={pending}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
           <RefreshCw
-            size={14}
+            size={13}
             strokeWidth={1.75}
             className={pending ? 'animate-spin' : undefined}
           />

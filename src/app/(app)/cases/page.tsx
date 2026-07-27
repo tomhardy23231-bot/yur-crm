@@ -332,12 +332,11 @@ export default async function CasesPage({
         </div>
       )}
 
-      <div data-tour="cases-toolbar" className="flex flex-col gap-3">
-        {/* Ряд 1: поиск + действия (доска · новое дело) + вкладки Активные/Архив
-            в правом углу (ml-auto). На мобильных подписи кнопок прячутся; если
-            не хватает ширины, вкладки переносятся на новую строку, оставаясь
-            справа (flex-wrap). */}
-        <div className="flex flex-wrap items-center gap-2">
+      {/* ОДНА строка панели (2026-07-25, просьба владельца — фильтры стояли
+          отдельным рядом ниже): поиск · доска · пресеты · фильтры · колонки,
+          вкладки Активные/Архив прижаты вправо (ml-auto). Не помещается —
+          переносится, вкладки остаются справа. */}
+      <div data-tour="cases-toolbar" className="flex flex-wrap items-center gap-2">
           <CasesSearch initial={q} />
           <Button asChild variant="secondary" className="shrink-0 px-3 sm:px-4">
             <Link href={boardHref()} data-tour="cases-board">
@@ -361,44 +360,11 @@ export default async function CasesPage({
               Рядом — личные сохранённые виды (v4, localStorage). */}
           {!archived && <CasesQuickFilters sp={sp} extra={<CasesSavedViews />} />}
 
-          {/* Вкладки: активные дела / архив — сегмент-контрол каркаса. */}
-          <div
-            role="tablist"
-            aria-label={t.cases.tabs.aria}
-            className="ml-auto flex items-center gap-0.5 rounded-xl border border-border bg-surface p-0.5"
-          >
-            {[
-              { archive: false, label: t.cases.tabs.active },
-              { archive: true, label: t.cases.tabs.archive },
-            ].map((tab) => {
-              const active = tab.archive === archived;
-              return (
-                <Link
-                  key={tab.label}
-                  href={tabHref(tab.archive)}
-                  role="tab"
-                  aria-selected={active}
-                  className={cn(
-                    'inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-semibold transition-all',
-                    active
-                      ? 'bg-primary-subtle text-primary-pressed'
-                      : 'text-text-subtle hover:text-text',
-                  )}
-                >
-                  {tab.archive && <Archive size={14} strokeWidth={1.75} />}
-                  {tab.label}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Ряд 2: фильтры — горизонтальная лента (свайп) на узких экранах,
-            обычный перенос на ≥ sm. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Основные фильтры — лента (свайп) на узких экранах. «Фильтры»-поповер
-              вынесен НАРУЖУ ленты: overflow-x-auto иначе клипал бы выпадашку. */}
-          <div className="no-scrollbar -mx-3 flex items-center gap-2 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+          {/* Основные фильтры: на узких экранах — отдельная лента со свайпом
+              (w-full), на ≥sm обёртка растворяется (display:contents) и чипы
+              встают в общий ряд. «Фильтры»-поповер НАРУЖУ ленты: overflow-x-auto
+              иначе клипал бы выпадашку. */}
+          <div className="no-scrollbar -mx-3 flex w-full items-center gap-2 overflow-x-auto px-3 pb-0.5 sm:contents">
           {/* Активная вкладка — фильтр этапа (воронка) со счётчиками.
               Вкладка «Архив» — фильтр по дате закрытия дела (этапы там не нужны). */}
           {archived ? (
@@ -504,7 +470,38 @@ export default async function CasesPage({
               {t.cases.toolbar.reset}
             </Link>
           )}
-        </div>
+
+          {/* Вкладки: активные дела / архив — сегмент-контрол каркаса,
+              всегда в правом углу строки. */}
+          <div
+            role="tablist"
+            aria-label={t.cases.tabs.aria}
+            className="ml-auto flex shrink-0 items-center gap-0.5 rounded-xl border border-border bg-surface p-0.5"
+          >
+            {[
+              { archive: false, label: t.cases.tabs.active },
+              { archive: true, label: t.cases.tabs.archive },
+            ].map((tab) => {
+              const active = tab.archive === archived;
+              return (
+                <Link
+                  key={tab.label}
+                  href={tabHref(tab.archive)}
+                  role="tab"
+                  aria-selected={active}
+                  className={cn(
+                    'inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-semibold transition-all',
+                    active
+                      ? 'bg-primary-subtle text-primary-pressed'
+                      : 'text-text-subtle hover:text-text',
+                  )}
+                >
+                  {tab.archive && <Archive size={14} strokeWidth={1.75} />}
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </div>
       </div>
 
       {debtOnly && (

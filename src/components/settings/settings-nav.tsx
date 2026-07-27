@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  ArrowRightLeft,
   Building2,
   Coins,
   FileSpreadsheet,
   Languages,
+  Receipt,
   Tags,
   Users,
   type LucideIcon,
@@ -22,6 +24,8 @@ export type SettingsNavId =
   | 'users'
   | 'departments'
   | 'caseTypes'
+  | 'expenseCategories'
+  | 'expenseCleanup'
   | 'rates'
   | 'requisites'
   | 'language';
@@ -41,6 +45,8 @@ const ITEMS: ReadonlyArray<SettingsNavItem> = [
   { id: 'users',       href: '/settings/users',       icon: Users,           group: 'team' },
   { id: 'departments', href: '/settings/departments', icon: Building2,        group: 'team' },
   { id: 'caseTypes',   href: '/settings/case-types',  icon: Tags,            group: 'casesFinance' },
+  { id: 'expenseCategories', href: '/settings/expense-categories', icon: Receipt, group: 'casesFinance' },
+  { id: 'expenseCleanup',    href: '/settings/expense-cleanup',    icon: ArrowRightLeft, group: 'casesFinance' },
   { id: 'rates',       href: '/settings/payroll',     icon: Coins,           group: 'casesFinance' },
   { id: 'requisites',  href: '/settings/requisites',  icon: FileSpreadsheet, group: 'company' },
   { id: 'language',    href: '/profile',              icon: Languages,       group: 'personal' },
@@ -62,6 +68,10 @@ function itemLabel(id: SettingsNavId, s: Messages['settings']): string {
       return s.departmentsCard.title;
     case 'caseTypes':
       return s.caseTypesCard.title;
+    case 'expenseCategories':
+      return s.expenseCategoriesCard.title;
+    case 'expenseCleanup':
+      return s.expenseCleanupCard.title;
     case 'rates':
       return s.ratesCard.title;
     case 'requisites':

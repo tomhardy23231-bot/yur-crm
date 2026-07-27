@@ -46,6 +46,8 @@ const PERM_GROUPS: ReadonlyArray<{
       'edit_rate_overrides',
       'view_cash',
       'can_manage_cash',
+      'view_case_expenses',
+      'manage_case_expenses',
     ],
   },
   {
@@ -55,6 +57,7 @@ const PERM_GROUPS: ReadonlyArray<{
       'manage_users',
       'edit_payroll_rates',
       'manage_case_types',
+      'manage_expense_categories',
     ],
   },
 ];

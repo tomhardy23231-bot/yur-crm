@@ -173,6 +173,73 @@ export async function updateCashAccountAction(
 }
 
 // ============================================================================
+// Удаление счёта кассы (2026-07-26, просьба владельца: счета не только
+// переименовывать, но и удалять).
+//
+// Счёт с операциями удалять НЕЛЬЗЯ: за ним стоят приходы платежей и расходы,
+// и снос счёта увёл бы историю денег. На уровне БД это держит FK
+// cash_entries_account_id_fkey ON DELETE RESTRICT; здесь считаем операции
+// заранее, чтобы вместо сырой ошибки БД показать понятный текст и предложить
+// сделать счёт неактивным.
+// ============================================================================
+export type DeleteCashAccountResult = {
+  ok: boolean;
+  message?: string;
+  /** Сколько операций мешает удалению (для текста подсказки). */
+  entryCount?: number;
+};
+
+export async function deleteCashAccountAction(
+  id: string,
+): Promise<DeleteCashAccountResult> {
+  const user = await requireCap('can_manage_cash');
+  const { t } = await getT();
+
+  if (!id || !UUID_RE.test(id)) {
+    return { ok: false, message: t.cash.actions.notFound };
+  }
+
+  const account = await userDb(user.profile.id, (tx) =>
+    tx.cash_accounts.findUnique({ where: { id }, select: { name: true } }),
+  );
+  if (!account) return { ok: false, message: t.cash.actions.notFound };
+
+  const entryCount = await userDb(user.profile.id, (tx) =>
+    tx.cash_entries.count({ where: { account_id: id } }),
+  );
+  if (entryCount > 0) {
+    return { ok: false, entryCount, message: t.cash.actions.accountHasEntries };
+  }
+
+  try {
+    // deleteMany — под RLS это тихий no-op (0 строк), а не исключение.
+    await userDb(user.profile.id, (tx) =>
+      tx.cash_accounts.deleteMany({ where: { id } }),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError(
+        'deleteCashAccountAction',
+        err,
+        t.cash.actions.accountDeleteFailed,
+        t.errors.db,
+      ),
+    };
+  }
+
+  await logActivity({
+    entity_type: 'cash',
+    entity_id: id,
+    action: 'cash_account_deleted',
+    changes: { name: account.name },
+  });
+
+  revalidatePath('/reports/cash');
+  return { ok: true, message: t.cash.actions.accountDeleted };
+}
+
+// ============================================================================
 // Ручная операция кассы (приход/расход), не привязанная к делу. payment_id IS NULL.
 // ============================================================================
 export type CashEntryFields = 'account_id' | 'entry_date' | 'direction' | 'amount' | 'description';

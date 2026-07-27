@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import type { CashAccount } from '@/lib/types/db';
 import { createCashEntryAction, type CashEntryState } from '@/lib/cash/actions';
@@ -20,11 +21,22 @@ const INITIAL: CashEntryState = { ok: false };
 export function CashEntryForm({
   accounts,
   accountId,
+  incomeOnly = false,
+  onSuccess,
 }: {
   accounts: CashAccount[];
   accountId: string;
+  /**
+   * Только приход (2026-07-26). Расход вносится формой «Витрата» — там есть
+   * СТАТЬЯ, без которой отчёт «куда ушло» дырявый. Владелец: «я думал мы
+   * статьи подобавляем, а потом будем выбирать при расходе».
+   */
+  incomeOnly?: boolean;
+  /** Вызывается после успешного сохранения (модалка закрывает себя). */
+  onSuccess?: () => void;
 }) {
   const { t } = useI18n();
+  const toast = useToast();
   const [state, formAction, pending] = useActionState<CashEntryState, FormData>(
     createCashEntryAction,
     INITIAL,
@@ -32,16 +44,31 @@ export function CashEntryForm({
   const uid = useId();
   const fid = (n: string) => `${uid}-${n}`;
   const formRef = useRef<HTMLFormElement>(null);
+  // Уже обработанное состояние: страхует от повторного тоста, если эффект
+  // перезапустится из-за смены идентичности toast/t/onSuccess.
+  const handledRef = useRef<CashEntryState | null>(null);
 
+  // Сравниваем сам объект состояния (новый на каждый submit), а не state.ok:
+  // иначе два успешных сохранения подряд не сбрасывали бы форму.
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
-  }, [state.ok]);
+    if (!state.ok || handledRef.current === state) return;
+    handledRef.current = state;
+    formRef.current?.reset();
+    toast.success(t.cash.entry.saved);
+    onSuccess?.();
+  }, [state, toast, t, onSuccess]);
 
   const active = accounts.filter((a) => a.is_active);
 
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <div
+        className={
+          incomeOnly
+            ? 'grid grid-cols-1 gap-3 sm:grid-cols-[1.4fr_1fr_1fr]'
+            : 'grid grid-cols-1 gap-3 sm:grid-cols-[1.4fr_1fr_1fr_1fr]'
+        }
+      >
         <Field label={t.cash.entry.account} htmlFor={fid('acc')} error={state.fieldErrors?.account_id} required>
           <Select name="account_id" defaultValue={accountId}>
             {active.map((a) => (
@@ -52,12 +79,16 @@ export function CashEntryForm({
           </Select>
         </Field>
 
-        <Field label={t.cash.entry.direction} htmlFor={fid('dir')} error={state.fieldErrors?.direction} required>
-          <Select name="direction" defaultValue="out">
-            <option value="in">{t.enums.cashDirection.in}</option>
-            <option value="out">{t.enums.cashDirection.out}</option>
-          </Select>
-        </Field>
+        {incomeOnly ? (
+          <input type="hidden" name="direction" value="in" />
+        ) : (
+          <Field label={t.cash.entry.direction} htmlFor={fid('dir')} error={state.fieldErrors?.direction} required>
+            <Select name="direction" defaultValue="out">
+              <option value="in">{t.enums.cashDirection.in}</option>
+              <option value="out">{t.enums.cashDirection.out}</option>
+            </Select>
+          </Field>
+        )}
 
         <Field label={t.cash.entry.amount} htmlFor={fid('amt')} error={state.fieldErrors?.amount} required>
           <Input

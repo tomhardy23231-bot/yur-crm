@@ -11,6 +11,8 @@ import { account } from './account';
 import { settings } from './settings';
 import { departments } from './departments';
 import { caseTypes } from './caseTypes';
+import { expenseCategories } from './expenseCategories';
+import { expenseCleanup } from './expenseCleanup';
 import { commandPalette } from './commandPalette';
 
 import { dashboard } from './dashboard';
@@ -26,6 +28,7 @@ import { documents } from './documents';
 import { acts } from './acts';
 import { requisites } from './requisites';
 import { payments } from './payments';
+import { expenses } from './expenses';
 import { payroll } from './payroll';
 import { payrollPrint } from './payrollPrint';
 import { users } from './users';
@@ -54,6 +57,8 @@ export const ru = {
   settings,
   departments,
   caseTypes,
+  expenseCategories,
+  expenseCleanup,
   commandPalette,
   dashboard,
   clients,
@@ -68,6 +73,7 @@ export const ru = {
   acts,
   requisites,
   payments,
+  expenses,
   payroll,
   payrollPrint,
   users,

@@ -563,3 +563,78 @@ export async function rpcNotifyReissueCalendarToken(
     select public.notify_reissue_calendar_token() as token`;
   return firstRow(rows, 'notify_reissue_calendar_token').token as string;
 }
+
+// === Прибыльность дел: доход / расходы / маржа (миграция 0009) ===============
+
+export type FinanceByCaseRow = {
+  case_id: string;
+  number_title: string;
+  client_name: string | null;
+  lawyer_id: string;
+  responsible_id: string;
+  income: number;
+  expense: number;
+  margin: number;
+};
+
+/**
+ * Прибыльность по делам за период (/reports/profit). SECURITY INVOKER → RLS:
+ * дела режет private.case_visible, расходы дополнительно право
+ * view_case_expenses. Читает payments.amount ТОЛЬКО для показа — на
+ * cases.paid_total и расчёт ЗП не влияет.
+ */
+export async function rpcFinanceByCase(
+  db: DbLike,
+  args: { from: string | null; to: string | null }, // YYYY-MM-DD; null → без границы
+): Promise<FinanceByCaseRow[]> {
+  const rows = await db.$queryRaw<Row[]>`
+    select * from public.finance_by_case(${args.from}::date, ${args.to}::date)`;
+  return rows.map((r) => ({
+    case_id: r.case_id as string,
+    number_title: r.number_title as string,
+    client_name: (r.client_name as string | null) ?? null,
+    lawyer_id: r.lawyer_id as string,
+    responsible_id: r.responsible_id as string,
+    income: num(r.income),
+    expense: num(r.expense),
+    margin: num(r.margin),
+  }));
+}
+
+// === Расходы по статьям за период (миграция 0010) ============================
+
+export type ExpenseByCategoryRow = {
+  category_id: string;
+  code: string;
+  name: string;
+  is_builtin: boolean;
+  total: number;
+  cnt: number;
+  /** Из них траты по делам. */
+  case_total: number;
+  /** Из них общефирменные (аренда, налоги, зарплата). */
+  company_total: number;
+};
+
+/**
+ * «Куда сколько ушло» — расходы по статьям за период. SECURITY INVOKER → RLS
+ * сама решает, что видно зрителю: траты по делам — по видимости дела и праву
+ * view_case_expenses, общефирменные — по правам кассы.
+ */
+export async function rpcExpensesByCategory(
+  db: DbLike,
+  args: { from: string | null; to: string | null }, // YYYY-MM-DD; null → без границы
+): Promise<ExpenseByCategoryRow[]> {
+  const rows = await db.$queryRaw<Row[]>`
+    select * from public.expenses_by_category(${args.from}::date, ${args.to}::date)`;
+  return rows.map((r) => ({
+    category_id: r.category_id as string,
+    code: r.code as string,
+    name: r.name as string,
+    is_builtin: Boolean(r.is_builtin),
+    total: num(r.total),
+    cnt: Number(r.cnt ?? 0),
+    case_total: num(r.case_total),
+    company_total: num(r.company_total),
+  }));
+}

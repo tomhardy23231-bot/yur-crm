@@ -23,7 +23,10 @@ export type ActivityEntityType =
   | 'auth'
   | 'absence'
   // Справочник типов дел (миграция 0008): видят owner + обладатели manage_case_types.
-  | 'case_type';
+  | 'case_type'
+  // Справочник статей расходов (миграция 0009): видят owner + обладатели
+  // manage_expense_categories. Сами расходы логируются под 'case'.
+  | 'expense_category';
 
 // Синглтон-события уровня компании (ставки ЗП, реквизиты) не имеют своего
 // uuid — журналируются под нулевым uuid (entity_id обязателен в БД).
