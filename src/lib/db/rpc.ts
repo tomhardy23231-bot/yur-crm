@@ -638,3 +638,27 @@ export async function rpcExpensesByCategory(
     company_total: num(r.company_total),
   }));
 }
+
+// === Счета кассы для выпадающих списков форм (миграция 0016) =================
+
+export type CashAccountPick = {
+  id: string;
+  name: string;
+  kind: string;
+  is_default: boolean;
+};
+
+/**
+ * Активные счета для форм платежа и расхода: id, название, вид. БЕЗ остатков —
+ * деньги остаются под правами кассы. SECURITY DEFINER: сама таблица закрыта
+ * правами кассы, а платёж вносит юрист.
+ */
+export async function rpcCashAccountsPick(db: DbLike): Promise<CashAccountPick[]> {
+  const rows = await db.$queryRaw<Row[]>`select * from public.cash_accounts_pick()`;
+  return rows.map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    kind: r.kind as string,
+    is_default: Boolean(r.is_default),
+  }));
+}

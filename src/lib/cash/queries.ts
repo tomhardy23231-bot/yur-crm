@@ -4,7 +4,9 @@ import { getCurrentUser } from '@/lib/auth/current-user';
 import { userDb } from '@/lib/db';
 import { dateOnly, dec, toDbDate, ts } from '@/lib/db/convert';
 import {
+  rpcCashAccountsPick,
   rpcCashBalancesBefore,
+  type CashAccountPick,
   rpcCashUnsyncedPaymentsCount,
 } from '@/lib/db/rpc';
 import { nextMonth } from '@/lib/payroll/month';
@@ -208,4 +210,20 @@ export async function getCurrentBalances(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const r of rows) out[r.account_id] = r.balance;
   return out;
+}
+
+// =====================================================================
+// listAccountsForPicker — счета для выпадающих списков форм (платёж, расход).
+// Только справочные поля; доступно любому активному сотруднику (0016), потому
+// что платёж вносит юрист, а права кассы выдаёт только владелец.
+// =====================================================================
+export async function listAccountsForPicker(): Promise<CashAccountPick[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  try {
+    return await userDb(user.profile.id, (tx) => rpcCashAccountsPick(tx));
+  } catch {
+    // Счетов может не быть вовсе — форма просто не покажет поле.
+    return [];
+  }
 }

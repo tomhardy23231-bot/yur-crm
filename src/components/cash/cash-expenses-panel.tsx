@@ -11,7 +11,7 @@ import { useI18n } from '@/lib/i18n/provider';
 import { cn, formatMoney } from '@/lib/utils';
 import type { ExpenseCategoryOption } from '@/lib/expenses/categories';
 import type { CategorySpendRow, CategorySpendTotals } from '@/lib/expenses/report';
-import type { CashAccount, ExpenseWithRefs } from '@/lib/types/db';
+import type { ExpenseWithRefs } from '@/lib/types/db';
 
 // Вкладка «Витрати» кассы (2026-07-26): расходы фирмы за месяц + разбивка по
 // статьям — ответ на вопрос клиента «куда сколько ушло». Траты по делам сюда
@@ -35,7 +35,7 @@ export function CashExpensesPanel({
   /** Право can_manage_cash: без него — только просмотр. */
   canManage: boolean;
   /** Счета кассы — выбор конкретного счёта списания. */
-  accounts: CashAccount[];
+  accounts: ReadonlyArray<{ id: string; name: string; is_active?: boolean }>;
   /** Право заводить статьи «на лету». */
   canAddCategory: boolean;
 }) {

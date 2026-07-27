@@ -21,7 +21,6 @@ import { createExpenseCategoryAction } from '@/lib/expenses/category-actions';
 import {
   EXPENSE_METHODS,
   isExpenseMethod,
-  type CashAccount,
   type ExpenseMethod,
 } from '@/lib/types/db';
 import { parseAmount, todayIso } from '@/lib/validation';
@@ -36,10 +35,11 @@ interface Props {
   categories: ExpenseCategoryOption[];
   /**
    * Счета кассы для выбора «с чего списано» (0015). Переданы — выбирается
-   * КОНКРЕТНЫЙ счёт (карт может быть несколько); не переданы (у вносящего нет
-   * доступа к кассе) — остаётся выбор ВИДА счёта.
+   * КОНКРЕТНЫЙ счёт (карт может быть несколько); не переданы — остаётся выбор
+   * ВИДА счёта. Форма принимает и полную запись счёта, и «пикер» из
+   * cash_accounts_pick() — общая часть полей.
    */
-  accounts?: CashAccount[];
+  accounts?: ReadonlyArray<{ id: string; name: string; is_active?: boolean }>;
   /** Может ли пользователь заводить статьи «на лету» (manage_expense_categories). */
   canAddCategory?: boolean;
   /** Вызывается после успешного сохранения (напр. закрыть модалку). */
@@ -66,7 +66,7 @@ export function ExpenseForm({
   const [extraCats, setExtraCats] = useState<ExpenseCategoryOption[]>([]);
   const allCats = [...categories, ...extraCats];
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
-  const activeAccounts = (accounts ?? []).filter((a) => a.is_active);
+  const activeAccounts = (accounts ?? []).filter((a) => a.is_active !== false);
   const toast = useToast();
   const uid = useId();
   const fid = (name: string) => `${uid}-${name}`;

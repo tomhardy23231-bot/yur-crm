@@ -4,11 +4,13 @@ import { useActionState, useId, useRef, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
+import type { CashAccountPick } from '@/lib/db/rpc';
 import {
   createPaymentAction,
   type CreatePaymentFields,
@@ -22,6 +24,11 @@ const INITIAL: CreatePaymentState = { ok: false };
 
 interface Props {
   caseId: string;
+  /**
+   * Счета кассы для выбора «куда пришли деньги» (0016). Пусто — поля нет,
+   * счёт подберётся по способу оплаты, как раньше.
+   */
+  accounts?: CashAccountPick[];
   /** Вызывается после успешного сохранения (напр. закрыть модалку). */
   onSuccess?: () => void;
   /** Оптимистичное добавление строки платежа в список (из PaymentsList). */
@@ -31,7 +38,12 @@ interface Props {
 // Дата по умолчанию и клиентская валидация суммы — общий @/lib/validation
 // (parseAmount зеркалит серверную проверку, todayIso — киевская «сегодня»).
 
-export function PaymentForm({ caseId, onSuccess, addOptimistic }: Props) {
+export function PaymentForm({
+  caseId,
+  accounts = [],
+  onSuccess,
+  addOptimistic,
+}: Props) {
   const { t } = useI18n();
   const toast = useToast();
   // Уникальный префикс id полей — форма может быть на странице в нескольких
@@ -164,20 +176,43 @@ export function PaymentForm({ caseId, onSuccess, addOptimistic }: Props) {
           />
         </Field>
 
-        <Field
-          label={t.payments.form.methodLabel}
-          htmlFor={fid('method')}
-          error={err('method')}
-        >
-          <Input
-            id={fid('method')}
-            name="method"
-            type="text"
-            maxLength={80}
-            placeholder={t.payments.form.methodPlaceholder}
-            aria-invalid={err('method') ? 'true' : undefined}
-          />
-        </Field>
+        {accounts.length > 0 ? (
+          // Явный счёт: «Моно», «ПриватБанк», «Каса» — как их назвали. От него
+          // зависит, куда ляжет приход в кассе (0016).
+          <Field
+            label={t.payments.form.accountLabel}
+            htmlFor={fid('account')}
+            error={err('method')}
+          >
+            <Select
+              id={fid('account')}
+              name="account_id"
+              defaultValue={accounts.find((a) => a.is_default)?.id ?? accounts[0]!.id}
+              aria-invalid={err('method') ? 'true' : undefined}
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <Field
+            label={t.payments.form.methodLabel}
+            htmlFor={fid('method')}
+            error={err('method')}
+          >
+            <Input
+              id={fid('method')}
+              name="method"
+              type="text"
+              maxLength={80}
+              placeholder={t.payments.form.methodPlaceholder}
+              aria-invalid={err('method') ? 'true' : undefined}
+            />
+          </Field>
+        )}
       </div>
 
       <Field

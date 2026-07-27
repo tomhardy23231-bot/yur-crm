@@ -7,7 +7,6 @@ import { Modal } from '@/components/ui/modal';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n/provider';
 import type { ExpenseCategoryOption } from '@/lib/expenses/categories';
-import type { CashAccount } from '@/lib/types/db';
 
 import { ExpenseForm } from './expense-form';
 import type { OptimisticExpenseInput } from './expenses-list';
@@ -19,7 +18,7 @@ interface Props {
   /** Оптимистичное добавление строки в список (из ExpensesList). */
   addOptimistic?: (input: OptimisticExpenseInput) => void;
   /** Счета кассы — выбор конкретного счёта списания (0015). */
-  accounts?: CashAccount[];
+  accounts?: ReadonlyArray<{ id: string; name: string; is_active?: boolean }>;
   /** Право заводить статьи «на лету» (manage_expense_categories). */
   canAddCategory?: boolean;
   /**

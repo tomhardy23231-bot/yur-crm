@@ -10,7 +10,9 @@ import {
 } from 'lucide-react';
 
 import { AddPaymentDialog } from '@/components/payments/add-payment-dialog';
+import { EditPaymentDialog } from './edit-payment-dialog';
 import { useI18n } from '@/lib/i18n/provider';
+import type { CashAccountPick } from '@/lib/db/rpc';
 import { deletePaymentAction } from '@/lib/payments/actions';
 import { formatMoney } from '@/lib/utils';
 import type { PaymentWithCreator } from '@/lib/types/db';
@@ -41,6 +43,10 @@ interface Props {
   canManage: boolean;
   /** Переплата клиента (max(0, paid_total − contract_sum)). Показываем, если > 0. */
   overpaid: number;
+  /** Счета кассы для выбора «куда пришли деньги» (0016). */
+  accounts?: CashAccountPick[];
+  /** Может ли править внесённые платежи (право edit_payments). */
+  canEdit?: boolean;
 }
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
@@ -66,6 +72,8 @@ export function PaymentsList({
   caseId,
   canWrite,
   canManage,
+  canEdit = false,
+  accounts,
   overpaid,
 }: Props) {
   const { t, fmt } = useI18n();
@@ -83,6 +91,8 @@ export function PaymentsList({
         note: input.note,
         created_by: '',
         created_at: new Date().toISOString(),
+        account_id: null,
+        act_id: null,
         idempotency_key: null,
         creator: null,
         pending: true,
@@ -155,6 +165,9 @@ export function PaymentsList({
                 <span className="shrink-0 font-mono text-[14px] font-bold tabular-nums text-success-text">
                   {formatMoney(p.amount)} ₴
                 </span>
+                {canEdit && !p.pending && (
+                  <EditPaymentDialog payment={p} accounts={accounts} />
+                )}
                 {canManage && !p.pending && (
                   <form action={deletePaymentAction} className="shrink-0">
                     <input type="hidden" name="payment_id" value={p.id} />
@@ -174,7 +187,13 @@ export function PaymentsList({
         </ul>
       )}
 
-      {canWrite && <AddPaymentDialog caseId={caseId} addOptimistic={addOptimistic} />}
+      {canWrite && (
+        <AddPaymentDialog
+          caseId={caseId}
+          accounts={accounts}
+          addOptimistic={addOptimistic}
+        />
+      )}
     </div>
   );
 }

@@ -8,7 +8,6 @@ import { DeleteExpenseButton } from '@/components/expenses/delete-expense-button
 import { useI18n } from '@/lib/i18n/provider';
 import { formatMoney } from '@/lib/utils';
 import type { ExpenseCategoryOption } from '@/lib/expenses/categories';
-import type { CashAccount } from '@/lib/types/db';
 import type { ExpenseMethod, ExpenseWithRefs } from '@/lib/types/db';
 
 // Клиентский список расходов по делу + диалог добавления под одним useOptimistic
@@ -40,7 +39,7 @@ interface Props {
    * Счета кассы — если вносящий их видит (есть права кассы), он выбирает
    * КОНКРЕТНЫЙ счёт списания; иначе остаётся выбор вида счёта.
    */
-  accounts?: CashAccount[];
+  accounts?: ReadonlyArray<{ id: string; name: string; is_active?: boolean }>;
   /** Право заводить статьи «на лету» (manage_expense_categories). */
   canAddCategory?: boolean;
 }

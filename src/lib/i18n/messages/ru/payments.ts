@@ -32,6 +32,7 @@ export const payments = {
     amountLabel: 'Сумма, ₴',
     amountPlaceholder: '0.00',
     paidAtLabel: 'Дата оплаты',
+    accountLabel: 'Счёт',
     methodLabel: 'Метод',
     methodPlaceholder: 'Наличные / Безнал / Карта',
     noteLabel: 'Комментарий',
@@ -45,6 +46,11 @@ export const payments = {
 
   // Строка платежа
   row: {
+    editLabel: 'Изменить платёж',
+    editTitle: 'Изменение платежа',
+    editSave: 'Сохранить',
+    updated: 'Платёж изменён.',
+    editActHint: 'Этот платёж создан подтверждением акта: сумму и дату у него менять нельзя — иначе разойдутся акт и завершённость дела. Счёт и комментарий поправить можно.',
     deleteLabel: 'Удалить платёж',
   },
 
@@ -91,6 +97,8 @@ export const payments = {
     dateInvalid: 'Некорректная дата',
     methodTooLong: 'Слишком длинно (макс 80)',
     noteTooLong: 'Слишком длинно (макс 500)',
+    accountInvalid: 'Выберите счёт',
+    notFound: 'Платёж не найден',
     saveFailed: 'Не удалось сохранить платёж.',
   },
 };

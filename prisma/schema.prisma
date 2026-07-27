@@ -241,6 +241,7 @@ model cash_accounts {
   users           public_users   @relation(fields: [created_by], references: [id], onUpdate: NoAction)
   cash_entries    cash_entries[]
   expenses        expenses[]
+  payments        payments[]
 
   @@index([is_active], map: "cash_accounts_active_idx")
   @@schema("public")
@@ -377,21 +378,25 @@ model payment_plan_items {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model payments {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  case_id         String        @db.Uuid
-  amount          Decimal       @db.Decimal(14, 2)
-  paid_at         DateTime      @db.Date
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id         String         @db.Uuid
+  amount          Decimal        @db.Decimal(14, 2)
+  paid_at         DateTime       @db.Date
   method          String?
+  /// Счёт кассы, на который пришли деньги (0016). NULL — подбор по method.
+  account_id      String?        @db.Uuid
   note            String?
-  created_by      String        @db.Uuid
-  created_at      DateTime      @default(now()) @db.Timestamptz(6)
-  idempotency_key String?       @unique(map: "payments_idempotency_key_idx", where: raw("(idempotency_key IS NOT NULL)")) @db.Uuid
-  act_id          String?       @unique(map: "payments_act_id_uniq", where: raw("(act_id IS NOT NULL)")) @db.Uuid
+  created_by      String         @db.Uuid
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  idempotency_key String?        @unique(map: "payments_idempotency_key_idx", where: raw("(idempotency_key IS NOT NULL)")) @db.Uuid
+  act_id          String?        @unique(map: "payments_act_id_uniq", where: raw("(act_id IS NOT NULL)")) @db.Uuid
   cash_entries    cash_entries?
-  case_acts       case_acts?    @relation(fields: [act_id], references: [id], onUpdate: NoAction)
-  cases           cases         @relation(fields: [case_id], references: [id], onUpdate: NoAction)
-  users           public_users  @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  cash_accounts   cash_accounts? @relation(fields: [account_id], references: [id], onUpdate: NoAction)
+  case_acts       case_acts?     @relation(fields: [act_id], references: [id], onUpdate: NoAction)
+  cases           cases          @relation(fields: [case_id], references: [id], onUpdate: NoAction)
+  users           public_users   @relation(fields: [created_by], references: [id], onUpdate: NoAction)
 
+  @@index([account_id], map: "payments_account_id_idx")
   @@index([case_id], map: "payments_case_idx")
   @@index([created_by])
   @@index([paid_at(sort: Desc)])

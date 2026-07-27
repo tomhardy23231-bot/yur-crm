@@ -5,12 +5,15 @@ import { useCallback, useState } from 'react';
 
 import { Modal } from '@/components/ui/modal';
 import { useI18n } from '@/lib/i18n/provider';
+import type { CashAccountPick } from '@/lib/db/rpc';
 
 import { PaymentForm } from './payment-form';
 import type { OptimisticPaymentInput } from './payments-list';
 
 interface Props {
   caseId: string;
+  /** Счета кассы для выбора «куда пришли деньги». */
+  accounts?: CashAccountPick[];
   /** Оптимистичное добавление строки в список (из PaymentsList). */
   addOptimistic?: (input: OptimisticPaymentInput) => void;
 }
@@ -19,7 +22,7 @@ interface Props {
 // Форма переиспользуется из блока «Финансы»; её экшен делает revalidatePath по
 // делу, поэтому после сохранения обновятся плитки сумм, список платежей и
 // «Вознаграждение команды». На успехе модалка закрывается.
-export function AddPaymentDialog({ caseId, addOptimistic }: Props) {
+export function AddPaymentDialog({ caseId, addOptimistic, accounts}: Props) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
@@ -42,7 +45,12 @@ export function AddPaymentDialog({ caseId, addOptimistic }: Props) {
         subtitle={t.payments.addDialog.subtitle}
         closeLabel={t.payments.addDialog.close}
       >
-        <PaymentForm caseId={caseId} onSuccess={close} addOptimistic={addOptimistic} />
+        <PaymentForm
+          caseId={caseId}
+          accounts={accounts}
+          onSuccess={close}
+          addOptimistic={addOptimistic}
+        />
       </Modal>
     </>
   );

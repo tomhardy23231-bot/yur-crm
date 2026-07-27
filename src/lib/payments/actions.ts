@@ -34,6 +34,9 @@ export async function createPaymentAction(
   const amount_raw = String(formData.get('amount') ?? '').trim();
   const paid_at = String(formData.get('paid_at') ?? '').trim();
   const method_raw = String(formData.get('method') ?? '').trim();
+  // Счёт кассы, на который пришли деньги (0016). Пусто — старое поведение:
+  // счёт подберётся по method (или упадёт на счёт по умолчанию).
+  const account_id_raw = String(formData.get('account_id') ?? '').trim();
   const note_raw = String(formData.get('note') ?? '').trim();
   // Ключ идемпотентности (Задача 2). Если форма прислала валидный UUID — кладём
   // его в payments.idempotency_key; уникальный индекс отвергнет дубль. Невалидный
@@ -56,6 +59,8 @@ export async function createPaymentAction(
     fieldErrors.paid_at = t.payments.errors.dateInvalid;
 
   if (method_raw.length > 80) fieldErrors.method = t.payments.errors.methodTooLong;
+  if (account_id_raw && !UUID_RE.test(account_id_raw))
+    fieldErrors.method = t.payments.errors.accountInvalid;
   if (note_raw.length > 500) fieldErrors.note = t.payments.errors.noteTooLong;
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -102,6 +107,7 @@ export async function createPaymentAction(
           amount,
           paid_at: toDbDate(paid_at),
           method,
+          account_id: account_id_raw || null,
           note,
           created_by: user.profile.id,
           idempotency_key,
@@ -197,6 +203,140 @@ export async function deletePaymentAction(formData: FormData): Promise<void> {
     // но UI пересобираем по user-supplied case_id для редиректа.
     revalidatePath(`/cases/${case_id}`);
   }
+}
+
+// ============================================================================
+// Правка внесённого платежа (2026-07-27, просьба владельца «на всякий случай»).
+//
+// Право edit_payments (по умолчанию owner/admin) — оно же держит UPDATE-политику
+// в БД, так что RLS дублирует проверку. Строка кассы пересоздаётся триггером
+// cash_sync_on_payment: сумма, дата и счёт в оборотке поедут следом сами.
+//
+// ⚠️ Платёж, порождённый подтверждением акта (act_id IS NOT NULL), в БД защищён
+// триггером payments_guard_act_payment: сумму, дату и дело у него менять нельзя
+// (иначе разъедутся акт и completion дела). Такому платежу правим только
+// способ оплаты, счёт и примечание — форма это показывает.
+// ============================================================================
+export type UpdatePaymentFields = 'amount' | 'paid_at' | 'method' | 'note';
+
+export type UpdatePaymentState = {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Partial<Record<UpdatePaymentFields, string>>;
+};
+
+export async function updatePaymentAction(
+  _prev: UpdatePaymentState,
+  formData: FormData,
+): Promise<UpdatePaymentState> {
+  const user = await requireCap('edit_payments');
+  const { t } = await getT();
+
+  const payment_id = String(formData.get('payment_id') ?? '').trim();
+  if (!UUID_RE.test(payment_id)) {
+    return { ok: false, message: t.payments.errors.notFound };
+  }
+
+  const amount_raw = String(formData.get('amount') ?? '').trim();
+  const paid_at = String(formData.get('paid_at') ?? '').trim();
+  const method_raw = String(formData.get('method') ?? '').trim();
+  const account_id_raw = String(formData.get('account_id') ?? '').trim();
+  const note_raw = String(formData.get('note') ?? '').trim();
+
+  const fieldErrors: UpdatePaymentState['fieldErrors'] = {};
+  if (!amount_raw) fieldErrors.amount = t.payments.errors.amountRequired;
+  else if (parseAmount(amount_raw) === null)
+    fieldErrors.amount = t.payments.errors.amountInvalid;
+  if (!paid_at) fieldErrors.paid_at = t.payments.errors.dateRequired;
+  else if (!isValidDate(paid_at))
+    fieldErrors.paid_at = t.payments.errors.dateInvalid;
+  if (method_raw.length > 80) fieldErrors.method = t.payments.errors.methodTooLong;
+  if (account_id_raw && !UUID_RE.test(account_id_raw))
+    fieldErrors.method = t.payments.errors.accountInvalid;
+  if (note_raw.length > 500) fieldErrors.note = t.payments.errors.noteTooLong;
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { ok: false, fieldErrors, message: t.errors.checkForm };
+  }
+
+  // Снапшот «до» — и для лога, и чтобы понять, платёж ли это от акта.
+  const before = await userDb(user.profile.id, (tx) =>
+    tx.payments.findUnique({
+      where: { id: payment_id },
+      select: {
+        case_id: true,
+        amount: true,
+        paid_at: true,
+        method: true,
+        account_id: true,
+        note: true,
+        act_id: true,
+      },
+    }),
+  );
+  if (!before) return { ok: false, message: t.payments.errors.notFound };
+
+  const amount = parseAmount(amount_raw)!;
+  const isActPayment = before.act_id !== null;
+
+  try {
+    await userDb(user.profile.id, (tx) =>
+      tx.payments.updateMany({
+        where: { id: payment_id },
+        // У платежа от акта сумму и дату не трогаем — их держит БД-триггер.
+        data: isActPayment
+          ? {
+              method: method_raw || null,
+              account_id: account_id_raw || null,
+              note: note_raw || null,
+            }
+          : {
+              amount,
+              paid_at: toDbDate(paid_at),
+              method: method_raw || null,
+              account_id: account_id_raw || null,
+              note: note_raw || null,
+            },
+      }),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError(
+        'updatePaymentAction',
+        err,
+        t.payments.errors.saveFailed,
+        t.errors.db,
+      ),
+    };
+  }
+
+  await logActivity({
+    entity_type: 'case',
+    entity_id: before.case_id,
+    action: 'payment_updated',
+    changes: {
+      payment_id,
+      from: {
+        amount: dec(before.amount),
+        paid_at: dateOnly(before.paid_at),
+        method: before.method,
+        account_id: before.account_id,
+        note: before.note,
+      },
+      to: {
+        amount: isActPayment ? dec(before.amount) : amount,
+        paid_at: isActPayment ? dateOnly(before.paid_at) : paid_at,
+        method: method_raw || null,
+        account_id: account_id_raw || null,
+        note: note_raw || null,
+      },
+    },
+  });
+
+  revalidatePath(`/cases/${before.case_id}`);
+  revalidatePath('/reports/cash');
+  return { ok: true };
 }
 
 // ============================================================================

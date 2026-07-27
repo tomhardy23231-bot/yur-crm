@@ -47,7 +47,7 @@ import { caseHasDocOfType, listDocumentsByCase } from '@/lib/documents/queries';
 import { listPaymentsByCase } from '@/lib/payments/queries';
 import { listExpensesByCase } from '@/lib/expenses/queries';
 import { listActiveExpenseCategories } from '@/lib/expenses/categories';
-import { listCashAccounts } from '@/lib/cash/queries';
+import { listAccountsForPicker } from '@/lib/cash/queries';
 import { listActsByCase } from '@/lib/acts/queries';
 import { listTasksByCase } from '@/lib/tasks/queries';
 import { getOrgRequisites, requisitesAreUsable } from '@/lib/org/queries';
@@ -152,9 +152,7 @@ export default async function CaseDetailPage({
     // (RLS и так отдал бы пустой список).
     canSeeExpenses ? listExpensesByCase(c.id) : Promise.resolve([]),
     canManageExpenses ? listActiveExpenseCategories('case') : Promise.resolve([]),
-    canManageExpenses && (user.caps.view_cash || user.caps.can_manage_cash)
-      ? listCashAccounts()
-      : Promise.resolve([]),
+    listAccountsForPicker(),
   ]);
 
   // Сводка «Доход / Расходы / Маржа». Доход = paid_total (реально оплачено
@@ -452,16 +450,37 @@ export default async function CaseDetailPage({
   // ── Вкладка «Платежи»: история + «Итого» + график платежей ──
   const paymentsPanel = (
     <div className="flex flex-col gap-5">
+      {/* Две ЯВНЫЕ колонки, а не авто-сетка (2026-07-27): при трёх карточках
+          «Расходы» уезжали во второй ряд под высокую «Итого» и между ними
+          зияла пустота. */}
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1.6fr_1fr]">
+        <div className="flex flex-col gap-5">
         <Card className="p-5">
           <PaymentsList
             payments={payments}
             caseId={c.id}
             canWrite={canEdit}
             canManage={canManagePay}
+            canEdit={user.caps.edit_payments}
+            accounts={cashAccounts}
             overpaid={c.overpaid}
           />
         </Card>
+
+        {/* Расходы по делу — под платежами, в той же колонке. */}
+        {canSeeExpenses && (
+          <Card className="p-5">
+            <ExpensesList
+              accounts={cashAccounts}
+              canAddCategory={user.caps.manage_expense_categories}
+              expenses={expenses}
+              caseId={c.id}
+              categories={expenseCategories}
+              canManage={canManageExpenses}
+            />
+          </Card>
+        )}
+        </div>
 
         <Card className="p-5">
           <CardLabel className="mb-3">{t.caseCard.detail.totalsTitle}</CardLabel>
@@ -522,19 +541,6 @@ export default async function CaseDetailPage({
           </div>
         </Card>
 
-        {/* Расходы по делу — под платежами, в той же колонке. */}
-        {canSeeExpenses && (
-          <Card className="p-5">
-            <ExpensesList
-              accounts={cashAccounts}
-              canAddCategory={user.caps.manage_expense_categories}
-              expenses={expenses}
-              caseId={c.id}
-              categories={expenseCategories}
-              canManage={canManageExpenses}
-            />
-          </Card>
-        )}
       </div>
 
       <section id="plan" className="scroll-mt-16">

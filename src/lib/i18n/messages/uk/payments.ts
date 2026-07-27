@@ -29,6 +29,7 @@ export const payments: PaymentsMessages = {
     amountLabel: 'Сума, ₴',
     amountPlaceholder: '0.00',
     paidAtLabel: 'Дата оплати',
+    accountLabel: 'Рахунок',
     methodLabel: 'Метод',
     methodPlaceholder: 'Готівка / Безготівка / Картка',
     noteLabel: 'Коментар',
@@ -40,6 +41,11 @@ export const payments: PaymentsMessages = {
   },
 
   row: {
+    editLabel: 'Змінити платіж',
+    editTitle: 'Зміна платежу',
+    editSave: 'Зберегти',
+    updated: 'Платіж змінено.',
+    editActHint: 'Цей платіж створено підтвердженням акта: суму й дату в нього змінювати не можна — інакше розійдуться акт і завершеність справи. Рахунок і коментар виправити можна.',
     deleteLabel: 'Видалити платіж',
   },
 
@@ -85,6 +91,8 @@ export const payments: PaymentsMessages = {
     dateInvalid: 'Некоректна дата',
     methodTooLong: 'Занадто довго (макс 80)',
     noteTooLong: 'Занадто довго (макс 500)',
+    accountInvalid: 'Оберіть рахунок',
+    notFound: 'Платіж не знайдено',
     saveFailed: 'Не вдалося зберегти платіж.',
   },
 };

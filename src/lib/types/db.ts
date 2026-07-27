@@ -789,12 +789,18 @@ export type PaymentRow = {
   // date (не timestamptz) — YYYY-MM-DD.
   paid_at: string;
   method: string | null;
+  // Счёт кассы, на который пришли деньги (0016). NULL — старые записи и
+  // платежи от актов: счёт подбирается по method.
+  account_id: string | null;
   note: string | null;
   created_by: string;
   created_at: string;
   // Ключ идемпотентности отправки формы (Задача 2). Уникален среди не-NULL;
   // защищает от дубля платежа при мульти-сабмите. В UI не отображается.
   idempotency_key: string | null;
+  // Акт, подтверждение которого породило платёж. NOT NULL — сумму и дату
+  // менять нельзя (БД-триггер payments_guard_act_payment).
+  act_id: string | null;
 };
 
 export type PaymentWithCreator = PaymentRow & {
