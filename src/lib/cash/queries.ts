@@ -37,6 +37,7 @@ const ENTRY_SELECT = {
   description: true,
   case_id: true,
   payment_id: true,
+  expense_id: true,
   created_by: true,
   created_at: true,
 } as const;
@@ -76,6 +77,7 @@ type EntryRow = {
   description: string;
   case_id: string | null;
   payment_id: string | null;
+  expense_id: string | null;
   created_by: string;
   created_at: Date;
   cases: { id: string; number_title: string } | null;
@@ -91,6 +93,7 @@ function normalizeEntry(r: EntryRow): CashEntryWithCase {
     description: r.description,
     case_id: r.case_id,
     payment_id: r.payment_id,
+    expense_id: r.expense_id,
     created_by: r.created_by,
     created_at: ts(r.created_at),
     case: r.cases ? { id: r.cases.id, number_title: r.cases.number_title } : null,

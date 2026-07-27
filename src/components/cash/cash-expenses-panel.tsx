@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { AddExpenseDialog } from '@/components/expenses/add-expense-dialog';
 import { DeleteExpenseButton } from '@/components/expenses/delete-expense-button';
 import { useI18n } from '@/lib/i18n/provider';
-import { cn, formatMoney } from '@/lib/utils';
+import { cn, formatMoney, signedMoney } from '@/lib/utils';
 import type { ExpenseCategoryOption } from '@/lib/expenses/categories';
 import type { CategorySpendRow, CategorySpendTotals } from '@/lib/expenses/report';
 import type { ExpenseWithRefs } from '@/lib/types/db';
@@ -25,6 +25,7 @@ export function CashExpensesPanel({
   canManage,
   accounts,
   canAddCategory,
+  manualOutflow = 0,
 }: {
   /** Расходы фирмы (case_id IS NULL) за выбранный месяц. */
   expenses: ExpenseWithRefs[];
@@ -38,6 +39,8 @@ export function CashExpensesPanel({
   accounts: ReadonlyArray<{ id: string; name: string; is_active?: boolean }>;
   /** Право заводить статьи «на лету». */
   canAddCategory: boolean;
+  /** Ручные видатки каси за месяц (без статьи) — чтобы итог сходился с шапкой. */
+  manualOutflow?: number;
 }) {
   const { t } = useI18n();
   const c = t.expenses.company;
@@ -51,8 +54,13 @@ export function CashExpensesPanel({
         <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
           <span className="text-[12.5px] text-text-muted">
             {c.totalMonth}{' '}
-            <span className="font-mono text-[17px] font-bold tabular-nums text-error">
-              −{formatMoney(totals.total)} ₴
+            <span
+              className={cn(
+                'font-mono text-[17px] font-bold tabular-nums',
+                totals.total > 0 ? 'text-error' : 'text-text-muted',
+              )}
+            >
+              {signedMoney(totals.total, 'out')} ₴
             </span>
           </span>
           <span className="text-[12px] text-text-subtle">
@@ -67,6 +75,16 @@ export function CashExpensesPanel({
               {formatMoney(totals.caseTotal)} ₴
             </span>
           </span>
+          {/* Ручные «Видатки» кассы живут вне статей — без этой строки итог
+              вкладки расходился с чипом «Видаток за місяць» (QA 27.07). */}
+          {manualOutflow > 0 && (
+            <span className="text-[12px] text-text-subtle" title={c.manualCashHint}>
+              {c.manualCash}{' '}
+              <span className="font-mono font-semibold tabular-nums text-text">
+                −{formatMoney(manualOutflow)} ₴
+              </span>
+            </span>
+          )}
         </div>
         {canManage && (
           <AddExpenseDialog

@@ -69,7 +69,7 @@ export const payroll = {
     // fmt: {count} — число дел (роль).
     rolesLawyer: 'юрист — {count}',
     rolesExpert: 'эксперт — {count}',
-    rolesSuffix: 'дел',
+    rolesSuffix: { one: 'дело', few: 'дела', many: 'дел' },
     buildReport: 'Сформировать отчёт',
 
     toPayNow: 'К выплате сейчас',

@@ -44,16 +44,32 @@ export function givenName(name: string): string {
   return parts[0]!;
 }
 
-// Денежный формат проекта (₴). Группировка по-русски, до 2 знаков дробной части.
-// Суффикс « ₴» добавляется на месте вызова — как в существующих экранах.
+// Денежный формат проекта (₴). Группировка по-русски; целые — без дробной
+// части, дробные — ВСЕГДА с копейками до 2 знаков («484 770,50», а не
+// «484 770,5» — QA 27.07). Суффикс « ₴» добавляется на месте вызова.
 const MONEY_FMT = new Intl.NumberFormat("ru-RU", {
   style: "decimal",
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
+const MONEY_FMT_CENTS = new Intl.NumberFormat("ru-RU", {
+  style: "decimal",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 export function formatMoney(value: number): string {
-  return MONEY_FMT.format(value);
+  return Number.isInteger(value) ? MONEY_FMT.format(value) : MONEY_FMT_CENTS.format(value);
+}
+
+// Направленная сумма оборота: «+1 000» / «−1 000», но НОЛЬ — без знака и без
+// цвета смысла («0», не «−0» — QA 27.07). direction фиксирует знак (in/out);
+// без direction знак берётся от самого числа (для «чистой зміны»).
+export function signedMoney(value: number, direction?: "in" | "out"): string {
+  const abs = Math.abs(value);
+  if (abs === 0) return formatMoney(0);
+  const isOut = direction ? direction === "out" : value < 0;
+  return (isOut ? "−" : "+") + formatMoney(abs);
 }
 
 // Формат процента (ставки зарплаты). Целые без дробной части, дробные — до 2

@@ -44,9 +44,19 @@ export function DualRateModal({
   );
 
   // Небольшая задержка показа — карточка успевает отрисоваться (как онбординг).
+  // Если пользователь уже открыл другую модалку (успел нажать «+ Платіж» и т.п.),
+  // поверх неё НЕ встаём: ждём, пока путь свободен, и задаём вопрос после.
   useEffect(() => {
-    const id = setTimeout(() => setOpen(true), 350);
-    return () => clearTimeout(id);
+    let timer: number | undefined;
+    const tryShow = () => {
+      if (document.querySelector('[role="dialog"]')) {
+        timer = window.setTimeout(tryShow, 400);
+        return;
+      }
+      setOpen(true);
+    };
+    timer = window.setTimeout(tryShow, 350);
+    return () => clearTimeout(timer);
   }, []);
 
   // Успешное сохранение закрывает модалку производным состоянием (revalidatePath

@@ -35,7 +35,7 @@ import { ExpensesList } from '@/components/expenses/expenses-list';
 import { CaseTasksBlock } from '@/components/tasks/case-tasks-block';
 import { DualRateModal } from '@/components/cases/dual-rate-modal';
 import { requireUser } from '@/lib/auth/require-role';
-import { cn, daysSince, formatMoney, formatPercent } from '@/lib/utils';
+import { cn, daysSince, formatMoney, formatPercent, signedMoney } from '@/lib/utils';
 import { getCase } from '@/lib/cases/queries';
 import { STALE_STAGE_DAYS } from '@/lib/cases/constants';
 import {
@@ -525,7 +525,7 @@ export default async function CaseDetailPage({
                 />
                 <TotalsRow
                   label={t.expenses.summary.expense}
-                  value={`−${formatMoney(expenseTotal)} ₴`}
+                  value={`${signedMoney(expenseTotal, 'out')} ₴`}
                   tone="warning"
                 />
                 <TotalsRow
@@ -666,6 +666,7 @@ export default async function CaseDetailPage({
                 canAddPayment={canEdit}
                 canAddTask={canEdit}
                 canAddAct={canCreateActs}
+                accounts={cashAccounts}
               />
             </div>
           </div>

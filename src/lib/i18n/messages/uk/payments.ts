@@ -4,6 +4,7 @@ import type { PaymentsMessages } from '../ru/payments';
 export const payments: PaymentsMessages = {
   block: {
     heading: 'Платежі',
+    rowFallback: 'Оплата',
     count: {
       one: '{n} платіж',
       few: '{n} платежі',

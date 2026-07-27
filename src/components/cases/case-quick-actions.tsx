@@ -5,6 +5,7 @@ import { CheckSquare, CreditCard, FileSpreadsheet, Plus } from 'lucide-react';
 
 import { Modal } from '@/components/ui/modal';
 import { PaymentForm } from '@/components/payments/payment-form';
+import type { CashAccountPick } from '@/lib/db/rpc';
 import { useI18n } from '@/lib/i18n/provider';
 import { cn } from '@/lib/utils';
 
@@ -44,11 +45,14 @@ export function CaseQuickActions({
   canAddPayment,
   canAddTask,
   canAddAct,
+  accounts = [],
 }: {
   caseId: string;
   canAddPayment: boolean;
   canAddTask: boolean;
   canAddAct: boolean;
+  /** Счета кассы для формы платежа — без них модалка теряет выбор счёта (QA 27.07). */
+  accounts?: CashAccountPick[];
 }) {
   const { t } = useI18n();
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -96,7 +100,7 @@ export function CaseQuickActions({
           subtitle={t.payments.addDialog.subtitle}
           closeLabel={t.payments.addDialog.close}
         >
-          <PaymentForm caseId={caseId} onSuccess={closePayment} />
+          <PaymentForm caseId={caseId} accounts={accounts} onSuccess={closePayment} />
         </Modal>
       )}
     </div>

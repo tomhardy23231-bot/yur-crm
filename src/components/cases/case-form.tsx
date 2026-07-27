@@ -198,6 +198,9 @@ export function CaseForm({
   const defaultLawyer = value('lawyer_id') || '';
 
   const defaultOpenedAt = value('opened_at') || todayIso();
+  // Мягкое предупреждение о дате в будущем (QA 27.07: реальная опечатка года
+  // «2026» вместо «2025» прилипла к верху сортировки). Не блокирует сабмит.
+  const [openedAt, setOpenedAt] = useState(defaultOpenedAt);
 
   // v3 s1: следим за выбором юриста/эксперта — предупреждение о совпадении
   // ролей (0007: начисление одинарное) + переключение полей ставок на dual.
@@ -362,11 +365,17 @@ export function CaseForm({
               id="opened_at"
               name="opened_at"
               type="date"
-              defaultValue={defaultOpenedAt}
+              value={openedAt}
+              onChange={(e) => setOpenedAt(e.target.value)}
               required
               aria-invalid={err('opened_at') ? 'true' : undefined}
               className=""
             />
+            {openedAt > todayIso() && (
+              <p className="mt-1 text-[11.5px] text-warning">
+                {t.cases.openedAtFutureWarning}
+              </p>
+            )}
           </Field>
 
           <Field

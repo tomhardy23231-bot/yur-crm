@@ -71,7 +71,12 @@ function pctDelta(s: MetricSeries, polarity: Polarity, t: I18n['t']): KpiDelta {
           : t.dashboard.delta.decline;
   } else {
     const r = Math.round(d.percent);
-    text = `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r)}%`;
+    if (r === 0) {
+      // «−0,4%» округлилось до нуля — красная ▼ при «0%» читается как ошибка
+      // (QA 27.07). Нулевую видимую динамику показываем нейтральной точкой.
+      return { direction: 'flat', tone: 'neutral', text: '0%' };
+    }
+    text = `${r > 0 ? '+' : '−'}${Math.abs(r)}%`;
   }
   return { direction: d.direction, tone: toneFor(polarity, d.direction), text };
 }

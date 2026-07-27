@@ -25,7 +25,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
-import { cn, formatMoney } from '@/lib/utils';
+import { cn, formatMoney, signedMoney } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n/provider';
 import type { CashAccount, CashEntryWithCase } from '@/lib/types/db';
 import type { CashDayRow, CashMonthTotals, CashTotalRow } from '@/lib/cash/saldo';
@@ -89,6 +89,7 @@ export function CashReport({
   categorySpend,
   categorySpendTotals,
   canAddCategory = false,
+  manualOutflow = 0,
 }: {
   accounts: CashAccount[];
   views: CashAccountView[];
@@ -116,6 +117,8 @@ export function CashReport({
   categorySpendTotals?: CategorySpendTotals;
   /** Право заводить статьи «на лету» (manage_expense_categories). */
   canAddCategory?: boolean;
+  /** Ручные видатки каси за месяц — примиряют вкладку «Витрати» с шапкой. */
+  manualOutflow?: number;
 }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<string>(accounts[0]?.id ?? TOTAL_TAB);
@@ -258,6 +261,7 @@ export function CashReport({
           canManage={canManage}
           accounts={accounts}
           canAddCategory={canAddCategory}
+          manualOutflow={manualOutflow}
         />
       ) : tab === PROFIT_TAB && profitRows && profitTotals ? (
         <CashProfitPanel rows={profitRows} totals={profitTotals} />
@@ -397,17 +401,16 @@ function AccountPanel({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-surface px-3.5 py-2.5 tabular-nums text-[12.5px] shadow-sm">
             <span className="text-text-muted">
               {t.cash.report.monthInflow}{' '}
-              <span className="font-mono font-bold text-success-text">+{money(view.totals.inflow)}</span>
+              <span className="font-mono font-bold text-success-text">{signedMoney(view.totals.inflow, 'in')} ₴</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthOutflow}{' '}
-              <span className="font-mono font-bold text-error">−{money(view.totals.outflow)}</span>
+              <span className="font-mono font-bold text-error">{signedMoney(view.totals.outflow, 'out')} ₴</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthNet}{' '}
               <span className={cn('font-mono font-bold', view.totals.net >= 0 ? 'text-success-text' : 'text-error')}>
-                {view.totals.net >= 0 ? '+' : '−'}
-                {money(Math.abs(view.totals.net))}
+                {signedMoney(view.totals.net)} ₴
               </span>
             </span>
           </div>
@@ -449,17 +452,16 @@ function AccountPanel({
           <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-1.5 border-t border-border bg-surface-sunken/50 px-4 py-3 tabular-nums text-[13px]">
             <span className="text-text-muted">
               {t.cash.report.monthInflow}{' '}
-              <span className="font-mono font-bold text-success-text">+{money(view.totals.inflow)}</span>
+              <span className="font-mono font-bold text-success-text">{signedMoney(view.totals.inflow, 'in')} ₴</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthOutflow}{' '}
-              <span className="font-mono font-bold text-error">−{money(view.totals.outflow)}</span>
+              <span className="font-mono font-bold text-error">{signedMoney(view.totals.outflow, 'out')} ₴</span>
             </span>
             <span className="text-text-muted">
               {t.cash.report.monthNet}{' '}
               <span className={cn('font-mono font-bold', view.totals.net >= 0 ? 'text-success-text' : 'text-error')}>
-                {view.totals.net >= 0 ? '+' : '−'}
-                {money(Math.abs(view.totals.net))}
+                {signedMoney(view.totals.net)} ₴
               </span>
             </span>
           </div>
@@ -546,7 +548,9 @@ function JournalRow({
   canManage: boolean;
 }) {
   const { t } = useI18n();
-  const isAuto = entry.payment_id !== null;
+  // Авто-строки (приход от платежа ИЛИ Розхід от расхода) правятся только через
+  // свою сущность — корзинку в журнале не показываем (QA 27.07: expense_id).
+  const isAuto = entry.payment_id !== null || entry.expense_id !== null;
   const isIn = entry.direction === 'in';
   const sign = isIn ? '+' : '−';
   const cls = isIn ? 'text-success-text' : 'text-error';

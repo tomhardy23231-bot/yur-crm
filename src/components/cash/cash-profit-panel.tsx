@@ -6,7 +6,7 @@ import { ArrowDownLeft, ArrowUpRight, Scale } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useI18n } from '@/lib/i18n/provider';
-import { cn, formatMoney } from '@/lib/utils';
+import { cn, formatMoney, signedMoney } from '@/lib/utils';
 import type { ProfitRow, ProfitTotals } from '@/lib/expenses/report';
 
 // Вкладка «По делам» в отчёте кассы: дохід / витрати / маржа по каждому делу за
@@ -52,7 +52,7 @@ export function CashProfitPanel({
         />
         <StatTile
           label={r.totalExpense}
-          value={`−${formatMoney(totals.expense)}`}
+          value={signedMoney(totals.expense, 'out')}
           tone="warning"
           icon={<ArrowUpRight size={13} strokeWidth={2.5} />}
         />

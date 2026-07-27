@@ -911,6 +911,10 @@ export type CashEntry = {
   // Привязка к делу/платежу — только у авто-строк (приход от оплаты по делу).
   case_id: string | null;
   payment_id: string | null;
+  // Расход (public.expenses), породивший строку-«Розхід» (0009). NULL у ручных
+  // операций и авто-приходов; вместе payment_id/expense_id различают три вида
+  // строк: авто-приход · авто-расход · ручная операция.
+  expense_id: string | null;
   created_by: string;
   created_at: string;
 };

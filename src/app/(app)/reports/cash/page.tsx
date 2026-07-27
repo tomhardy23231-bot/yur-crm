@@ -3,7 +3,7 @@ import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
 
 import { requireAnyCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
-import { formatMoney } from '@/lib/utils';
+import { formatMoney, signedMoney } from '@/lib/utils';
 import {
   getCashReportData,
   getCurrentBalances,
@@ -149,6 +149,16 @@ export default async function CashReportPage({
   );
   const totalBalance = views.reduce((s, v) => s + v.closingNow, 0);
   const isCurrentMonth = month >= normalizeMonth(undefined);
+  // Ручные видатки месяца (внесены кнопкой «Видаток», без привязки к расходам
+  // и платежам) — вкладка «Витрати» показывает их отдельной строкой, чтобы её
+  // итог сходился с чипом «Видаток за місяць» в шапке (QA 27.07, ISSUE-002).
+  const manualOutflow = entries.reduce(
+    (s, e) =>
+      e.direction === 'out' && e.payment_id === null && e.expense_id === null
+        ? s + e.amount
+        : s,
+    0,
+  );
   const heroInflow = views.reduce((s, v) => s + v.totals.inflow, 0);
   const heroOutflow = views.reduce((s, v) => s + v.totals.outflow, 0);
   const balancesById: Record<string, number> = Object.fromEntries(
@@ -204,12 +214,12 @@ export default async function CashReportPage({
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <HeroStat
                 label={t.cash.report.monthInflow}
-                value={`+${formatMoney(heroInflow)} ₴`}
+                value={`${signedMoney(heroInflow, 'in')} ₴`}
                 tone="in"
               />
               <HeroStat
                 label={t.cash.report.monthOutflow}
-                value={`−${formatMoney(heroOutflow)} ₴`}
+                value={`${signedMoney(heroOutflow, 'out')} ₴`}
                 tone="out"
               />
               <MonthPicker month={month} />
@@ -254,6 +264,7 @@ export default async function CashReportPage({
         expenseCategories={expenseCategories}
         categorySpend={categorySpend}
         categorySpendTotals={categorySpendTotals}
+        manualOutflow={manualOutflow}
         canAddCategory={user.caps.manage_expense_categories}
       />
     </main>

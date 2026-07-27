@@ -154,7 +154,7 @@ export function PaymentsList({
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-semibold text-text">
-                    {[p.method, p.note].filter(Boolean).join(' · ') || b.heading}
+                    {[p.method, p.note].filter(Boolean).join(' · ') || b.rowFallback}
                   </p>
                   <p className="text-[11.5px] tabular-nums text-text-subtle">
                     {p.pending

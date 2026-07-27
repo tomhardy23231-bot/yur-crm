@@ -219,7 +219,7 @@ export default async function PayrollEmployeePage({
             </h1>
             {roleBits.length > 0 && (
               <p className="truncate text-[12.5px] text-text-muted">
-                {roleBits.join(' · ')} {t.payroll.employee.rolesSuffix}
+                {roleBits.join(' · ')} {plural(t.payroll.employee.rolesSuffix, expertCount > 0 ? expertCount : lawyerCount)}
               </p>
             )}
           </div>

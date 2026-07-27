@@ -75,9 +75,11 @@ describe('formatMoney', () => {
     expect(formatMoney(0)).toBe('0');
   });
 
-  it('до 2 знаков дробной части', () => {
-    expect(norm(formatMoney(1234.5))).toBe('1 234,5');
+  it('дробные — всегда с копейками до 2 знаков (QA 27.07: «,5» → «,50»)', () => {
+    expect(norm(formatMoney(1234.5))).toBe('1 234,50');
     expect(norm(formatMoney(1234.567))).toBe('1 234,57');
+    // Целые по-прежнему без хвоста «,00».
+    expect(norm(formatMoney(1234))).toBe('1 234');
   });
 
   it('отрицательное (долг/возврат)', () => {

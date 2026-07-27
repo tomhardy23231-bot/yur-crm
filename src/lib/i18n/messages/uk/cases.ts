@@ -58,6 +58,7 @@ export const cases: CasesMessages = {
   debtShowAll: 'показати всі',
 
   financialFieldStaffOnly: 'Це поле змінює лише керівництво',
+  openedAtFutureWarning: 'Дата у майбутньому — перевірте рік.',
   sameLawyerExpertWarning:
     'Юрист і експерт — одна людина: зарплата нарахується один раз (ставка при суміщенні)',
   concurrentEdit:

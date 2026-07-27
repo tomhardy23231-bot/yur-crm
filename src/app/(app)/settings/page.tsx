@@ -47,7 +47,10 @@ export default async function SettingsPage() {
           <CapRow title={t.settings.capDestructive} owner admin roles={t.enums.roleShort} />
           <CapRow title={t.settings.capAllCasesFinance} owner admin staff roles={t.enums.roleShort} />
           <CapRow title={t.settings.capManageCaseTypes} owner admin roles={t.enums.roleShort} />
-          <CapRow title={t.settings.capRateOverride} owner admin last roles={t.enums.roleShort} />
+          <CapRow title={t.settings.capRateOverride} owner admin roles={t.enums.roleShort} />
+          {/* Книга операций (0009–0016): права кассы и расходов — QA 27.07. */}
+          <CapRow title={t.settings.capCaseExpenses} owner admin staff roles={t.enums.roleShort} />
+          <CapRow title={t.settings.capCash} owner last roles={t.enums.roleShort} />
         </Card>
         <p className="text-[12px] text-text-subtle">{t.settings.capsFootnote}</p>
       </section>

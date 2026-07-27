@@ -64,7 +64,7 @@ export const payroll: PayrollMessages = {
     backToAll: 'До всіх співробітників',
     rolesLawyer: 'юрист — {count}',
     rolesExpert: 'експерт — {count}',
-    rolesSuffix: 'справ',
+    rolesSuffix: { one: 'справа', few: 'справи', many: 'справ' },
     buildReport: 'Сформувати звіт',
 
     toPayNow: 'До виплати зараз',
