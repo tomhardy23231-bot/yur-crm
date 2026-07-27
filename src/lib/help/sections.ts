@@ -1,4 +1,5 @@
 import {
+  Banknote,
   Briefcase,
   CalendarClock,
   Coins,
@@ -23,6 +24,7 @@ export type HelpSectionSlug =
   | 'clients'
   | 'tasks'
   | 'money'
+  | 'cash'
   | 'payroll'
   | 'roles';
 
@@ -38,6 +40,7 @@ export const HELP_SECTIONS: ReadonlyArray<{
   { slug: 'clients', icon: Users, tone: 'bg-cat-document-bg text-cat-document' },
   { slug: 'tasks', icon: CalendarClock, tone: 'bg-warning-bg text-warning' },
   { slug: 'money', icon: Wallet, tone: 'bg-success-bg text-success' },
+  { slug: 'cash', icon: Banknote, tone: 'bg-warning-bg text-warning' },
   { slug: 'payroll', icon: Coins, tone: 'bg-cat-representation-bg text-cat-representation' },
   { slug: 'roles', icon: ShieldCheck, tone: 'bg-stage-awaiting-bg text-stage-awaiting' },
 ];

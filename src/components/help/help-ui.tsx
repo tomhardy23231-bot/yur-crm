@@ -164,9 +164,14 @@ const CALLOUT_TONES = {
     icon: CheckCircle2,
     frame: 'border-success/30 bg-success-bg text-success-text',
   },
+  // 2026-07-26: то, что нужно сделать руками, иначе цифры останутся кривыми.
+  danger: {
+    icon: AlertTriangle,
+    frame: 'border-error/30 bg-error-bg text-error-text',
+  },
 } as const;
 
-/** Плашка «обратите внимание»: tip (синяя), warning (жёлтая), success (зелёная). */
+/** Плашка «обратите внимание»: tip (синяя), warning (жёлтая), success (зелёная), danger (красная). */
 export function HelpCallout({
   tone = 'tip',
   title,

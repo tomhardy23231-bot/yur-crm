@@ -35,6 +35,7 @@ import { users } from './users';
 import { help } from './help';
 import { helpCases } from './helpCases';
 import { helpClients } from './helpClients';
+import { helpCash } from './helpCash';
 import { helpMoney } from './helpMoney';
 import { helpNav } from './helpNav';
 import { helpPayroll } from './helpPayroll';
@@ -80,6 +81,7 @@ export const ru = {
   help,
   helpCases,
   helpClients,
+  helpCash,
   helpMoney,
   helpNav,
   helpPayroll,

@@ -192,6 +192,7 @@ export default async function HelpPayrollPage() {
           </div>
         </HelpShot>
         <HelpCallout tone="tip" html={h.cash.backfillNote} />
+        <HelpCallout tone="success" html={h.cash.salaryToCash} />
       </HelpSection>
 
       {/* ── FAQ ────────────────────────────────────────────────── */}
@@ -208,7 +209,7 @@ export default async function HelpPayrollPage() {
         ]}
       />
 
-      <HelpSeeAlso slugs={['money', 'roles']} />
+      <HelpSeeAlso slugs={['cash', 'money', 'roles']} />
     </HelpShell>
   );
 }
