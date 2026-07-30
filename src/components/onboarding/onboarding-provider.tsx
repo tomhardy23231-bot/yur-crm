@@ -19,9 +19,11 @@ import { type Driver } from 'driver.js';
 // перекрытия темы шли после него по порядку каскада.
 
 import { WelcomeModal } from './welcome-modal';
+import { SetupWizardModal } from './setup-wizard-modal';
 import { ReleaseModal } from '@/components/releases/release-modal';
 import { CURRENT_RELEASE } from '@/lib/releases/releases';
 import { useI18n } from '@/lib/i18n/provider';
+import type { AccountingSetupState } from '@/lib/onboarding/setup-state';
 import {
   buildTourSteps,
   buildCashTourSteps,
@@ -40,6 +42,12 @@ const SEEN_KEY = 'yk_onboarding_v1';
 // Новая версия → новый ключ → модалка покажется снова (на каждом устройстве раз).
 const RELEASE_SEEN_KEY = `yk_release_seen_${CURRENT_RELEASE.version}`;
 
+// localStorage-ключ: когда мастер настройки учёта показывался в последний раз
+// (timestamp). Мастер напоминает о незакрытых шагах при входе и раз в 4 часа —
+// частоту согласовал владелец 2026-07-30.
+const SETUP_SHOWN_KEY = 'yk_setup_wizard_last';
+const SETUP_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
 type Ctx = {
   /** Открыть приветственную модалку (например, из «Справки»). */
   openWelcome: () => void;
@@ -49,6 +57,15 @@ type Ctx = {
   startReleaseTour: () => void;
   /** Открыть модалку «Что нового» (текущее обновление) вручную. */
   openWhatsNew: () => void;
+  /** Открыть мастер настройки учёта (плашка под топбаром, «Справка»). */
+  openSetupWizard: () => void;
+  /**
+   * Есть ли у пользователя права хоть на один шаг настройки учёта — по нему
+   * «Справка» решает, показывать ли кнопку мастера. Не то же, что «есть
+   * незакрытые шаги»: закрыв всё, владелец должен иметь возможность
+   * перепроверить список.
+   */
+  hasSetupWizard: boolean;
 };
 
 const OnboardingContext = createContext<Ctx | null>(null);
@@ -99,11 +116,35 @@ function markReleaseSeen() {
   }
 }
 
+function markSetupShown() {
+  try {
+    window.localStorage.setItem(SETUP_SHOWN_KEY, String(Date.now()));
+  } catch {
+    /* приватный режим / отключённое хранилище — не критично */
+  }
+}
+
+// Прошло ли 4 часа с последнего показа мастера. Хранилище недоступно →
+// показываем (лучше напомнить лишний раз, чем не напомнить вовсе).
+function setupIntervalPassed(): boolean {
+  try {
+    const raw = window.localStorage.getItem(SETUP_SHOWN_KEY);
+    if (!raw) return true;
+    const last = Number(raw);
+    return !Number.isFinite(last) || Date.now() - last >= SETUP_INTERVAL_MS;
+  } catch {
+    return true;
+  }
+}
+
 export function OnboardingProvider({
   ctx,
+  setupState,
   children,
 }: {
   ctx: TourCtx;
+  /** Незакрытые шаги настройки учёта; undefined — считать нечего (нет прав). */
+  setupState?: AccountingSetupState;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -112,6 +153,12 @@ export function OnboardingProvider({
 
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [releaseOpen, setReleaseOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+
+  // Есть ли что показывать в мастере настройки учёта.
+  const setupPending = Boolean(
+    setupState && setupState.totalCount > setupState.doneCount,
+  );
 
   // Живые зависимости в ref'ах — движок тура (создаётся один раз) читает их
   // на момент вызова, а не на момент создания. Синхронизируются эффектами,
@@ -274,6 +321,7 @@ export function OnboardingProvider({
   const startTour = useCallback(async (steps?: TourStep[] | unknown) => {
     setWelcomeOpen(false);
     setReleaseOpen(false);
+    setSetupOpen(false);
     markSeen();
     markReleaseSeen();
 
@@ -332,11 +380,24 @@ export function OnboardingProvider({
     markReleaseSeen();
   }, []);
 
+  // Ручное открытие (плашка под топбаром) тоже сдвигает отсчёт 4 часов —
+  // владелец только что видел список, незачем показывать его снова через минуту.
+  const openSetupWizard = useCallback(() => {
+    setSetupOpen(true);
+    markSetupShown();
+  }, []);
+
+  const closeSetup = useCallback(() => {
+    setSetupOpen(false);
+    markSetupShown();
+  }, []);
+
   // Авто-показ при первом визите в этом браузере:
   //   • новичок (онбординг не показан) → приветствие + тур;
-  //   • остальные, не видевшие текущее обновление → модалка «Что нового».
-  // Приветствие имеет приоритет; пройдя его, пользователь не получит ещё и
-  // модалку обновления (startTour/skipWelcome помечают релиз показанным).
+  //   • остальные, не видевшие текущее обновление → модалка «Что нового»;
+  //   • затем мастер настройки учёта, если есть незакрытые шаги и с прошлого
+  //     показа прошло ≥ 4 часа.
+  // Порядок = приоритет: два окна разом не всплывают.
   useEffect(() => {
     let onboardingSeen = true;
     let releaseSeen = true;
@@ -355,11 +416,49 @@ export function OnboardingProvider({
       const t = window.setTimeout(() => setReleaseOpen(true), 650);
       return () => window.clearTimeout(t);
     }
-  }, []);
+    if (setupPending && setupIntervalPassed()) {
+      const t = window.setTimeout(() => {
+        setSetupOpen(true);
+        markSetupShown();
+      }, 900);
+      return () => window.clearTimeout(t);
+    }
+  }, [setupPending]);
+
+  // Напоминание раз в 4 часа, пока вкладка открыта. Тикаем раз в минуту и
+  // сверяемся с меткой в localStorage, а не заводим таймер на 4 часа: так
+  // отсчёт переживает и засыпание вкладки (фоновые таймеры браузер тормозит),
+  // и перезагрузку страницы, и работу в нескольких вкладках сразу.
+  useEffect(() => {
+    if (!setupPending) return;
+    const id = window.setInterval(() => {
+      // Поверх приветствия или «Что нового» не лезем — они показываются
+      // считаные разы, мастер подождёт следующей минуты.
+      if (welcomeOpen || releaseOpen) return;
+      if (!setupIntervalPassed()) return;
+      setSetupOpen(true);
+      markSetupShown();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [setupPending, welcomeOpen, releaseOpen]);
 
   const value = useMemo<Ctx>(
-    () => ({ openWelcome, startTour, startReleaseTour, openWhatsNew }),
-    [openWelcome, startTour, startReleaseTour, openWhatsNew],
+    () => ({
+      openWelcome,
+      startTour,
+      startReleaseTour,
+      openWhatsNew,
+      openSetupWizard,
+      hasSetupWizard: Boolean(setupState && setupState.totalCount > 0),
+    }),
+    [
+      openWelcome,
+      startTour,
+      startReleaseTour,
+      openWhatsNew,
+      openSetupWizard,
+      setupState,
+    ],
   );
 
   return (
@@ -380,6 +479,11 @@ export function OnboardingProvider({
         // Тур по самой фиче (а не общий онбординг) — только если у релиза есть tourId.
         onStartTour={CURRENT_RELEASE.tourId ? startReleaseTour : undefined}
       />
+      {/* Монтируется только на время показа — состояние «раскрытый шаг»
+          пересобирается при каждом открытии. */}
+      {setupState && setupOpen && (
+        <SetupWizardModal state={setupState} onClose={closeSetup} />
+      )}
     </OnboardingContext.Provider>
   );
 }

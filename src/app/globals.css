@@ -608,8 +608,22 @@ body {
   .row-lift:hover { transform: none; }
   .row-lift:hover::before { transform: none; }
   .stage-dot-live::after { animation: none; opacity: 0; }
+  .setup-banner-nudge { animation: none; }
   /* Меню Radix Select (анимация открытия задаётся inline-классом). */
   [data-radix-select-content] { animation: none !important; }
+}
+
+/* Полоса «учёт настроен не до конца»: при появлении несколько раз
+   подсвечивается, чтобы её заметили, и останавливается. Бесконечную бегущую
+   строку не делаем намеренно — постоянное движение мешает читать соседний
+   текст и превращается в фон, который перестают видеть (DESIGN.md §5). */
+@keyframes setup-nudge {
+  0%, 100% { background-color: var(--error-bg); }
+  50%      { background-color: color-mix(in oklab, var(--error) 24%, var(--error-bg)); }
+}
+
+.setup-banner-nudge {
+  animation: setup-nudge 1.5s var(--ease-inout) 3;
 }
 
 /* ============================================================

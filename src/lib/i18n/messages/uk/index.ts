@@ -15,6 +15,7 @@ import { departments } from './departments';
 import { caseTypes } from './caseTypes';
 import { expenseCategories } from './expenseCategories';
 import { expenseCleanup } from './expenseCleanup';
+import { setupWizard } from './setupWizard';
 import { commandPalette } from './commandPalette';
 
 import { dashboard } from './dashboard';
@@ -62,6 +63,7 @@ export const uk: Messages = {
   caseTypes,
   expenseCategories,
   expenseCleanup,
+  setupWizard,
   commandPalette,
   dashboard,
   clients,

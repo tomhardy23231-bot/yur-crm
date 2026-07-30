@@ -5,7 +5,9 @@ import { OnboardingProvider } from '@/components/onboarding/onboarding-provider'
 import { Sidebar } from '@/components/app/sidebar';
 import { BottomNav } from '@/components/app/bottom-nav';
 import { Topbar } from '@/components/app/topbar';
+import { SetupWizardBanner } from '@/components/onboarding/setup-wizard-banner';
 import { requireUser } from '@/lib/auth/require-role';
+import { getAccountingSetupState } from '@/lib/onboarding/setup-state';
 import { getNotificationsUnseen } from '@/lib/notifications/queries';
 import {
   countOpenTasksAssignedTo,
@@ -30,10 +32,14 @@ export default async function AppLayout({
   // tasksOpen — счётчик «Задачи» в навигации; tasksDue — колокольчик топбара
   // (просроченные + сегодняшние, v3 Сессия 6); notifUnseen — гасим бейдж после
   // просмотра попапа (2026-07-19, lib/notifications).
-  const [tasksOpen, tasksDue, notifUnseen] = await Promise.all([
+  // setupState — незакрытые шаги настройки учёта (счета → синхронизация →
+  // разбор старых «витрат»). Считается только для тех, у кого есть права это
+  // сделать; остальным возвращается пустой объект без запроса к БД.
+  const [tasksOpen, tasksDue, notifUnseen, setupState] = await Promise.all([
     countOpenTasksAssignedTo(user.profile.id),
     countUserTasksDue(user.profile.id),
     getNotificationsUnseen(user.profile.id),
+    getAccountingSetupState(user.profile.id, user.caps),
   ]);
 
   // Локаль и словарь активного языка — отдаём в клиентский провайдер (в бандл
@@ -53,6 +59,7 @@ export default async function AppLayout({
             isStaff: STAFF_ROLES.includes(user.profile.role),
             caps: user.caps,
           }}
+          setupState={setupState}
         >
           {/* App-shell: высота вьюпорта, скролл внутри контента → сайдбар и топбар закреплены. */}
           <div className="flex h-dvh overflow-hidden">
@@ -71,6 +78,9 @@ export default async function AppLayout({
                 notificationsUnseen={notifUnseen}
                 canCreateCase={user.caps.create_cases}
               />
+              {/* Полоса «учёт настроен не до конца» — под топбаром, над
+                  контентом: видна на любом экране, пока шаги не закрыты. */}
+              <SetupWizardBanner state={setupState} />
               <div
                 data-tour="page-content"
                 className="flex-1 min-w-0 overflow-y-auto pb-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom))] md:pb-0"
