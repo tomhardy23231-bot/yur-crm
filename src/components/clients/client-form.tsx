@@ -17,6 +17,7 @@ import {
 } from '@/components/cases/conflict-warning';
 import { useI18n } from '@/lib/i18n/provider';
 import type { ClientActionState, ClientFormFields } from '@/lib/clients/actions';
+import { birthDateBounds } from '@/lib/validation';
 import {
   CLIENT_KINDS,
   CLIENT_SOURCES,
@@ -187,6 +188,7 @@ export function ClientForm({ action, client, submitLabel, cancelHref }: ClientFo
                 id="birth_date"
                 name="birth_date"
                 type="date"
+            {...birthDateBounds()}
                 defaultValue={value('birth_date')}
                 aria-invalid={err('birth_date') ? 'true' : undefined}
                 className=""

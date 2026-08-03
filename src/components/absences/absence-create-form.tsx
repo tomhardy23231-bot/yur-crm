@@ -16,6 +16,7 @@ import {
   type CreateAbsenceState,
 } from '@/lib/absences/actions';
 import { ABSENCE_KINDS } from '@/lib/types/db';
+import { workDateBounds } from '@/lib/validation';
 
 const INITIAL: CreateAbsenceState = { ok: false };
 
@@ -58,6 +59,7 @@ export function AbsenceCreateForm({ userId }: { userId: string }) {
             id="absence-start"
             name="starts_on"
             type="date"
+            {...workDateBounds()}
             required
             aria-invalid={err('starts_on') ? 'true' : undefined}
           />
@@ -67,6 +69,7 @@ export function AbsenceCreateForm({ userId }: { userId: string }) {
             id="absence-end"
             name="ends_on"
             type="date"
+            {...workDateBounds()}
             required
             aria-invalid={err('ends_on') ? 'true' : undefined}
           />

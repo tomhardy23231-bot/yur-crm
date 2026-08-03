@@ -13,7 +13,7 @@ import { rpcCloseCaseLost } from '@/lib/db/rpc';
 import { Prisma } from '@/generated/prisma/client';
 import { getT } from '@/lib/i18n/server';
 import type { Messages } from '@/lib/i18n/messages';
-import { UUID_RE, todayIso } from '@/lib/validation';
+import { UUID_RE, isWorkDate, todayIso } from '@/lib/validation';
 import {
   BILLING_TYPES,
   CASE_CATEGORIES,
@@ -183,9 +183,11 @@ function validate(
   else if (!UUID_RE.test(responsible_id))
     fieldErrors.responsible_id = a.idInvalid;
 
+  // Не только формат: '0004-04-07' — валидная по виду дата, но бессмысленная
+  // (так на прод уехал платёж с годом 0004). isWorkDate держит и разумные
+  // границы: с 2000 года и не дальше пяти лет вперёд.
   if (!opened_at) fieldErrors.opened_at = a.openedAtRequired;
-  else if (!/^\d{4}-\d{2}-\d{2}$/.test(opened_at))
-    fieldErrors.opened_at = a.dateFormat;
+  else if (!isWorkDate(opened_at)) fieldErrors.opened_at = a.dateFormat;
 
   if (!case_type_raw) fieldErrors.case_type = a.caseTypeRequired;
   else if (!validCaseTypes.has(case_type_raw))

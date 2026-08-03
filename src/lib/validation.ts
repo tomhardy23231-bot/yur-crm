@@ -45,11 +45,70 @@ export function parseNonNegAmount(raw: string): number | null {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // 'YYYY-MM-DD' + реальность даты: ре-сериализация отсекает 2026-02-31 и т.п.
+//
+// ⚠ Формат и реальность — ещё НЕ здравый смысл: '0004-04-07' проходит эту
+// проверку (так на прод и попал платёж, где вместо 2026 набрали 0004).
+// Для дат, которые вводит человек, используйте isWorkDate / isBirthDate.
 export function isValidDate(s: string): boolean {
   if (!DATE_RE.test(s)) return false;
   const d = new Date(s + 'T00:00:00Z');
   if (Number.isNaN(d.getTime())) return false;
   return d.toISOString().slice(0, 10) === s;
+}
+
+// --- Разумный диапазон дат (2026-08-03) -----------------------------------
+//
+// ЗАЧЕМ. Опечатка в годе (0004 вместо 2026, 2062 вместо 2026) даёт формально
+// валидную дату, которая тихо ломает отчёты: платёж уезжает на две тысячи лет
+// назад и выпадает из любого периода. Ловим это в трёх местах — здесь (сервер
+// и клиент), атрибутами min/max в формах и CHECK-ограничением в БД (0018).
+//
+// Границы РАЗНЫЕ по смыслу поля: деньги и дела не бывают из 1970-х, а дата
+// рождения клиента — сплошь и рядом.
+
+/** Раньше этой даты рабочих дат в системе не бывает. */
+export const MIN_WORK_DATE = '2000-01-01';
+
+/** Насколько вперёд разрешаем: график рассрочки бывает на годы вперёд. */
+export const WORK_DATE_FUTURE_YEARS = 5;
+
+/** Верхняя граница рабочих дат — 'YYYY-MM-DD', считается от киевского сегодня. */
+export function maxWorkDate(): string {
+  const today = kyivToday();
+  return `${Number(today.slice(0, 4)) + WORK_DATE_FUTURE_YEARS}${today.slice(4)}`;
+}
+
+/**
+ * Дата платежа, расхода, дела, акта, задачи, операции кассы: реальная и в
+ * разумных пределах. Именно её просят формы, где человек вводит дату руками.
+ */
+export function isWorkDate(s: string): boolean {
+  return isValidDate(s) && s >= MIN_WORK_DATE && s <= maxWorkDate();
+}
+
+/** Раньше этой даты дат рождения не принимаем. */
+export const MIN_BIRTH_DATE = '1900-01-01';
+
+/** Дата рождения: от 1900 года и не в будущем. */
+export function isBirthDate(s: string): boolean {
+  return isValidDate(s) && s >= MIN_BIRTH_DATE && s <= kyivToday();
+}
+
+/**
+ * Атрибуты для <input type="date"> — первый барьер, прямо в браузере: в
+ * календаре недоступны годы вне диапазона, а ручной ввод подсвечивается
+ * ошибкой ещё до отправки формы. Спред: <input type="date" {...workDateBounds()} />
+ *
+ * Это ТОЛЬКО удобство. Обойти атрибуты тривиально, поэтому те же границы
+ * повторно проверяет server action (isWorkDate) и CHECK в БД (миграция 0018).
+ */
+export function workDateBounds(): { min: string; max: string } {
+  return { min: MIN_WORK_DATE, max: maxWorkDate() };
+}
+
+/** То же для даты рождения: 1900 … сегодня. */
+export function birthDateBounds(): { min: string; max: string } {
+  return { min: MIN_BIRTH_DATE, max: kyivToday() };
 }
 
 // Сегодняшняя дата 'YYYY-MM-DD' по часовому поясу фирмы (Europe/Kyiv). Реэкспорт

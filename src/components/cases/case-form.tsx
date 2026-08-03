@@ -24,7 +24,7 @@ import {
 import { useI18n } from '@/lib/i18n/provider';
 import type { CaseActionState, CaseFormFields } from '@/lib/cases/actions';
 import type { AssigneeOption, ClientOption } from '@/lib/cases/queries';
-import { todayIso } from '@/lib/validation';
+import { todayIso, workDateBounds } from '@/lib/validation';
 import {
   BILLING_TYPES,
   CASE_CATEGORIES,
@@ -365,6 +365,7 @@ export function CaseForm({
               id="opened_at"
               name="opened_at"
               type="date"
+            {...workDateBounds()}
               value={openedAt}
               onChange={(e) => setOpenedAt(e.target.value)}
               required

@@ -18,7 +18,7 @@ import {
   type PayrollMutationState,
 } from '@/lib/payroll/actions';
 import { type PayrollRole } from '@/lib/types/db';
-import { todayIso } from '@/lib/validation';
+import { todayIso, workDateBounds } from '@/lib/validation';
 
 const PAYROLL_INITIAL: PayrollMutationState = { ok: false };
 
@@ -358,6 +358,7 @@ function PayoutModal({
                 id="payout-date"
                 name="occurred_on"
                 type="date"
+            {...workDateBounds()}
                 defaultValue={todayIso()}
                 required
                 className=""
@@ -481,6 +482,7 @@ function BonusModal({
                 id="bonus-date"
                 name="occurred_on"
                 type="date"
+            {...workDateBounds()}
                 defaultValue={todayIso()}
                 className=""
               />

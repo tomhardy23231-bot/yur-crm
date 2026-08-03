@@ -10,7 +10,7 @@ import { toDbDate } from '@/lib/db/convert';
 import { rpcCashBackfillPayments } from '@/lib/db/rpc';
 import { getT } from '@/lib/i18n/server';
 import { CASH_ACCOUNT_KINDS, type CashAccountKind } from '@/lib/types/db';
-import { UUID_RE, parseAmount, parseNonNegAmount, isValidDate } from '@/lib/validation';
+import { UUID_RE, parseAmount, parseNonNegAmount, isWorkDate } from '@/lib/validation';
 
 // Валидаторы суммы/даты/UUID — в @/lib/validation: parseAmount (> 0) для операций,
 // parseNonNegAmount (>= 0) для начального остатка счёта.
@@ -51,7 +51,7 @@ export async function createCashAccountAction(
   const opening_balance = parseNonNegAmount(opening_balance_raw);
   if (opening_balance === null) fieldErrors.opening_balance = t.cash.actions.amountInvalid;
   if (!opening_date) fieldErrors.opening_date = t.cash.actions.dateRequired;
-  else if (!isValidDate(opening_date)) fieldErrors.opening_date = t.cash.actions.dateInvalid;
+  else if (!isWorkDate(opening_date)) fieldErrors.opening_date = t.cash.actions.dateInvalid;
 
   if (Object.keys(fieldErrors).length > 0) {
     return { ok: false, fieldErrors, message: t.cash.actions.checkForm };
@@ -129,7 +129,7 @@ export async function updateCashAccountAction(
   const opening_balance = parseNonNegAmount(opening_balance_raw);
   if (opening_balance === null) fieldErrors.opening_balance = t.cash.actions.amountInvalid;
   if (!opening_date) fieldErrors.opening_date = t.cash.actions.dateRequired;
-  else if (!isValidDate(opening_date)) fieldErrors.opening_date = t.cash.actions.dateInvalid;
+  else if (!isWorkDate(opening_date)) fieldErrors.opening_date = t.cash.actions.dateInvalid;
 
   if (Object.keys(fieldErrors).length > 0) {
     return { ok: false, fieldErrors, message: t.cash.actions.checkForm };
@@ -272,7 +272,7 @@ export async function createCashEntryAction(
   if (!amount_raw) fieldErrors.amount = t.cash.actions.amountRequired;
   else if (parseAmount(amount_raw) === null) fieldErrors.amount = t.cash.actions.amountInvalid;
   if (!entry_date) fieldErrors.entry_date = t.cash.actions.dateRequired;
-  else if (!isValidDate(entry_date)) fieldErrors.entry_date = t.cash.actions.dateInvalid;
+  else if (!isWorkDate(entry_date)) fieldErrors.entry_date = t.cash.actions.dateInvalid;
   if (!description) fieldErrors.description = t.cash.actions.descriptionRequired;
   else if (description.length > 300) fieldErrors.description = t.cash.actions.descriptionTooLong;
 

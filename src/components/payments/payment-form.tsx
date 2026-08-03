@@ -16,7 +16,7 @@ import {
   type CreatePaymentFields,
   type CreatePaymentState,
 } from '@/lib/payments/actions';
-import { parseAmount, todayIso } from '@/lib/validation';
+import { parseAmount, todayIso, workDateBounds } from '@/lib/validation';
 
 import type { OptimisticPaymentInput } from './payments-list';
 
@@ -169,6 +169,7 @@ export function PaymentForm({
             id={fid('paid-at')}
             name="paid_at"
             type="date"
+            {...workDateBounds()}
             defaultValue={todayIso()}
             required
             aria-invalid={err('paid_at') ? 'true' : undefined}

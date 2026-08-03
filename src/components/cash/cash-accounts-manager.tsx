@@ -18,7 +18,7 @@ import {
   updateCashAccountAction,
   type CashAccountState,
 } from '@/lib/cash/actions';
-import { todayIso } from '@/lib/validation';
+import { todayIso, workDateBounds } from '@/lib/validation';
 
 const INITIAL: CashAccountState = { ok: false };
 
@@ -266,6 +266,7 @@ function AccountForm({
             id={fid('od')}
             name="opening_date"
             type="date"
+            {...workDateBounds()}
             required
             defaultValue={account?.opening_date ?? todayIso()}
           />

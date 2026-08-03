@@ -11,7 +11,7 @@ import { dateOnlyOrNull } from '@/lib/db/convert';
 import { dbActionError, pgErrorCode } from '@/lib/db/errors';
 import { getT } from '@/lib/i18n/server';
 import type { I18n } from '@/lib/i18n/core';
-import { UUID_RE } from '@/lib/validation';
+import { UUID_RE, isBirthDate, todayIso } from '@/lib/validation';
 import {
   CLIENT_KINDS,
   CLIENT_SOURCES,
@@ -135,12 +135,15 @@ function validate(formData: FormData, t: I18n['t']):
   }
 
   if (birthDate) {
-    if (!DATE_RE.test(birthDate)) {
+    // У даты рождения свои границы (1900 … сегодня): рабочий диапазон с 2000-го
+    // здесь не годится, а формат сам по себе пропустил бы год 0004.
+    const d = new Date(`${birthDate}T00:00:00Z`);
+    if (!DATE_RE.test(birthDate) || Number.isNaN(d.getTime())) {
       fieldErrors.birth_date = t.clients.actions.invalidDate;
-    } else {
-      const d = new Date(`${birthDate}T00:00:00Z`);
-      if (Number.isNaN(d.getTime())) fieldErrors.birth_date = t.clients.actions.invalidDate;
-      else if (d.getTime() > Date.now()) fieldErrors.birth_date = t.clients.actions.futureDate;
+    } else if (birthDate > todayIso()) {
+      fieldErrors.birth_date = t.clients.actions.futureDate;
+    } else if (!isBirthDate(birthDate)) {
+      fieldErrors.birth_date = t.clients.actions.invalidDate;
     }
   }
 

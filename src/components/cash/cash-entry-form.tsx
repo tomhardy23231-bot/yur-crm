@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
 import type { CashAccount } from '@/lib/types/db';
 import { createCashEntryAction, type CashEntryState } from '@/lib/cash/actions';
-import { todayIso } from '@/lib/validation';
+import { todayIso, workDateBounds } from '@/lib/validation';
 
 const INITIAL: CashEntryState = { ok: false };
 
@@ -104,7 +104,8 @@ export function CashEntryForm({
         </Field>
 
         <Field label={t.cash.entry.date} htmlFor={fid('date')} error={state.fieldErrors?.entry_date} required>
-          <Input id={fid('date')} name="entry_date" type="date" required defaultValue={todayIso()} />
+          <Input id={fid('date')} name="entry_date" type="date"
+            {...workDateBounds()} required defaultValue={todayIso()} />
         </Field>
       </div>
 

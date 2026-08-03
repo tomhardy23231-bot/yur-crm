@@ -18,6 +18,7 @@ import {
   type UpdatePaymentState,
 } from '@/lib/payments/actions';
 import type { PaymentWithCreator } from '@/lib/types/db';
+import { workDateBounds } from '@/lib/validation';
 
 const INITIAL: UpdatePaymentState = { ok: false };
 
@@ -102,6 +103,7 @@ export function EditPaymentDialog({
                 id={fid('paid')}
                 name="paid_at"
                 type="date"
+            {...workDateBounds()}
                 required
                 readOnly={locked}
                 defaultValue={payment.paid_at}

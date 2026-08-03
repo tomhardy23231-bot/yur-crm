@@ -15,6 +15,7 @@ import {
   type InlineClientState,
 } from '@/lib/clients/actions';
 import { useI18n } from '@/lib/i18n/provider';
+import { birthDateBounds } from '@/lib/validation';
 import {
   CLIENT_KINDS,
   CLIENT_SOURCES,
@@ -142,6 +143,7 @@ export function InlineClientCreate({
                     id="ic-birth"
                     name="birth_date"
                     type="date"
+            {...birthDateBounds()}
                     className=""
                     aria-invalid={err('birth_date') ? 'true' : undefined}
                   />

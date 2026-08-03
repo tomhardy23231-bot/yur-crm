@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/lib/i18n/provider';
+import { workDateBounds } from '@/lib/validation';
 import {
   confirmActPaidAction,
   type ConfirmActFields,
@@ -69,6 +70,7 @@ export function ActConfirmForm({
             id={`confirm-date-${actId}`}
             name="paid_at"
             type="date"
+            {...workDateBounds()}
             defaultValue={today}
             required
             aria-invalid={err('paid_at') ? 'true' : undefined}

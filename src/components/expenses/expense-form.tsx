@@ -23,7 +23,7 @@ import {
   isExpenseMethod,
   type ExpenseMethod,
 } from '@/lib/types/db';
-import { parseAmount, todayIso } from '@/lib/validation';
+import { parseAmount, todayIso, workDateBounds } from '@/lib/validation';
 
 import type { OptimisticExpenseInput } from './expenses-list';
 
@@ -174,6 +174,7 @@ export function ExpenseForm({
             id={fid('spent-at')}
             name="spent_at"
             type="date"
+            {...workDateBounds()}
             defaultValue={todayIso()}
             required
             aria-invalid={err('spent_at') ? 'true' : undefined}

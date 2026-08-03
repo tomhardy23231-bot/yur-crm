@@ -8,7 +8,7 @@ import { userDb } from '@/lib/db';
 import { dbActionError, pgErrorCode } from '@/lib/db/errors';
 import { dateOnly, dec, toDbDate } from '@/lib/db/convert';
 import { getT } from '@/lib/i18n/server';
-import { UUID_RE, parseAmount, isValidDate } from '@/lib/validation';
+import { UUID_RE, parseAmount, isWorkDate } from '@/lib/validation';
 
 export type CreatePaymentFields =
   | 'case_id'
@@ -55,7 +55,7 @@ export async function createPaymentAction(
     fieldErrors.amount = t.payments.errors.amountInvalid;
 
   if (!paid_at) fieldErrors.paid_at = t.payments.errors.dateRequired;
-  else if (!isValidDate(paid_at))
+  else if (!isWorkDate(paid_at))
     fieldErrors.paid_at = t.payments.errors.dateInvalid;
 
   if (method_raw.length > 80) fieldErrors.method = t.payments.errors.methodTooLong;
@@ -248,7 +248,7 @@ export async function updatePaymentAction(
   else if (parseAmount(amount_raw) === null)
     fieldErrors.amount = t.payments.errors.amountInvalid;
   if (!paid_at) fieldErrors.paid_at = t.payments.errors.dateRequired;
-  else if (!isValidDate(paid_at))
+  else if (!isWorkDate(paid_at))
     fieldErrors.paid_at = t.payments.errors.dateInvalid;
   if (method_raw.length > 80) fieldErrors.method = t.payments.errors.methodTooLong;
   if (account_id_raw && !UUID_RE.test(account_id_raw))
@@ -371,7 +371,7 @@ export async function createPlanItemAction(
     fieldErrors.case_id = t.payments.errors.caseInvalid;
 
   if (!due_date) fieldErrors.due_date = t.payments.errors.dateRequired;
-  else if (!isValidDate(due_date))
+  else if (!isWorkDate(due_date))
     fieldErrors.due_date = t.payments.errors.dateInvalid;
 
   if (!amount_raw) fieldErrors.amount = t.payments.errors.amountRequired;

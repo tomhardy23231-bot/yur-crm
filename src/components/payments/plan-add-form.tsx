@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useShakeInvalidFields } from '@/components/ui/use-shake-invalid-fields';
 import { useI18n } from '@/lib/i18n/provider';
+import { workDateBounds } from '@/lib/validation';
 import {
   createPlanItemAction,
   type CreatePlanItemFields,
@@ -44,6 +45,7 @@ export function PlanAddForm({ caseId }: { caseId: string }) {
             id="plan-due"
             name="due_date"
             type="date"
+            {...workDateBounds()}
             required
             aria-invalid={err('due_date') ? 'true' : undefined}
           />

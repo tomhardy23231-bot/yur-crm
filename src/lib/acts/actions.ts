@@ -14,7 +14,7 @@ import { rpcConfirmActPaid, rpcSetActCompletion } from '@/lib/db/rpc';
 import { getT } from '@/lib/i18n/server';
 import { storage } from '@/lib/storage';
 import { ACT_COMPLETIONS, MANAGER_ROLES, STAFF_ROLES } from '@/lib/types/db';
-import { UUID_RE, parseAmount, isValidDate } from '@/lib/validation';
+import { UUID_RE, parseAmount, isWorkDate } from '@/lib/validation';
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const FORBIDDEN_EXT = new Set([
@@ -164,7 +164,7 @@ export async function confirmActPaidAction(
   if (!amount_raw) fieldErrors.amount = t.acts.actions.amountRequired;
   else if (parseAmount(amount_raw) === null) fieldErrors.amount = t.acts.actions.amountInvalid;
   if (!paid_at) fieldErrors.paid_at = t.acts.actions.dateRequired;
-  else if (!isValidDate(paid_at)) fieldErrors.paid_at = t.acts.actions.dateInvalid;
+  else if (!isWorkDate(paid_at)) fieldErrors.paid_at = t.acts.actions.dateInvalid;
 
   if (!(fileEntry instanceof File) || fileEntry.size === 0) {
     fieldErrors.file = t.acts.actions.scanRequired;

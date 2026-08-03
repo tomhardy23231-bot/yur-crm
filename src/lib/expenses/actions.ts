@@ -10,7 +10,7 @@ import { dec, toDbDate } from '@/lib/db/convert';
 import { activeExpenseCategoryIdSet } from '@/lib/expenses/categories';
 import { getT } from '@/lib/i18n/server';
 import { isExpenseMethod } from '@/lib/types/db';
-import { UUID_RE, parseAmount, isValidDate } from '@/lib/validation';
+import { UUID_RE, parseAmount, isWorkDate } from '@/lib/validation';
 
 // Расходы по делу (миграция 0009). Зеркало lib/payments/actions.ts.
 //
@@ -70,7 +70,7 @@ export async function createExpenseAction(
     fieldErrors.amount = t.expenses.errors.amountInvalid;
 
   if (!spent_at) fieldErrors.spent_at = t.expenses.errors.dateRequired;
-  else if (!isValidDate(spent_at))
+  else if (!isWorkDate(spent_at))
     fieldErrors.spent_at = t.expenses.errors.dateInvalid;
 
   // Списание задаётся ЛИБО конкретным счётом, ЛИБО видом счёта (method) —

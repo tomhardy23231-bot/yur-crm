@@ -10,7 +10,7 @@ import { toDbDate } from '@/lib/db/convert';
 import { getT } from '@/lib/i18n/server';
 import { ABSENCE_KINDS, type AbsenceKind } from '@/lib/types/db';
 import { canManageAbsencesOf } from './access';
-import { UUID_RE, isValidDate } from '@/lib/validation';
+import { UUID_RE, isWorkDate } from '@/lib/validation';
 
 // ============================================================================
 // Создание отсутствия. RLS (absence_can_write): сам / owner / admin-подразделение.
@@ -45,12 +45,12 @@ export async function createAbsenceAction(
     fieldErrors.kind = t.absences.actions.kindInvalid;
   }
   if (!starts_on) fieldErrors.starts_on = t.absences.actions.dateRequired;
-  else if (!isValidDate(starts_on)) fieldErrors.starts_on = t.absences.actions.dateInvalid;
+  else if (!isWorkDate(starts_on)) fieldErrors.starts_on = t.absences.actions.dateInvalid;
   if (!ends_on) fieldErrors.ends_on = t.absences.actions.dateRequired;
-  else if (!isValidDate(ends_on)) fieldErrors.ends_on = t.absences.actions.dateInvalid;
+  else if (!isWorkDate(ends_on)) fieldErrors.ends_on = t.absences.actions.dateInvalid;
   if (
     starts_on && ends_on &&
-    isValidDate(starts_on) && isValidDate(ends_on) &&
+    isWorkDate(starts_on) && isWorkDate(ends_on) &&
     ends_on < starts_on
   ) {
     fieldErrors.ends_on = t.absences.actions.rangeInvalid;
