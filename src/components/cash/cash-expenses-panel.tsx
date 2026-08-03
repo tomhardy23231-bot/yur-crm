@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { AddExpenseDialog } from '@/components/expenses/add-expense-dialog';
 import { DeleteExpenseButton } from '@/components/expenses/delete-expense-button';
+import { ReportExportButtons } from '@/components/reports/export-buttons';
+import type { Period } from '@/lib/reports/period';
 import { useI18n } from '@/lib/i18n/provider';
 import { cn, formatMoney, signedMoney } from '@/lib/utils';
 import type { ExpenseCategoryOption } from '@/lib/expenses/categories';
@@ -26,6 +28,7 @@ export function CashExpensesPanel({
   accounts,
   canAddCategory,
   manualOutflow = 0,
+  period,
 }: {
   /** Расходы фирмы (case_id IS NULL) за выбранный месяц. */
   expenses: ExpenseWithRefs[];
@@ -41,6 +44,8 @@ export function CashExpensesPanel({
   canAddCategory: boolean;
   /** Ручные видатки каси за месяц (без статьи) — чтобы итог сходился с шапкой. */
   manualOutflow?: number;
+  /** Период — для кнопок выгрузки. undefined → кнопок нет. */
+  period?: Period;
 }) {
   const { t } = useI18n();
   const c = t.expenses.company;
@@ -86,13 +91,16 @@ export function CashExpensesPanel({
             </span>
           )}
         </div>
-        {canManage && (
-          <AddExpenseDialog
-            categories={categories}
-            accounts={accounts}
-            canAddCategory={canAddCategory}
-          />
-        )}
+        <div className="flex items-center gap-2">
+          {period && <ReportExportButtons kind="expenses" period={period} />}
+          {canManage && (
+            <AddExpenseDialog
+              categories={categories}
+              accounts={accounts}
+              canAddCategory={canAddCategory}
+            />
+          )}
+        </div>
       </div>
 
       {/* Разбивка по статьям — «куда ушло» */}

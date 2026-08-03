@@ -3,7 +3,6 @@ import { Check, ChevronLeft, ChevronRight, Mail, Shield, Users } from 'lucide-re
 
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
 import {
   Table,
   TableHeader,
@@ -20,6 +19,7 @@ import { listActiveDepartments } from '@/lib/departments/queries';
 import { listManagedUserSalaries } from '@/lib/payroll/queries';
 import { assignableRoles } from '@/lib/types/db';
 import { UserCreateForm } from '@/components/users/user-create-form';
+import { UserCreatePanel } from '@/components/users/user-create-panel';
 
 // Управление пользователями: список — только просмотр и переход (2026-07-16),
 // все настройки (роль, подразделение, зарплата, права, доступ) — на карточке
@@ -54,29 +54,23 @@ export default async function UsersSettingsPage() {
         {backLabel}
       </Link>
 
-      {/* Создание пользователя — только обладателю права create_users. */}
+      {/* Создание пользователя — только обладателю права create_users. Форма
+          свёрнута под кнопку: сотрудников заводят редко, а места она занимала
+          весь первый экран (замечание владельца 2026-08-03). */}
       {actor.caps.create_users && (
-        <section className="flex flex-col gap-3">
-          <Card>
-            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-              <h2 className="text-[15px] font-semibold text-text">{t.users.heading}</h2>
-            </div>
-            <div className="p-5">
-              <p className="mb-4 text-[13px] text-text-muted">
-                {actor.profile.role === 'owner'
-                  ? t.users.introOwner
-                  : t.users.introManager}
-              </p>
-              <UserCreateForm
-                assignableRoles={assignable}
-                actorRole={actor.profile.role}
-                actorCaps={actor.caps}
-                departments={departments}
-                actorIsOwner={actorIsOwner}
-              />
-            </div>
-          </Card>
-        </section>
+        <UserCreatePanel
+          intro={
+            actor.profile.role === 'owner' ? t.users.introOwner : t.users.introManager
+          }
+        >
+          <UserCreateForm
+            assignableRoles={assignable}
+            actorRole={actor.profile.role}
+            actorCaps={actor.caps}
+            departments={departments}
+            actorIsOwner={actorIsOwner}
+          />
+        </UserCreatePanel>
       )}
 
       {/* Мини-статистика — из уже загруженного списка, без новых запросов */}

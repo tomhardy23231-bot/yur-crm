@@ -17,7 +17,7 @@ import {
   entriesFromOpening,
 } from '@/lib/cash/saldo';
 import type { CashEntryWithCase } from '@/lib/types/db';
-import { normalizeMonth, monthLabel, monthNamesFrom } from '@/lib/payroll/month';
+import { kyivToday, monthNamesFrom } from '@/lib/payroll/month';
 import {
   getExpensesByCategory,
   getProfitByCase,
@@ -26,23 +26,24 @@ import {
 } from '@/lib/expenses/report';
 import { listCompanyExpenses } from '@/lib/expenses/queries';
 import { listActiveExpenseCategories } from '@/lib/expenses/categories';
-import { MonthPicker } from '@/components/payroll/month-picker';
+import { periodLabel, resolvePeriod } from '@/lib/reports/period';
+import {
+  buildFlowDoc,
+  buildIncomeDoc,
+  buildRegistryDoc,
+  buildSummaryDoc,
+  buildTurnoverDoc,
+  isIncomeDim,
+} from '@/lib/reports/cash/documents';
+import { PeriodPicker } from '@/components/reports/period-picker';
 import { CashAccountsManager } from '@/components/cash/cash-accounts-manager';
 import { CashBackfillBanner } from '@/components/cash/cash-backfill-banner';
 import { CashReport, type CashAccountView } from '@/components/cash/cash-report';
 
-// Последний день месяца 'YYYY-MM-01' → 'YYYY-MM-DD' (UTC, без таймзонного сдвига).
-function lastDayOfMonth(month: string): string {
-  const y = Number(month.slice(0, 4));
-  const m = Number(month.slice(5, 7)); // 1-based
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return `${month.slice(0, 7)}-${String(last).padStart(2, '0')}`;
-}
-
 export default async function CashReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; from?: string; to?: string; dim?: string }>;
 }) {
   // Касса: смотреть отчёт — view_cash ИЛИ can_manage_cash (сплит 2026-07-16);
   // счета/операции/бэкфилл — только can_manage_cash. RLS дублирует.
@@ -51,10 +52,13 @@ export default async function CashReportPage({
   const { t, plural } = await getT();
   const monthNames = monthNamesFrom(t.payroll);
 
-  const { month: monthParam } = await searchParams;
-  const month = normalizeMonth(monthParam); // 'YYYY-MM-01'
-  const monthStart = month;
-  const monthEnd = lastDayOfMonth(month);
+  const sp = await searchParams;
+  // Период (2026-08-03): месяц / квартал / год / произвольный. Старый
+  // ?month=YYYY-MM продолжает работать — на него ведут закладки.
+  const period = resolvePeriod({ from: sp.from, to: sp.to, month: sp.month });
+  const monthStart = period.from;
+  const monthEnd = period.to;
+  const incomeDim = isIncomeDim(sp.dim) ? sp.dim : 'case';
 
   // Прибыльность по делам — вкладка «По делам» (миграция 0009). Тянем только
   // при праве view_case_expenses: без него вкладки нет вовсе.
@@ -70,13 +74,26 @@ export default async function CashReportPage({
     companyExpenses,
     categorySpend,
     expenseCategories,
+    // Три отчёта за период (2026-08-03). Строятся как ReportDoc — тот же
+    // документ уходит в Excel (/reports/cash/export) и в печатную версию,
+    // поэтому цифры на экране и в выгрузке совпадают по построению.
+    turnoverDoc,
+    flowDoc,
+    incomeDoc,
+    summaryDoc,
+    registryDoc,
   ] = await Promise.all([
-    getCashReportData(month),
+    getCashReportData(period),
     getUnsyncedPaymentsCount(),
     canSeeProfit ? getProfitByCase(monthStart, monthEnd) : Promise.resolve(null),
     listCompanyExpenses(monthStart, monthEnd),
     getExpensesByCategory(monthStart, monthEnd),
     listActiveExpenseCategories('company'),
+    buildTurnoverDoc(period),
+    buildFlowDoc(period),
+    buildIncomeDoc(period, incomeDim),
+    buildSummaryDoc(period),
+    buildRegistryDoc(period),
   ]);
   // Фактический остаток на сегодня — не зависит от выбранного месяца.
   const nowBalances = await getCurrentBalances();
@@ -148,7 +165,13 @@ export default async function CashReportPage({
     0,
   );
   const totalBalance = views.reduce((s, v) => s + v.closingNow, 0);
-  const isCurrentMonth = month >= normalizeMonth(undefined);
+  // Период закончился в прошлом — крупное число «на сегодня» надо пояснить
+  // остатком на конец периода, иначе они выглядят противоречиво.
+  const isCurrentMonth = period.to >= kyivToday();
+  const label = periodLabel(period, monthNames, {
+    quarter: t.cash.period.quarterWord,
+    year: t.cash.period.yearWord,
+  });
   // Ручные видатки месяца (внесены кнопкой «Видаток», без привязки к расходам
   // и платежам) — вкладка «Витрати» показывает их отдельной строкой, чтобы её
   // итог сходился с чипом «Видаток за місяць» в шапке (QA 27.07, ISSUE-002).
@@ -222,7 +245,7 @@ export default async function CashReportPage({
                 value={`${signedMoney(heroOutflow, 'out')} ₴`}
                 tone="out"
               />
-              <MonthPicker month={month} />
+              <PeriodPicker period={period} />
             </div>
           </div>
         </section>
@@ -230,9 +253,9 @@ export default async function CashReportPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[13px] text-text-muted">
             {t.cash.report.subtitle} ·{' '}
-            <span className="font-medium text-text">{monthLabel(month, monthNames)}</span>
+            <span className="font-medium text-text">{label}</span>
           </p>
-          <MonthPicker month={month} />
+          <PeriodPicker period={period} />
         </div>
       )}
 
@@ -266,6 +289,13 @@ export default async function CashReportPage({
         categorySpendTotals={categorySpendTotals}
         manualOutflow={manualOutflow}
         canAddCategory={user.caps.manage_expense_categories}
+        turnoverDoc={turnoverDoc}
+        flowDoc={flowDoc}
+        incomeDoc={incomeDoc}
+        summaryDoc={summaryDoc}
+        registryDoc={registryDoc}
+        incomeDim={incomeDim}
+        period={period}
       />
     </main>
   );

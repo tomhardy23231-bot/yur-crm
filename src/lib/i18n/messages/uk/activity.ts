@@ -110,6 +110,17 @@ export const activity: ActivityMessages = {
     case_type_renamed: 'перейменував(ла) тип справи',
     case_type_activated: 'повернув(ла) тип справи',
     case_type_deactivated: 'приховав(ла) тип справи',
+    // Книга операцій (міграції 0009–0016) — витрати, статті, видалення рахунку.
+    expense_created: 'вніс(ла) витрату',
+    expense_deleted: 'видалив(ла) витрату',
+    payment_converted_to_expense: 'перевів(ла) платіж у витрати',
+    expense_category_created: 'додав(ла) статтю витрат',
+    expense_category_renamed: 'перейменував(ла) статтю витрат',
+    expense_category_activated: 'повернув(ла) статтю витрат',
+    expense_category_deactivated: 'приховав(ла) статтю витрат',
+    expense_category_scope_changed: 'змінив(ла) область статті витрат',
+    expense_category_deleted: 'видалив(ла) статтю витрат',
+    cash_account_deleted: 'видалив(ла) рахунок каси',
   },
 
   event: {
@@ -200,6 +211,18 @@ export const activity: ActivityMessages = {
     caseTypeRenamed: 'перейменував(ла) тип справи: «{from}» → «{to}»',
     caseTypeActivated: 'повернув(ла) тип справи «{name}»',
     caseTypeDeactivated: 'приховав(ла) тип справи «{name}»',
+
+    // Книга операцій (2026-07-27, міграції 0009–0016).
+    expenseCreated: 'вніс(ла) витрату {amount}',
+    expenseDeleted: 'видалив(ла) витрату {amount}',
+    paymentConvertedToExpense: 'перевів(ла) платіж {amount} у витрати',
+    expenseCategoryCreated: 'додав(ла) статтю витрат «{name}»',
+    expenseCategoryRenamed: 'перейменував(ла) статтю витрат: «{from}» → «{to}»',
+    expenseCategoryActivated: 'повернув(ла) статтю витрат «{name}»',
+    expenseCategoryDeactivated: 'приховав(ла) статтю витрат «{name}»',
+    expenseCategoryScopeChanged: 'змінив(ла) область статті «{name}»: {from} → {to}',
+    expenseCategoryDeleted: 'видалив(ла) статтю витрат «{name}»',
+    cashAccountDeleted: 'видалив(ла) рахунок каси «{name}»',
 
     unknownAction: 'дія: {action}',
   },

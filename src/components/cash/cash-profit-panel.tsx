@@ -8,6 +8,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useI18n } from '@/lib/i18n/provider';
 import { cn, formatMoney, signedMoney } from '@/lib/utils';
 import type { ProfitRow, ProfitTotals } from '@/lib/expenses/report';
+import { ReportExportButtons } from '@/components/reports/export-buttons';
+import type { Period } from '@/lib/reports/period';
 
 // Вкладка «По делам» в отчёте кассы: дохід / витрати / маржа по каждому делу за
 // выбранный месяц. Живёт внутри «Кассы» (решение владельца 2026-07-24: всё про
@@ -26,9 +28,12 @@ type Tone = keyof typeof TONE;
 export function CashProfitPanel({
   rows,
   totals,
+  period,
 }: {
   rows: ProfitRow[];
   totals: ProfitTotals;
+  /** Период — для кнопок выгрузки. undefined → кнопок нет. */
+  period?: Period;
 }) {
   const { t, plural } = useI18n();
   const r = t.expenses.report;
@@ -43,6 +48,11 @@ export function CashProfitPanel({
 
   return (
     <div className="flex flex-col gap-4">
+      {period && (
+        <div className="flex justify-end">
+          <ReportExportButtons kind="profit" period={period} />
+        </div>
+      )}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatTile
           label={r.totalIncome}

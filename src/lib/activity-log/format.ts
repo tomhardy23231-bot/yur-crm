@@ -599,6 +599,70 @@ export function formatActivity(
       return { actor, text: fmt(verb, { name }) };
     }
 
+    // ---------- расходы и статьи (0009–0016, книга операций) ----------
+    case 'expense_created':
+    case 'expense_deleted': {
+      const amount = asNumber(c.amount);
+      const amountStr = amount === null ? dash : `${money(i18n.locale).format(amount)} ₴`;
+      const verb =
+        entry.action === 'expense_created' ? ev.expenseCreated : ev.expenseDeleted;
+      return { actor, text: fmt(verb, { amount: amountStr }) };
+    }
+    case 'payment_converted_to_expense': {
+      const amount = asNumber(c.amount);
+      const amountStr = amount === null ? dash : `${money(i18n.locale).format(amount)} ₴`;
+      return { actor, text: fmt(ev.paymentConvertedToExpense, { amount: amountStr }) };
+    }
+    case 'expense_category_created':
+      return {
+        actor,
+        text: fmt(ev.expenseCategoryCreated, { name: asString(c.name) ?? dash }),
+      };
+    case 'expense_category_renamed':
+      return {
+        actor,
+        text: fmt(ev.expenseCategoryRenamed, {
+          from: asString(c.from) ?? dash,
+          to: asString(c.to) ?? dash,
+        }),
+      };
+    case 'expense_category_activated':
+    case 'expense_category_deactivated': {
+      const verb =
+        entry.action === 'expense_category_activated'
+          ? ev.expenseCategoryActivated
+          : ev.expenseCategoryDeactivated;
+      return { actor, text: fmt(verb, { name: asString(c.name) ?? dash }) };
+    }
+    case 'expense_category_scope_changed': {
+      // scope — где статью предлагать: в делах / по фирме / везде.
+      const scopeLabel = (v: unknown): string => {
+        const s = asString(v);
+        if (s === 'case') return t.expenseCategories.scope.case;
+        if (s === 'company') return t.expenseCategories.scope.company;
+        if (s === 'both') return t.expenseCategories.scope.both;
+        return s ?? dash;
+      };
+      return {
+        actor,
+        text: fmt(ev.expenseCategoryScopeChanged, {
+          name: asString(c.name) ?? dash,
+          from: scopeLabel(c.from),
+          to: scopeLabel(c.to),
+        }),
+      };
+    }
+    case 'expense_category_deleted':
+      return {
+        actor,
+        text: fmt(ev.expenseCategoryDeleted, { name: asString(c.name) ?? dash }),
+      };
+    case 'cash_account_deleted':
+      return {
+        actor,
+        text: fmt(ev.cashAccountDeleted, { name: asString(c.name) ?? dash }),
+      };
+
     default:
       // Неизвестный/новый action — берём подпись из карты, иначе показываем код
       // (видно, что в журнал прилетело что-то новое, а не ломаем рендер).

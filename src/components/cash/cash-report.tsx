@@ -38,10 +38,14 @@ import type {
 } from '@/lib/expenses/report';
 import type { ExpenseCategoryOption } from '@/lib/expenses/categories';
 import type { ExpenseWithRefs } from '@/lib/types/db';
+import type { ReportDoc } from '@/lib/reports/export/types';
+import type { Period } from '@/lib/reports/period';
+import type { CashIncomeDim } from '@/lib/db/rpc';
 import { AddExpenseDialog } from '@/components/expenses/add-expense-dialog';
 import { CashEntryDialog } from './cash-entry-dialog';
 import { CashExpensesPanel } from './cash-expenses-panel';
 import { CashProfitPanel } from './cash-profit-panel';
+import { CashReportPanel } from './cash-report-panel';
 
 export type CashAccountView = {
   accountId: string;
@@ -68,6 +72,13 @@ const PROFIT_TAB = '__profit__';
 // Вкладка «Витрати» — расходы фирмы + разбивка по статьям (2026-07-26,
 // требование клиента «понимать куда сколько ушло»).
 const EXPENSES_TAB = '__expenses__';
+// Отчёты за период (2026-08-03): оборотно-сальдовая, движение по месяцам,
+// доходы. Живут теми же вкладками — «всё про деньги в одном месте».
+const TURNOVER_TAB = '__turnover__';
+const FLOW_TAB = '__flow__';
+const INCOME_TAB = '__income__';
+const SUMMARY_TAB = '__summary__';
+const REGISTRY_TAB = '__registry__';
 
 function money(n: number): string {
   return `${formatMoney(n)} ₴`;
@@ -90,6 +101,13 @@ export function CashReport({
   categorySpendTotals,
   canAddCategory = false,
   manualOutflow = 0,
+  turnoverDoc,
+  flowDoc,
+  incomeDoc,
+  summaryDoc,
+  registryDoc,
+  incomeDim = 'case',
+  period,
 }: {
   accounts: CashAccount[];
   views: CashAccountView[];
@@ -119,6 +137,17 @@ export function CashReport({
   canAddCategory?: boolean;
   /** Ручные видатки каси за месяц — примиряют вкладку «Витрати» с шапкой. */
   manualOutflow?: number;
+  // Отчёты за период (2026-08-03). Готовые документы: тот же ReportDoc уходит
+  // в Excel и в печатную версию, поэтому цифры совпадают по построению.
+  turnoverDoc?: ReportDoc;
+  flowDoc?: ReportDoc;
+  incomeDoc?: ReportDoc;
+  summaryDoc?: ReportDoc;
+  registryDoc?: ReportDoc;
+  /** Активный разрез вкладки «Доходы» — живёт в URL как ?dim=. */
+  incomeDim?: CashIncomeDim;
+  /** Выбранный период — нужен ссылкам экспорта и печати. */
+  period?: Period;
 }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<string>(accounts[0]?.id ?? TOTAL_TAB);
@@ -204,6 +233,36 @@ export function CashReport({
               {t.cash.report.tabProfit}
             </TabButton>
           )}
+          {/* Отчёты за период (2026-08-03). */}
+          {turnoverDoc && (
+            <TabButton
+              active={tab === TURNOVER_TAB}
+              onClick={() => setTab(TURNOVER_TAB)}
+              strong
+            >
+              {t.cash.reports.tabTurnover}
+            </TabButton>
+          )}
+          {flowDoc && (
+            <TabButton active={tab === FLOW_TAB} onClick={() => setTab(FLOW_TAB)} strong>
+              {t.cash.reports.tabFlow}
+            </TabButton>
+          )}
+          {incomeDoc && (
+            <TabButton active={tab === INCOME_TAB} onClick={() => setTab(INCOME_TAB)} strong>
+              {t.cash.reports.tabIncome}
+            </TabButton>
+          )}
+          {summaryDoc && (
+            <TabButton active={tab === SUMMARY_TAB} onClick={() => setTab(SUMMARY_TAB)} strong>
+              {t.cash.reports.tabSummary}
+            </TabButton>
+          )}
+          {registryDoc && (
+            <TabButton active={tab === REGISTRY_TAB} onClick={() => setTab(REGISTRY_TAB)} strong>
+              {t.cash.reports.tabRegistry}
+            </TabButton>
+          )}
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -262,22 +321,57 @@ export function CashReport({
           accounts={accounts}
           canAddCategory={canAddCategory}
           manualOutflow={manualOutflow}
+          period={period}
         />
       ) : tab === PROFIT_TAB && profitRows && profitTotals ? (
-        <CashProfitPanel rows={profitRows} totals={profitTotals} />
-      ) : tab === TOTAL_TAB ? (
-        <TotalTable accounts={accounts} rows={totalRows} />
+        <CashProfitPanel rows={profitRows} totals={profitTotals} period={period} />
+      ) : tab === TURNOVER_TAB && turnoverDoc && period ? (
+        <CashReportPanel
+          doc={turnoverDoc}
+          kind="turnover"
+          period={period}
+          hint={t.cash.reports.turnoverHint}
+        />
+      ) : tab === FLOW_TAB && flowDoc && period ? (
+        <CashReportPanel
+          doc={flowDoc}
+          kind="flow"
+          period={period}
+          hint={t.cash.reports.flowHint}
+          chart
+        />
+      ) : tab === INCOME_TAB && incomeDoc && period ? (
+        <CashReportPanel
+          doc={incomeDoc}
+          kind="income"
+          period={period}
+          hint={t.cash.reports.incomeHint}
+          dim={incomeDim}
+        />
+      ) : tab === SUMMARY_TAB && summaryDoc && period ? (
+        <CashReportPanel
+          doc={summaryDoc}
+          kind="summary"
+          period={period}
+          hint={t.cash.reports.summaryHint}
+        />
+      ) : tab === REGISTRY_TAB && registryDoc && period ? (
+        <CashReportPanel
+          doc={registryDoc}
+          kind="registry"
+          period={period}
+          hint={t.cash.reports.registryHint}
+        />
+      ) : viewById.has(tab) ? (
+        <AccountPanel
+          view={viewById.get(tab)!}
+          journal={journals[tab] ?? []}
+          canManage={canManage}
+        />
       ) : (
-        (() => {
-          const view = viewById.get(tab)!;
-          return (
-            <AccountPanel
-              view={view}
-              journal={journals[tab] ?? []}
-              canManage={canManage}
-            />
-          );
-        })()
+        // Сюда попадаем, если выбранная вкладка отчёта недоступна (нет прав на
+        // её данные) — показываем свод вместо падения на undefined.
+        <TotalTable accounts={accounts} rows={totalRows} />
       )}
     </div>
   );

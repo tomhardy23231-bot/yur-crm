@@ -114,6 +114,17 @@ export const activity = {
     case_type_renamed: 'переименовал(а) тип дела',
     case_type_activated: 'вернул(а) тип дела',
     case_type_deactivated: 'скрыл(а) тип дела',
+    // Книга операций (миграции 0009–0016) — расходы, статьи, удаление счёта.
+    expense_created: 'внёс(ла) расход',
+    expense_deleted: 'удалил(а) расход',
+    payment_converted_to_expense: 'перевёл(а) платёж в расходы',
+    expense_category_created: 'добавил(а) статью расходов',
+    expense_category_renamed: 'переименовал(а) статью расходов',
+    expense_category_activated: 'вернул(а) статью расходов',
+    expense_category_deactivated: 'скрыл(а) статью расходов',
+    expense_category_scope_changed: 'изменил(а) область статьи расходов',
+    expense_category_deleted: 'удалил(а) статью расходов',
+    cash_account_deleted: 'удалил(а) счёт кассы',
   },
 
   // Богатые формулировки конкретных событий (ветки switch в formatActivity).
@@ -210,6 +221,18 @@ export const activity = {
     caseTypeRenamed: 'переименовал(а) тип дела: «{from}» → «{to}»',
     caseTypeActivated: 'вернул(а) тип дела «{name}»',
     caseTypeDeactivated: 'скрыл(а) тип дела «{name}»',
+
+    // Книга операций (2026-07-27, миграции 0009–0016).
+    expenseCreated: 'внёс(ла) расход {amount}',
+    expenseDeleted: 'удалил(а) расход {amount}',
+    paymentConvertedToExpense: 'перевёл(а) платёж {amount} в расходы',
+    expenseCategoryCreated: 'добавил(а) статью расходов «{name}»',
+    expenseCategoryRenamed: 'переименовал(а) статью расходов: «{from}» → «{to}»',
+    expenseCategoryActivated: 'вернул(а) статью расходов «{name}»',
+    expenseCategoryDeactivated: 'скрыл(а) статью расходов «{name}»',
+    expenseCategoryScopeChanged: 'изменил(а) область статьи «{name}»: {from} → {to}',
+    expenseCategoryDeleted: 'удалил(а) статью расходов «{name}»',
+    cashAccountDeleted: 'удалил(а) счёт кассы «{name}»',
 
     // Неизвестный/новый action-код.
     unknownAction: 'действие: {action}',

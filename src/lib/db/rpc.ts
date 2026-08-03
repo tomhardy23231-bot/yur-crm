@@ -662,3 +662,106 @@ export async function rpcCashAccountsPick(db: DbLike): Promise<CashAccountPick[]
     is_default: Boolean(r.is_default),
   }));
 }
+
+// === Отчёты кассы за произвольный период (миграция 0017) =====================
+//
+// Все три — SECURITY DEFINER с гейтом права ВНУТРИ (view_cash ИЛИ
+// can_manage_cash), как cash_balances_before. Нет права → пустой результат,
+// не ошибка. Операции раньше opening_date счёта не учитываются нигде — так же,
+// как в существующем сальдо-отчёте (entriesFromOpening в lib/cash/saldo).
+
+export type CashTurnoverRow = {
+  account_id: string;
+  inflow: number;
+  outflow: number;
+  cnt: number;
+};
+
+/** Обороты по счетам за период — база оборотно-сальдовой ведомости. */
+export async function rpcCashTurnover(
+  db: DbLike,
+  args: { from: string | null; to: string | null }, // YYYY-MM-DD; null → без границы
+): Promise<CashTurnoverRow[]> {
+  const rows = await db.$queryRaw<Row[]>`
+    select * from public.cash_turnover(${args.from}::date, ${args.to}::date)`;
+  return rows.map((r) => ({
+    account_id: r.account_id as string,
+    inflow: num(r.inflow),
+    outflow: num(r.outflow),
+    cnt: num(r.cnt),
+  }));
+}
+
+export type CashFlowMonthRow = {
+  /** Первое число месяца, 'YYYY-MM-DD'. */
+  month: string;
+  inflow: number;
+  outflow: number;
+  cnt: number;
+};
+
+/**
+ * Приход/расход по месяцам. Возвращает ТОЛЬКО месяцы с операциями — пустые
+ * месяцы периода дорисовывает клиент (lib/reports/period).
+ */
+export async function rpcCashFlowMonthly(
+  db: DbLike,
+  args: { from: string | null; to: string | null },
+): Promise<CashFlowMonthRow[]> {
+  const rows = await db.$queryRaw<Row[]>`
+    select * from public.cash_flow_monthly(${args.from}::date, ${args.to}::date)`;
+  return rows.map((r) => ({
+    month: dateStr(r.month),
+    inflow: num(r.inflow),
+    outflow: num(r.outflow),
+    cnt: num(r.cnt),
+  }));
+}
+
+/** Разрез отчёта «откуда пришли деньги». */
+export type CashIncomeDim =
+  | 'case'
+  | 'client'
+  | 'lawyer'
+  | 'expert'
+  | 'method'
+  | 'account';
+
+export type CashIncomeRow = {
+  /**
+   * id сущности, текст способа оплаты либо служебная корзина:
+   * 'unset' (способ не указан), 'no_account' (счёт не указан),
+   * 'unknown' (справочник не отдал имя).
+   */
+  bucket_key: string;
+  /** null у служебных корзин — подпись берётся из i18n. */
+  bucket_label: string | null;
+  /** id для ссылки; null, если строка не ведёт на карточку. */
+  ref_id: string | null;
+  total: number;
+  cnt: number;
+};
+
+/**
+ * «Откуда пришли деньги» за период — по ПЛАТЕЖАМ (public.payments), не по
+ * кассе. SECURITY INVOKER: RLS payments_select_via_case скоупит строки по
+ * видимости дела, поэтому юрист видит только свои оплаты, а владелец — все.
+ *
+ * ⚠ Суммы НЕ обязаны совпадать с cash_turnover: касса ведётся с даты открытия
+ * счетов, а оплаты — с начала работы фирмы (решение владельца 2026-08-03).
+ */
+export async function rpcIncomeBreakdown(
+  db: DbLike,
+  args: { from: string | null; to: string | null; dim: CashIncomeDim },
+): Promise<CashIncomeRow[]> {
+  const rows = await db.$queryRaw<Row[]>`
+    select * from public.income_breakdown(
+      ${args.from}::date, ${args.to}::date, ${args.dim})`;
+  return rows.map((r) => ({
+    bucket_key: r.bucket_key as string,
+    bucket_label: (r.bucket_label as string | null) ?? null,
+    ref_id: (r.ref_id as string | null) ?? null,
+    total: num(r.total),
+    cnt: num(r.cnt),
+  }));
+}

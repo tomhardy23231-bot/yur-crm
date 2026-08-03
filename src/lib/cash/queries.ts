@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import { getCurrentUser } from '@/lib/auth/current-user';
 import { userDb } from '@/lib/db';
 import { dateOnly, dec, toDbDate, ts } from '@/lib/db/convert';
@@ -9,7 +11,6 @@ import {
   type CashAccountPick,
   rpcCashUnsyncedPaymentsCount,
 } from '@/lib/db/rpc';
-import { nextMonth } from '@/lib/payroll/month';
 import type {
   CashAccount,
   CashDirection,
@@ -117,47 +118,55 @@ export async function listCashAccounts(
   return rows.map(normalizeAccount);
 }
 
-// Потолок выборки операций месяца. Раньше страховал от молчаливого усечения
+// Потолок выборки операций периода. Раньше страховал от молчаливого усечения
 // PostgREST (max_rows=1000); у Prisma тихого усечения нет, но лимит оставляем как
-// защиту от аномально большого месяца + сравниваем с count() для флага truncated.
-const MONTH_ENTRY_LIMIT = 5000;
+// защиту от аномально большого периода (год, вся история) + сравниваем с count()
+// для флага truncated. Обороты и сальдо самого отчёта считает SQL (0017) — они
+// под этот потолок НЕ попадают, усечься может только журнал операций.
+const PERIOD_ENTRY_LIMIT = 5000;
 
 export type CashReportData = {
   accounts: CashAccount[];
-  // Операции ТОЛЬКО выбранного месяца (свежие не теряются под потолком выборки).
+  // Операции ТОЛЬКО выбранного периода (свежие не теряются под потолком выборки).
   // Перенос из прошлых периодов считается SQL'ем (openingBalances), а не выкачкой истории.
   entries: CashEntryWithCase[];
-  // Перенос остатка на начало месяца по счёту (accountId → net до monthStart, начиная с
+  // Перенос остатка на начало периода по счёту (accountId → net до period.from, начиная с
   // opening_date). Эффективный остаток на начало = account.opening_balance + это число.
   openingBalances: Record<string, number>;
-  // true, если операций за месяц больше лимита выборки (показать предупреждение в UI).
+  // true, если операций за период больше лимита выборки (показать предупреждение в UI).
   truncated: boolean;
 };
 
-// Данные сальдо-отчёта за месяц. month — 'YYYY-MM-01' (см. lib/payroll/month).
-// Тянем ТОЛЬКО операции выбранного месяца, а перенос остатка на начало месяца
-// считаем SQL-функцией cash_balances_before (без выкачки всей истории). RLS/право
-// скоупит по can_manage_cash.
-export async function getCashReportData(month: string): Promise<CashReportData> {
+// Данные сальдо-отчёта за ПЕРИОД (2026-08-03; раньше — строго календарный месяц).
+// Тянем ТОЛЬКО операции периода, а перенос остатка на его начало считаем
+// SQL-функцией cash_balances_before (без выкачки всей истории). RLS/право
+// скоупит по view_cash/can_manage_cash.
+// cache() — за один рендер страницу кассы просят эти данные дважды: сама
+// страница (вкладки счетов) и отчёт «Реестр операций». Без мемоизации это два
+// одинаковых обхода cash_entries на каждый показ.
+export const getCashReportData = cache(async function getCashReportData(period: {
+  from: string;
+  to: string;
+}): Promise<CashReportData> {
   const user = await getCurrentUser();
   if (!user) {
     return { accounts: [], entries: [], openingBalances: {}, truncated: false };
   }
   const uid = user.profile.id;
-  const monthStart = month; // 'YYYY-MM-01'
-  const upperExclusive = nextMonth(month); // первый день следующего месяца (строго меньше)
+  const { from: periodStart, to: periodEnd } = period;
+  // Обе границы включительно — как их понимают SQL-функции отчётов (0017).
   const entryWhere = {
-    entry_date: { gte: toDbDate(monthStart), lt: toDbDate(upperExclusive) },
+    entry_date: { gte: toDbDate(periodStart), lte: toDbDate(periodEnd) },
   };
 
   const [accounts, balances, entryRows, total] = await Promise.all([
     listCashAccounts(),
-    userDb(uid, (tx) => rpcCashBalancesBefore(tx, { before: monthStart })),
+    userDb(uid, (tx) => rpcCashBalancesBefore(tx, { before: periodStart })),
     userDb(uid, (tx) =>
       tx.cash_entries.findMany({
         where: entryWhere,
         orderBy: [{ entry_date: 'asc' }, { created_at: 'asc' }],
-        take: MONTH_ENTRY_LIMIT,
+        take: PERIOD_ENTRY_LIMIT,
         select: {
           ...ENTRY_SELECT,
           cases: { select: { id: true, number_title: true } },
@@ -174,7 +183,7 @@ export async function getCashReportData(month: string): Promise<CashReportData> 
   const truncated = total > entries.length;
 
   return { accounts, entries, openingBalances, truncated };
-}
+});
 
 // Сколько платежей ещё не отражены в кассе (для баннера «Синхронизировать»). Не валит
 // страницу: при ошибке/без права RPC вернёт 0 (право проверяется внутри функции).

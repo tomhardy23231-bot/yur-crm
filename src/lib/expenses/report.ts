@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import { getCurrentUser } from '@/lib/auth/current-user';
 import { userDb } from '@/lib/db';
 import {
@@ -28,7 +30,9 @@ export type ProfitTotals = {
   margin: number;
 };
 
-export async function getProfitByCase(
+// cache(): за один рендер кассы это просят вкладка «За справами» и сборщик
+// одноимённого отчёта — запрос тяжёлый, дублировать его незачем.
+export const getProfitByCase = cache(async function getProfitByCase(
   from: string | null,
   to: string | null,
 ): Promise<ProfitRow[]> {
@@ -40,7 +44,7 @@ export async function getProfitByCase(
   // Сначала самые прибыльные, затем убыточные — чтобы «минус» бросался в глаза
   // в конце списка; при равной марже — по доходу.
   return rows.sort((a, b) => b.margin - a.margin || b.income - a.income);
-}
+});
 
 export function sumProfit(rows: ReadonlyArray<ProfitRow>): ProfitTotals {
   return rows.reduce<ProfitTotals>(
@@ -66,7 +70,8 @@ export type CategorySpendTotals = {
   companyTotal: number;
 };
 
-export async function getExpensesByCategory(
+// cache(): просят вкладка «Витрати», одноимённый отчёт и финансовый итог.
+export const getExpensesByCategory = cache(async function getExpensesByCategory(
   from: string | null,
   to: string | null,
 ): Promise<CategorySpendRow[]> {
@@ -78,7 +83,7 @@ export async function getExpensesByCategory(
   const label = await expenseCategoryLabeler();
   // Функция уже отдаёт по убыванию суммы — порядок не трогаем.
   return rows.map((r) => ({ ...r, label: label(r.code) }));
-}
+});
 
 export function sumCategorySpend(
   rows: ReadonlyArray<CategorySpendRow>,
