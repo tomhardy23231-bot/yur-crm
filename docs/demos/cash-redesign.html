@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Каса — демо варіантів дизайну</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Токены — 1:1 из src/app/globals.css (ревизия 2026-06-12) */
+:root{
+  --bg:#E3E6EA; --surface:#FFFFFF; --surface-muted:#F1F3F5; --surface-sunken:#E4E7EC;
+  --border:#D9DEE5; --border-strong:#C3CBD4;
+  --text:#101828; --text-muted:#475467; --text-subtle:#646E82;
+  --primary:#2563EB; --primary-hover:#1D4ED8; --primary-pressed:#1E40AF;
+  --primary-subtle:#DBE7FE; --primary-softer:#EFF4FE; --primary-border:#C9D6F4; --primary-bright:#5B8DEF;
+  --grad-hero:linear-gradient(120deg,#1E40AF 0%,#2563EB 52%,#5B8DEF 100%);
+  --sidebar-bg-gradient:linear-gradient(180deg,#1D2942 0%,#141D2E 100%);
+  --sidebar-text:#8B97AD; --sidebar-border:#28344E; --sidebar-active-bg:rgba(37,99,235,.22);
+  --sidebar-hover-bg:rgba(255,255,255,.05); --sidebar-accent-bright:#7EA6FF;
+  --success:#10B981; --success-bg:#D1FAE5; --success-text:#047857;
+  --warning:#F97316; --warning-bg:#FFEDD5; --warning-text:#C2410C;
+  --error:#DC2626; --error-bg:#FEE2E2; --error-text:#B91C1C;
+  --info:#0EA5E9; --info-bg:#E0F2FE; --info-text:#0369A1;
+  --absence:#7C3AED; --absence-bg:#EDE9FE;
+  --r-card:16px; --r-control:12px; --r-chip:9999px;
+  --shadow-xs:0 1px 2px rgba(16,24,40,.04);
+  --shadow-sm:0 4px 14px rgba(16,24,40,.10),0 2px 5px rgba(16,24,40,.06);
+  --shadow-md:0 8px 24px rgba(16,24,40,.12),0 3px 8px rgba(16,24,40,.07);
+  --shadow-brand:0 8px 24px rgba(37,99,235,.25),0 2px 6px rgba(37,99,235,.15);
+  --ease-out:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;background:var(--bg);color:var(--text);
+  font-feature-settings:"tnum";-webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"JetBrains Mono","Courier New",monospace;font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+/* ————— Панель переключения демок ————— */
+.demo-bar{
+  position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:10px 18px;background:#0E1626;color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.25);
+}
+.demo-bar h1{font-size:12.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8B97AD}
+.demo-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.demo-tab{
+  height:30px;padding:0 14px;border-radius:9999px;font-size:12.5px;font-weight:600;
+  color:#8B97AD;border:1px solid #28344E;transition:all .2s var(--ease-out);
+}
+.demo-tab:hover{color:#fff;border-color:#3D4C6E}
+.demo-tab[aria-selected="true"]{background:#2563EB;border-color:#2563EB;color:#fff;box-shadow:0 4px 14px rgba(37,99,235,.4)}
+.demo-note{margin-left:auto;font-size:11.5px;color:#646E82}
+
+/* ————— Каркас приложения ————— */
+.app{display:flex;min-height:calc(100vh - 50px)}
+.side{
+  width:198px;flex-shrink:0;background:var(--sidebar-bg-gradient);padding:16px 10px;
+  display:flex;flex-direction:column;gap:2px;
+}
+.side .logo{display:flex;align-items:center;gap:8px;padding:4px 8px 16px;color:#fff;font-weight:700;font-size:15px}
+.side .logo span.mark{width:26px;height:26px;border-radius:8px;background:var(--grad-hero);display:grid;place-items:center;font-size:12px}
+.side a{
+  display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;
+  color:var(--sidebar-text);font-size:13px;text-decoration:none;transition:all .15s;
+}
+.side a:hover{background:var(--sidebar-hover-bg);color:#fff}
+.side a.on{background:var(--sidebar-active-bg);color:#fff;font-weight:600}
+.side a.on svg{color:var(--sidebar-accent-bright)}
+.side .grp{padding:14px 10px 5px;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#5D6986}
+.main{flex:1;min-width:0;padding:14px 16px 60px}
+
+/* ————— Общие атомы ————— */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:var(--shadow-sm)}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;white-space:nowrap;
+  border:1px solid var(--border);border-radius:var(--r-chip);background:var(--surface);
+  font-size:12.5px;font-weight:500;color:var(--text-muted);transition:all .2s var(--ease-out);
+}
+.pill:hover{border-color:var(--primary-border);background:var(--primary-softer);color:var(--primary-pressed)}
+.pill.on{background:var(--primary-hover);border-color:var(--primary);color:#fff;box-shadow:var(--shadow-brand)}
+.pill.on .meta{color:rgba(255,255,255,.9)}
+.pill .meta{font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.pill.strong{font-weight:600}
+.btn-primary{
+  display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:var(--r-chip);
+  background:var(--primary);color:#fff;font-size:12.5px;font-weight:600;box-shadow:var(--shadow-brand);
+  transition:all .2s var(--ease-out);
+}
+.btn-primary:hover{background:var(--primary-hover);transform:translateY(-1px)}
+.in{color:var(--success-text)} .out{color:var(--error)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600}
+.chip.in{background:var(--success-bg);color:var(--success-text)}
+.chip.out{background:var(--error-bg);color:var(--error-text)}
+.chip.auto{background:var(--info-bg);color:var(--info-text)}
+.muted{color:var(--text-muted)} .subtle{color:var(--text-subtle)}
+table{width:100%;border-collapse:collapse}
+th{
+  padding:9px 14px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--text-subtle);background:rgba(228,231,236,.5);border-bottom:1px solid var(--border);
+}
+td{padding:9px 14px;font-size:13px;border-bottom:1px solid var(--border)}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--primary-softer)}
+.num{text-align:right;font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sec-title{font-size:15px;font-weight:600}
+
+/* ————— Комментарий-выноска дизайнера ————— */
+.crit{
+  display:flex;gap:9px;align-items:flex-start;padding:10px 14px;border-radius:12px;font-size:12.5px;line-height:1.5;
+  background:#FFF7ED;border:1px solid #FED7AA;color:#7C2D12;margin-bottom:12px;
+}
+.crit.good{background:#ECFDF5;border-color:#A7F3D0;color:#065F46}
+.crit b{font-weight:600}
+
+/* ————— Вариант «Зараз» ————— */
+.hero{position:relative;overflow:hidden;border-radius:var(--r-card);padding:14px 20px;background:var(--grad-hero)}
+.hero .orb{position:absolute;right:-48px;top:-64px;width:176px;height:176px;border-radius:50%;background:rgba(255,255,255,.45);filter:blur(48px);opacity:.4}
+.hero-stat{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:9999px;background:rgba(255,255,255,.12);backdrop-filter:blur(8px)}
+
+/* ————— A: карточки счетов ————— */
+.acc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:10px}
+.acc{
+  position:relative;text-align:left;padding:13px 15px;border-radius:var(--r-card);border:1px solid var(--border);
+  background:var(--surface);box-shadow:var(--shadow-xs);transition:all .2s var(--ease-out);overflow:hidden;
+}
+.acc:hover{box-shadow:var(--shadow-sm);transform:translateY(-2px);border-color:var(--primary-border)}
+.acc.on{border-color:var(--primary);box-shadow:var(--shadow-brand)}
+.acc.on::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--primary)}
+.acc .ttl{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--text-muted)}
+.acc .sum{margin-top:7px;font-family:"JetBrains Mono",monospace;font-size:20px;font-weight:700;letter-spacing:-.02em}
+.acc .dl{margin-top:5px;font-size:11.5px;font-weight:600}
+.acc .spark{position:absolute;right:10px;bottom:8px;opacity:.55}
+.acc.total{background:linear-gradient(135deg,#F8FAFF,#EFF4FE);border-color:var(--primary-border)}
+
+/* ————— A: лента операций ————— */
+.day{border-bottom:1px solid var(--border)}
+.day:last-child{border-bottom:0}
+.day-h{
+  display:flex;align-items:center;gap:12px;padding:7px 16px;background:var(--surface-muted);
+  font-size:11.5px;font-weight:600;color:var(--text-muted);position:sticky;top:0;
+}
+.op{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(217,222,229,.6)}
+.op:last-child{border-bottom:0}
+.op:hover{background:var(--primary-softer)}
+.op .ico{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;flex-shrink:0}
+.op .ico.in{background:var(--success-bg);color:var(--success-text)}
+.op .ico.out{background:var(--error-bg);color:var(--error-text)}
+.op .desc{flex:1;min-width:0}
+.op .desc b{display:block;font-size:13px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op .desc small{font-size:11.5px;color:var(--text-subtle)}
+.op .amt{font-family:"JetBrains Mono",monospace;font-size:13.5px;font-weight:700;text-align:right;min-width:112px}
+.op .bal{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--text-subtle);text-align:right;min-width:104px}
+
+/* ————— A: меню отчётов ————— */
+.rep-menu{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:8px}
+.rep-item{
+  display:flex;gap:10px;align-items:flex-start;text-align:left;padding:11px 13px;border-radius:12px;
+  border:1px solid var(--border);background:var(--surface);transition:all .2s var(--ease-out);
+}
+.rep-item:hover{border-color:var(--primary-border);background:var(--primary-softer);transform:translateY(-1px)}
+.rep-item .ri{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;background:var(--primary-subtle);color:var(--primary-pressed)}
+.rep-item b{display:block;font-size:13px;font-weight:600}
+.rep-item small{display:block;margin-top:2px;font-size:11.5px;color:var(--text-subtle);line-height:1.4}
+
+/* ————— B: двухпанельный ————— */
+.two{display:flex;gap:14px;align-items:flex-start}
+.rail{width:222px;flex-shrink:0;padding:8px;border-radius:var(--r-card);background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+.rail .grp{padding:11px 10px 5px;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-subtle)}
+.rail button{
+  display:flex;width:100%;align-items:center;gap:8px;padding:7px 10px;border-radius:9px;
+  font-size:13px;color:var(--text-muted);text-align:left;transition:all .15s;
+}
+.rail button:hover{background:var(--primary-softer);color:var(--primary-pressed)}
+.rail button.on{background:var(--primary-subtle);color:var(--primary-pressed);font-weight:600}
+.rail button .rv{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:600;color:var(--text)}
+.rail button.on .rv{color:var(--primary-pressed)}
+.strip{display:flex;flex-wrap:wrap;border-radius:var(--r-card);background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);overflow:hidden}
+.strip>div{flex:1;min-width:150px;padding:11px 16px;border-right:1px solid var(--border)}
+.strip>div:last-child{border-right:0}
+.strip .k{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-subtle)}
+.strip .v{margin-top:4px;font-family:"JetBrains Mono",monospace;font-size:18px;font-weight:700;letter-spacing:-.02em}
+.dense td{padding:6px 14px;font-size:12.5px}
+.dense th{padding:7px 14px}
+
+/* ————— C: дашборд ————— */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.kpi{padding:13px 15px;border-radius:var(--r-card);background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-xs)}
+.kpi .k{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--text-muted)}
+.kpi .k i{width:24px;height:24px;border-radius:8px;display:grid;place-items:center}
+.kpi .v{margin-top:9px;font-family:"JetBrains Mono",monospace;font-size:21px;font-weight:700;letter-spacing:-.02em}
+.kpi .s{margin-top:4px;font-size:11.5px;color:var(--text-subtle)}
+.kpi.accent{background:var(--grad-hero);border-color:transparent;color:#fff}
+.kpi.accent .k,.kpi.accent .s{color:rgba(255,255,255,.8)}
+.kpi.accent .k i{background:rgba(255,255,255,.16)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:1080px){.two-col{grid-template-columns:1fr}}
+.bar-row{display:flex;align-items:center;gap:10px;padding:6px 0}
+.bar-row .nm{width:150px;flex-shrink:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-row .tr{flex:1;height:8px;border-radius:9999px;background:var(--surface-sunken);overflow:hidden}
+.bar-row .fl{height:100%;border-radius:9999px}
+.bar-row .vv{width:96px;text-align:right;font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:600}
+.seg{display:inline-flex;padding:3px;border-radius:var(--r-control);background:var(--surface-sunken);gap:2px}
+.seg button{padding:5px 13px;border-radius:9px;font-size:12.5px;font-weight:500;color:var(--text-muted);transition:all .15s}
+.seg button.on{background:var(--surface);color:var(--text);font-weight:600;box-shadow:var(--shadow-xs)}
+.hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <h1>Каса · демо</h1>
+  <div class="demo-tabs" id="tabs">
+    <button class="demo-tab" data-v="now">0 · Зараз</button>
+    <button class="demo-tab" data-v="a">A · Банк</button>
+    <button class="demo-tab" data-v="b">B · Бухгалтерія</button>
+    <button class="demo-tab" data-v="c">C · Дашборд</button>
+  </div>
+  <div class="demo-note">Дані вигадані. Токени кольору/шрифтів — справжні, з globals.css</div>
+</div>
+
+<div class="app">
+  <nav class="side">
+    <div class="logo"><span class="mark">Ю</span> ЮрКейс</div>
+    <a href="#"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Дашборд</a>
+    <a href="#"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/></svg>Справи</a>
+    <a href="#"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>Клієнти</a>
+    <a href="#"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v4M16 3v4M3 9h18M4 5h16v16H4z"/></svg>Календар</a>
+    <div class="grp">Гроші</div>
+    <a href="#" class="on"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v12H3z"/><path d="M3 11h18M16 15h2"/></svg>Каса</a>
+    <a href="#"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Зарплата</a>
+    <div class="grp">Система</div>
+    <a href="#"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z"/></svg>Налаштування</a>
+  </nav>
+  <main class="main" id="view"></main>
+</div>
+
+<script>
+/* ══════════ Данные (одни и те же во всех вариантах) ══════════ */
+const ACC = [
+  {id:'card', name:'Карта',   kind:'Картка',  bal:412300,  in:214500, out:98240,  spark:[30,34,31,38,42,40,46]},
+  {id:'bank', name:'Рахунок', kind:'Банк',    bal:806020,  in:498000, out:212800, spark:[52,49,55,58,54,62,68]},
+  {id:'cash', name:'Готівка', kind:'Готівка', bal:66000,   in:30000,  out:7200,   spark:[18,17,19,16,20,22,21]},
+];
+const TOTAL = ACC.reduce((s,a)=>s+a.bal,0);
+const T_IN  = ACC.reduce((s,a)=>s+a.in,0);
+const T_OUT = ACC.reduce((s,a)=>s+a.out,0);
+
+const OPS = [
+  {d:'2026-07-31', dir:'in',  amt:45000,  desc:'Оплата у справі 07/12/26',      sub:'Ковальчук О. В. · картка', auto:1, cs:'07/12/26'},
+  {d:'2026-07-31', dir:'out', amt:38000,  desc:'Оренда офісу, липень',           sub:'Стаття: Оренда'},
+  {d:'2026-07-29', dir:'out', amt:186400, desc:'Виплата зарплати за липень',     sub:'Стаття: Зарплата', auto:1},
+  {d:'2026-07-28', dir:'in',  amt:120000, desc:'Оплата у справі 05/03/26',       sub:'ТОВ «Дніпро-Буд» · банк', auto:1, cs:'05/03/26'},
+  {d:'2026-07-27', dir:'out', amt:12400,  desc:'Судовий збір',                   sub:'Справа 07/04/26', cs:'07/04/26'},
+  {d:'2026-07-24', dir:'in',  amt:30000,  desc:'Оплата у справі 06/18/26',       sub:'Мельник І. П. · готівка', auto:1, cs:'06/18/26'},
+  {d:'2026-07-22', dir:'out', amt:44200,  desc:'Податки: ЄП + ЄСВ за II квартал',sub:'Стаття: Податки'},
+  {d:'2026-07-19', dir:'in',  amt:85000,  desc:'Оплата у справі 04/09/26',       sub:'ФОП Гриценко · банк', auto:1, cs:'04/09/26'},
+  {d:'2026-07-15', dir:'out', amt:3240,   desc:'Зв\'язок та інтернет',           sub:'Стаття: Зв\'язок'},
+  {d:'2026-07-11', dir:'in',  amt:62500,  desc:'Оплата у справі 03/22/26',       sub:'Бондаренко А. · картка', auto:1, cs:'03/22/26'},
+];
+const DAYS = [
+  {d:'2026-07-31', op:1231060, i:45000,  o:38000,  c:1238060},
+  {d:'2026-07-29', op:1372460, i:0,      o:186400, c:1186060},
+  {d:'2026-07-28', op:1264860, i:120000, o:0,      c:1384860},
+  {d:'2026-07-27', op:1277260, i:0,      o:12400,  c:1264860},
+  {d:'2026-07-24', op:1247260, i:30000,  o:0,      c:1277260},
+  {d:'2026-07-22', op:1291460, i:0,      o:44200,  c:1247260},
+  {d:'2026-07-19', op:1206460, i:85000,  o:0,      c:1291460},
+  {d:'2026-07-15', op:1209700, i:0,      o:3240,   c:1206460},
+];
+const INCOME = [
+  {n:'ТОВ «Дніпро-Буд»', v:120000}, {n:'ФОП Гриценко', v:85000},
+  {n:'Бондаренко А. С.', v:62500},  {n:'Ковальчук О. В.', v:45000}, {n:'Мельник І. П.', v:30000},
+];
+const SPEND = [
+  {n:'Зарплата', v:186400}, {n:'Податки', v:44200}, {n:'Оренда', v:38000},
+  {n:'Судовий збір', v:12400}, {n:'Зв\'язок', v:3240},
+];
+const FLOW = [
+  {m:'Лют', i:410, o:265}, {m:'Бер', i:520, o:300}, {m:'Кві', i:480, o:340},
+  {m:'Тра', i:610, o:290}, {m:'Чер', i:555, o:410}, {m:'Лип', i:742, o:318},
+];
+const REPORTS = [
+  ['Оборотка',   'Скільки було, прийшло, пішло і лишилось — по кожному рахунку'],
+  ['Динаміка',   'Рух грошей по місяцях: стовпчики приходу й видатку'],
+  ['Доходи',     'Звідки прийшли гроші: за справами, клієнтами, юристами'],
+  ['Витрати',    'Куди пішли гроші: за статтями, по справах і загальні'],
+  ['За справами','Прибутковість: дохід мінус витрати по кожній справі'],
+  ['Підсумок',   'Одна сторінка: заробили, витратили, лишилось'],
+  ['Реєстр',     'Усі операції списком — для звірки з банком'],
+];
+
+/* ══════════ Хелперы ══════════ */
+const M  = n => n.toLocaleString('uk-UA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const M0 = n => n.toLocaleString('uk-UA',{maximumFractionDigits:0});
+const DT = s => { const [y,m,d]=s.split('-'); return d+'.'+m+'.'+y; };
+const MN = ['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
+const DW = ['неділя','понеділок','вівторок','середа','четвер','пʼятниця','субота'];
+const DL = s => { const dt=new Date(s); return +s.slice(8)+' '+MN[+s.slice(5,7)-1]+', '+DW[dt.getDay()]; };
+const ico = {
+  in:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 7 7 17M7 8v9h9"/></svg>',
+  out:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17 17 7M17 16V7H8"/></svg>',
+  wallet:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v12H3z"/><path d="M3 11h18M16 15h2"/></svg>',
+  doc:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></svg>',
+  cal:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v4M16 3v4M3 9h18M4 5h16v16H4z"/></svg>',
+  down:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>',
+  plus:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>',
+  gear:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14.6H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>',
+  print:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z"/></svg>',
+  xls:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4M4 19h16"/></svg>',
+};
+const spark = (pts,color) => {
+  const max=Math.max(...pts), min=Math.min(...pts), rng=(max-min)||1;
+  const d=pts.map((p,i)=>`${i*11},${26-((p-min)/rng)*20}`).join(' ');
+  return `<svg class="spark" width="${(pts.length-1)*11+2}" height="28" fill="none"><polyline points="${d}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+};
+
+/* ══════════ 0 · КАК СЕЙЧАС ══════════ */
+function viewNow(){
+  return `
+  <div class="crit">
+    <span>⚠</span><div><b>Так виглядає зараз.</b> Одинадцять вкладок в один ряд: три рахунки з сумами
+    і вісім звітів однаковими пігулками. Нижче ті самі дані двічі — таблиця по днях і журнал операцій.</div>
+  </div>
+
+  <div class="hero">
+    <div class="orb"></div>
+    <div style="position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:20px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.15);display:grid;place-items:center;color:#fff">${ico.wallet}</span>
+        <div>
+          <p style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.75)">Загальний баланс</p>
+          <p class="mono" style="margin-top:4px;font-size:26px;font-weight:700;color:#fff;letter-spacing:-.02em">${M(TOTAL)} ₴
+            <span style="font-family:'IBM Plex Sans';font-size:11.5px;font-weight:500;color:rgba(255,255,255,.7)">3 рахунки · UAH</span></p>
+        </div>
+      </div>
+      <div style="margin-left:auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <span class="hero-stat"><span style="width:20px;height:20px;border-radius:6px;background:rgba(209,250,229,.9);color:#047857;display:grid;place-items:center">${ico.in}</span>
+          <span style="font-size:10.5px;font-weight:600;text-transform:uppercase;color:rgba(255,255,255,.8)">Надходження</span>
+          <span class="mono" style="font-size:15px;font-weight:700;color:#fff">+${M0(T_IN)}</span></span>
+        <span class="hero-stat"><span style="width:20px;height:20px;border-radius:6px;background:rgba(254,226,226,.9);color:#B91C1C;display:grid;place-items:center">${ico.out}</span>
+          <span style="font-size:10.5px;font-weight:600;text-transform:uppercase;color:rgba(255,255,255,.8)">Видаток</span>
+          <span class="mono" style="font-size:15px;font-weight:700;color:#fff">−${M0(T_OUT)}</span></span>
+        <span class="pill" style="background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#fff">${ico.cal} Липень 2026 ${ico.down}</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin:14px 0">
+    ${ACC.map((a,i)=>`<button class="pill ${i===0?'on':''}">${a.name} <span style="opacity:.45">·</span> <span class="meta">${M(a.bal)} ₴</span></button>`).join('')}
+    <button class="pill strong">Зведення</button>
+    <button class="pill strong">Витрати</button>
+    <button class="pill strong">За справами</button>
+    <button class="pill strong">Оборотка</button>
+    <button class="pill strong">Динаміка</button>
+    <button class="pill strong">Доходи</button>
+    <button class="pill strong">Підсумок</button>
+    <button class="pill strong">Реєстр</button>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="pill">${ico.plus} Витрата</button>
+      <button class="pill">${ico.plus} Надходження</button>
+      <button class="pill">${ico.gear} Рахунки ${ico.down}</button>
+    </span>
+  </div>
+
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>Дата</th><th class="num">Залишок на початок</th><th class="num">Надходження</th><th class="num">Видаток</th><th class="num">Залишок на кінець</th></tr></thead>
+      <tbody>${DAYS.map(r=>`<tr>
+        <td class="mono" style="font-size:12px">${r.d}</td>
+        <td class="num muted">${M(r.op)}</td>
+        <td class="num in">${r.i?'+'+M(r.i):'—'}</td>
+        <td class="num out">${r.o?'−'+M(r.o):'—'}</td>
+        <td class="num" style="font-weight:700">${M(r.c)}</td></tr>`).join('')}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;gap:24px;padding:11px 16px;border-top:1px solid var(--border);background:rgba(228,231,236,.5);font-size:13px">
+      <span class="muted">Надходження <b class="mono in">+${M(T_IN)} ₴</b></span>
+      <span class="muted">Видаток <b class="mono out">−${M(T_OUT)} ₴</b></span>
+      <span class="muted">Чиста зміна <b class="mono in">+${M(T_IN-T_OUT)} ₴</b></span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px;overflow:hidden">
+    <div class="card-h"><h3 class="sec-title">Операції за період</h3>
+      <span style="padding:3px 10px;border-radius:9999px;background:var(--surface-sunken);font-size:11.5px;font-weight:600">${OPS.length}</span></div>
+    ${OPS.map(o=>`<div style="display:flex;align-items:center;gap:12px;padding:8px 16px;border-bottom:1px solid var(--border)">
+      <span class="mono subtle" style="font-size:12px">${o.d}</span>
+      <span class="chip ${o.dir}">${ico[o.dir]} ${o.dir==='in'?'Надходження':'Видаток'}</span>
+      <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.desc}</span>
+      ${o.cs?`<span class="mono" style="font-size:12px;color:var(--primary)">🔗 ${o.cs}</span>`:''}
+      ${o.auto?'<span class="chip auto">авто</span>':''}
+      <span class="mono ${o.dir}" style="font-size:13px;font-weight:700">${o.dir==='in'?'+':'−'}${M(o.amt)}</span>
+    </div>`).join('')}
+  </div>`;
+}
+
+/* ══════════ A · БАНК ══════════ */
+function viewA(){
+  const byDay = {};
+  OPS.forEach(o=>{ (byDay[o.d] ||= []).push(o); });
+  const dayBal = Object.fromEntries(DAYS.map(d=>[d.d,d.c]));
+
+  return `
+  <div class="crit good">
+    <span>✓</span><div><b>A · «Банк».</b> Рахунки — картками зверху (видно все й одразу, клік перемикає).
+    Замість таблиці + журналу — одна стрічка операцій з наскрізним залишком праворуч. Звіти сховані
+    за одну кнопку і підписані людською мовою.</div>
+  </div>
+
+  <div class="hd">
+    <h2 style="font-size:19px;font-weight:700">Каса</h2>
+    <span class="pill" style="pointer-events:none">${ico.cal} Липень 2026 ${ico.down}</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="pill">${ico.plus} Витрата</button>
+      <button class="pill">${ico.plus} Надходження</button>
+      <button class="btn-primary">${ico.doc} Звіти ${ico.down}</button>
+    </span>
+  </div>
+
+  <div class="acc-grid" style="margin-bottom:12px">
+    ${ACC.map((a,i)=>`<button class="acc ${i===0?'on':''}">
+      <span class="ttl">${ico.wallet} ${a.name} <span style="font-weight:500;color:var(--text-subtle)">· ${a.kind}</span></span>
+      <div class="sum">${M(a.bal)} ₴</div>
+      <div class="dl"><span class="in">+${M0(a.in)}</span> <span class="subtle">/</span> <span class="out">−${M0(a.out)}</span>
+        <span class="subtle" style="font-weight:500"> за липень</span></div>
+      ${spark(a.spark, i===0?'#2563EB':'#94A3B8')}
+    </button>`).join('')}
+    <button class="acc total">
+      <span class="ttl" style="color:var(--primary-pressed)">Усі рахунки</span>
+      <div class="sum" style="color:var(--primary-pressed)">${M(TOTAL)} ₴</div>
+      <div class="dl"><span class="in">+${M0(T_IN)}</span> <span class="subtle">/</span> <span class="out">−${M0(T_OUT)}</span>
+        <span class="subtle" style="font-weight:500"> чисто +${M0(T_IN-T_OUT)}</span></div>
+    </button>
+  </div>
+
+  <div class="card" style="overflow:hidden;margin-bottom:12px">
+    <div class="card-h">
+      <div><h3 class="sec-title">Рух коштів · Карта</h3>
+        <p style="margin-top:2px;font-size:12px;color:var(--text-subtle)">Залишок на початок липня — <span class="mono">1 209 700,00 ₴</span></p></div>
+      <div class="seg"><button class="on">Усі</button><button>Надходження</button><button>Видаток</button></div>
+    </div>
+    ${Object.keys(byDay).map(d=>`
+      <div class="day">
+        <div class="day-h"><span>${DL(d)}</span>
+          <span style="margin-left:auto" class="mono">Залишок на кінець дня: <b style="color:var(--text)">${M(dayBal[d]||0)} ₴</b></span></div>
+        ${byDay[d].map(o=>`<div class="op">
+          <span class="ico ${o.dir}">${ico[o.dir]}</span>
+          <span class="desc"><b>${o.desc}</b><small>${o.sub}${o.auto?' · <span style="color:var(--info-text)">авто</span>':''}</small></span>
+          <span class="amt ${o.dir}">${o.dir==='in'?'+':'−'}${M(o.amt)}</span>
+          <span class="bal">${M(dayBal[d]||0)}</span>
+        </div>`).join('')}
+      </div>`).join('')}
+    <div style="display:flex;justify-content:flex-end;gap:24px;padding:11px 16px;border-top:1px solid var(--border);background:rgba(228,231,236,.5);font-size:13px">
+      <span class="muted">За липень: <b class="mono in">+${M(T_IN)}</b> <span class="subtle">/</span> <b class="mono out">−${M(T_OUT)}</b>
+        <span class="subtle">→</span> <b class="mono in">+${M(T_IN-T_OUT)} ₴</b></span>
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px 16px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <h3 class="sec-title">Звіти за липень 2026</h3>
+      <span class="subtle" style="font-size:12px">— так виглядає меню під кнопкою «Звіти»</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="pill">${ico.xls} Excel</button><button class="pill">${ico.print} Друк / PDF</button></span>
+    </div>
+    <div class="rep-menu">
+      ${REPORTS.map(([n,d])=>`<button class="rep-item"><span class="ri">${ico.doc}</span><span><b>${n}</b><small>${d}</small></span></button>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ══════════ B · БУХГАЛТЕРИЯ ══════════ */
+function viewB(){
+  return `
+  <div class="crit good">
+    <span>✓</span><div><b>B · «Бухгалтерія».</b> Той самий master–detail, що вже зроблено в Налаштуваннях:
+    ліворуч рейка розділів трьома групами (рахунки / гроші / звіти) з сумами, праворуч — щільна таблиця.
+    Жодних 11 пігулок: розділи читаються згори вниз списком.</div>
+  </div>
+
+  <div class="hd">
+    <h2 style="font-size:19px;font-weight:700">Каса</h2>
+    <span class="pill" style="pointer-events:none">${ico.cal} Липень 2026 ${ico.down}</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="pill">${ico.plus} Витрата</button>
+      <button class="pill">${ico.plus} Надходження</button>
+      <button class="pill">${ico.xls} Excel</button>
+      <button class="pill">${ico.print} Друк</button>
+    </span>
+  </div>
+
+  <div class="strip" style="margin-bottom:12px">
+    <div><div class="k">Залишок на сьогодні</div><div class="v">${M(TOTAL)} ₴</div></div>
+    <div><div class="k">Надійшло за липень</div><div class="v in">+${M(T_IN)}</div></div>
+    <div><div class="k">Витрачено</div><div class="v out">−${M(T_OUT)}</div></div>
+    <div><div class="k">Чиста зміна</div><div class="v in">+${M(T_IN-T_OUT)}</div></div>
+  </div>
+
+  <div class="two">
+    <aside class="rail">
+      <div class="grp">Рахунки</div>
+      ${ACC.map((a,i)=>`<button class="${i===0?'on':''}">${a.name}<span class="rv">${M0(a.bal)}</span></button>`).join('')}
+      <button>Зведення<span class="rv">${M0(TOTAL)}</span></button>
+      <div class="grp">Гроші</div>
+      <button>Доходи<span class="rv in">+${M0(T_IN)}</span></button>
+      <button>Витрати<span class="rv out">−${M0(T_OUT)}</span></button>
+      <button>Прибутковість справ</button>
+      <div class="grp">Звіти за період</div>
+      <button>Оборотно-сальдова</button>
+      <button>Рух по місяцях</button>
+      <button>Фінансовий підсумок</button>
+      <button>Реєстр операцій</button>
+    </aside>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:12px">
+      <div class="card" style="overflow:hidden">
+        <div class="card-h">
+          <div><h3 class="sec-title">Карта · рух за липень 2026</h3>
+            <p style="margin-top:2px;font-size:12px;color:var(--text-subtle)">Залишок на початок — <span class="mono">1 209 700,00 ₴</span> · відкрито 27.07.2025</p></div>
+          <div class="seg"><button class="on">По днях</button><button>Операції</button></div>
+        </div>
+        <table class="dense">
+          <thead><tr><th>Дата</th><th class="num">На початок</th><th class="num">Надходження</th><th class="num">Видаток</th><th class="num">На кінець</th></tr></thead>
+          <tbody>${DAYS.map(r=>`<tr>
+            <td class="mono" style="font-size:12px">${DT(r.d)}</td>
+            <td class="num muted">${M(r.op)}</td>
+            <td class="num in">${r.i?'+'+M(r.i):'—'}</td>
+            <td class="num out">${r.o?'−'+M(r.o):'—'}</td>
+            <td class="num" style="font-weight:700">${M(r.c)}</td></tr>`).join('')}
+            <tr style="background:rgba(228,231,236,.5)">
+              <td style="font-weight:700">Разом</td><td class="num muted">—</td>
+              <td class="num in" style="font-weight:700">+${M(T_IN)}</td>
+              <td class="num out" style="font-weight:700">−${M(T_OUT)}</td>
+              <td class="num" style="font-weight:700">${M(TOTAL)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="overflow:hidden">
+        <div class="card-h"><h3 class="sec-title">Операції за липень</h3>
+          <span class="subtle" style="font-size:12px">${OPS.length} записів · клік по рядку відкриє справу або витрату</span></div>
+        <table class="dense">
+          <thead><tr><th style="width:88px">Дата</th><th>Опис</th><th>Справа</th><th class="num">Сума</th><th class="num" style="width:130px">Залишок</th></tr></thead>
+          <tbody>${OPS.map((o,i)=>`<tr>
+            <td class="mono subtle" style="font-size:12px">${DT(o.d)}</td>
+            <td>${o.desc} ${o.auto?'<span class="chip auto" style="margin-left:4px">авто</span>':''}<div class="subtle" style="font-size:11.5px">${o.sub}</div></td>
+            <td class="mono" style="font-size:12px;color:var(--primary)">${o.cs||'<span class="subtle">—</span>'}</td>
+            <td class="num ${o.dir}" style="font-weight:700">${o.dir==='in'?'+':'−'}${M(o.amt)}</td>
+            <td class="num subtle">${M(DAYS[Math.min(i,DAYS.length-1)].c)}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ══════════ C · ДАШБОРД ══════════ */
+function viewC(){
+  const fmax = Math.max(...FLOW.flatMap(f=>[f.i,f.o]));
+  const inMax = Math.max(...INCOME.map(x=>x.v));
+  const spMax = Math.max(...SPEND.map(x=>x.v));
+  return `
+  <div class="crit good">
+    <span>✓</span><div><b>C · «Дашборд».</b> Каса відкривається не журналом, а відповіддю на головне
+    питання: скільки є, скільки прийшло, куди пішло, як рухалось по місяцях. Журнал і звіти —
+    другим кроком, з підсумків у них можна провалитись.</div>
+  </div>
+
+  <div class="hd">
+    <h2 style="font-size:19px;font-weight:700">Каса</h2>
+    <div class="seg"><button class="on">Огляд</button><button>Операції</button><button>Звіти</button></div>
+    <span class="pill" style="pointer-events:none;margin-left:4px">${ico.cal} Липень 2026 ${ico.down}</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="pill">${ico.plus} Витрата</button>
+      <button class="btn-primary">${ico.plus} Надходження</button></span>
+  </div>
+
+  <div class="kpi-grid" style="margin-bottom:12px">
+    <div class="kpi accent"><div class="k"><i>${ico.wallet}</i> Зараз на рахунках</div>
+      <div class="v">${M(TOTAL)} ₴</div><div class="s">3 рахунки · станом на 03.08.2026</div></div>
+    <div class="kpi"><div class="k"><i style="background:var(--success-bg);color:var(--success-text)">${ico.in}</i> Надійшло</div>
+      <div class="v in">+${M0(T_IN)} ₴</div><div class="s">10 оплат клієнтів</div></div>
+    <div class="kpi"><div class="k"><i style="background:var(--error-bg);color:var(--error-text)">${ico.out}</i> Витрачено</div>
+      <div class="v out">−${M0(T_OUT)} ₴</div><div class="s">зарплата 186 400 · решта 131 840</div></div>
+    <div class="kpi"><div class="k"><i style="background:var(--primary-subtle);color:var(--primary-pressed)">${ico.doc}</i> Чистий потік</div>
+      <div class="v in">+${M0(T_IN-T_OUT)} ₴</div><div class="s">на 18% більше, ніж у червні</div></div>
+  </div>
+
+  <div class="card" style="padding:16px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <h3 class="sec-title">Рух коштів по місяцях</h3>
+      <span style="display:flex;gap:12px;margin-left:auto;font-size:11.5px;color:var(--text-muted)">
+        <span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--success)"></i> надходження</span>
+        <span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--error)"></i> видаток</span>
+        <span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--primary)"></i> чистий потік</span></span>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:22px;height:168px;padding-bottom:22px;position:relative">
+      ${FLOW.map(f=>`<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;height:100%;position:relative">
+        <div style="display:flex;gap:5px;align-items:flex-end;height:100%;width:100%;justify-content:center">
+          <div style="width:26%;height:${f.i/fmax*100}%;background:linear-gradient(180deg,#34D399,#10B981);border-radius:5px 5px 0 0" title="+${f.i} тис."></div>
+          <div style="width:26%;height:${f.o/fmax*100}%;background:linear-gradient(180deg,#F87171,#DC2626);border-radius:5px 5px 0 0" title="−${f.o} тис."></div>
+        </div>
+        <span style="position:absolute;bottom:-20px;font-size:11.5px;color:var(--text-subtle);font-weight:500">${f.m}</span>
+      </div>`).join('')}
+      <svg style="position:absolute;inset:0 0 22px 0;width:100%;height:calc(100% - 22px);pointer-events:none" preserveAspectRatio="none" viewBox="0 0 ${FLOW.length*100} 100">
+        <polyline fill="none" stroke="#2563EB" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"
+          points="${FLOW.map((f,i)=>`${i*100+50},${100-((f.i-f.o)/fmax*100)}`).join(' ')}"/>
+        ${FLOW.map((f,i)=>`<circle cx="${i*100+50}" cy="${100-((f.i-f.o)/fmax*100)}" r="3" fill="#fff" stroke="#2563EB" stroke-width="2" vector-effect="non-scaling-stroke"/>`).join('')}
+      </svg>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-bottom:12px">
+    <div class="card" style="padding:14px 16px">
+      <div style="display:flex;align-items:center;margin-bottom:8px">
+        <h3 class="sec-title">Звідки прийшли гроші</h3>
+        <button class="subtle" style="margin-left:auto;font-size:12px;color:var(--primary)">За справами ${ico.down}</button></div>
+      ${INCOME.map(x=>`<div class="bar-row"><span class="nm">${x.n}</span>
+        <span class="tr"><span class="fl" style="width:${x.v/inMax*100}%;background:linear-gradient(90deg,#34D399,#10B981)"></span></span>
+        <span class="vv in">+${M0(x.v)}</span></div>`).join('')}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;color:var(--text-subtle)">
+        Рахується за оплатами у справах — тому сума відрізняється від обороту рахунків.</div>
+    </div>
+    <div class="card" style="padding:14px 16px">
+      <div style="display:flex;align-items:center;margin-bottom:8px">
+        <h3 class="sec-title">Куди пішли гроші</h3>
+        <button class="subtle" style="margin-left:auto;font-size:12px;color:var(--primary)">За статтями ${ico.down}</button></div>
+      ${SPEND.map(x=>`<div class="bar-row"><span class="nm">${x.n}</span>
+        <span class="tr"><span class="fl" style="width:${x.v/spMax*100}%;background:linear-gradient(90deg,#FB923C,#DC2626)"></span></span>
+        <span class="vv out">−${M0(x.v)}</span></div>`).join('')}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;color:var(--text-subtle)">
+        Зарплата — 59% усіх витрат періоду.</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card" style="overflow:hidden">
+      <div class="card-h"><h3 class="sec-title">Рахунки</h3>
+        <button style="font-size:12px;color:var(--primary)">Керувати</button></div>
+      ${ACC.map(a=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)">
+        <span style="width:30px;height:30px;border-radius:9px;background:var(--primary-subtle);color:var(--primary-pressed);display:grid;place-items:center">${ico.wallet}</span>
+        <span style="flex:1"><b style="font-size:13px;font-weight:600">${a.name}</b><br><small class="subtle" style="font-size:11.5px">${a.kind}</small></span>
+        <span style="text-align:right"><b class="mono" style="font-size:14px;font-weight:700">${M(a.bal)} ₴</b><br>
+          <small class="mono" style="font-size:11px"><span class="in">+${M0(a.in)}</span> <span class="subtle">/</span> <span class="out">−${M0(a.out)}</span></small></span>
+      </div>`).join('')}
+    </div>
+    <div class="card" style="overflow:hidden">
+      <div class="card-h"><h3 class="sec-title">Останні операції</h3>
+        <button style="font-size:12px;color:var(--primary)">Усі операції →</button></div>
+      ${OPS.slice(0,5).map(o=>`<div class="op" style="padding:9px 16px">
+        <span class="ico ${o.dir}">${ico[o.dir]}</span>
+        <span class="desc"><b>${o.desc}</b><small>${DT(o.d)} · ${o.sub}</small></span>
+        <span class="amt ${o.dir}" style="min-width:98px">${o.dir==='in'?'+':'−'}${M0(o.amt)}</span>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ══════════ Свитчер ══════════ */
+const VIEWS = {now:viewNow, a:viewA, b:viewB, c:viewC};
+const tabs = document.getElementById('tabs');
+const view = document.getElementById('view');
+function show(v){
+  view.innerHTML = VIEWS[v]();
+  [...tabs.children].forEach(b=>b.setAttribute('aria-selected', b.dataset.v===v));
+  window.scrollTo({top:0});
+  location.hash = v;
+}
+tabs.addEventListener('click', e=>{ const b=e.target.closest('.demo-tab'); if(b) show(b.dataset.v); });
+document.addEventListener('keydown', e=>{
+  const order=['now','a','b','c'];
+  if(e.key>='1'&&e.key<='4') show(order[+e.key-1]);
+});
+show(location.hash.slice(1) in VIEWS ? location.hash.slice(1) : 'now');
+</script>
+</body>
+</html>
