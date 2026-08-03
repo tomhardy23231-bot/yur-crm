@@ -106,6 +106,35 @@ export function buildAccountSaldo(
   return { rows, closingBalance };
 }
 
+// Накопительный остаток ПО ОПЕРАЦИЯМ (2026-08-03, каркас «Бухгалтерия»): журнал
+// показывает не только сумму операции, но и состояние счёта ПОСЛЕ неё. Считается
+// тем же ходом, что и разворот по дням, — от начального остатка вперёд по времени.
+//
+// Инвариант: у последней операции дня остаток равен `closing` этого дня в таблице
+// разворота. Иначе одна страница показывала бы два разных сальдо. Держится тем,
+// что обе функции идут по одним и тем же операциям в одном порядке.
+//
+// Операции раньше opening_date счёта в баланс НЕ входят (их влияние уже сидит в
+// opening_balance, см. entriesFromOpening) — передавать их сюда не нужно, в мапе
+// их не будет и журнал покажет прочерк.
+export function rollForwardEntries<T extends CashRawEntry & { id: string }>(
+  openingBalance: number,
+  entries: ReadonlyArray<T>,
+): Record<string, number> {
+  // Сортировка стабильна, поэтому операции одного дня сохраняют порядок выборки
+  // (entry_date asc, created_at asc) — тот же, в котором их печатает журнал.
+  const ordered = [...entries].sort((a, b) =>
+    a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0,
+  );
+  let running = round2(openingBalance);
+  const out: Record<string, number> = {};
+  for (const e of ordered) {
+    running = round2(running + (e.direction === 'in' ? e.amount : -e.amount));
+    out[e.id] = running;
+  }
+  return out;
+}
+
 // Остаток счёта на конец указанной даты (включительно): начальный + Σ(приход−расход)
 // по операциям с entry_date <= date. Нужен для листа Total (остаток каждого счёта на
 // конец дня) и для переноса между месяцами.

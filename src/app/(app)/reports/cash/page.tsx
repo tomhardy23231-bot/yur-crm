@@ -1,9 +1,7 @@
 
-import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
-
 import { requireAnyCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
-import { formatMoney, signedMoney } from '@/lib/utils';
+import { cn, formatMoney, signedMoney } from '@/lib/utils';
 import {
   getCashReportData,
   getCurrentBalances,
@@ -15,6 +13,7 @@ import {
   balanceAsOf,
   monthTotals,
   entriesFromOpening,
+  rollForwardEntries,
 } from '@/lib/cash/saldo';
 import type { CashEntryWithCase } from '@/lib/types/db';
 import { kyivToday, monthNamesFrom } from '@/lib/payroll/month';
@@ -130,6 +129,10 @@ export default async function CashReportPage({
     return {
       accountId: acc.id,
       rows,
+      // Остаток после каждой операции — колонка «Остаток» в журнале. Считаем из
+      // тех же accForBalance, что и разворот по дням, поэтому последняя операция
+      // дня всегда сходится с closing этого дня.
+      entryBalances: rollForwardEntries(opening, accForBalance),
       totals: monthTotals(rows),
       closingNow: balanceAsOf(opening, accForBalance, monthEnd),
       hasBeforeOpening: accAll.some((e) => e.entry_date < acc.opening_date),
@@ -188,75 +191,57 @@ export default async function CashReportPage({
     views.map((v) => [v.accountId, v.closingNow]),
   );
 
+  const heroNet = heroInflow - heroOutflow;
+
   return (
     <main className="flex flex-col gap-4 px-3 py-2 sm:px-4">
-      {/* Компактная полоса «Общий баланс» (2026-07-25, замечание владельца: шапка
-          съедала весь первый экран). Градиентный якорь оставлен, но в одну строку;
-          переключатель месяца переехал сюда — отдельная строка-подпись убрана. */}
-      {accounts.length > 0 ? (
+      {/* Шапка каркаса «Бухгалтерия» (2026-08-03): подпись периода + селектор.
+          Градиентная hero-полоса убрана — она занимала верх экрана ради одного
+          числа, а остальное место отдавала декору. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-text-muted">
+          {t.cash.report.subtitle} ·{' '}
+          <span className="font-medium text-text">{label}</span>
+        </p>
+        <PeriodPicker period={period} />
+      </div>
+
+      {/* Итоги периода одной строкой: сколько есть, пришло, ушло, чистое
+          изменение. Числа читаются слева направо, без иконок и подложек. */}
+      {accounts.length > 0 && (
         <section
           data-tour="cash-hero"
-          className="relative overflow-hidden rounded-card px-4 py-3.5 sm:px-5"
-          style={{ background: 'var(--grad-hero)' }}
+          className="flex flex-wrap overflow-hidden rounded-card border border-border bg-surface shadow-sm"
         >
-          {/* Декоративный размытый орб */}
-          <div
-            className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full opacity-40 blur-3xl"
-            style={{ background: 'rgba(255,255,255,0.45)' }}
-            aria-hidden="true"
+          <StatCell
+            label={t.cash.report.statBalance}
+            value={`${formatMoney(currentTotal)} ₴`}
+            note={`${plural(t.cash.report.accountsCount, accounts.length)} · UAH`}
           />
-
-          <div className="relative flex flex-wrap items-center gap-x-5 gap-y-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
-                <Wallet size={18} strokeWidth={2} className="text-white" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-[10.5px] font-semibold uppercase tracking-wide text-white/75">
-                  {t.cash.report.totalBalance}
-                </p>
-                <p className="mt-1 flex flex-wrap items-baseline gap-x-2 font-mono text-[26px] font-bold leading-none tracking-tight text-white tabular-nums">
-                  {formatMoney(currentTotal)} ₴
-                  <span className="font-sans text-[11.5px] font-medium tracking-normal text-white/70">
-                    {plural(t.cash.report.accountsCount, accounts.length)} · UAH
-                  </span>
-                </p>
-                {/* Смотрим прошлый месяц — показываем и остаток на его конец,
-                    иначе крупное число «на сегодня» путало бы. */}
-                {!isCurrentMonth && (
-                  <p className="mt-1.5 font-sans text-[11.5px] text-white/75">
-                    {t.cash.report.balanceAtMonthEnd}{' '}
-                    <span className="font-mono font-semibold tabular-nums text-white">
-                      {formatMoney(totalBalance)} ₴
-                    </span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <HeroStat
-                label={t.cash.report.monthInflow}
-                value={`${signedMoney(heroInflow, 'in')} ₴`}
-                tone="in"
-              />
-              <HeroStat
-                label={t.cash.report.monthOutflow}
-                value={`${signedMoney(heroOutflow, 'out')} ₴`}
-                tone="out"
-              />
-              <PeriodPicker period={period} />
-            </div>
-          </div>
+          <StatCell
+            label={t.cash.report.statInflow}
+            value={`${signedMoney(heroInflow, 'in')} ₴`}
+            tone="in"
+          />
+          <StatCell
+            label={t.cash.report.statOutflow}
+            value={`${signedMoney(heroOutflow, 'out')} ₴`}
+            tone="out"
+          />
+          <StatCell
+            label={t.cash.report.statNet}
+            value={`${signedMoney(heroNet)} ₴`}
+            tone={heroNet >= 0 ? 'in' : 'out'}
+          />
+          {/* Смотрим прошлый период — крупное «на сегодня» нужно пояснить
+              остатком на его конец, иначе числа выглядят противоречиво. */}
+          {!isCurrentMonth && (
+            <StatCell
+              label={t.cash.report.statAtPeriodEnd}
+              value={`${formatMoney(totalBalance)} ₴`}
+            />
+          )}
         </section>
-      ) : (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[13px] text-text-muted">
-            {t.cash.report.subtitle} ·{' '}
-            <span className="font-medium text-text">{label}</span>
-          </p>
-          <PeriodPicker period={period} />
-        </div>
       )}
 
       {canManage && (
@@ -301,37 +286,35 @@ export default async function CashReportPage({
   );
 }
 
-// Мини-стат месяца на стекле внутри полосы баланса.
-function HeroStat({
+// Ячейка полосы итогов: подпись сверху, число под ней. Ячейки делят строку
+// поровну и разделяются hairline'ом — без карточек, чтобы полоса читалась
+// как одна строка показателей, а не как четыре отдельных блока.
+function StatCell({
   label,
   value,
+  note,
   tone,
 }: {
   label: string;
   value: string;
-  tone: 'in' | 'out';
+  /** Подпись под числом — «3 рахунки · UAH». */
+  note?: string;
+  tone?: 'in' | 'out';
 }) {
-  const Icon = tone === 'in' ? ArrowDownLeft : ArrowUpRight;
   return (
-    <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 backdrop-blur-md">
-      <span
-        className={`flex h-5 w-5 items-center justify-center rounded-md ${
-          tone === 'in' ? 'bg-success-bg/90' : 'bg-error-bg/90'
-        }`}
-      >
-        <Icon
-          size={12}
-          strokeWidth={2.5}
-          className={tone === 'in' ? 'text-success-text' : 'text-error-text'}
-          aria-hidden="true"
-        />
-      </span>
-      <span className="text-[10.5px] font-semibold uppercase tracking-wide text-white/80">
+    <div className="min-w-[148px] flex-1 border-r border-border px-4 py-2.5 last:border-r-0">
+      <p className="text-[10.5px] font-semibold uppercase tracking-wide text-text-subtle">
         {label}
-      </span>
-      <span className="font-mono text-[15px] font-bold leading-none text-white tabular-nums">
+      </p>
+      <p
+        className={cn(
+          'mt-1 font-mono text-[18px] font-bold leading-none tracking-tight tabular-nums',
+          tone === 'in' ? 'text-success-text' : tone === 'out' ? 'text-error' : 'text-text',
+        )}
+      >
         {value}
-      </span>
+      </p>
+      {note && <p className="mt-1 text-[11px] text-text-subtle">{note}</p>}
     </div>
   );
 }

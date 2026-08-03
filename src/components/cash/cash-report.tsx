@@ -2,15 +2,14 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   Trash2,
   AlertTriangle,
   ArrowDownLeft,
   ArrowDownUp,
   ArrowUpRight,
-  ChevronDown,
   Link2,
-  Settings2,
   Wallet,
 } from 'lucide-react';
 
@@ -45,6 +44,7 @@ import { AddExpenseDialog } from '@/components/expenses/add-expense-dialog';
 import { CashEntryDialog } from './cash-entry-dialog';
 import { CashExpensesPanel } from './cash-expenses-panel';
 import { CashProfitPanel } from './cash-profit-panel';
+import { CashRail, type RailGroup } from './cash-rail';
 import { CashReportPanel } from './cash-report-panel';
 
 export type CashAccountView = {
@@ -63,9 +63,19 @@ export type CashAccountView = {
    * расчёта (2026-07-26: таблица показывала +27 000, журнал — 30 операций).
    */
   cutOff: { count: number; net: number };
+  /**
+   * Накопительный остаток счёта ПОСЛЕ каждой операции периода (entryId → остаток).
+   * Журнал показывает его колонкой «Остаток»: сумму операции видно и так, а вот
+   * состояние счёта после неё раньше приходилось считать в уме. Операций раньше
+   * opening_date здесь нет — они в сальдо не входят (в журнале будет прочерк).
+   */
+  entryBalances: Record<string, number>;
 };
 
 const TOTAL_TAB = '__total__';
+// Управление счетами — такой же раздел рейки, а не кнопка-раскрывашка в шапке
+// (каркас «Бухгалтерия», 2026-08-03): настройка счетов живёт там же, где сами счета.
+const ACCOUNTS_TAB = '__accounts__';
 // Вкладка «По делам» — прибыльность (дохід/витрати/маржа). Живёт здесь, а не
 // отдельным пунктом меню: владелец (2026-07-24) — «всё про деньги в одном месте».
 const PROFIT_TAB = '__profit__';
@@ -150,8 +160,37 @@ export function CashReport({
   period?: Period;
 }) {
   const { t } = useI18n();
-  const [tab, setTab] = useState<string>(accounts[0]?.id ?? TOTAL_TAB);
-  const [showAccounts, setShowAccounts] = useState(false);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Раздел живёт в URL (?tab=) — ссылку на «оборотку за квартал» можно переслать.
+  // Переключение при этом НЕ ходит на сервер: все данные разделов уже пришли
+  // пропсами, поэтому состояние держим локально, а адресную строку правим
+  // history.replaceState. router.push здесь означал бы полный ре-рендер страницы
+  // (11 запросов в Promise.all) ради переключения вкладки.
+  const known = new Set<string>([
+    ...accounts.map((a) => a.id),
+    TOTAL_TAB,
+    ACCOUNTS_TAB,
+    EXPENSES_TAB,
+    PROFIT_TAB,
+    TURNOVER_TAB,
+    FLOW_TAB,
+    INCOME_TAB,
+    SUMMARY_TAB,
+    REGISTRY_TAB,
+  ]);
+  const fromUrl = searchParams.get('tab');
+  const [tab, setTab] = useState<string>(
+    fromUrl && known.has(fromUrl) ? fromUrl : (accounts[0]?.id ?? TOTAL_TAB),
+  );
+
+  const selectTab = (id: string) => {
+    setTab(id);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', id);
+    window.history.replaceState(null, '', `${pathname}?${params.toString()}`);
+  };
 
   if (accounts.length === 0) {
     // Ни одного счёта: панель управления раскрыта сразу — иначе счёт негде завести.
@@ -178,6 +217,67 @@ export function CashReport({
     ? tab
     : activeAccounts[0]?.id;
 
+  // Разделы рейки. Суммы показываем ТОЛЬКО у счетов и свода: там источник один
+  // (движение по счетам). У «Доходов» деньги считаются по оплатам в делах —
+  // приписать им оборот кассы значило бы соврать (см. «два источника денег»).
+  const totalOfBalances = accounts.reduce(
+    (s, a) => s + (balances[a.id] ?? a.opening_balance),
+    0,
+  );
+  const groups: RailGroup[] = [
+    {
+      id: 'accounts',
+      title: t.cash.report.rail.groupAccounts,
+      items: [
+        ...accounts.map((a) => ({
+          id: a.id,
+          label: a.name,
+          meta: money(balances[a.id] ?? a.opening_balance),
+          note: a.is_active ? undefined : t.cash.accounts.inactiveBadge,
+        })),
+        { id: TOTAL_TAB, label: t.cash.report.tabTotal, meta: money(totalOfBalances) },
+        // Панель управления счетами — раздел, а не кнопка в шапке.
+        ...(accountsManager
+          ? [
+              {
+                id: ACCOUNTS_TAB,
+                label: t.cash.report.rail.manageAccounts,
+                dataTour: 'cash-accounts-btn',
+              },
+            ]
+          : []),
+      ],
+    },
+    {
+      id: 'money',
+      title: t.cash.report.rail.groupMoney,
+      items: [
+        ...(incomeDoc ? [{ id: INCOME_TAB, label: t.cash.reports.tabIncome }] : []),
+        ...(companyExpenses
+          ? [
+              {
+                id: EXPENSES_TAB,
+                label: t.cash.report.tabExpenses,
+                dataTour: 'cash-expenses-tab',
+              },
+            ]
+          : []),
+        ...(profitRows ? [{ id: PROFIT_TAB, label: t.cash.report.tabProfit }] : []),
+      ],
+    },
+    {
+      id: 'reports',
+      title: t.cash.report.rail.groupReports,
+      items: [
+        ...(turnoverDoc ? [{ id: TURNOVER_TAB, label: t.cash.reports.tabTurnover }] : []),
+        ...(flowDoc ? [{ id: FLOW_TAB, label: t.cash.reports.tabFlow }] : []),
+        ...(summaryDoc ? [{ id: SUMMARY_TAB, label: t.cash.reports.tabSummary }] : []),
+        ...(registryDoc ? [{ id: REGISTRY_TAB, label: t.cash.reports.tabRegistry }] : []),
+      ],
+    },
+    // Группа без прав на её данные не показывается вовсе.
+  ].filter((g) => g.items.length > 0);
+
   return (
     <div className="flex flex-col gap-4">
       {truncated && (
@@ -187,247 +287,109 @@ export function CashReport({
         </div>
       )}
 
-      {/* Шапка отчёта: вкладки счетов (с остатком) слева, действия справа.
-          Pill-чипы в языке пресетов /cases. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div
-          role="tablist"
-          data-tour="cash-tabs"
-          aria-label={t.cash.report.tabsAria}
-          className="flex flex-wrap items-center gap-2"
-        >
-          {accounts.map((a) => (
-            <TabButton
-              key={a.id}
-              active={tab === a.id}
-              onClick={() => setTab(a.id)}
-              meta={money(balances[a.id] ?? a.opening_balance)}
-            >
-              {a.name}
-              {!a.is_active && (
-                <span className="text-[10px] opacity-70">
-                  ({t.cash.accounts.inactiveBadge})
+      {/* Master–detail: рейка разделов слева, содержимое раздела справа. */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-start">
+        <CashRail
+          groups={groups}
+          active={tab}
+          onSelect={selectTab}
+          ariaLabel={t.cash.report.tabsAria}
+          mobileLabel={t.cash.report.rail.sectionLabel}
+        />
+
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {/* Действия раздела. Две кнопки вместо одной (2026-07-26): расход
+              вносится ТОЛЬКО формой со статьёй, иначе отчёт «куда ушло»
+              дырявый. Приход руками нужен редко (проценты банка) — оплаты
+              клиентов приходят сами. */}
+          {canManage && (expenseCategories.length > 0 || entryAccountId) && (
+            <div className="flex flex-wrap items-center gap-2 md:justify-end">
+              {expenseCategories.length > 0 && (
+                <span data-tour="cash-add-expense">
+                  <AddExpenseDialog
+                    categories={expenseCategories}
+                    accounts={accounts}
+                    canAddCategory={canAddCategory}
+                    variant="pill"
+                  />
                 </span>
               )}
-            </TabButton>
-          ))}
-          <TabButton active={tab === TOTAL_TAB} onClick={() => setTab(TOTAL_TAB)} strong>
-            {t.cash.report.tabTotal}
-          </TabButton>
-          {companyExpenses && (
-            <TabButton
-              dataTour="cash-expenses-tab"
-              active={tab === EXPENSES_TAB}
-              onClick={() => setTab(EXPENSES_TAB)}
-              strong
-            >
-              {t.cash.report.tabExpenses}
-            </TabButton>
-          )}
-          {profitRows && (
-            <TabButton
-              active={tab === PROFIT_TAB}
-              onClick={() => setTab(PROFIT_TAB)}
-              strong
-            >
-              {t.cash.report.tabProfit}
-            </TabButton>
-          )}
-          {/* Отчёты за период (2026-08-03). */}
-          {turnoverDoc && (
-            <TabButton
-              active={tab === TURNOVER_TAB}
-              onClick={() => setTab(TURNOVER_TAB)}
-              strong
-            >
-              {t.cash.reports.tabTurnover}
-            </TabButton>
-          )}
-          {flowDoc && (
-            <TabButton active={tab === FLOW_TAB} onClick={() => setTab(FLOW_TAB)} strong>
-              {t.cash.reports.tabFlow}
-            </TabButton>
-          )}
-          {incomeDoc && (
-            <TabButton active={tab === INCOME_TAB} onClick={() => setTab(INCOME_TAB)} strong>
-              {t.cash.reports.tabIncome}
-            </TabButton>
-          )}
-          {summaryDoc && (
-            <TabButton active={tab === SUMMARY_TAB} onClick={() => setTab(SUMMARY_TAB)} strong>
-              {t.cash.reports.tabSummary}
-            </TabButton>
-          )}
-          {registryDoc && (
-            <TabButton active={tab === REGISTRY_TAB} onClick={() => setTab(REGISTRY_TAB)} strong>
-              {t.cash.reports.tabRegistry}
-            </TabButton>
-          )}
-        </div>
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {/* Две кнопки вместо одной (2026-07-26): расход вносится ТОЛЬКО формой
-              со статьёй, иначе отчёт «куда ушло» дырявый. Приход руками нужен
-              редко (проценты банка) — оплаты клиентов приходят сами. */}
-          {canManage && expenseCategories.length > 0 && (
-            <span data-tour="cash-add-expense">
-              <AddExpenseDialog
-                categories={expenseCategories}
-                accounts={accounts}
-                canAddCategory={canAddCategory}
-                variant="pill"
-              />
-            </span>
-          )}
-          {canManage && entryAccountId && (
-            <CashEntryDialog accounts={accounts} accountId={entryAccountId} />
-          )}
-
-          {accountsManager && (
-            <button
-              type="button"
-              data-tour="cash-accounts-btn"
-              onClick={() => setShowAccounts((v) => !v)}
-              aria-expanded={showAccounts}
-              className={cn(
-                'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-chip border px-3 text-[12.5px] font-medium transition-all duration-[200ms]',
-                showAccounts
-                  ? 'border-primary-border bg-primary-softer text-primary-pressed'
-                  : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
+              {entryAccountId && (
+                <CashEntryDialog accounts={accounts} accountId={entryAccountId} />
               )}
-            >
-              <Settings2 size={13} strokeWidth={1.75} aria-hidden="true" />
-              {t.cash.accounts.heading}
-              <ChevronDown
-                size={13}
-                strokeWidth={2}
-                aria-hidden="true"
-                className={cn('transition-transform duration-[200ms]', showAccounts && 'rotate-180')}
-              />
-            </button>
+            </div>
+          )}
+
+          {tab === ACCOUNTS_TAB && accountsManager ? (
+            accountsManager
+          ) : tab === EXPENSES_TAB &&
+            companyExpenses &&
+            categorySpend &&
+            categorySpendTotals ? (
+            <CashExpensesPanel
+              expenses={companyExpenses}
+              categories={expenseCategories}
+              spend={categorySpend}
+              totals={categorySpendTotals}
+              canManage={canManage}
+              accounts={accounts}
+              canAddCategory={canAddCategory}
+              manualOutflow={manualOutflow}
+              period={period}
+            />
+          ) : tab === PROFIT_TAB && profitRows && profitTotals ? (
+            <CashProfitPanel rows={profitRows} totals={profitTotals} period={period} />
+          ) : tab === TURNOVER_TAB && turnoverDoc && period ? (
+            <CashReportPanel
+              doc={turnoverDoc}
+              kind="turnover"
+              period={period}
+              hint={t.cash.reports.turnoverHint}
+            />
+          ) : tab === FLOW_TAB && flowDoc && period ? (
+            <CashReportPanel
+              doc={flowDoc}
+              kind="flow"
+              period={period}
+              hint={t.cash.reports.flowHint}
+              chart
+            />
+          ) : tab === INCOME_TAB && incomeDoc && period ? (
+            <CashReportPanel
+              doc={incomeDoc}
+              kind="income"
+              period={period}
+              hint={t.cash.reports.incomeHint}
+              dim={incomeDim}
+            />
+          ) : tab === SUMMARY_TAB && summaryDoc && period ? (
+            <CashReportPanel
+              doc={summaryDoc}
+              kind="summary"
+              period={period}
+              hint={t.cash.reports.summaryHint}
+            />
+          ) : tab === REGISTRY_TAB && registryDoc && period ? (
+            <CashReportPanel
+              doc={registryDoc}
+              kind="registry"
+              period={period}
+              hint={t.cash.reports.registryHint}
+            />
+          ) : viewById.has(tab) ? (
+            <AccountPanel
+              view={viewById.get(tab)!}
+              journal={journals[tab] ?? []}
+              canManage={canManage}
+            />
+          ) : (
+            // Сюда попадаем, если выбранный раздел недоступен (нет прав на его
+            // данные) — показываем свод вместо падения на undefined.
+            <TotalTable accounts={accounts} rows={totalRows} />
           )}
         </div>
       </div>
-
-      {showAccounts && accountsManager}
-
-      {tab === EXPENSES_TAB && companyExpenses && categorySpend && categorySpendTotals ? (
-        <CashExpensesPanel
-          expenses={companyExpenses}
-          categories={expenseCategories}
-          spend={categorySpend}
-          totals={categorySpendTotals}
-          canManage={canManage}
-          accounts={accounts}
-          canAddCategory={canAddCategory}
-          manualOutflow={manualOutflow}
-          period={period}
-        />
-      ) : tab === PROFIT_TAB && profitRows && profitTotals ? (
-        <CashProfitPanel rows={profitRows} totals={profitTotals} period={period} />
-      ) : tab === TURNOVER_TAB && turnoverDoc && period ? (
-        <CashReportPanel
-          doc={turnoverDoc}
-          kind="turnover"
-          period={period}
-          hint={t.cash.reports.turnoverHint}
-        />
-      ) : tab === FLOW_TAB && flowDoc && period ? (
-        <CashReportPanel
-          doc={flowDoc}
-          kind="flow"
-          period={period}
-          hint={t.cash.reports.flowHint}
-          chart
-        />
-      ) : tab === INCOME_TAB && incomeDoc && period ? (
-        <CashReportPanel
-          doc={incomeDoc}
-          kind="income"
-          period={period}
-          hint={t.cash.reports.incomeHint}
-          dim={incomeDim}
-        />
-      ) : tab === SUMMARY_TAB && summaryDoc && period ? (
-        <CashReportPanel
-          doc={summaryDoc}
-          kind="summary"
-          period={period}
-          hint={t.cash.reports.summaryHint}
-        />
-      ) : tab === REGISTRY_TAB && registryDoc && period ? (
-        <CashReportPanel
-          doc={registryDoc}
-          kind="registry"
-          period={period}
-          hint={t.cash.reports.registryHint}
-        />
-      ) : viewById.has(tab) ? (
-        <AccountPanel
-          view={viewById.get(tab)!}
-          journal={journals[tab] ?? []}
-          canManage={canManage}
-        />
-      ) : (
-        // Сюда попадаем, если выбранная вкладка отчёта недоступна (нет прав на
-        // её данные) — показываем свод вместо падения на undefined.
-        <TotalTable accounts={accounts} rows={totalRows} />
-      )}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  strong,
-  meta,
-  dataTour,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  strong?: boolean;
-  /** Якорь для гайд-тура. */
-  dataTour?: string;
-  /** Остаток счёта — mono-хвост во вкладке (вместо отдельной строки под ней). */
-  meta?: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      data-tour={dataTour}
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        // Pill каркаса 2026-07-13 (как пресеты /cases): активная — тёмно-синяя
-        // заливка + белый текст + синяя тень; неактивная синеет на hover.
-        'inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip border px-3 text-[12.5px] transition-all duration-[200ms]',
-        strong ? 'font-semibold' : 'font-medium',
-        active
-          ? 'border-primary bg-primary-hover text-white shadow-brand'
-          : 'border-border bg-surface text-text-muted hover:border-primary-border hover:bg-primary-softer hover:text-primary-pressed',
-      )}
-    >
-      {children}
-      {meta && (
-        <>
-          <span className={cn(active ? 'text-white/45' : 'text-border-strong')} aria-hidden="true">
-            ·
-          </span>
-          <span
-            className={cn(
-              'font-mono text-[12px] font-semibold tabular-nums',
-              active ? 'text-white/90' : 'text-text',
-            )}
-          >
-            {meta}
-          </span>
-        </>
-      )}
-    </button>
   );
 }
 
@@ -490,6 +452,7 @@ function AccountPanel({
               row={r}
               entries={journal.filter((e) => e.entry_date === r.date)}
               canManage={canManage}
+              balances={view.entryBalances}
             />
           ))}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-surface px-3.5 py-2.5 tabular-nums text-[12.5px] shadow-sm">
@@ -577,7 +540,12 @@ function AccountPanel({
         ) : (
           <div className="flex flex-col divide-y divide-border">
             {journal.map((e) => (
-              <JournalRow key={e.id} entry={e} canManage={canManage} />
+              <JournalRow
+                key={e.id}
+                entry={e}
+                canManage={canManage}
+                balance={view.entryBalances[e.id]}
+              />
             ))}
           </div>
         )}
@@ -592,10 +560,13 @@ function DayCardMobile({
   row,
   entries,
   canManage,
+  balances,
 }: {
   row: CashDayRow;
   entries: CashEntryWithCase[];
   canManage: boolean;
+  /** Накопительный остаток по операциям (entryId → остаток после неё). */
+  balances: Record<string, number>;
 }) {
   const { t } = useI18n();
 
@@ -626,7 +597,12 @@ function DayCardMobile({
       {entries.length > 0 && (
         <div className="flex flex-col divide-y divide-border border-t border-border">
           {entries.map((e) => (
-            <JournalRow key={e.id} entry={e} canManage={canManage} />
+            <JournalRow
+              key={e.id}
+              entry={e}
+              canManage={canManage}
+              balance={balances[e.id]}
+            />
           ))}
         </div>
       )}
@@ -637,9 +613,16 @@ function DayCardMobile({
 function JournalRow({
   entry,
   canManage,
+  balance,
 }: {
   entry: CashEntryWithCase;
   canManage: boolean;
+  /**
+   * Остаток счёта ПОСЛЕ этой операции. undefined — операция датирована раньше
+   * начального остатка счёта и в сальдо не входит (показываем прочерк, иначе
+   * колонка врала бы о состоянии счёта).
+   */
+  balance?: number;
 }) {
   const { t } = useI18n();
   // Авто-строки (приход от платежа ИЛИ Розхід от расхода) правятся только через
@@ -684,6 +667,18 @@ function JournalRow({
       <span className={cn('font-mono tabular-nums text-[13px] font-bold', cls)}>
         {sign}
         {money(entry.amount)}
+      </span>
+      {/* Остаток счёта после операции — чтобы не складывать в уме. Стрелка
+          отделяет его от суммы самой операции: «было движение → стало столько». */}
+      <span
+        className="hidden w-[132px] shrink-0 text-right font-mono text-[12px] tabular-nums text-text-subtle sm:inline-block"
+        title={
+          balance === undefined
+            ? t.cash.report.balanceNotCounted
+            : t.cash.report.balanceAfter
+        }
+      >
+        {balance === undefined ? '—' : `→ ${money(balance)}`}
       </span>
       {/* Удалять можно только ручные операции (и только менеджеру кассы);
           авто-приход правится через сам платёж. */}

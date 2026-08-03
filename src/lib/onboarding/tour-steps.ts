@@ -326,11 +326,13 @@ function cashSteps(t: TourMessages): ReadonlyArray<TourStep> {
     {
       id: 'cash-accounts',
       route: '/reports/cash',
+      // Каркас «Бухгалтерия» (2026-08-03): настройка счетов — раздел рейки
+      // слева, а не кнопка в шапке; подсказка встаёт справа от неё.
       element: '[data-tour="cash-accounts-btn"]',
       title: t.cashAccountsTitle,
       body: t.cashAccountsBody,
-      side: 'bottom',
-      align: 'end',
+      side: 'right',
+      align: 'start',
       // Кнопка появляется только у менеджера кассы.
       optional: true,
       show: (c) => c.caps.can_manage_cash,
@@ -362,7 +364,7 @@ function cashSteps(t: TourMessages): ReadonlyArray<TourStep> {
       element: '[data-tour="cash-tabs"]',
       title: t.cashTabsTitle,
       body: t.cashTabsBody,
-      side: 'bottom',
+      side: 'right',
       align: 'start',
       optional: true,
     },
@@ -372,7 +374,7 @@ function cashSteps(t: TourMessages): ReadonlyArray<TourStep> {
       element: '[data-tour="cash-expenses-tab"]',
       title: t.cashExpensesTitle,
       body: t.cashExpensesBody,
-      side: 'bottom',
+      side: 'right',
       align: 'start',
       optional: true,
     },

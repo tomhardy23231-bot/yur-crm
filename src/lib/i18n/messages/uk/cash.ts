@@ -7,8 +7,20 @@ export const cash: CashMessages = {
     subtitle: 'Рахунки, операції та сальдо за днями',
     tabTotal: 'Зведення',
     tabExpenses: 'Витрати',
-    tabProfit: 'За справами',
-    tabsAria: 'Рахунки каси',
+    tabProfit: 'Прибутковість справ',
+    tabsAria: 'Розділи каси',
+    rail: {
+      groupAccounts: 'Рахунки',
+      groupMoney: 'Гроші',
+      groupReports: 'Звіти за період',
+      manageAccounts: 'Налаштування рахунків',
+      sectionLabel: 'Розділ',
+    },
+    statBalance: 'Залишок на сьогодні',
+    statInflow: 'Надійшло',
+    statOutflow: 'Витрачено',
+    statNet: 'Чиста зміна',
+    statAtPeriodEnd: 'На кінець періоду',
     colDate: 'Дата',
     colOpening: 'Залишок на початок',
     colInflow: 'Надходження',
@@ -16,6 +28,9 @@ export const cash: CashMessages = {
     colClosing: 'Залишок на кінець',
     colAccount: 'Рахунок',
     colTotalAmount: 'Всього',
+    balanceAfter: 'Залишок на рахунку після цієї операції',
+    balanceNotCounted:
+      'Операція датована раніше початкового залишку рахунку — у сальдо не входить.',
     openingRow: 'Залишок на початок періоду',
     monthInflow: 'Надходження за період',
     monthOutflow: 'Видаток за період',
@@ -39,9 +54,6 @@ export const cash: CashMessages = {
     autoBadge: 'авто',
     autoHint: 'Надходження створено підтвердженням оплати у справі — правиться через сам платіж.',
     truncatedWarning: 'Показано не всі операції періоду — список обрізано за лімітом.',
-    // Hero-смуга «Загальний баланс» (редизайн v5).
-    balanceAtMonthEnd: 'Залишок на кінець періоду:',
-    totalBalance: 'Загальний баланс',
     accountsCount: {
       one: '{n} рахунок',
       few: '{n} рахунки',
@@ -147,11 +159,11 @@ export const cash: CashMessages = {
 
   // Звіти каси за період (2026-08-03).
   reports: {
-    tabTurnover: 'Оборотка',
-    tabFlow: 'Динаміка',
+    tabTurnover: 'Оборотно-сальдова',
+    tabFlow: 'Рух по місяцях',
     tabIncome: 'Доходи',
-    tabSummary: 'Підсумок',
-    tabRegistry: 'Реєстр',
+    tabSummary: 'Фінансовий підсумок',
+    tabRegistry: 'Реєстр операцій',
 
     // Оборотно-сальдова відомість.
     turnoverHeading: 'Оборотно-сальдова відомість',

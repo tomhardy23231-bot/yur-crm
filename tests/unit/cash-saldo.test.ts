@@ -6,6 +6,7 @@ import {
   monthTotals,
   buildTotalRows,
   entriesFromOpening,
+  rollForwardEntries,
   round2,
   type CashRawEntry,
 } from '@/lib/cash/saldo';
@@ -101,6 +102,41 @@ describe('rollForwardDays — накопительный разворот (Ра�
     for (const r of rows) {
       expect(round2(r.opening + r.inflow - r.outflow)).toBe(r.closing);
     }
+  });
+});
+
+describe('rollForwardEntries — остаток после каждой операции (журнал)', () => {
+  // Те же операции Рахунку, но с id — журнал показывает остаток построчно.
+  const withIds = rahunokEntries.map((e, i) => ({ ...e, id: `e${i}` }));
+  const balances = rollForwardEntries(RAHUNOK_OPENING, withIds);
+
+  it('первая операция: остаток = начальный + её сумма', () => {
+    expect(balances.e0).toBe(round2(RAHUNOK_OPENING + 10000));
+  });
+
+  it('последняя операция дня сходится с closing этого дня', () => {
+    // Инвариант каркаса «Бухгалтерия»: журнал и разворот по дням не могут
+    // показывать разное сальдо на одну и ту же дату.
+    const { rows } = buildAccountSaldo(RAHUNOK_OPENING, rahunokEntries);
+    const closingByDate = new Map(rows.map((r) => [r.date, r.closing]));
+    for (const date of [D1, D4, D5, D6]) {
+      const lastOfDay = [...withIds].filter((e) => e.entry_date === date).at(-1)!;
+      expect(balances[lastOfDay.id]).toBe(closingByDate.get(date));
+    }
+  });
+
+  it('порядок операций внутри дня сохраняется (сортировка стабильна)', () => {
+    // e0..e3 — приходы 2026-05-01, идут до расходов e4..e7 того же дня.
+    expect(balances.e0).toBeGreaterThan(RAHUNOK_OPENING);
+    expect(balances.e3).toBe(round2(RAHUNOK_OPENING + 28916.8));
+  });
+
+  it('операций раньше даты начального остатка в мапе нет', () => {
+    // Их отсекает entriesFromOpening — в журнале такая строка покажет прочерк.
+    const fromOpening = entriesFromOpening(withIds, D5);
+    const late = rollForwardEntries(RAHUNOK_OPENING, fromOpening);
+    expect(late.e0).toBeUndefined();
+    expect(Object.keys(late)).toHaveLength(fromOpening.length);
   });
 });
 
