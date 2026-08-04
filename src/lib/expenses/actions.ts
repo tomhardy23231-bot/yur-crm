@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { requireCap } from '@/lib/auth/require-role';
+import { requireCap, requireUser } from '@/lib/auth/require-role';
 import { logActivity } from '@/lib/activity-log/log';
 import { userDb } from '@/lib/db';
 import { dbActionError } from '@/lib/db/errors';
@@ -158,6 +158,158 @@ export async function createExpenseAction(
   });
 
   revalidateAfterExpense(case_id);
+  return { ok: true };
+}
+
+// ============================================================================
+// Правка расхода (0019, жалоба клиента 2026-08-04: «нельзя изменить статью и
+// комментарий»). До этой миграции UPDATE-политики не было вовсе — опечатку
+// исправляли удалением записи вместе с авторством и датой внесения.
+//
+// Дело у расхода правкой НЕ меняется (БД-гард expenses_guard_update): перенос
+// между делом и фирмой — это переезд между зонами видимости, он делается
+// удалением и внесением заново. Зеркало в кассе пересоберёт триггер.
+// ============================================================================
+export type UpdateExpenseFields = CreateExpenseFields;
+
+export type UpdateExpenseState = {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Partial<Record<UpdateExpenseFields, string>>;
+};
+
+export async function updateExpenseAction(
+  _prev: UpdateExpenseState,
+  formData: FormData,
+): Promise<UpdateExpenseState> {
+  const user = await requireUser();
+  const { t } = await getT();
+
+  const expense_id = String(formData.get('expense_id') ?? '').trim();
+  if (!UUID_RE.test(expense_id)) {
+    return { ok: false, message: t.expenses.errors.notFound };
+  }
+
+  // Снапшот «до»: он же источник правды о деле расхода. Право считаем по нему,
+  // а НЕ по formData (CSO): иначе подделанное поле выбрало бы ветку послабее.
+  const before = await userDb(user.profile.id, (tx) =>
+    tx.expenses.findUnique({
+      where: { id: expense_id },
+      select: {
+        case_id: true,
+        category_id: true,
+        amount: true,
+        spent_at: true,
+        method: true,
+        account_id: true,
+        note: true,
+        payroll_transaction_id: true,
+      },
+    }),
+  );
+  if (!before) return { ok: false, message: t.expenses.errors.notFound };
+
+  // Расход-зеркало выплаты ЗП живёт вместе с ней (RLS его тоже не отдаёт, но
+  // без явной проверки пользователь увидел бы немой отказ).
+  if (before.payroll_transaction_id !== null) {
+    return { ok: false, message: t.expenses.errors.systemRow };
+  }
+
+  const cap = before.case_id ? 'manage_case_expenses' : 'can_manage_cash';
+  if (!user.caps[cap]) return { ok: false, message: t.expenses.errors.noPermission };
+
+  const category_id = String(formData.get('category_id') ?? '').trim();
+  const amount_raw = String(formData.get('amount') ?? '').trim();
+  const spent_at = String(formData.get('spent_at') ?? '').trim();
+  const method = String(formData.get('method') ?? '').trim();
+  const account_id = String(formData.get('account_id') ?? '').trim();
+  const note_raw = String(formData.get('note') ?? '').trim();
+
+  const fieldErrors: UpdateExpenseState['fieldErrors'] = {};
+
+  if (!category_id) fieldErrors.category_id = t.expenses.errors.categoryRequired;
+  else if (!UUID_RE.test(category_id))
+    fieldErrors.category_id = t.expenses.errors.categoryInvalid;
+
+  if (!amount_raw) fieldErrors.amount = t.expenses.errors.amountRequired;
+  else if (parseAmount(amount_raw) === null)
+    fieldErrors.amount = t.expenses.errors.amountInvalid;
+
+  if (!spent_at) fieldErrors.spent_at = t.expenses.errors.dateRequired;
+  else if (!isWorkDate(spent_at))
+    fieldErrors.spent_at = t.expenses.errors.dateInvalid;
+
+  if (account_id) {
+    if (!UUID_RE.test(account_id)) fieldErrors.method = t.expenses.errors.methodInvalid;
+  } else if (!isExpenseMethod(method)) {
+    fieldErrors.method = t.expenses.errors.methodInvalid;
+  }
+
+  if (note_raw.length > 500) fieldErrors.note = t.expenses.errors.noteTooLong;
+
+  // Статью можно сменить только на существующую и активную. Прежняя статья
+  // могла с тех пор уехать в архив — её проверяем отдельно, иначе правка
+  // комментария у старого расхода упиралась бы в чужую ошибку.
+  if (!fieldErrors.category_id && category_id !== before.category_id) {
+    const activeIds = await activeExpenseCategoryIdSet();
+    if (!activeIds.has(category_id))
+      fieldErrors.category_id = t.expenses.errors.categoryInvalid;
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { ok: false, fieldErrors, message: t.errors.checkForm };
+  }
+
+  const amount = parseAmount(amount_raw)!;
+  const note = note_raw === '' ? null : note_raw;
+
+  try {
+    // updateMany — под RLS это тихий no-op (0 строк), а не исключение.
+    const res = await userDb(user.profile.id, (tx) =>
+      tx.expenses.updateMany({
+        where: { id: expense_id },
+        data: {
+          category_id,
+          amount,
+          spent_at: toDbDate(spent_at),
+          method: account_id ? null : method,
+          account_id: account_id || null,
+          note,
+        },
+      }),
+    );
+    if (res.count === 0) return { ok: false, message: t.expenses.errors.noPermission };
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError(
+        'updateExpenseAction',
+        err,
+        t.expenses.errors.saveFailed,
+        t.errors.db,
+      ),
+    };
+  }
+
+  await logActivity({
+    entity_type: before.case_id ? 'case' : 'cash',
+    entity_id: before.case_id ?? expense_id,
+    action: 'expense_updated',
+    changes: {
+      expense_id,
+      before: {
+        category_id: before.category_id,
+        amount: dec(before.amount),
+        spent_at: before.spent_at.toISOString().slice(0, 10),
+        method: before.method,
+        account_id: before.account_id,
+        note: before.note,
+      },
+      after: { category_id, amount, spent_at, method: account_id ? null : method, account_id: account_id || null, note },
+    },
+  });
+
+  revalidateAfterExpense(before.case_id);
   return { ok: true };
 }
 

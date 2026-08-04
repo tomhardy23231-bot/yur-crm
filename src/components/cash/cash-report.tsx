@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
@@ -9,6 +9,7 @@ import {
   ArrowDownLeft,
   ArrowDownUp,
   ArrowUpRight,
+  CalendarClock,
   Link2,
   Wallet,
 } from 'lucide-react';
@@ -21,14 +22,20 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useToast } from '@/components/ui/toast';
 import { cn, formatMoney, signedMoney } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n/provider';
 import type { CashAccount, CashEntryWithCase } from '@/lib/types/db';
 import type { CashDayRow, CashMonthTotals, CashTotalRow } from '@/lib/cash/saldo';
-import { deleteCashEntryAction } from '@/lib/cash/actions';
+import {
+  deleteCashEntryAction,
+  shiftAccountOpeningDateAction,
+} from '@/lib/cash/actions';
 import type {
   CategorySpendRow,
   CategorySpendTotals,
@@ -41,6 +48,7 @@ import type { ReportDoc } from '@/lib/reports/export/types';
 import type { Period } from '@/lib/reports/period';
 import type { CashIncomeDim } from '@/lib/db/rpc';
 import { AddExpenseDialog } from '@/components/expenses/add-expense-dialog';
+import { CashEntryDetailsDialog } from './cash-entry-details-dialog';
 import { CashEntryDialog } from './cash-entry-dialog';
 import { CashExpensesPanel } from './cash-expenses-panel';
 import { CashProfitPanel } from './cash-profit-panel';
@@ -52,17 +60,28 @@ export type CashAccountView = {
   rows: CashDayRow[];
   totals: CashMonthTotals;
   closingNow: number;
-  hasBeforeOpening: boolean;
   /** Дата открытия счёта — 'YYYY-MM-DD' (для пояснения пустого месяца). */
   openingDate: string;
   /** Весь выбранный месяц раньше даты открытия счёта: сальдо и обороты = 0. */
   monthBeforeOpening: boolean;
   /**
-   * Операции ЭТОГО месяца, отсечённые датой открытия счёта: они видны в журнале,
-   * но в обороты и сальдо не входят. Без явной цифры это выглядело как ошибка
-   * расчёта (2026-07-26: таблица показывала +27 000, журнал — 30 операций).
+   * Операции, отсечённые датой открытия счёта: они видны в журнале, но в обороты
+   * и сальдо не входят. Без явной цифры это выглядело как ошибка расчёта
+   * (2026-07-26: таблица показывала +27 000, журнал — 30 операций).
+   *
+   * count/net — по ВИДИМОМУ периоду (это то, что человек видит на экране);
+   * allCount/allNet/earliest — по ВСЕМУ счёту (0020). Перенос даты остатка —
+   * настройка счёта, поэтому подтверждение обязано показывать полную цену, а
+   * не ту часть, что попала в открытый месяц.
    */
-  cutOff: { count: number; net: number };
+  cutOff: {
+    count: number;
+    net: number;
+    allCount: number;
+    allNet: number;
+    /** Самая ранняя отсечённая дата СЧЁТА — на неё предлагаем перенести остаток. */
+    earliest: string | null;
+  };
   /**
    * Накопительный остаток счёта ПОСЛЕ каждой операции периода (entryId → остаток).
    * Журнал показывает его колонкой «Остаток»: сумму операции видно и так, а вот
@@ -110,6 +129,9 @@ export function CashReport({
   categorySpend,
   categorySpendTotals,
   canAddCategory = false,
+  canEditPayments = false,
+  canManageCaseExpenses = false,
+  allCategories = [],
   manualOutflow = 0,
   turnoverDoc,
   flowDoc,
@@ -145,6 +167,15 @@ export function CashReport({
   categorySpendTotals?: CategorySpendTotals;
   /** Право заводить статьи «на лету» (manage_expense_categories). */
   canAddCategory?: boolean;
+  /** Право edit_payments — правка платежа из карточки операции журнала. */
+  canEditPayments?: boolean;
+  /** Право manage_case_expenses — правка расхода ПО ДЕЛУ из карточки операции. */
+  canManageCaseExpenses?: boolean;
+  /**
+   * ВСЕ активные статьи (и «в делах», и «по фирме») — карточка операции правит
+   * расход любого вида, а `expenseCategories` отфильтрованы под форму кассы.
+   */
+  allCategories?: ExpenseCategoryOption[];
   /** Ручные видатки каси за месяц — примиряют вкладку «Витрати» с шапкой. */
   manualOutflow?: number;
   // Отчёты за период (2026-08-03). Готовые документы: тот же ReportDoc уходит
@@ -159,9 +190,11 @@ export function CashReport({
   /** Выбранный период — нужен ссылкам экспорта и печати. */
   period?: Period;
 }) {
-  const { t } = useI18n();
+  const { t, fmt } = useI18n();
+  const toast = useToast();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [, startShift] = useTransition();
 
   // Раздел живёт в URL (?tab=) — ссылку на «оборотку за квартал» можно переслать.
   // Переключение при этом НЕ ходит на сервер: все данные разделов уже пришли
@@ -192,6 +225,14 @@ export function CashReport({
     window.history.replaceState(null, '', `${pathname}?${params.toString()}`);
   };
 
+  // Перенос даты начального остатка (2026-08-04) — через ПОДТВЕРЖДЕНИЕ с
+  // цифрами. Действие меняет отчётные суммы за всю историю счёта: остаток
+  // остаётся прежним числом, но отсечённые операции начинают считаться поверх
+  // него. Если они на самом деле УЖЕ внутри остатка, деньги задвоятся —
+  // проверить это может только владелец, поэтому решение показываем в суммах,
+  // а не в словах (ревью 0019).
+  const [shiftTarget, setShiftTarget] = useState<string | null>(null);
+
   if (accounts.length === 0) {
     // Ни одного счёта: панель управления раскрыта сразу — иначе счёт негде завести.
     return (
@@ -209,6 +250,27 @@ export function CashReport({
   }
 
   const viewById = new Map(views.map((v) => [v.accountId, v]));
+
+  // Данные подтверждения переноса даты остатка: цифры берём по ВСЕМУ счёту
+  // (cutOff.allCount / allNet, 0020), а не по видимому периоду — настройка
+  // меняется навсегда и для всей истории.
+  const shiftView = shiftTarget ? viewById.get(shiftTarget) : undefined;
+  const shiftAccount = shiftTarget ? accounts.find((a) => a.id === shiftTarget) : undefined;
+  const shiftBalanceNow = shiftTarget
+    ? (balances[shiftTarget] ?? shiftAccount?.opening_balance ?? 0)
+    : 0;
+
+  const confirmShift = () => {
+    const accountId = shiftTarget;
+    const earliest = shiftView?.cutOff.earliest;
+    setShiftTarget(null);
+    if (!accountId || !earliest) return;
+    startShift(async () => {
+      const res = await shiftAccountOpeningDateAction(accountId, earliest);
+      if (res.ok) toast.success(res.message ?? t.cash.actions.openingDateMoved);
+      else toast.error(res.message ?? t.errors.db.generic);
+    });
+  };
 
   // Счёт для новой операции: активная вкладка, а на сводных вкладках — первый
   // активный счёт (в форме его всё равно можно сменить).
@@ -381,6 +443,11 @@ export function CashReport({
               view={viewById.get(tab)!}
               journal={journals[tab] ?? []}
               canManage={canManage}
+              canEditPayments={canEditPayments}
+              canManageCaseExpenses={canManageCaseExpenses}
+              accounts={accounts}
+              categories={allCategories.length > 0 ? allCategories : expenseCategories}
+              onShiftOpening={canManage ? () => setShiftTarget(tab) : undefined}
             />
           ) : (
             // Сюда попадаем, если выбранный раздел недоступен (нет прав на его
@@ -389,6 +456,35 @@ export function CashReport({
           )}
         </div>
       </div>
+
+      {/* Подтверждение переноса даты начального остатка. Показываем ЦЕНУ
+          действия числами: сколько операций начнёт считаться, на какую сумму и
+          каким станет остаток. Владелец единственный, кто знает, входят ли эти
+          деньги в начальный остаток, — значит решение должно приниматься на
+          цифрах, а не на слове «перенести». */}
+      {shiftView && shiftAccount && shiftView.cutOff.earliest && (
+        <ConfirmDialog
+          open
+          title={t.cash.report.shiftConfirmTitle}
+          description={fmt(t.cash.report.shiftConfirmBody, {
+            account: shiftAccount.name,
+            from: shiftView.openingDate,
+            to: shiftView.cutOff.earliest,
+            count: String(shiftView.cutOff.allCount),
+            amount: signedMoney(shiftView.cutOff.allNet) + ' ₴',
+            before: money(shiftBalanceNow),
+            after: money(shiftBalanceNow + shiftView.cutOff.allNet),
+          })}
+          confirmLabel={t.cash.report.shiftConfirmAction}
+          tone="danger"
+          onConfirm={confirmShift}
+          onClose={() => setShiftTarget(null)}
+        >
+          <p className="rounded-control border border-warning/40 bg-warning-bg px-3 py-2 text-[12.5px] leading-snug text-text">
+            {t.cash.report.shiftConfirmWarning}
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
@@ -397,12 +493,30 @@ function AccountPanel({
   view,
   journal,
   canManage,
+  canEditPayments,
+  canManageCaseExpenses,
+  accounts,
+  categories,
+  onShiftOpening,
 }: {
   view: CashAccountView;
   journal: CashEntryWithCase[];
   canManage: boolean;
+  canEditPayments: boolean;
+  canManageCaseExpenses: boolean;
+  accounts: CashAccount[];
+  categories: ExpenseCategoryOption[];
+  /** Перенести дату начального остатка счёта на дату самой ранней отсечённой операции. */
+  onShiftOpening?: () => void;
 }) {
   const { t, fmt } = useI18n();
+
+  // Операции периода, отсечённые датой начального остатка: в разворот по дням
+  // они не входят (сальдо у них нет), поэтому на мобильных им нужен отдельный
+  // список — см. блок ниже.
+  const cutOffEntries = journal.filter(
+    (e) => !e.include_before_opening && e.entry_date < view.openingDate,
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -420,15 +534,33 @@ function AccountPanel({
         </div>
       ) : (
         view.cutOff.count > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-bg px-3.5 py-2.5 text-[12.5px] leading-snug text-text">
-            <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
-            <span>
-              {fmt(t.cash.report.cutOffWarning, {
-                count: String(view.cutOff.count),
-                amount: money(Math.abs(view.cutOff.net)),
-                date: view.openingDate,
-              })}
+          <div className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning-bg px-3.5 py-2.5 text-[12.5px] leading-snug text-text">
+            <span className="flex items-start gap-2">
+              <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
+              <span>
+                {fmt(t.cash.report.cutOffWarning, {
+                  count: String(view.cutOff.count),
+                  amount: money(Math.abs(view.cutOff.net)),
+                  date: view.openingDate,
+                })}
+              </span>
             </span>
+            {/* Раньше плашка только объясняла проблему. Теперь чинит её —
+                но НЕ в один клик: перенос даты остатка меняет отчётные суммы
+                за всю историю счёта, поэтому сначала подтверждение с цифрами
+                (ревью 0019: без него один клик мог раздуть остаток на всю
+                историю оплат, а подпись обещала «остаток не изменится»). */}
+            {onShiftOpening && view.cutOff.earliest && (
+              <span className="flex flex-wrap items-center gap-2 pl-6">
+                <Button size="sm" variant="secondary" onClick={onShiftOpening}>
+                  <CalendarClock size={14} strokeWidth={1.75} />
+                  {fmt(t.cash.report.cutOffFixAction, { date: view.cutOff.earliest })}
+                </Button>
+                <span className="text-[11.5px] text-text-muted">
+                  {t.cash.report.cutOffFixHint}
+                </span>
+              </span>
+            )}
           </div>
         )
       )}
@@ -446,12 +578,40 @@ function AccountPanel({
         <>
         {/* Мобильное представление (6.4): карточка дня с тап-разворотом операций. */}
         <div className="flex flex-col gap-2 md:hidden">
+          {/* Отсечённые операции не попадают в разворот по дням (у них нет
+              сальдо), а мобильный экран строится именно из него — без этого
+              блока с телефона до них было НЕ ДОБРАТЬСЯ: ни открыть карточку,
+              ни внести в оборот. На десктопе они видны в журнале ниже. */}
+          {cutOffEntries.length > 0 && (
+            <div className="overflow-hidden rounded-xl border border-warning/40 bg-surface shadow-sm">
+              <p className="border-b border-border bg-warning-bg px-3.5 py-2 text-[12px] font-semibold text-text">
+                {t.cash.report.cutOffListHeading}
+              </p>
+              <div className="flex flex-col divide-y divide-border">
+                {cutOffEntries.map((e) => (
+                  <JournalRow
+                    key={e.id}
+                    entry={e}
+                    canManage={canManage}
+                    canEditPayments={canEditPayments}
+                    canManageCaseExpenses={canManageCaseExpenses}
+                    accounts={accounts}
+                    categories={categories}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           {view.rows.map((r: CashDayRow) => (
             <DayCardMobile
               key={r.date}
               row={r}
               entries={journal.filter((e) => e.entry_date === r.date)}
               canManage={canManage}
+              canEditPayments={canEditPayments}
+              canManageCaseExpenses={canManageCaseExpenses}
+              accounts={accounts}
+              categories={categories}
               balances={view.entryBalances}
             />
           ))}
@@ -544,6 +704,10 @@ function AccountPanel({
                 key={e.id}
                 entry={e}
                 canManage={canManage}
+                canEditPayments={canEditPayments}
+                canManageCaseExpenses={canManageCaseExpenses}
+                accounts={accounts}
+                categories={categories}
                 balance={view.entryBalances[e.id]}
               />
             ))}
@@ -560,11 +724,19 @@ function DayCardMobile({
   row,
   entries,
   canManage,
+  canEditPayments,
+  canManageCaseExpenses,
+  accounts,
+  categories,
   balances,
 }: {
   row: CashDayRow;
   entries: CashEntryWithCase[];
   canManage: boolean;
+  canEditPayments: boolean;
+  canManageCaseExpenses: boolean;
+  accounts: CashAccount[];
+  categories: ExpenseCategoryOption[];
   /** Накопительный остаток по операциям (entryId → остаток после неё). */
   balances: Record<string, number>;
 }) {
@@ -601,6 +773,10 @@ function DayCardMobile({
               key={e.id}
               entry={e}
               canManage={canManage}
+              canEditPayments={canEditPayments}
+              canManageCaseExpenses={canManageCaseExpenses}
+              accounts={accounts}
+              categories={categories}
               balance={balances[e.id]}
             />
           ))}
@@ -610,13 +786,28 @@ function DayCardMobile({
   );
 }
 
+// Интерактивные потомки строки: клик по ним не открывает карточку операции
+// (зеркало ui/clickable-row.tsx).
+const INTERACTIVE = 'a, button, input, select, textarea, label, [role="button"]';
+
 function JournalRow({
   entry,
   canManage,
+  canEditPayments,
+  canManageCaseExpenses,
+  accounts,
+  categories,
   balance,
 }: {
   entry: CashEntryWithCase;
   canManage: boolean;
+  /** Право edit_payments — правка платежа-источника из карточки операции. */
+  canEditPayments: boolean;
+  /** Право manage_case_expenses — правка расхода по делу. */
+  canManageCaseExpenses: boolean;
+  accounts: CashAccount[];
+  /** Активные статьи расходов (для правки расхода-источника). */
+  categories: ExpenseCategoryOption[];
   /**
    * Остаток счёта ПОСЛЕ этой операции. undefined — операция датирована раньше
    * начального остатка счёта и в сальдо не входит (показываем прочерк, иначе
@@ -625,6 +816,7 @@ function JournalRow({
   balance?: number;
 }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
   // Авто-строки (приход от платежа ИЛИ Розхід от расхода) правятся только через
   // свою сущность — корзинку в журнале не показываем (QA 27.07: expense_id).
   const isAuto = entry.payment_id !== null || entry.expense_id !== null;
@@ -632,8 +824,19 @@ function JournalRow({
   const sign = isIn ? '+' : '−';
   const cls = isIn ? 'text-success-text' : 'text-error';
 
+  // Клик по строке открывает карточку; клавиатурный путь — на кнопке-описании
+  // (вкладывать её в кнопку-строку нельзя: внутри есть ссылка на дело).
+  const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest(INTERACTIVE)) return;
+    if (window.getSelection()?.toString()) return;
+    setOpen(true);
+  };
+
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 transition-colors hover:bg-primary-softer">
+    <div
+      onClick={handleRowClick}
+      className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 transition-colors hover:bg-primary-softer"
+    >
       <span className="font-mono text-[12px] tabular-nums text-text-subtle">{entry.entry_date}</span>
       {/* Чип направления (AA: текст на подложке — *-text, тон несёт стрелка) */}
       <span
@@ -649,7 +852,14 @@ function JournalRow({
         )}
         {isIn ? t.cash.report.colInflow : t.cash.report.colOutflow}
       </span>
-      <span className="min-w-0 flex-1 truncate text-[13px] text-text">{entry.description}</span>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title={t.cash.details.openHint}
+        className="min-w-0 flex-1 truncate rounded text-left text-[13px] text-text hover:text-primary-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        {entry.description}
+      </button>
       {entry.case && (
         <Link
           href={`/cases/${entry.case.id}`}
@@ -696,6 +906,23 @@ function JournalRow({
         </form>
       ) : (
         <span className="inline-block h-7 w-7" aria-hidden />
+      )}
+
+      {/* Монтируем только открытую карточку: журнал бывает на сотни строк, и
+          держать столько же незакрытых диалогов (каждый со своим состоянием
+          загрузки) незачем. */}
+      {open && (
+        <CashEntryDetailsDialog
+          entry={entry}
+          open
+          onClose={() => setOpen(false)}
+          canManage={canManage}
+          canEditPayments={canEditPayments}
+          canManageCaseExpenses={canManageCaseExpenses}
+          accounts={accounts}
+          categories={categories}
+          balance={balance}
+        />
       )}
     </div>
   );

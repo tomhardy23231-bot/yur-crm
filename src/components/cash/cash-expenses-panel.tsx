@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { AddExpenseDialog } from '@/components/expenses/add-expense-dialog';
 import { DeleteExpenseButton } from '@/components/expenses/delete-expense-button';
+import { EditExpenseDialog } from '@/components/expenses/edit-expense-dialog';
 import { ReportExportButtons } from '@/components/reports/export-buttons';
 import type { Period } from '@/lib/reports/period';
 import { useI18n } from '@/lib/i18n/provider';
@@ -196,11 +197,19 @@ export function CashExpensesPanel({
                   </span>
                   {/* Зарплатные строки правятся только через саму выплату. */}
                   {canManage && !isAuto ? (
-                    <DeleteExpenseButton
-                      expenseId={e.id}
-                      caseId={e.case_id ?? ''}
-                      alwaysVisible
-                    />
+                    <>
+                      <EditExpenseDialog
+                        expense={e}
+                        categories={categories}
+                        accounts={accounts}
+                        alwaysVisible
+                      />
+                      <DeleteExpenseButton
+                        expenseId={e.id}
+                        caseId={e.case_id ?? ''}
+                        alwaysVisible
+                      />
+                    </>
                   ) : (
                     <span className="inline-block h-7 w-7" aria-hidden />
                   )}

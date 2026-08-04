@@ -88,6 +88,13 @@ function asArray(v: unknown): string[] | null {
   return v.map((x) => String(x));
 }
 
+// Вложенный объект payload'а (правки пишут снимки {before, after}).
+function nested(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : null;
+}
+
 // Поля-ссылки на пользователя (резолвятся через public.users).
 const USER_ID_FIELDS = new Set<string>([
   'lawyer_id',
@@ -607,6 +614,20 @@ export function formatActivity(
       const verb =
         entry.action === 'expense_created' ? ev.expenseCreated : ev.expenseDeleted;
       return { actor, text: fmt(verb, { amount: amountStr }) };
+    }
+    case 'expense_updated': {
+      // Payload правки — {before, after}: показываем сумму «до → после», а если
+      // менялись только статья или комментарий, суммы совпадут и хвост «→» не
+      // печатаем (иначе строка журнала читалась бы как изменение денег).
+      const beforeAmount = asNumber(nested(c.before)?.amount);
+      const afterAmount = asNumber(nested(c.after)?.amount);
+      const fmtMoney = (n: number | null) =>
+        n === null ? dash : `${money(i18n.locale).format(n)} ₴`;
+      const amountStr =
+        beforeAmount !== null && afterAmount !== null && beforeAmount !== afterAmount
+          ? `${fmtMoney(beforeAmount)} → ${fmtMoney(afterAmount)}`
+          : fmtMoney(afterAmount ?? beforeAmount);
+      return { actor, text: fmt(ev.expenseUpdated, { amount: amountStr }) };
     }
     case 'payment_converted_to_expense': {
       const amount = asNumber(c.amount);

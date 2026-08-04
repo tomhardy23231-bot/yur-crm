@@ -23,11 +23,17 @@ export type CashRawEntry = Pick<CashEntryWithCase, 'entry_date' | 'direction' | 
 // операции с entry_date >= openingDate; остальные показываются в журнале с пометкой,
 // но на сальдо не влияют (см. app/(app)/reports/cash/page). Generic — работает и над
 // CashEntryWithCase, и над CashRawEntry.
-export function entriesFromOpening<T extends { entry_date: string }>(
-  entries: ReadonlyArray<T>,
-  openingDate: string,
-): T[] {
-  return entries.filter((e) => e.entry_date >= openingDate);
+//
+// Исключение (0019): операция с include_before_opening = true считается всё равно —
+// владелец подтвердил, что в начальный остаток она не вошла. ⚠️ То же условие
+// повторяют три SQL-функции (cash_balances_before / cash_turnover /
+// cash_flow_monthly): разойдутся — журнал и отчёты покажут разные деньги.
+export function entriesFromOpening<
+  T extends { entry_date: string; include_before_opening?: boolean },
+>(entries: ReadonlyArray<T>, openingDate: string): T[] {
+  return entries.filter(
+    (e) => e.entry_date >= openingDate || e.include_before_opening === true,
+  );
 }
 
 // Свёртка по дню: суммы прихода и расхода за дату.

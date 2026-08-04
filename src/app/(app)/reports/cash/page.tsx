@@ -3,6 +3,7 @@ import { requireAnyCap } from '@/lib/auth/require-role';
 import { getT } from '@/lib/i18n/server';
 import { cn, formatMoney, signedMoney } from '@/lib/utils';
 import {
+  getCashCutoffSummary,
   getCashReportData,
   getCurrentBalances,
   getUnsyncedPaymentsCount,
@@ -73,6 +74,7 @@ export default async function CashReportPage({
     companyExpenses,
     categorySpend,
     expenseCategories,
+    allExpenseCategories,
     // Три отчёта за период (2026-08-03). Строятся как ReportDoc — тот же
     // документ уходит в Excel (/reports/cash/export) и в печатную версию,
     // поэтому цифры на экране и в выгрузке совпадают по построению.
@@ -88,6 +90,10 @@ export default async function CashReportPage({
     listCompanyExpenses(monthStart, monthEnd),
     getExpensesByCategory(monthStart, monthEnd),
     listActiveExpenseCategories('company'),
+    // Карточка операции правит расход ЛЮБОГО вида (в т. ч. трату по делу),
+    // поэтому ей нужен полный справочник, а не отфильтрованный под форму кассы.
+    // Обе выборки идут из одного request-кэша — лишнего запроса нет.
+    listActiveExpenseCategories(),
     buildTurnoverDoc(period),
     buildFlowDoc(period),
     buildIncomeDoc(period, incomeDim),
@@ -95,7 +101,12 @@ export default async function CashReportPage({
     buildRegistryDoc(period),
   ]);
   // Фактический остаток на сегодня — не зависит от выбранного месяца.
-  const nowBalances = await getCurrentBalances();
+  // Отсечённые операции считаем по ВСЕМУ счёту (0020): перенос даты остатка —
+  // настройка счёта, а не периода, и подтверждение должно показывать полную цену.
+  const [nowBalances, cutoffAll] = await Promise.all([
+    getCurrentBalances(),
+    getCashCutoffSummary(),
+  ]);
   const profitTotals = profitRows ? sumProfit(profitRows) : undefined;
   const categorySpendTotals = sumCategorySpend(categorySpend);
 
@@ -119,10 +130,20 @@ export default async function CashReportPage({
     const accForBalance = entriesFromOpening(accAll, acc.opening_date);
     // Операции месяца, отсечённые датой открытия счёта (в журнале есть,
     // в оборотах и сальдо — нет). Показываем их числом, а не намёком.
-    const cut = accAll.filter((e) => e.entry_date < acc.opening_date);
+    // Помеченные «внести в оборот» (0019) сюда не попадают — они считаются.
+    const cut = accAll.filter(
+      (e) => e.entry_date < acc.opening_date && !e.include_before_opening,
+    );
+    // По всему счёту — это и есть настоящая цена переноса даты остатка.
+    const all = cutoffAll[acc.id];
     const cutOff = {
       count: cut.length,
       net: cut.reduce((s2, e) => s2 + (e.direction === 'in' ? e.amount : -e.amount), 0),
+      allCount: all?.cnt ?? 0,
+      allNet: all?.net ?? 0,
+      // Самая ранняя отсечённая дата СЧЁТА (не периода) — на неё предлагаем
+      // перенести дату остатка: она включает в обороты сразу все такие операции.
+      earliest: all?.earliest ?? null,
     };
     const opening = openingFor(acc.id, acc.opening_balance);
     const { rows } = buildAccountSaldo(opening, accForBalance, range);
@@ -135,10 +156,11 @@ export default async function CashReportPage({
       entryBalances: rollForwardEntries(opening, accForBalance),
       totals: monthTotals(rows),
       closingNow: balanceAsOf(opening, accForBalance, monthEnd),
-      hasBeforeOpening: accAll.some((e) => e.entry_date < acc.opening_date),
       openingDate: acc.opening_date,
-      // Весь месяц раньше открытия счёта — обороты и сальдо будут нулевыми.
-      monthBeforeOpening: monthEnd < acc.opening_date,
+      // Весь период раньше открытия счёта — обороты и сальдо будут нулевыми.
+      // Если хоть одна операция внесена вручную (0019), считать есть что —
+      // и плашка «весь месяц до открытия» уже соврала бы.
+      monthBeforeOpening: monthEnd < acc.opening_date && accForBalance.length === 0,
       cutOff,
     };
   });
@@ -178,9 +200,18 @@ export default async function CashReportPage({
   // Ручные видатки месяца (внесены кнопкой «Видаток», без привязки к расходам
   // и платежам) — вкладка «Витрати» показывает их отдельной строкой, чтобы её
   // итог сходился с чипом «Видаток за місяць» в шапке (QA 27.07, ISSUE-002).
+  // Отсечённые операции сюда НЕ входят: чип «Видаток за місяць» в шапке их тоже
+  // не считает (он из views[].totals), и без этого условия вкладка «Витрати»
+  // расходилась бы с шапкой ровно на них (ревью 0019).
+  const openingByAccount = new Map(accounts.map((a) => [a.id, a.opening_date]));
+  const countsInTurnover = (e: (typeof entries)[number]) =>
+    e.include_before_opening || e.entry_date >= (openingByAccount.get(e.account_id) ?? '');
   const manualOutflow = entries.reduce(
     (s, e) =>
-      e.direction === 'out' && e.payment_id === null && e.expense_id === null
+      e.direction === 'out' &&
+      e.payment_id === null &&
+      e.expense_id === null &&
+      countsInTurnover(e)
         ? s + e.amount
         : s,
     0,
@@ -274,6 +305,9 @@ export default async function CashReportPage({
         categorySpendTotals={categorySpendTotals}
         manualOutflow={manualOutflow}
         canAddCategory={user.caps.manage_expense_categories}
+        canEditPayments={user.caps.edit_payments}
+        canManageCaseExpenses={user.caps.manage_case_expenses}
+        allCategories={allExpenseCategories}
         turnoverDoc={turnoverDoc}
         flowDoc={flowDoc}
         incomeDoc={incomeDoc}

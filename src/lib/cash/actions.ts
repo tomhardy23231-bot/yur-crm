@@ -3,11 +3,12 @@
 import { revalidatePath } from 'next/cache';
 
 import { logActivity } from '@/lib/activity-log/log';
-import { requireCap, requireUser } from '@/lib/auth/require-role';
+import { requireAnyCap, requireCap, requireUser } from '@/lib/auth/require-role';
+import { getCashEntryDetails, type CashEntryDetails } from '@/lib/cash/queries';
 import { userDb } from '@/lib/db';
 import { dbActionError } from '@/lib/db/errors';
 import { toDbDate } from '@/lib/db/convert';
-import { rpcCashBackfillPayments } from '@/lib/db/rpc';
+import { rpcCashBackfillPayments, rpcCashEntrySetIncluded } from '@/lib/db/rpc';
 import { getT } from '@/lib/i18n/server';
 import { CASH_ACCOUNT_KINDS, type CashAccountKind } from '@/lib/types/db';
 import { UUID_RE, parseAmount, parseNonNegAmount, isWorkDate } from '@/lib/validation';
@@ -322,6 +323,260 @@ export async function createCashEntryAction(
 
   revalidatePath('/reports/cash');
   return { ok: true, message: t.cash.actions.entrySaved };
+}
+
+// ============================================================================
+// Карточка операции: детали тянутся лениво, по клику на строку журнала
+// (2026-08-04). Гейт тот же, что у страницы кассы, — смотреть может и
+// view_cash; править ли что-то, решает уже сама карточка по правам.
+// ============================================================================
+export async function loadCashEntryDetailsAction(
+  entryId: string,
+): Promise<CashEntryDetails | null> {
+  await requireAnyCap(['view_cash', 'can_manage_cash']);
+  if (!entryId || !UUID_RE.test(entryId)) return null;
+  return getCashEntryDetails(entryId);
+}
+
+// ============================================================================
+// Правка РУЧНОЙ операции кассы (2026-08-04). RLS-политика cash_entries_update
+// была с самого начала, но формы к ней не существовало — операцию можно было
+// только снести и завести заново. Авто-строки (приход платежа, розхід расхода)
+// правятся через свою сущность: их RLS на UPDATE не отдаёт вовсе.
+// ============================================================================
+export async function updateCashEntryAction(
+  _prev: CashEntryState,
+  formData: FormData,
+): Promise<CashEntryState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  if (!user.caps.can_manage_cash) {
+    return { ok: false, message: t.cash.actions.noPermission };
+  }
+
+  const id = String(formData.get('id') ?? '').trim();
+  if (!id || !UUID_RE.test(id)) return { ok: false, message: t.cash.actions.notFound };
+
+  const account_id = String(formData.get('account_id') ?? '').trim();
+  const entry_date = String(formData.get('entry_date') ?? '').trim();
+  const direction = String(formData.get('direction') ?? '').trim();
+  const amount_raw = String(formData.get('amount') ?? '').trim();
+  const description = String(formData.get('description') ?? '').trim();
+
+  const fieldErrors: CashEntryState['fieldErrors'] = {};
+  if (!account_id || !UUID_RE.test(account_id)) fieldErrors.account_id = t.cash.actions.accountInvalid;
+  if (direction !== 'in' && direction !== 'out') fieldErrors.direction = t.cash.actions.directionInvalid;
+  if (!amount_raw) fieldErrors.amount = t.cash.actions.amountRequired;
+  else if (parseAmount(amount_raw) === null) fieldErrors.amount = t.cash.actions.amountInvalid;
+  if (!entry_date) fieldErrors.entry_date = t.cash.actions.dateRequired;
+  else if (!isWorkDate(entry_date)) fieldErrors.entry_date = t.cash.actions.dateInvalid;
+  if (!description) fieldErrors.description = t.cash.actions.descriptionRequired;
+  else if (description.length > 300) fieldErrors.description = t.cash.actions.descriptionTooLong;
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { ok: false, fieldErrors, message: t.cash.actions.checkForm };
+  }
+
+  // Снапшот «до» — и для журнала, и чтобы отличить авто-строку от ручной:
+  // без этого правка авто-прихода упиралась бы в немой отказ RLS.
+  const before = await userDb(user.profile.id, (tx) =>
+    tx.cash_entries.findUnique({
+      where: { id },
+      select: {
+        account_id: true,
+        entry_date: true,
+        direction: true,
+        amount: true,
+        description: true,
+        payment_id: true,
+        expense_id: true,
+      },
+    }),
+  );
+  if (!before) return { ok: false, message: t.cash.actions.notFound };
+  if (before.payment_id !== null || before.expense_id !== null) {
+    return { ok: false, message: t.cash.actions.autoRowReadonly };
+  }
+
+  const amount = parseAmount(amount_raw)!;
+
+  try {
+    const res = await userDb(user.profile.id, (tx) =>
+      tx.cash_entries.updateMany({
+        where: { id },
+        data: {
+          account_id,
+          entry_date: toDbDate(entry_date),
+          direction: direction as 'in' | 'out',
+          amount,
+          description,
+        },
+      }),
+    );
+    if (res.count === 0) return { ok: false, message: t.cash.actions.noPermission };
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError('updateCashEntryAction', err, t.cash.actions.saveFailed, t.errors.db),
+    };
+  }
+
+  await logActivity({
+    entity_type: 'cash',
+    entity_id: account_id,
+    action: 'cash_entry_updated',
+    changes: {
+      entry_id: id,
+      before: {
+        account_id: before.account_id,
+        direction: before.direction,
+        amount: Number(before.amount),
+        entry_date: before.entry_date.toISOString().slice(0, 10),
+        description: before.description,
+      },
+      after: { account_id, direction, amount, entry_date, description },
+    },
+  });
+
+  revalidatePath('/reports/cash');
+  return { ok: true, message: t.cash.actions.entrySaved };
+}
+
+// ============================================================================
+// «Внести в оборот» — операция раньше даты начального остатка счёта всё же
+// учитывается (2026-08-04, решение владельца).
+//
+// Начальный остаток — это фотография счёта на дату: всё, что раньше, считается
+// уже внутри неё. Но операцию задним числом вносят и тогда, когда в остаток она
+// не попала. Флаг — точечное исключение; альтернатива (двигать дату счёта)
+// меняет правило сразу для всех операций. Идёт через SECURITY DEFINER-RPC:
+// отсечка бьёт и по авто-строкам, а их RLS на UPDATE не отдаёт.
+// ============================================================================
+export type CashEntryIncludeResult = { ok: boolean; message?: string };
+
+export async function setCashEntryIncludedAction(
+  entryId: string,
+  value: boolean,
+): Promise<CashEntryIncludeResult> {
+  const user = await requireCap('can_manage_cash');
+  const { t } = await getT();
+
+  if (!entryId || !UUID_RE.test(entryId)) {
+    return { ok: false, message: t.cash.actions.notFound };
+  }
+
+  // Описание — для журнала (по id операции потом не восстановить: строку могли
+  // снять вместе с платежом).
+  const row = await userDb(user.profile.id, (tx) =>
+    tx.cash_entries.findUnique({
+      where: { id: entryId },
+      select: { account_id: true, entry_date: true, amount: true, description: true },
+    }),
+  );
+  if (!row) return { ok: false, message: t.cash.actions.notFound };
+
+  let ok: boolean;
+  try {
+    ok = await userDb(user.profile.id, (tx) =>
+      rpcCashEntrySetIncluded(tx, { entryId, value }),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError(
+        'setCashEntryIncludedAction',
+        err,
+        t.cash.actions.saveFailed,
+        t.errors.db,
+      ),
+    };
+  }
+  if (!ok) return { ok: false, message: t.cash.actions.notFound };
+
+  await logActivity({
+    entity_type: 'cash',
+    entity_id: row.account_id,
+    action: 'cash_entry_updated',
+    changes: {
+      entry_id: entryId,
+      include_before_opening: value,
+      entry_date: row.entry_date.toISOString().slice(0, 10),
+      amount: Number(row.amount),
+      description: row.description,
+    },
+  });
+
+  revalidatePath('/reports/cash');
+  return { ok: true, message: value ? t.cash.actions.included : t.cash.actions.excluded };
+}
+
+// ============================================================================
+// Перенос даты начального остатка счёта назад — второй выход из той же
+// ситуации: операций раньше открытия счёта много и все они законны (счёт
+// завели позже, чем начали вести дела).
+//
+// Меняется ТОЛЬКО дата: сам остаток остаётся прежним, поэтому отсечённые
+// операции просто начинают считаться. Двигать дату вперёд отсюда нельзя —
+// это молча выкинуло бы операции из оборотов; для этого есть форма счёта.
+// ============================================================================
+export type ShiftOpeningDateResult = { ok: boolean; message?: string };
+
+export async function shiftAccountOpeningDateAction(
+  accountId: string,
+  newDate: string,
+): Promise<ShiftOpeningDateResult> {
+  const user = await requireCap('can_manage_cash');
+  const { t } = await getT();
+
+  if (!accountId || !UUID_RE.test(accountId)) {
+    return { ok: false, message: t.cash.actions.notFound };
+  }
+  if (!isWorkDate(newDate)) {
+    return { ok: false, message: t.cash.actions.dateInvalid };
+  }
+
+  const account = await userDb(user.profile.id, (tx) =>
+    tx.cash_accounts.findUnique({
+      where: { id: accountId },
+      select: { name: true, opening_date: true },
+    }),
+  );
+  if (!account) return { ok: false, message: t.cash.actions.notFound };
+
+  const current = account.opening_date.toISOString().slice(0, 10);
+  if (newDate >= current) {
+    return { ok: false, message: t.cash.actions.openingDateNotEarlier };
+  }
+
+  try {
+    const res = await userDb(user.profile.id, (tx) =>
+      tx.cash_accounts.updateMany({
+        where: { id: accountId },
+        data: { opening_date: toDbDate(newDate) },
+      }),
+    );
+    if (res.count === 0) return { ok: false, message: t.cash.actions.noPermission };
+  } catch (err) {
+    return {
+      ok: false,
+      message: dbActionError(
+        'shiftAccountOpeningDateAction',
+        err,
+        t.cash.actions.saveFailed,
+        t.errors.db,
+      ),
+    };
+  }
+
+  await logActivity({
+    entity_type: 'cash',
+    entity_id: accountId,
+    action: 'cash_account_updated',
+    changes: { name: account.name, opening_date: { from: current, to: newDate } },
+  });
+
+  revalidatePath('/reports/cash');
+  return { ok: true, message: t.cash.actions.openingDateMoved };
 }
 
 // ============================================================================

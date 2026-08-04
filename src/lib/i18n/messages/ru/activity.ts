@@ -116,6 +116,7 @@ export const activity = {
     case_type_deactivated: 'скрыл(а) тип дела',
     // Книга операций (миграции 0009–0016) — расходы, статьи, удаление счёта.
     expense_created: 'внёс(ла) расход',
+    expense_updated: 'изменил(а) расход',
     expense_deleted: 'удалил(а) расход',
     payment_converted_to_expense: 'перевёл(а) платёж в расходы',
     expense_category_created: 'добавил(а) статью расходов',
@@ -224,6 +225,7 @@ export const activity = {
 
     // Книга операций (2026-07-27, миграции 0009–0016).
     expenseCreated: 'внёс(ла) расход {amount}',
+    expenseUpdated: 'изменил(а) расход: {amount}',
     expenseDeleted: 'удалил(а) расход {amount}',
     paymentConvertedToExpense: 'перевёл(а) платёж {amount} в расходы',
     expenseCategoryCreated: 'добавил(а) статью расходов «{name}»',

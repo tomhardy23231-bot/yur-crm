@@ -5,6 +5,7 @@ import { Receipt } from 'lucide-react';
 
 import { AddExpenseDialog } from '@/components/expenses/add-expense-dialog';
 import { DeleteExpenseButton } from '@/components/expenses/delete-expense-button';
+import { EditExpenseDialog } from '@/components/expenses/edit-expense-dialog';
 import { useI18n } from '@/lib/i18n/provider';
 import { formatMoney } from '@/lib/utils';
 import type { ExpenseCategoryOption } from '@/lib/expenses/categories';
@@ -141,8 +142,17 @@ export function ExpensesList({
               <span className="shrink-0 font-mono text-[14px] font-bold tabular-nums text-warning-text">
                 −{formatMoney(e.amount)} ₴
               </span>
+              {/* Зарплатные строки сюда не попадают (у них case_id = NULL),
+                  поэтому дополнительной проверки не нужно. */}
               {canManage && !e.pending && (
-                <DeleteExpenseButton expenseId={e.id} caseId={e.case_id ?? ''} />
+                <>
+                  <EditExpenseDialog
+                    expense={e}
+                    categories={categories}
+                    accounts={accounts}
+                  />
+                  <DeleteExpenseButton expenseId={e.id} caseId={e.case_id ?? ''} />
+                </>
               )}
             </li>
           ))}

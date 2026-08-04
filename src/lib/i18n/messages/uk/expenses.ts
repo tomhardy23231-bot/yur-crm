@@ -31,6 +31,8 @@ export const expenses: ExpensesMessages = {
     categoryLabel: 'Стаття',
     categoryPlaceholder: 'Оберіть статтю',
     methodLabel: 'Списати з рахунку',
+    accountKeepMethod: 'Залишити як є',
+    accountKept: 'Попередній рахунок (прихований)',
     noteLabel: 'Коментар',
     notePlaceholder: 'Необов’язково',
     saved: 'Витрату збережено.',
@@ -43,6 +45,12 @@ export const expenses: ExpensesMessages = {
   row: {
     deleteLabel: 'Видалити витрату',
     deleteConfirm: 'Видалити цю витрату? Рядок каси теж буде знято.',
+    editLabel: 'Змінити витрату',
+    editTitle: 'Змінити витрату',
+    editHint:
+      'Справа у витрати не змінюється — щоб перенести витрату в іншу справу або на фірму, видаліть її та внесіть заново.',
+    editSave: 'Зберегти',
+    updated: 'Витрату змінено.',
   },
 
   summary: {
@@ -113,5 +121,9 @@ export const expenses: ExpensesMessages = {
     methodInvalid: 'Оберіть рахунок списання',
     noteTooLong: 'Занадто довго (макс 500)',
     saveFailed: 'Не вдалося зберегти витрату.',
+    notFound: 'Витрату не знайдено.',
+    noPermission: 'Недостатньо прав, щоб редагувати цю витрату.',
+    systemRow:
+      'Це витрата по виплаті зарплати — вона правиться через саму виплату співробітнику.',
   },
 };

@@ -112,6 +112,7 @@ export const activity: ActivityMessages = {
     case_type_deactivated: 'приховав(ла) тип справи',
     // Книга операцій (міграції 0009–0016) — витрати, статті, видалення рахунку.
     expense_created: 'вніс(ла) витрату',
+    expense_updated: 'змінив(ла) витрату',
     expense_deleted: 'видалив(ла) витрату',
     payment_converted_to_expense: 'перевів(ла) платіж у витрати',
     expense_category_created: 'додав(ла) статтю витрат',
@@ -214,6 +215,7 @@ export const activity: ActivityMessages = {
 
     // Книга операцій (2026-07-27, міграції 0009–0016).
     expenseCreated: 'вніс(ла) витрату {amount}',
+    expenseUpdated: 'змінив(ла) витрату: {amount}',
     expenseDeleted: 'видалив(ла) витрату {amount}',
     paymentConvertedToExpense: 'перевів(ла) платіж {amount} у витрати',
     expenseCategoryCreated: 'додав(ла) статтю витрат «{name}»',

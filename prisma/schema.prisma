@@ -264,6 +264,10 @@ model cash_entries {
   expense_id    String?       @unique(map: "cash_entries_expense_uniq", where: raw("(expense_id IS NOT NULL)")) @db.Uuid
   created_by    String        @db.Uuid
   created_at    DateTime      @default(now()) @db.Timestamptz(6)
+  /// Операция учитывается в оборотах и сальдо, даже если датирована раньше
+  /// opening_date счёта (миграция 0019). Ставится только RPC
+  /// public.cash_entry_set_included под правом can_manage_cash.
+  include_before_opening Boolean @default(false)
   cash_accounts cash_accounts @relation(fields: [account_id], references: [id], onUpdate: NoAction)
   cases         cases?        @relation(fields: [case_id], references: [id], onUpdate: NoAction)
   users         public_users  @relation(fields: [created_by], references: [id], onUpdate: NoAction)

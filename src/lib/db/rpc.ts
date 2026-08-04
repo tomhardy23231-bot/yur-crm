@@ -392,6 +392,46 @@ export async function rpcCashBackfillPayments(db: DbLike): Promise<number> {
   return num(firstRow(rows, 'cash_backfill_payments').n);
 }
 
+/**
+ * Включить/исключить операцию в обороты вопреки дате начального остатка счёта
+ * (миграция 0019). DEFINER: флаг нужен и авто-строкам, которым RLS UPDATE не
+ * даёт вовсе; право can_manage_cash проверяется внутри функции.
+ */
+export async function rpcCashEntrySetIncluded(
+  db: DbLike,
+  args: { entryId: string; value: boolean },
+): Promise<boolean> {
+  const rows = await db.$queryRaw<Row[]>`
+    select public.cash_entry_set_included(${args.entryId}::uuid, ${args.value}::boolean) as ok`;
+  return firstRow(rows, 'cash_entry_set_included').ok === true;
+}
+
+export type CashCutoffRow = {
+  account_id: string;
+  cnt: number;
+  /** Чистая сумма отсечённых операций (приход − расход). */
+  net: number;
+  /** Самая ранняя отсечённая дата, 'YYYY-MM-DD'. */
+  earliest: string;
+};
+
+/**
+ * Операции, отсечённые датой начального остатка своего счёта — по ВСЕМУ счёту,
+ * без оглядки на выбранный период (0020). Период здесь был бы ловушкой: кнопка
+ * переноса даты меняет настройку счёта навсегда, а предлагала бы дату из
+ * случайного месяца, который сейчас открыт.
+ */
+export async function rpcCashCutoffSummary(db: DbLike): Promise<CashCutoffRow[]> {
+  const rows = await db.$queryRaw<Row[]>`
+    select * from public.cash_cutoff_summary()`;
+  return rows.map((r) => ({
+    account_id: r.account_id as string,
+    cnt: num(r.cnt),
+    net: num(r.net),
+    earliest: dateStr(r.earliest),
+  }));
+}
+
 /** Число платежей без строки кассы (кнопка бэкфилла в /reports/cash). */
 export async function rpcCashUnsyncedPaymentsCount(
   db: DbLike,

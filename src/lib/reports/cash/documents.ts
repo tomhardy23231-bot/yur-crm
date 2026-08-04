@@ -485,7 +485,7 @@ export async function buildSummaryDoc(period: Period): Promise<ReportDoc> {
 // ── 7. Реестр операций кассы ──────────────────────────────────────────────
 // Плоский журнал за период — первичка для сверки с банком.
 export async function buildRegistryDoc(period: Period): Promise<ReportDoc> {
-  const { t } = await getT();
+  const { t, fmt } = await getT();
   const r = t.cash.reports;
   const [{ accounts, entries, truncated }, header, label] = await Promise.all([
     getCashReportData(period),
@@ -494,7 +494,15 @@ export async function buildRegistryDoc(period: Period): Promise<ReportDoc> {
   ]);
 
   const accountName = new Map(accounts.map((a) => [a.id, a.name]));
-  const rows: ReportRow[] = entries.map((e) => ({
+  // Отсечка по дате начального остатка — та же, что у cash_turnover и у
+  // журнала (0020). Без неё реестр и оборотно-сальдовая на одном экране за
+  // один период показывали РАЗНЫЕ обороты, и обе уходили в Excel и PDF.
+  const openingOf = new Map(accounts.map((a) => [a.id, a.opening_date]));
+  const counted = entries.filter(
+    (e) => e.include_before_opening || e.entry_date >= (openingOf.get(e.account_id) ?? ''),
+  );
+  const cutOffCount = entries.length - counted.length;
+  const rows: ReportRow[] = counted.map((e) => ({
     cells: {
       date: e.entry_date.split('-').reverse().join('.'),
       account: accountName.get(e.account_id) ?? '',
@@ -513,6 +521,12 @@ export async function buildRegistryDoc(period: Period): Promise<ReportDoc> {
   // Молчаливое усечение в отчёте недопустимо: если строк больше потолка,
   // это должно быть написано прямо на документе, включая выгрузку.
   if (truncated) notes.push(t.cash.report.truncatedWarning);
+  // Скрытые строки тоже нельзя замалчивать: реестр — первичка для сверки с
+  // банком, и «в выписке есть, в реестре нет» должно быть объяснено на самом
+  // документе, а не только на экране.
+  if (cutOffCount > 0) {
+    notes.push(fmt(t.cash.reports.registryCutOffNote, { count: String(cutOffCount) }));
+  }
 
   return {
     title: r.registryHeading,

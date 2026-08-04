@@ -8,13 +8,19 @@ import { dateOnly, dec, toDbDate, ts } from '@/lib/db/convert';
 import {
   rpcCashAccountsPick,
   rpcCashBalancesBefore,
+  rpcCashCutoffSummary,
   type CashAccountPick,
+  type CashCutoffRow,
   rpcCashUnsyncedPaymentsCount,
 } from '@/lib/db/rpc';
+import { expenseCategoryMap } from '@/lib/expenses/categories';
 import type {
   CashAccount,
   CashDirection,
   CashEntryWithCase,
+  ExpenseMethod,
+  ExpenseWithRefs,
+  PaymentWithCreator,
 } from '@/lib/types/db';
 
 const ACCOUNT_SELECT = {
@@ -41,6 +47,7 @@ const ENTRY_SELECT = {
   expense_id: true,
   created_by: true,
   created_at: true,
+  include_before_opening: true,
 } as const;
 
 type AccountRow = {
@@ -81,6 +88,7 @@ type EntryRow = {
   expense_id: string | null;
   created_by: string;
   created_at: Date;
+  include_before_opening: boolean;
   cases: { id: string; number_title: string } | null;
 };
 
@@ -97,6 +105,7 @@ function normalizeEntry(r: EntryRow): CashEntryWithCase {
     expense_id: r.expense_id,
     created_by: r.created_by,
     created_at: ts(r.created_at),
+    include_before_opening: r.include_before_opening,
     case: r.cases ? { id: r.cases.id, number_title: r.cases.number_title } : null,
   };
 }
@@ -185,6 +194,25 @@ export const getCashReportData = cache(async function getCashReportData(period: 
   return { accounts, entries, openingBalances, truncated };
 });
 
+// =====================================================================
+// getCashCutoffSummary — операции, отсечённые датой начального остатка счёта,
+// по ВСЕМУ счёту (0020). Раньше плашка считала их по видимому периоду, а
+// кнопка меняет настройку счёта навсегда: в августе предлагалось перенести
+// дату на 02.08, хотя такие же операции лежали ещё и в апреле.
+// =====================================================================
+export async function getCashCutoffSummary(): Promise<Record<string, CashCutoffRow>> {
+  const user = await getCurrentUser();
+  if (!user) return {};
+  try {
+    const rows = await userDb(user.profile.id, (tx) => rpcCashCutoffSummary(tx));
+    return Object.fromEntries(rows.map((r) => [r.account_id, r]));
+  } catch (err) {
+    // Плашка — подсказка, а не расчёт: её отсутствие не должно ронять кассу.
+    console.error('getCashCutoffSummary failed:', err);
+    return {};
+  }
+}
+
 // Сколько платежей ещё не отражены в кассе (для баннера «Синхронизировать»). Не валит
 // страницу: при ошибке/без права RPC вернёт 0 (право проверяется внутри функции).
 export async function getUnsyncedPaymentsCount(): Promise<number> {
@@ -222,6 +250,170 @@ export async function getCurrentBalances(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const r of rows) out[r.account_id] = r.balance;
   return out;
+}
+
+// =====================================================================
+// getCashEntryDetails — карточка одной операции кассы (2026-08-04).
+//
+// Тянется ЛЕНИВО, по клику на строку: журнал бывает на тысячи строк, а автора,
+// клиента и статью расхода нужно знать только для той, что открыли.
+//
+// Возвращает саму операцию + её ИСТОЧНИК: платёж (авто-приход) или расход
+// (авто-розхід). Правка идёт в источник, а не в кассу — там же живут права.
+// =====================================================================
+export type CashEntryDetails = {
+  entry: CashEntryWithCase & {
+    account_name: string;
+    creator: { id: string; full_name: string } | null;
+  };
+  /** Дата начального остатка счёта: раньше неё операция в обороты не входит. */
+  accountOpeningDate: string;
+  /** Платёж-источник авто-прихода (+ дело и клиент для шапки). */
+  payment:
+    | (PaymentWithCreator & { case_title: string | null; client_name: string | null })
+    | null;
+  /** Расход-источник авто-розхода (+ дело для шапки). */
+  expense: (ExpenseWithRefs & { case_title: string | null }) | null;
+};
+
+export async function getCashEntryDetails(
+  entryId: string,
+): Promise<CashEntryDetails | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const uid = user.profile.id;
+
+  const row = await userDb(uid, (tx) =>
+    tx.cash_entries.findUnique({
+      where: { id: entryId },
+      select: {
+        ...ENTRY_SELECT,
+        cases: { select: { id: true, number_title: true } },
+        cash_accounts: { select: { name: true, opening_date: true } },
+        users: { select: { id: true, full_name: true } },
+      },
+    }),
+  );
+  if (!row) return null;
+
+  const entry = {
+    ...normalizeEntry(row as EntryRow),
+    account_name: row.cash_accounts?.name ?? '',
+    creator: row.users ? { id: row.users.id, full_name: row.users.full_name } : null,
+  };
+  const accountOpeningDate = row.cash_accounts
+    ? dateOnly(row.cash_accounts.opening_date)
+    : entry.entry_date;
+
+  // Источник строки. Обе выборки под RLS: платёж виден по видимости дела,
+  // расход — по правам расходов/кассы. Не видно источник → карточка покажет
+  // только саму операцию, без правки.
+  const [payment, expense] = await Promise.all([
+    row.payment_id ? loadEntryPayment(uid, row.payment_id) : Promise.resolve(null),
+    row.expense_id ? loadEntryExpense(uid, row.expense_id) : Promise.resolve(null),
+  ]);
+
+  return { entry, accountOpeningDate, payment, expense };
+}
+
+async function loadEntryPayment(
+  uid: string,
+  paymentId: string,
+): Promise<CashEntryDetails['payment']> {
+  const p = await userDb(uid, (tx) =>
+    tx.payments.findUnique({
+      where: { id: paymentId },
+      select: {
+        id: true,
+        case_id: true,
+        amount: true,
+        paid_at: true,
+        method: true,
+        account_id: true,
+        note: true,
+        created_by: true,
+        created_at: true,
+        // idempotency_key НЕ читаем: он не нужен ни карточке, ни форме правки,
+        // а полезная нагрузка карточки уходит в браузер (ревью 0019).
+        act_id: true,
+        users: { select: { id: true, full_name: true } },
+        cases: {
+          select: { number_title: true, clients: { select: { name: true } } },
+        },
+      },
+    }),
+  );
+  if (!p) return null;
+
+  return {
+    id: p.id,
+    case_id: p.case_id,
+    amount: dec(p.amount),
+    paid_at: dateOnly(p.paid_at),
+    method: p.method,
+    account_id: p.account_id,
+    note: p.note,
+    created_by: p.created_by,
+    created_at: ts(p.created_at),
+    idempotency_key: null,
+    act_id: p.act_id,
+    creator: p.users ? { id: p.users.id, full_name: p.users.full_name } : null,
+    case_title: p.cases?.number_title ?? null,
+    client_name: p.cases?.clients?.name ?? null,
+  };
+}
+
+async function loadEntryExpense(
+  uid: string,
+  expenseId: string,
+): Promise<CashEntryDetails['expense']> {
+  const e = await userDb(uid, (tx) =>
+    tx.expenses.findUnique({
+      where: { id: expenseId },
+      select: {
+        id: true,
+        case_id: true,
+        category_id: true,
+        amount: true,
+        spent_at: true,
+        method: true,
+        note: true,
+        created_by: true,
+        created_at: true,
+        payroll_transaction_id: true,
+        account_id: true,
+        users: { select: { id: true, full_name: true } },
+        expense_categories: { select: { id: true, code: true, name: true } },
+        cases: { select: { number_title: true } },
+      },
+    }),
+  );
+  if (!e) return null;
+
+  // Лейбл статьи — общим резолвером: встроенные из i18n, кастомные из name.
+  const cats = await expenseCategoryMap();
+  const cat = cats.get(e.category_id);
+
+  return {
+    id: e.id,
+    case_id: e.case_id,
+    category_id: e.category_id,
+    amount: dec(e.amount),
+    spent_at: dateOnly(e.spent_at),
+    method: (e.method as ExpenseMethod | null) ?? null,
+    note: e.note,
+    created_by: e.created_by,
+    created_at: ts(e.created_at),
+    payroll_transaction_id: e.payroll_transaction_id,
+    account_id: e.account_id,
+    category: {
+      id: e.category_id,
+      code: cat?.code ?? e.expense_categories.code,
+      label: cat?.label ?? e.expense_categories.name,
+    },
+    creator: e.users ? { id: e.users.id, full_name: e.users.full_name } : null,
+    case_title: e.cases?.number_title ?? null,
+  };
 }
 
 // =====================================================================
